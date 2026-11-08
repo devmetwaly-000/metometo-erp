@@ -84,16 +84,19 @@ export default function CentralSyncSettingsPage() {
     const [initBranchName, setInitBranchName] = useState('الفرع الرأيسي');
     const [isInitializingDb, setIsInitializingDb] = useState(false);
     const [initDbResult, setInitDbResult] = useState<{ success: boolean; message: string; tablesCount?: number; error?: string } | null>(null);
+    const [activeTab, setActiveTab] = useState<'monitor' | 'config' | 'db-init'>('monitor');
 
     // Fetch initial settings & queue from API
-    const loadSettings = async () => {
+    // isInitial = true updates form inputs (on mount or manual refresh).
+    // isInitial = false (periodic queue refresh) ONLY updates counters & logs, NEVER overwriting form inputs!
+    const loadSettings = async (isInitial: boolean = false) => {
         try {
             const res = await fetch('/api/sync/central');
             const data = await res.json();
             if (data.success) {
-                if (data.config) {
+                if (isInitial && data.config) {
                     setConfig(data.config);
-                    // Pre-fill DB init form
+                    // Pre-fill DB init form only on initial/explicit load
                     setInitServer(data.config.centralServerIp || '127.0.0.1');
                     setInitPort(data.config.centralSqlPort || 1433);
                     setInitDatabase(data.config.centralDatabase || 'MultiBranchPOS_Central_DB');
@@ -115,12 +118,19 @@ export default function CentralSyncSettingsPage() {
         }
     };
 
+    // Initial load on page mount
     useEffect(() => {
-        loadSettings();
-        // Auto-refresh monitor stats every 15 seconds
-        const timer = setInterval(loadSettings, 15000);
-        return () => clearInterval(timer);
+        loadSettings(true);
     }, []);
+
+    // Auto-refresh queue monitor only when viewing the monitor tab (does NOT touch form inputs)
+    useEffect(() => {
+        if (activeTab !== 'monitor') return;
+        const timer = setInterval(() => {
+            loadSettings(false);
+        }, 20000);
+        return () => clearInterval(timer);
+    }, [activeTab]);
 
     const handleInputChange = (field: keyof CentralSyncConfig, value: any) => {
         setConfig(prev => ({ ...prev, [field]: value }));
@@ -221,7 +231,7 @@ export default function CentralSyncSettingsPage() {
                     title: "تمت المزامنة بنجاح!",
                     description: data.details || `تم رفع ${data.pushedCount} حركة وسحب ${data.pulledCount} تحديث.`
                 });
-                await loadSettings();
+                await loadSettings(false);
             } else {
                 toast({
                     title: "فشلت عملية المزامنة",
@@ -392,7 +402,7 @@ export default function CentralSyncSettingsPage() {
                 </div>
 
                 {/* Tabs */}
-                <Tabs defaultValue="monitor" className="w-full">
+                <Tabs value={activeTab} onValueChange={(val) => setActiveTab(val as any)} className="w-full">
                     <TabsList className="grid w-full grid-cols-3">
                         <TabsTrigger value="monitor" className="gap-2">
                             <Activity className="h-4 w-4" /> متابعة المزامنة اللحظية
@@ -418,7 +428,7 @@ export default function CentralSyncSettingsPage() {
                                         تتبع لحظي للوثائق والحركات غير المزامنة في قاعدة بيانات الفرع وموقف كل قسم.
                                     </CardDescription>
                                 </div>
-                                <Button size="sm" variant="outline" onClick={loadSettings}>
+                                <Button size="sm" variant="outline" onClick={() => loadSettings(false)}>
                                     <RefreshCw className="h-3.5 w-3.5 ml-1" /> تحديث العدادات
                                 </Button>
                             </CardHeader>
