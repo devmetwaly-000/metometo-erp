@@ -308,6 +308,50 @@ export async function runFullSync(): Promise<{
                             .input('Id', sql.NVarChar(64), row.Id)
                             .query(`UPDATE dbo.[${tableName}] SET SyncStatus = 'synced', LastSyncedAt = GETDATE() WHERE Id = @Id;`);
 
+                        // مزامنة بنود وأصناف الوثيقة التابعة تلقائياً (Child Items Synchronization)
+                        const childTableMap: Record<string, { table: string; foreignKey: string }> = {
+                            SalesInvoices: { table: 'SalesInvoiceItems', foreignKey: 'InvoiceId' },
+                            SalesReturns: { table: 'SalesReturnItems', foreignKey: 'ReturnId' },
+                            PurchaseInvoices: { table: 'PurchaseInvoiceItems', foreignKey: 'PurchaseInvoiceId' },
+                            PurchaseReturns: { table: 'PurchaseReturnItems', foreignKey: 'ReturnId' },
+                            StockInRecords: { table: 'StockInRecordItems', foreignKey: 'StockInId' },
+                            StockAdjustmentRecords: { table: 'StockAdjustmentItems', foreignKey: 'AdjustmentId' }
+                        };
+
+                        const childConfig = childTableMap[tableName];
+                        if (childConfig) {
+                            try {
+                                const childRowsRes = await localPool.request()
+                                    .input('ParentId', sql.NVarChar(64), row.Id)
+                                    .query(`SELECT * FROM dbo.[${childConfig.table}] WHERE [${childConfig.foreignKey}] = @ParentId`);
+
+                                if (childRowsRes.recordset.length > 0) {
+                                    // حذف البنود القديمة في المركز لمنع تكرارها عند التعديل
+                                    await centralPool.request()
+                                        .input('ParentId', sql.NVarChar(64), row.Id)
+                                        .query(`DELETE FROM dbo.[${childConfig.table}] WHERE [${childConfig.foreignKey}] = @ParentId`);
+
+                                    // إدراج البنود المحدثة
+                                    for (const cRow of childRowsRes.recordset) {
+                                        const cCols = Object.keys(cRow).filter(k => k !== 'Id' && k !== 'SyncStatus' && k !== 'LastSyncedAt');
+                                        const cInsert = cCols.join(', ');
+                                        const cParams = cCols.map(k => `@${k}`).join(', ');
+
+                                        const cReq = centralPool.request();
+                                        for (const k of cCols) {
+                                            cReq.input(k, cRow[k] === undefined ? null : cRow[k]);
+                                        }
+                                        await cReq.query(`
+                                            INSERT INTO dbo.[${childConfig.table}] (${cInsert}, BranchCode, BranchName, LastSyncedAt)
+                                            VALUES (${cParams}, '${config.currentBranchCode}', N'${config.currentBranchName}', GETDATE());
+                                        `);
+                                    }
+                                }
+                            } catch (cErr: any) {
+                                console.warn(`Sync child items warning on ${childConfig.table}:`, cErr.message);
+                            }
+                        }
+
                         totalPushed++;
                     }
                 }
