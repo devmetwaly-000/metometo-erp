@@ -16,7 +16,7 @@ import {
     Server, RefreshCw, CheckCircle2, AlertTriangle, ShieldCheck, 
     Database, Network, ArrowUpRight, ArrowDownLeft, Clock, Zap, Loader2, Save,
     ShoppingCart, Truck, Banknote, CreditCard, Receipt, Boxes, Monitor, Activity, Sparkles, Check,
-    Undo2, ArrowLeftRight, Wallet, Users, UserCheck, Terminal
+    Undo2, ArrowLeftRight, Wallet, Users, UserCheck, Terminal, Search, Layers, Filter
 } from "lucide-react";
 import { CentralSyncConfig } from '@/lib/central-sync';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -84,7 +84,31 @@ export default function CentralSyncSettingsPage() {
     const [initBranchName, setInitBranchName] = useState('الفرع الرأيسي');
     const [isInitializingDb, setIsInitializingDb] = useState(false);
     const [initDbResult, setInitDbResult] = useState<{ success: boolean; message: string; tablesCount?: number; error?: string } | null>(null);
-    const [activeTab, setActiveTab] = useState<'monitor' | 'config' | 'db-init'>('monitor');
+    const [activeTab, setActiveTab] = useState<'monitor' | 'tables' | 'config' | 'db-init'>('monitor');
+
+    // Tables Row Counts Comparison State (Branch vs Central)
+    const [tablesComparison, setTablesComparison] = useState<{
+        centralConnected: boolean;
+        centralDatabase: string;
+        totalBranchRows: number;
+        totalCentralRows: number;
+        syncedTablesCount: number;
+        diffTablesCount: number;
+        tables: Array<{
+            tableName: string;
+            displayName: string;
+            category: string;
+            branchRows: number;
+            centralRows: number | null;
+            diff: number;
+            status: 'synced' | 'pending' | 'central_ahead' | 'empty' | 'unreachable';
+        }>;
+    } | null>(null);
+
+    const [isRefreshingTables, setIsRefreshingTables] = useState(false);
+    const [tableSearch, setTableSearch] = useState('');
+    const [tableCategoryFilter, setTableCategoryFilter] = useState('all');
+    const [tableStatusFilter, setTableStatusFilter] = useState<'all' | 'diff' | 'synced' | 'has_data'>('all');
 
     // Fetch initial settings & queue from API
     // isInitial = true updates form inputs (on mount or manual refresh).
@@ -110,11 +134,42 @@ export default function CentralSyncSettingsPage() {
                 if (data.recentSyncLogs) {
                     setRecentSyncLogs(data.recentSyncLogs);
                 }
+                if (data.tablesComparison) {
+                    setTablesComparison(data.tablesComparison);
+                }
             }
         } catch (err: any) {
             console.error('Error loading central sync config:', err);
         } finally {
             setIsLoading(false);
+        }
+    };
+
+    // Manual refresh for tables comparison
+    const handleRefreshTablesComparison = async () => {
+        setIsRefreshingTables(true);
+        try {
+            const res = await fetch('/api/sync/central', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ action: 'tables-comparison' })
+            });
+            const data = await res.json();
+            if (data.success && data.tablesComparison) {
+                setTablesComparison(data.tablesComparison);
+                toast({
+                    title: "تم تحديث مقارنة الجداول",
+                    description: `تم إحصاء ${data.tablesComparison.tables.length} جدولاً بين الفرع والإدارة بنجاح.`
+                });
+            }
+        } catch (err: any) {
+            toast({
+                title: "خطأ في جلب بيانات الجداول",
+                description: err.message,
+                variant: "destructive"
+            });
+        } finally {
+            setIsRefreshingTables(false);
         }
     };
 
@@ -298,6 +353,35 @@ export default function CentralSyncSettingsPage() {
         }
     };
 
+    // Filter and search logic for tables row counts comparison
+    const filteredTables = (tablesComparison?.tables || []).filter(t => {
+        // Search filter
+        const matchesSearch = !tableSearch || 
+            t.displayName.toLowerCase().includes(tableSearch.toLowerCase()) ||
+            t.tableName.toLowerCase().includes(tableSearch.toLowerCase()) ||
+            t.category.toLowerCase().includes(tableSearch.toLowerCase());
+        
+        if (!matchesSearch) return false;
+
+        // Category filter
+        if (tableCategoryFilter !== 'all' && t.category !== tableCategoryFilter) {
+            return false;
+        }
+
+        // Status filter
+        if (tableStatusFilter === 'diff') {
+            return t.diff > 0;
+        }
+        if (tableStatusFilter === 'synced') {
+            return t.status === 'synced';
+        }
+        if (tableStatusFilter === 'has_data') {
+            return t.branchRows > 0 || (t.centralRows !== null && t.centralRows > 0);
+        }
+
+        return true;
+    });
+
     if (isLoading) {
         return (
             <div className="flex justify-center items-center py-24">
@@ -403,9 +487,12 @@ export default function CentralSyncSettingsPage() {
 
                 {/* Tabs */}
                 <Tabs value={activeTab} onValueChange={(val) => setActiveTab(val as any)} className="w-full">
-                    <TabsList className="grid w-full grid-cols-3">
+                    <TabsList className="grid w-full grid-cols-2 lg:grid-cols-4">
                         <TabsTrigger value="monitor" className="gap-2">
                             <Activity className="h-4 w-4" /> متابعة المزامنة اللحظية
+                        </TabsTrigger>
+                        <TabsTrigger value="tables" className="gap-2">
+                            <Database className="h-4 w-4 text-emerald-500" /> إحصاء الجداول والسطور (الفرع vs الإدارة)
                         </TabsTrigger>
                         <TabsTrigger value="config" className="gap-2">
                             <Server className="h-4 w-4" /> إعدادات السيرفر المركزي
@@ -428,9 +515,14 @@ export default function CentralSyncSettingsPage() {
                                         تتبع لحظي للوثائق والحركات غير المزامنة في قاعدة بيانات الفرع وموقف كل قسم.
                                     </CardDescription>
                                 </div>
-                                <Button size="sm" variant="outline" onClick={() => loadSettings(false)}>
-                                    <RefreshCw className="h-3.5 w-3.5 ml-1" /> تحديث العدادات
-                                </Button>
+                                <div className="flex items-center gap-2">
+                                    <Button size="sm" variant="outline" onClick={() => loadSettings(false)}>
+                                        <RefreshCw className="h-3.5 w-3.5 ml-1" /> تحديث العدادات
+                                    </Button>
+                                    <Button size="sm" variant="secondary" onClick={() => setActiveTab('tables')} className="gap-1.5 text-xs font-semibold bg-emerald-50 text-emerald-700 hover:bg-emerald-100 border border-emerald-200">
+                                        <Database className="h-3.5 w-3.5 text-emerald-600" /> مقارنة الجداول والسطور (69 جدولاً)
+                                    </Button>
+                                </div>
                             </CardHeader>
                             <CardContent>
                                 <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3">
@@ -583,7 +675,261 @@ export default function CentralSyncSettingsPage() {
                         </Card>
                     </TabsContent>
 
-                    {/* TAB 2: CENTRAL CONNECTION SETTINGS */}
+                    {/* TAB 2: TABLES ROW COUNTS COMPARISON (الفرع vs الإدارة) */}
+                    <TabsContent value="tables" className="space-y-6 mt-4">
+                        {/* KPI Summary Cards */}
+                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                            <Card className="border shadow-sm bg-blue-500/5 border-blue-500/20">
+                                <CardHeader className="py-3 pb-1">
+                                    <CardTitle className="text-xs font-semibold text-muted-foreground flex items-center justify-between">
+                                        <span>إجمالي سطور الفرع (Local)</span>
+                                        <Boxes className="h-4 w-4 text-blue-500" />
+                                    </CardTitle>
+                                </CardHeader>
+                                <CardContent className="py-2">
+                                    <div className="text-2xl font-black text-blue-600">
+                                        {tablesComparison ? tablesComparison.totalBranchRows.toLocaleString() : '...'}
+                                    </div>
+                                    <p className="text-[11px] text-muted-foreground mt-0.5">
+                                        إجمالي السجلات عبر 69 جدولاً بالفرع
+                                    </p>
+                                </CardContent>
+                            </Card>
+
+                            <Card className="border shadow-sm bg-purple-500/5 border-purple-500/20">
+                                <CardHeader className="py-3 pb-1">
+                                    <CardTitle className="text-xs font-semibold text-muted-foreground flex items-center justify-between">
+                                        <span>إجمالي سطور الإدارة (Central)</span>
+                                        <Server className="h-4 w-4 text-purple-500" />
+                                    </CardTitle>
+                                </CardHeader>
+                                <CardContent className="py-2">
+                                    <div className="text-2xl font-black text-purple-600">
+                                        {tablesComparison?.centralConnected 
+                                            ? tablesComparison.totalCentralRows.toLocaleString() 
+                                            : 'غير متصل بالسيرفر'}
+                                    </div>
+                                    <p className="text-[11px] text-muted-foreground mt-0.5">
+                                        السيرفر المركزي ({tablesComparison?.centralDatabase || config.centralDatabase})
+                                    </p>
+                                </CardContent>
+                            </Card>
+
+                            <Card className="border shadow-sm bg-emerald-500/5 border-emerald-500/20">
+                                <CardHeader className="py-3 pb-1">
+                                    <CardTitle className="text-xs font-semibold text-muted-foreground flex items-center justify-between">
+                                        <span>جداول متطابقة بالكامل</span>
+                                        <CheckCircle2 className="h-4 w-4 text-emerald-500" />
+                                    </CardTitle>
+                                </CardHeader>
+                                <CardContent className="py-2">
+                                    <div className="text-2xl font-black text-emerald-600">
+                                        {tablesComparison?.syncedTablesCount ?? 0} جدول
+                                    </div>
+                                    <p className="text-[11px] text-muted-foreground mt-0.5">
+                                        عدد السطور متطابق تماماً 100%
+                                    </p>
+                                </CardContent>
+                            </Card>
+
+                            <Card className="border shadow-sm bg-amber-500/5 border-amber-500/20">
+                                <CardHeader className="py-3 pb-1">
+                                    <CardTitle className="text-xs font-semibold text-muted-foreground flex items-center justify-between">
+                                        <span>جداول بها فوارق / معلقة</span>
+                                        <AlertTriangle className="h-4 w-4 text-amber-500" />
+                                    </CardTitle>
+                                </CardHeader>
+                                <CardContent className="py-2">
+                                    <div className="text-2xl font-black text-amber-600">
+                                        {tablesComparison?.diffTablesCount ?? 0} جدول
+                                    </div>
+                                    <p className="text-[11px] text-muted-foreground mt-0.5">
+                                        تتطلب المزامنة لمطابقة السطور
+                                    </p>
+                                </CardContent>
+                            </Card>
+                        </div>
+
+                        {/* Main Comparison Card */}
+                        <Card className="border shadow-sm">
+                            <CardHeader className="pb-3">
+                                <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
+                                    <div>
+                                        <CardTitle className="text-base flex items-center gap-2">
+                                            <Database className="h-5 w-5 text-emerald-600" />
+                                            جدول مقارنة أسماء الجداول وعدد السطور (الفرع vs الإدارة المركزية)
+                                        </CardTitle>
+                                        <CardDescription>
+                                            إحصاء فوري ومقارنة حية لعدد السطور لكل جدول من الـ 69 جدولاً بين قاعدة بيانات الفرع وقاعدة بيانات الإدارة المركزية.
+                                        </CardDescription>
+                                    </div>
+                                    <div className="flex items-center gap-2">
+                                        <Button 
+                                            size="sm" 
+                                            variant="outline" 
+                                            onClick={handleRefreshTablesComparison}
+                                            disabled={isRefreshingTables}
+                                            className="gap-1.5"
+                                        >
+                                            {isRefreshingTables ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />}
+                                            تحديث الإحصاء
+                                        </Button>
+                                        <Button 
+                                            size="sm" 
+                                            className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold gap-1.5 shadow"
+                                            onClick={handleSyncNow}
+                                            disabled={isSyncing}
+                                        >
+                                            {isSyncing ? <Loader2 className="h-4 w-4 animate-spin ml-1" /> : <RefreshCw className="h-4 w-4 ml-1" />}
+                                            مزامنة الفوارق الآن
+                                        </Button>
+                                    </div>
+                                </div>
+
+                                {/* Filter and Search Bar */}
+                                <div className="grid grid-cols-1 sm:grid-cols-12 gap-3 mt-4 pt-3 border-t">
+                                    <div className="sm:col-span-5 relative">
+                                        <Search className="h-4 w-4 absolute right-3 top-2.5 text-muted-foreground" />
+                                        <Input 
+                                            placeholder="ابحث بالاسم العربي أو الإنجليزي للجدول..."
+                                            value={tableSearch}
+                                            onChange={(e) => setTableSearch(e.target.value)}
+                                            className="pr-9 h-9 text-xs"
+                                        />
+                                    </div>
+                                    <div className="sm:col-span-4">
+                                        <Select value={tableCategoryFilter} onValueChange={setTableCategoryFilter}>
+                                            <SelectTrigger className="h-9 text-xs">
+                                                <SelectValue placeholder="تصفية حسب القسم / التصنيف" />
+                                            </SelectTrigger>
+                                            <SelectContent>
+                                                <SelectItem value="all">جميع الأقسام (الـ 69 جدولاً)</SelectItem>
+                                                <SelectItem value="فواتير وعمليات">فواتير وعمليات</SelectItem>
+                                                <SelectItem value="حسابات ومالية">حسابات ومالية</SelectItem>
+                                                <SelectItem value="مشتريات وموردين">مشتريات وموردين</SelectItem>
+                                                <SelectItem value="عملاء ومبيعات">عملاء ومبيعات</SelectItem>
+                                                <SelectItem value="مخازن وأصناف">مخازن وأصناف</SelectItem>
+                                                <SelectItem value="توزيع ومندوبين">توزيع ومندوبين</SelectItem>
+                                                <SelectItem value="موارد بشرية">موارد بشرية</SelectItem>
+                                                <SelectItem value="نقاط البيع">نقاط البيع</SelectItem>
+                                                <SelectItem value="إعدادات النظام">إعدادات النظام</SelectItem>
+                                            </SelectContent>
+                                        </Select>
+                                    </div>
+                                    <div className="sm:col-span-3">
+                                        <Select value={tableStatusFilter} onValueChange={(val: any) => setTableStatusFilter(val)}>
+                                            <SelectTrigger className="h-9 text-xs">
+                                                <SelectValue placeholder="تصفية حسب الحالة" />
+                                            </SelectTrigger>
+                                            <SelectContent>
+                                                <SelectItem value="all">كل الحالات ({tablesComparison?.tables.length || 0})</SelectItem>
+                                                <SelectItem value="diff">يوجد فوارق فقط ⚠️ ({tablesComparison?.diffTablesCount || 0})</SelectItem>
+                                                <SelectItem value="synced">متطابق بالكامل ✅ ({tablesComparison?.syncedTablesCount || 0})</SelectItem>
+                                                <SelectItem value="has_data">يحتوي بيانات فقط</SelectItem>
+                                            </SelectContent>
+                                        </Select>
+                                    </div>
+                                </div>
+                            </CardHeader>
+
+                            <CardContent className="p-0">
+                                <div className="border-t max-h-[600px] overflow-auto">
+                                    <Table>
+                                        <TableHeader className="bg-muted/40 sticky top-0 z-10 shadow-sm">
+                                            <TableRow>
+                                                <TableHead className="w-12 text-center">#</TableHead>
+                                                <TableHead>اسم الجدول في قاعدة البيانات</TableHead>
+                                                <TableHead>القسم / التصنيف</TableHead>
+                                                <TableHead className="text-center font-bold text-blue-600 bg-blue-500/5">عدد السطور في الفرع</TableHead>
+                                                <TableHead className="text-center font-bold text-purple-600 bg-purple-500/5">عدد السطور في الإدارة</TableHead>
+                                                <TableHead className="text-center">الفارق</TableHead>
+                                                <TableHead className="text-center">حالة المزامنة والتطابق</TableHead>
+                                            </TableRow>
+                                        </TableHeader>
+                                        <TableBody>
+                                            {filteredTables.length === 0 ? (
+                                                <TableRow>
+                                                    <TableCell colSpan={7} className="text-center py-8 text-muted-foreground">
+                                                        لا توجد جداول مطابقة للبحث أو الفلتر المحدد
+                                                    </TableCell>
+                                                </TableRow>
+                                            ) : (
+                                                filteredTables.map((t, idx) => (
+                                                    <TableRow key={t.tableName} className="hover:bg-muted/20">
+                                                        <TableCell className="text-center text-xs text-muted-foreground font-mono">{idx + 1}</TableCell>
+                                                        <TableCell>
+                                                            <div className="font-bold text-sm text-foreground">{t.displayName}</div>
+                                                            <div className="text-[11px] text-muted-foreground font-mono flex items-center gap-1.5 mt-0.5">
+                                                                <Database className="h-3 w-3 text-muted-foreground" />
+                                                                <span>dbo.{t.tableName}</span>
+                                                            </div>
+                                                        </TableCell>
+                                                        <TableCell>
+                                                            <Badge variant="outline" className="text-[10px] font-normal">
+                                                                {t.category}
+                                                            </Badge>
+                                                        </TableCell>
+                                                        <TableCell className="text-center font-mono font-bold text-sm bg-blue-500/5">
+                                                            <span className={cn(t.branchRows > 0 ? "text-blue-600 font-extrabold" : "text-muted-foreground")}>
+                                                                {t.branchRows.toLocaleString()}
+                                                            </span>
+                                                        </TableCell>
+                                                        <TableCell className="text-center font-mono font-bold text-sm bg-purple-500/5">
+                                                            {t.centralRows === null ? (
+                                                                <span className="text-xs text-muted-foreground">غير متصل</span>
+                                                            ) : (
+                                                                <span className={cn(t.centralRows > 0 ? "text-purple-600 font-extrabold" : "text-muted-foreground")}>
+                                                                    {t.centralRows.toLocaleString()}
+                                                                </span>
+                                                            )}
+                                                        </TableCell>
+                                                        <TableCell className="text-center font-mono text-xs">
+                                                            {t.diff > 0 ? (
+                                                                <Badge variant="destructive" className="bg-amber-600/10 text-amber-600 hover:bg-amber-600/20 border-amber-500/30 font-mono font-bold">
+                                                                    +{t.diff.toLocaleString()}
+                                                                </Badge>
+                                                            ) : (
+                                                                <span className="text-muted-foreground">0</span>
+                                                            )}
+                                                        </TableCell>
+                                                        <TableCell className="text-center">
+                                                            {t.status === 'synced' && (
+                                                                <Badge className="bg-emerald-600 text-white gap-1 text-[11px]">
+                                                                    <CheckCircle2 className="h-3 w-3" /> متطابق بالكامل
+                                                                </Badge>
+                                                            )}
+                                                            {t.status === 'pending' && (
+                                                                <Badge className="bg-amber-500 text-white gap-1 text-[11px]">
+                                                                    <ArrowUpRight className="h-3 w-3" /> {t.diff.toLocaleString()} بانتظار الرفع
+                                                                </Badge>
+                                                            )}
+                                                            {t.status === 'central_ahead' && (
+                                                                <Badge className="bg-blue-600 text-white gap-1 text-[11px]">
+                                                                    <ArrowDownLeft className="h-3 w-3" /> {t.diff.toLocaleString()} بالإدارة
+                                                                </Badge>
+                                                            )}
+                                                            {t.status === 'empty' && (
+                                                                <Badge variant="outline" className="text-muted-foreground text-[10px]">
+                                                                    جدول فارغ (0)
+                                                                </Badge>
+                                                            )}
+                                                            {t.status === 'unreachable' && (
+                                                                <Badge variant="destructive" className="text-[10px]">
+                                                                    غير متصل
+                                                                </Badge>
+                                                            )}
+                                                        </TableCell>
+                                                    </TableRow>
+                                                ))
+                                            )}
+                                        </TableBody>
+                                    </Table>
+                                </div>
+                            </CardContent>
+                        </Card>
+                    </TabsContent>
+
+                    {/* TAB 3: CENTRAL CONNECTION SETTINGS */}
                     <TabsContent value="config" className="space-y-6 mt-4">
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                             {/* Branch Identity */}

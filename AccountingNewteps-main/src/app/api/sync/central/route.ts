@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { getCentralConfig, saveCentralConfig, testCentralConnection, runFullSync } from '@/lib/central-sync';
+import { getCentralConfig, saveCentralConfig, testCentralConnection, runFullSync, getTablesRowCountsComparison } from '@/lib/central-sync';
 import { createAndInitializeDatabase } from '@/lib/database-init';
 import { getDbPool } from '@/lib/db';
 
@@ -55,6 +55,14 @@ export async function GET() {
             }
         ];
 
+        // Fast comparison of row counts across all 69 tables (Branch vs Central Management)
+        let tablesComparison: Awaited<ReturnType<typeof getTablesRowCountsComparison>> | null = null;
+        try {
+            tablesComparison = await getTablesRowCountsComparison();
+        } catch (tableErr: any) {
+            console.warn('Failed to get tables row counts comparison:', tableErr.message);
+        }
+
         return NextResponse.json({
             success: true,
             config,
@@ -75,7 +83,8 @@ export async function GET() {
                 total: totalPending
             },
             pendingCount: totalPending,
-            recentSyncLogs
+            recentSyncLogs,
+            tablesComparison
         });
     } catch (error: any) {
         return NextResponse.json({ success: false, error: error.message }, { status: 500 });
@@ -122,6 +131,12 @@ export async function POST(req: Request) {
             }
             const syncResult = await runFullSync();
             return NextResponse.json(syncResult);
+        }
+
+        // 5. Fetch Table Row Counts Comparison (Branch vs Central)
+        if (action === 'tables-comparison') {
+            const tablesComparison = await getTablesRowCountsComparison();
+            return NextResponse.json({ success: true, tablesComparison });
         }
 
         return NextResponse.json({ success: false, error: 'إجراء غير مدعوم' }, { status: 400 });
