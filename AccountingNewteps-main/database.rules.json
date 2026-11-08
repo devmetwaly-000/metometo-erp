@@ -1,0 +1,90 @@
+
+{
+  "rules": {
+    ".read": true,
+    ".write": true,
+
+    "cashAccounts": {
+      ".indexOn": ["name", "type", "warehouseId", "userId"]
+    },
+    "customers": {
+      ".indexOn": ["name", "phone", "creditLimit"]
+    },
+    "items": {
+      ".indexOn": ["code", "name", "price", "reorderPoint", "unit", "categoryId", "sectionId"]
+    },
+    "suppliers": {
+      ".indexOn": ["name", "contact", "openingBalance"]
+    },
+    "users": {
+      ".indexOn": ["uid", "loginName", "name", "phone", "role", "warehouse"]
+    },
+    "warehouses": {
+      ".indexOn": ["name", "address"]
+    },
+    "itemCategories": {
+        ".indexOn": ["sectionId"]
+    },
+    
+    "salesInvoices": {
+        ".indexOn": ["date", "warehouseId", "customerId", "salesRepId", "status"]
+    },
+    "posSales": {
+        ".indexOn": ["date", "cashierId", "posTerminalId"]
+    },
+     "salesReturns": {
+        ".indexOn": ["date", "warehouseId", "customerId"]
+    },
+    "posReturns": {
+        ".indexOn": ["date", "cashierId", "originalInvoiceId"]
+    },
+
+    "purchaseInvoices": {
+        ".indexOn": ["date", "warehouseId", "supplierId"]
+    },
+    "purchaseReturns": {
+        ".indexOn": ["date", "warehouseId", "supplierId"]
+    },
+
+    "stockInRecords": {
+        ".indexOn": ["date", "warehouseId", "purchaseInvoiceId"]
+    },
+    "stockOutRecords": {
+        ".indexOn": ["date", "sourceId", "saleInvoiceId"]
+    },
+    "stockTransferRecords": {
+        ".indexOn": ["date", "fromSourceId", "toSourceId"]
+    },
+    "stockAdjustmentRecords": {
+        ".indexOn": ["date", "warehouseId"]
+    },
+    "stockIssuesToReps": {
+        ".indexOn": ["date", "salesRepId", "warehouseId"]
+    },
+    "stockReturnsFromReps": {
+        ".indexOn": ["date", "salesRepId", "warehouseId"]
+    },
+    "inventoryClosings": {
+        ".indexOn": ["warehouseId"]
+    },
+
+    "expenses": {
+        ".indexOn": ["date", "warehouseId"]
+    },
+    "customerPayments": {
+        ".indexOn": ["date", "customerId", "paidToAccountId"]
+    },
+    "supplierPayments": {
+        ".indexOn": ["date", "supplierId", "paidFromAccountId"]
+    },
+    "employeeAdvances": {
+        ".indexOn": ["date", "employeeId"]
+    },
+    "employeeAdjustments": {
+        ".indexOn": ["date", "employeeId"]
+    },
+    "customerVisits": {
+      ".indexOn": ["salesRepId", "timestamp"]
+    }
+  }
+}
