@@ -46,8 +46,6 @@
     "dotenv": "^16.5.0",
     "embla-carousel-react": "^8.6.0",
     "eslint-config-next": "^16.1.6",
-    "firebase": "^11.9.1",
-    "firebase-admin": "^10.3.0",
     "genkit": "^1.13.0",
     "html-to-image": "^1.11.11",
     "html5-qrcode": "^2.3.8",

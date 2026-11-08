@@ -110,7 +110,9 @@ export async function connectToCentral(config: CentralSyncConfig): Promise<sql.C
         }
     };
 
-    return await sql.connect(centralSqlConfig);
+    const centralPool = new sql.ConnectionPool(centralSqlConfig);
+    await centralPool.connect();
+    return centralPool;
 }
 
 /**
@@ -317,3 +319,4 @@ export async function runFullSync(): Promise<{
         };
     }
 }
+

@@ -17,18 +17,38 @@ const sqlConfig: sql.config = {
     },
 };
 
-let poolPromise: Promise<sql.ConnectionPool> | null = null;
+let localPool: sql.ConnectionPool | null = null;
+let connectingPromise: Promise<sql.ConnectionPool> | null = null;
 
 export async function getDbPool(): Promise<sql.ConnectionPool> {
-    if (!poolPromise) {
-        poolPromise = sql.connect(sqlConfig).catch(err => {
-            poolPromise = null;
-            console.error('SQL Server Connection Error:', err);
-            throw err;
-        });
+    if (localPool && localPool.connected) {
+        return localPool;
     }
-    return poolPromise;
+
+    if (connectingPromise) {
+        return connectingPromise;
+    }
+
+    connectingPromise = (async () => {
+        try {
+            if (localPool) {
+                try {
+                    await localPool.close();
+                } catch {
+                    // Ignore close error on dead pool
+                }
+                localPool = null;
+            }
+
+            const pool = new sql.ConnectionPool(sqlConfig);
+            localPool = await pool.connect();
+            return localPool;
+        } finally {
+            connectingPromise = null;
+        }
+    })();
+
+    return connectingPromise;
 }
 
 export { sql };
-
