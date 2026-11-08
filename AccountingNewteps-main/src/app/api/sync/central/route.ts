@@ -10,24 +10,37 @@ export async function GET() {
         const config = await getCentralConfig();
         const pool = await getDbPool();
 
-        // Detailed pending records breakdown from local DB
+        // Detailed pending records breakdown from local DB across all document types
         const queueRes = await pool.request().query(`
             SELECT 
                 (SELECT COUNT(*) FROM dbo.SalesInvoices WHERE SyncStatus = 'pending' OR LastSyncedAt IS NULL) as salesPending,
+                (SELECT COUNT(*) FROM dbo.SalesReturns WHERE SyncStatus = 'pending' OR LastSyncedAt IS NULL) as salesReturnsPending,
                 (SELECT COUNT(*) FROM dbo.PurchaseInvoices WHERE SyncStatus = 'pending' OR LastSyncedAt IS NULL) as purchasesPending,
+                (SELECT COUNT(*) FROM dbo.PurchaseReturns WHERE SyncStatus = 'pending' OR LastSyncedAt IS NULL) as purchaseReturnsPending,
                 (SELECT COUNT(*) FROM dbo.CustomerPayments WHERE SyncStatus = 'pending' OR LastSyncedAt IS NULL) as customerPaymentsPending,
                 (SELECT COUNT(*) FROM dbo.SupplierPayments WHERE SyncStatus = 'pending' OR LastSyncedAt IS NULL) as supplierPaymentsPending,
-                (SELECT COUNT(*) FROM dbo.Expenses WHERE SyncStatus = 'pending' OR LastSyncedAt IS NULL) as expensesPending,
+                (SELECT COUNT(*) FROM dbo.Expenses WHERE SyncStatus = 'pending' OR LastSyncedAt IS NULL) +
+                (SELECT COUNT(*) FROM dbo.ExceptionalIncomes WHERE SyncStatus = 'pending' OR LastSyncedAt IS NULL) as expensesPending,
+                (SELECT COUNT(*) FROM dbo.TreasuryTransactions WHERE SyncStatus = 'pending' OR LastSyncedAt IS NULL) as treasuryPending,
                 (SELECT COUNT(*) FROM dbo.StockInRecords WHERE SyncStatus = 'pending' OR LastSyncedAt IS NULL) +
                 (SELECT COUNT(*) FROM dbo.StockOutRecords WHERE SyncStatus = 'pending' OR LastSyncedAt IS NULL) +
                 (SELECT COUNT(*) FROM dbo.StockAdjustmentRecords WHERE SyncStatus = 'pending' OR LastSyncedAt IS NULL) as stockPending,
+                (SELECT COUNT(*) FROM dbo.StockTransferRecords WHERE SyncStatus = 'pending' OR LastSyncedAt IS NULL) as transfersPending,
+                (SELECT COUNT(*) FROM dbo.RepRemittances WHERE SyncStatus = 'pending' OR LastSyncedAt IS NULL) +
+                (SELECT COUNT(*) FROM dbo.StockIssuesToReps WHERE SyncStatus = 'pending' OR LastSyncedAt IS NULL) +
+                (SELECT COUNT(*) FROM dbo.StockReturnsFromReps WHERE SyncStatus = 'pending' OR LastSyncedAt IS NULL) as repPending,
+                (SELECT COUNT(*) FROM dbo.EmployeeAdvances WHERE SyncStatus = 'pending' OR LastSyncedAt IS NULL) +
+                (SELECT COUNT(*) FROM dbo.PayrollRecords WHERE SyncStatus = 'pending' OR LastSyncedAt IS NULL) as hrPending,
                 (SELECT COUNT(*) FROM dbo.PosSessions WHERE SyncStatus = 'pending' OR LastSyncedAt IS NULL) as posPending;
         `);
 
         const q = queueRes.recordset[0] || {};
-        const totalPending = (q.salesPending || 0) + (q.purchasesPending || 0) + 
+        const totalPending = (q.salesPending || 0) + (q.salesReturnsPending || 0) +
+                             (q.purchasesPending || 0) + (q.purchaseReturnsPending || 0) +
                              (q.customerPaymentsPending || 0) + (q.supplierPaymentsPending || 0) + 
-                             (q.expensesPending || 0) + (q.stockPending || 0) + (q.posPending || 0);
+                             (q.expensesPending || 0) + (q.treasuryPending || 0) +
+                             (q.stockPending || 0) + (q.transfersPending || 0) +
+                             (q.repPending || 0) + (q.hrPending || 0) + (q.posPending || 0);
 
         // Recent operational sync logs / history
         const recentSyncLogs = [
@@ -47,11 +60,17 @@ export async function GET() {
             config,
             pendingBreakdown: {
                 sales: q.salesPending || 0,
+                salesReturns: q.salesReturnsPending || 0,
                 purchases: q.purchasesPending || 0,
+                purchaseReturns: q.purchaseReturnsPending || 0,
                 customerPayments: q.customerPaymentsPending || 0,
                 supplierPayments: q.supplierPaymentsPending || 0,
                 expenses: q.expensesPending || 0,
+                treasury: q.treasuryPending || 0,
                 stock: q.stockPending || 0,
+                transfers: q.transfersPending || 0,
+                rep: q.repPending || 0,
+                hr: q.hrPending || 0,
                 pos: q.posPending || 0,
                 total: totalPending
             },

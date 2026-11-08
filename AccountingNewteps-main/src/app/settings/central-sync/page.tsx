@@ -15,7 +15,8 @@ import { useData } from "@/contexts/data-provider";
 import { 
     Server, RefreshCw, CheckCircle2, AlertTriangle, ShieldCheck, 
     Database, Network, ArrowUpRight, ArrowDownLeft, Clock, Zap, Loader2, Save,
-    ShoppingCart, Truck, Banknote, CreditCard, Receipt, Boxes, Monitor, Activity, Sparkles, Check
+    ShoppingCart, Truck, Banknote, CreditCard, Receipt, Boxes, Monitor, Activity, Sparkles, Check,
+    Undo2, ArrowLeftRight, Wallet, Users, UserCheck, Terminal
 } from "lucide-react";
 import { CentralSyncConfig } from '@/lib/central-sync';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -42,11 +43,17 @@ export default function CentralSyncSettingsPage() {
 
     const [pendingBreakdown, setPendingBreakdown] = useState({
         sales: 0,
+        salesReturns: 0,
         purchases: 0,
+        purchaseReturns: 0,
         customerPayments: 0,
         supplierPayments: 0,
         expenses: 0,
+        treasury: 0,
         stock: 0,
+        transfers: 0,
+        rep: 0,
+        hr: 0,
         pos: 0,
         total: 0
     });
@@ -416,7 +423,7 @@ export default function CentralSyncSettingsPage() {
                                 </Button>
                             </CardHeader>
                             <CardContent>
-                                <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+                                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3">
                                     <div className="p-3 bg-muted/40 rounded-xl border text-center space-y-1">
                                         <ShoppingCart className="h-5 w-5 mx-auto text-blue-500" />
                                         <div className="text-xs text-muted-foreground">فواتير مبيعات</div>
@@ -424,9 +431,21 @@ export default function CentralSyncSettingsPage() {
                                     </div>
 
                                     <div className="p-3 bg-muted/40 rounded-xl border text-center space-y-1">
-                                        <Truck className="h-5 w-5 mx-auto text-amber-500" />
+                                        <Undo2 className="h-5 w-5 mx-auto text-amber-600" />
+                                        <div className="text-xs text-muted-foreground">مرتجع مبيعات</div>
+                                        <div className="text-lg font-black text-foreground">{pendingBreakdown.salesReturns}</div>
+                                    </div>
+
+                                    <div className="p-3 bg-muted/40 rounded-xl border text-center space-y-1">
+                                        <Truck className="h-5 w-5 mx-auto text-indigo-500" />
                                         <div className="text-xs text-muted-foreground">فواتير مشتريات</div>
                                         <div className="text-lg font-black text-foreground">{pendingBreakdown.purchases}</div>
+                                    </div>
+
+                                    <div className="p-3 bg-muted/40 rounded-xl border text-center space-y-1">
+                                        <Undo2 className="h-5 w-5 mx-auto text-purple-600 rotate-180" />
+                                        <div className="text-xs text-muted-foreground">مرتجع مشتريات</div>
+                                        <div className="text-lg font-black text-foreground">{pendingBreakdown.purchaseReturns}</div>
                                     </div>
 
                                     <div className="p-3 bg-muted/40 rounded-xl border text-center space-y-1">
@@ -436,7 +455,7 @@ export default function CentralSyncSettingsPage() {
                                     </div>
 
                                     <div className="p-3 bg-muted/40 rounded-xl border text-center space-y-1">
-                                        <CreditCard className="h-5 w-5 mx-auto text-purple-500" />
+                                        <CreditCard className="h-5 w-5 mx-auto text-violet-500" />
                                         <div className="text-xs text-muted-foreground">مدفوعات موردين</div>
                                         <div className="text-lg font-black text-foreground">{pendingBreakdown.supplierPayments}</div>
                                     </div>
@@ -448,9 +467,39 @@ export default function CentralSyncSettingsPage() {
                                     </div>
 
                                     <div className="p-3 bg-muted/40 rounded-xl border text-center space-y-1">
+                                        <Wallet className="h-5 w-5 mx-auto text-amber-500" />
+                                        <div className="text-xs text-muted-foreground">حركات الخزينة</div>
+                                        <div className="text-lg font-black text-foreground">{pendingBreakdown.treasury}</div>
+                                    </div>
+
+                                    <div className="p-3 bg-muted/40 rounded-xl border text-center space-y-1">
                                         <Boxes className="h-5 w-5 mx-auto text-teal-500" />
                                         <div className="text-xs text-muted-foreground">حركات مخازن</div>
                                         <div className="text-lg font-black text-foreground">{pendingBreakdown.stock}</div>
+                                    </div>
+
+                                    <div className="p-3 bg-muted/40 rounded-xl border text-center space-y-1">
+                                        <ArrowLeftRight className="h-5 w-5 mx-auto text-sky-500" />
+                                        <div className="text-xs text-muted-foreground">تحويلات فروع</div>
+                                        <div className="text-lg font-black text-foreground">{pendingBreakdown.transfers}</div>
+                                    </div>
+
+                                    <div className="p-3 bg-muted/40 rounded-xl border text-center space-y-1">
+                                        <UserCheck className="h-5 w-5 mx-auto text-orange-500" />
+                                        <div className="text-xs text-muted-foreground">حركات مناديب</div>
+                                        <div className="text-lg font-black text-foreground">{pendingBreakdown.rep}</div>
+                                    </div>
+
+                                    <div className="p-3 bg-muted/40 rounded-xl border text-center space-y-1">
+                                        <Users className="h-5 w-5 mx-auto text-cyan-600" />
+                                        <div className="text-xs text-muted-foreground">سلف ورواتب</div>
+                                        <div className="text-lg font-black text-foreground">{pendingBreakdown.hr}</div>
+                                    </div>
+
+                                    <div className="p-3 bg-muted/40 rounded-xl border text-center space-y-1 col-span-2 sm:col-span-1">
+                                        <Terminal className="h-5 w-5 mx-auto text-pink-500" />
+                                        <div className="text-xs text-muted-foreground">جلسات كاشير POS</div>
+                                        <div className="text-lg font-black text-foreground">{pendingBreakdown.pos}</div>
                                     </div>
                                 </div>
                             </CardContent>
