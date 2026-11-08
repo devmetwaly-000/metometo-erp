@@ -407,6 +407,7 @@ export const navStructure = [
       { type: 'link', href: '/settings/backup', module: 'settings_backup', title: dictionary.nav.backupAndRestore },
       { type: 'link', href: '/settings/period-closing', module: 'settings_periodClosing', title: dictionary.nav.periodClosing },
       { type: 'link', href: '/settings/sync', module: 'settings_sync', title: dictionary.nav.syncStatus },
+      { type: 'link', href: '/settings/central-sync', module: 'settings_sync', title: 'المزامنة والسيرفر المركزي' },
     ]},
 ] as const;
 
