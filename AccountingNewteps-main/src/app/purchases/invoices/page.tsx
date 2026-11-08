@@ -20,6 +20,7 @@ import { Combobox } from "@/components/ui/combobox";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog';
 import { calculateStockForItemInWarehouse } from '@/lib/inventory-utils';
+import { getGeneralCashAccounts } from '@/lib/accounting-utils';
 import { Badge } from "@/components/ui/badge";
 
 
@@ -284,11 +285,14 @@ export default function PurchaseInvoicePage() {
     }, [cashAccounts, customerPayments, salesInvoices, exceptionalIncomes, treasuryTransactions, expenses, supplierPayments, employeeAdvances, profitDistributions]);
     
     const availableCashAccounts = useMemo(() => {
+        const generalAccounts = getGeneralCashAccounts(cashAccounts);
         if (warehouseId && warehouseId !== 'all') {
-            const branchAccount = cashAccounts.find((acc: any) => acc.warehouseId === warehouseId);
-            if (branchAccount) return [branchAccount];
+            const branchAccount = generalAccounts.find((acc: any) => acc.warehouseId === warehouseId);
+            if (branchAccount) {
+                return [branchAccount, ...generalAccounts.filter((acc: any) => acc.id !== branchAccount.id && !acc.warehouseId)];
+            }
         }
-        return cashAccounts.filter((acc: any) => !acc.warehouseId && !acc.salesRepId);
+        return generalAccounts;
     }, [warehouseId, cashAccounts]);
 
     const cashAccountOptions = React.useMemo(() => {

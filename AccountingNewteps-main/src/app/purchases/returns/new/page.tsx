@@ -18,6 +18,7 @@ import { useAuth } from "@/contexts/auth-context";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
+import { getGeneralCashAccounts } from "@/lib/accounting-utils";
 
 interface ReturnItem {
   id: string; // original item id
@@ -180,11 +181,14 @@ export default function NewPurchaseReturnPage() {
   }, [cashAccounts, customerPayments, salesInvoices, posSales, exceptionalIncomes, treasuryTransactions, expenses, supplierPayments, employeeAdvances, profitDistributions]);
 
   const availableCashAccounts = useMemo(() => {
+    const generalAccounts = getGeneralCashAccounts(cashAccounts);
     if (warehouseId) {
-        const branchAccount = cashAccounts.find((acc: any) => acc.warehouseId === warehouseId);
-        if (branchAccount) return [branchAccount];
+        const branchAccount = generalAccounts.find((acc: any) => acc.warehouseId === warehouseId);
+        if (branchAccount) {
+            return [branchAccount, ...generalAccounts.filter((acc: any) => acc.id !== branchAccount.id && !acc.warehouseId)];
+        }
     }
-    return cashAccounts.filter((acc: any) => !acc.warehouseId);
+    return generalAccounts;
   }, [warehouseId, cashAccounts]);
 
   const cashAccountOptions = useMemo(() => {

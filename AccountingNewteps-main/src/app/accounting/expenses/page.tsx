@@ -26,7 +26,7 @@ import { useAuth } from '@/contexts/auth-context';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog';
 import { useData } from '@/contexts/data-provider';
 import { Combobox } from '@/components/ui/combobox';
-import { calculateAccountBalance } from '@/lib/accounting-utils';
+import { calculateAccountBalance, getGeneralCashAccounts } from '@/lib/accounting-utils';
 import { useIsMobile } from '@/hooks/use-mobile';
 import { Badge } from '@/components/ui/badge';
 import { cn } from "@/lib/utils";
@@ -92,7 +92,7 @@ const ExpenseForm = ({ expense, onSave, onClose, warehouses, cashAccounts }: { e
         let filtered: CashAccount[] = [];
         
         // استثناء عهد المناديب دائماً من المصروفات الإدارية
-        const nonRepAccounts = cashAccounts.filter(acc => !acc.userId && !acc.salesRepId);
+        const nonRepAccounts = getGeneralCashAccounts(cashAccounts);
 
         if (formData.warehouseId && formData.warehouseId !== 'none') {
             // إذا تم تحديد فرع، نحاول إيجاد خزينته أولاً
@@ -251,7 +251,7 @@ const PayExpenseDialog = ({ expense, onConfirm, onClose, cashAccounts }: { expen
                         <SelectValue placeholder="اختر الخزينة" />
                     </SelectTrigger>
                     <SelectContent>
-                        {cashAccounts.filter(acc => !acc.userId && !acc.salesRepId).map(acc => (
+                        {getGeneralCashAccounts(cashAccounts).map(acc => (
                             <SelectItem key={acc.id} value={acc.id}>
                                 {acc.name} (الرصيد: {acc.currentBalance?.toLocaleString()})
                             </SelectItem>

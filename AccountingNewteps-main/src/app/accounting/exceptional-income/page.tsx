@@ -24,6 +24,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { useAuth } from '@/contexts/auth-context';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog';
 import { useData } from '@/contexts/data-provider';
+import { getGeneralCashAccounts } from '@/lib/accounting-utils';
 
 
 // تعريف واجهات البيانات (Interfaces) لضمان تطابق أنواع البيانات لضمان تطابق أنواع البيانات
@@ -84,7 +85,7 @@ const IncomeForm = ({ income, onSave, onClose, cashAccounts }: { income?: Except
                             <SelectValue placeholder="اختر حساب الاستلام" />
                         </SelectTrigger>
                         <SelectContent>
-                           {cashAccounts.map(acc => <SelectItem key={acc.id} value={acc.id}>{acc.name}</SelectItem>)}
+                           {getGeneralCashAccounts(cashAccounts).map(acc => <SelectItem key={acc.id} value={acc.id}>{acc.name}</SelectItem>)}
                         </SelectContent>
                     </Select>
                 </div>

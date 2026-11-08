@@ -19,6 +19,7 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { useAuth } from "@/contexts/auth-context";
 import { Combobox } from "@/components/ui/combobox";
 import { calculateStockForItemInWarehouse } from '@/lib/inventory-utils';
+import { getGeneralCashAccounts } from '@/lib/accounting-utils';
 import { Badge } from "@/components/ui/badge";
 import { AddEntityDialog } from "@/components/add-entity-dialog";
 
@@ -490,11 +491,14 @@ export default function SalesInvoicePage() {
     }, [warehouses, user]);
     
     const availableCashAccounts = useMemo(() => {
+        const generalAccounts = getGeneralCashAccounts(cashAccounts);
         if (warehouseId && warehouseId !== 'all') {
-            const branchAccount = cashAccounts.find((acc: CashAccount) => acc.warehouseId === warehouseId);
-            if (branchAccount) return [branchAccount];
+            const branchAccount = generalAccounts.find((acc: any) => acc.warehouseId === warehouseId);
+            if (branchAccount) {
+                return [branchAccount, ...generalAccounts.filter((acc: any) => acc.id !== branchAccount.id && !acc.warehouseId)];
+            }
         }
-        return cashAccounts.filter((acc: CashAccount) => !acc.warehouseId && !acc.salesRepId);
+        return generalAccounts;
     }, [warehouseId, cashAccounts]);
 
     const cashAccountOptions = useMemo(() => availableCashAccounts.map((c: any) => ({ value: c.id, label: c.name })), [availableCashAccounts]);

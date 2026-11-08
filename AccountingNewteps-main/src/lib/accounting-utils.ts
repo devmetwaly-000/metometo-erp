@@ -116,3 +116,49 @@ export const calculateAccountBalance = (account: any, allData: any): number => {
 
     return balance;
 };
+
+/**
+ * فحص دقيق وشامل عما إذا كان الحساب النقدي هو "عهدة مندوب"
+ */
+export const isRepCustodyAccount = (account: any): boolean => {
+    if (!account) return false;
+    if (account.salesRepId || account.userId) return true;
+    if (account.type === 'custody') return true;
+    if (typeof account.name === 'string') {
+        const trimmed = account.name.trim();
+        if (
+            trimmed.startsWith('عهدة:') ||
+            trimmed.startsWith('عهدة :') ||
+            trimmed.startsWith('عهدة ') ||
+            trimmed.includes('عهدة مندوب') ||
+            trimmed.includes('خزينة المندوب') ||
+            trimmed.includes('عهدة:')
+        ) {
+            return true;
+        }
+    }
+    return false;
+};
+
+/**
+ * الحصول على الخزائن العامة والحسابات البنكية للمنشأة/الفروع مع استبعاد عهد المناديب
+ */
+export const getGeneralCashAccounts = (cashAccounts: any[] = []): any[] => {
+    return cashAccounts.filter(acc => !isRepCustodyAccount(acc));
+};
+
+/**
+ * الحصول على حسابات عهد المناديب فقط
+ */
+export const getRepCustodyAccounts = (cashAccounts: any[] = []): any[] => {
+    return cashAccounts.filter(acc => isRepCustodyAccount(acc));
+};
+
+/**
+ * الحصول على حساب عهدة مندوب محدد بواسطة معرف المندوب
+ */
+export const getRepCashAccount = (repId: string, cashAccounts: any[] = []): any | undefined => {
+    if (!repId) return undefined;
+    return cashAccounts.find(acc => acc.userId === repId || acc.salesRepId === repId);
+};
+

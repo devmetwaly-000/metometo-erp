@@ -25,6 +25,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { useAuth } from '@/contexts/auth-context';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog';
 import { useData } from '@/contexts/data-provider';
+import { getGeneralCashAccounts } from '@/lib/accounting-utils';
 
 // تعريف واجهات البيانات (Interfaces) لضمان تطابق أنواع البيانات
 interface EmployeeAdvance {
@@ -80,20 +81,19 @@ const AdvanceForm = ({ advance, onSave, onClose, employees, cashAccounts }: { ad
     // `useEffect` لترشيح الحسابات النقدية المتاحة عند تغيير الموظف المحدد.
     // إذا كان الموظف مرتبطًا بفرع له خزينة، يتم عرض هذه الخزينة فقط.
     useEffect(() => {
+        const generalAccounts = getGeneralCashAccounts(cashAccounts);
         if (selectedEmployee?.warehouse) {
-            const branchAccount = cashAccounts.find(acc => acc.warehouseId === selectedEmployee.warehouse);
+            const branchAccount = generalAccounts.find(acc => acc.warehouseId === selectedEmployee.warehouse);
             if (branchAccount) {
-                setAvailableCashAccounts([branchAccount]);
+                setAvailableCashAccounts([branchAccount, ...generalAccounts.filter(acc => acc.id !== branchAccount.id && !acc.warehouseId)]);
                 setFormData(prev => ({ ...prev, paidFromAccountId: branchAccount.id }));
             } else {
-                // إذا لم يكن للفرع خزينة خاصة، يتم عرض الخزائن العامة
-                setAvailableCashAccounts(cashAccounts.filter(acc => !acc.warehouseId));
+                setAvailableCashAccounts(generalAccounts.filter(acc => !acc.warehouseId));
                 setFormData(prev => ({ ...prev, paidFromAccountId: '' }));
             }
         } else {
-            // إذا لم يكن الموظف مرتبطًا بفرع، يتم عرض الخزائن العامة فقط
-            setAvailableCashAccounts(cashAccounts.filter(acc => !acc.warehouseId));
-             setFormData(prev => ({ ...prev, paidFromAccountId: '' }));
+            setAvailableCashAccounts(generalAccounts.filter(acc => !acc.warehouseId));
+            setFormData(prev => ({ ...prev, paidFromAccountId: '' }));
         }
     }, [selectedEmployee, cashAccounts]);
 

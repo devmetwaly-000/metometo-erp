@@ -23,7 +23,7 @@ import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useAuth } from '@/contexts/auth-context';
 import { useData } from '@/contexts/data-provider';
-import { calculateAccountBalance } from '@/lib/accounting-utils';
+import { calculateAccountBalance, getGeneralCashAccounts, isRepCustodyAccount } from '@/lib/accounting-utils';
 
 
 // تعريف واجهات البيانات (Interfaces) لضمان تطابق أنواع البيانات لضمان تطابق أنواع البيانات
@@ -76,7 +76,7 @@ const TransactionForm = ({ onSave, cashAccounts, onClose }: { onSave: (data: Omi
         onClose();
     };
     
-    const filteredAccounts = cashAccounts.filter((acc: CashAccount) => !acc.salesRepId && !acc.userId);
+    const filteredAccounts = getGeneralCashAccounts(cashAccounts);
 
     return (
         <form onSubmit={handleSubmit}>
@@ -139,9 +139,9 @@ export default function TreasuryPage() {
     const getAccountTypeIcon = (accountId: string) => {
         const account = rawCashAccounts.find((acc: CashAccount) => acc.id === accountId);
         if (!account) return null;
-        if (account.salesRepId || account.userId) return <User className="h-4 w-4 text-muted-foreground" />;
-        if (account.type === 'bank') return <Landmark className="h-4 w-4 text-muted-foreground" />;
-        return <Wallet className="h-4 w-4 text-muted-foreground" />;
+        if (isRepCustodyAccount(account)) return <User className="h-4 w-4 text-amber-500" />;
+        if (account.type === 'bank') return <Landmark className="h-4 w-4 text-blue-500" />;
+        return <Wallet className="h-4 w-4 text-green-500" />;
     };
 
     const handleSave = async (data: Omit<TreasuryTransaction, 'id' | 'receiptNumber'>) => {
@@ -195,10 +195,15 @@ export default function TreasuryPage() {
                     </div>
                 ) : (
                     <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-                        {cashAccounts.map((acc: any) => (
-                             <Card key={acc.id} className={(acc.salesRepId || acc.userId) ? 'bg-muted/50' : ''}>
+                        {cashAccounts.map((acc: any) => {
+                             const isRep = isRepCustodyAccount(acc);
+                             return (
+                             <Card key={acc.id} className={isRep ? 'bg-amber-500/5 border-amber-500/20' : ''}>
                                  <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                                     <CardTitle className="text-sm font-medium">{acc.name}</CardTitle>
+                                     <div>
+                                         <CardTitle className="text-sm font-medium">{acc.name}</CardTitle>
+                                         {isRep && <span className="text-[10px] text-amber-600 font-semibold">عهدة مندوب</span>}
+                                     </div>
                                      {getAccountTypeIcon(acc.id)}
                                  </CardHeader>
                                  <CardContent>
@@ -208,7 +213,8 @@ export default function TreasuryPage() {
                                      </p>
                                  </CardContent>
                              </Card>
-                        ))}
+                             );
+                        })}
                     </div>
                 )}
             </CardContent>

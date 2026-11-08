@@ -13,6 +13,7 @@ import { useData } from "@/contexts/data-provider";
 import { useToast } from "@/hooks/use-toast";
 import { useRouter } from 'next/navigation';
 import { useAuth } from "@/contexts/auth-context";
+import { getGeneralCashAccounts, getRepCashAccount } from "@/lib/accounting-utils";
 
 interface User {
     id: string;
@@ -50,12 +51,12 @@ export default function RemitFromRepPage() {
     const reps = useMemo(() => {
         return users.filter((u: any) => u.isSalesRep || u.role === 'مندوب' || (u.role && u.role.includes('مندوب')));
     }, [users]);
-    const mainCashAccounts = cashAccounts.filter((acc: CashAccount) => !acc.userId);
+    const mainCashAccounts = useMemo(() => getGeneralCashAccounts(cashAccounts), [cashAccounts]);
 
     const repBalance = useMemo(() => {
         if (!selectedRepId) return 0;
         
-        const repCashAccount = cashAccounts.find((acc: CashAccount) => acc.userId === selectedRepId);
+        const repCashAccount = getRepCashAccount(selectedRepId, cashAccounts);
         const repAccountId = repCashAccount?.id;
 
         let balance = 0;
@@ -100,7 +101,7 @@ export default function RemitFromRepPage() {
         const repUser = users.find((u: any) => u.id === selectedRepId);
         const repName = repUser?.name || 'غير معروف';
 
-        let repCashAccount = cashAccounts.find((acc: CashAccount) => acc.userId === selectedRepId);
+        let repCashAccount = getRepCashAccount(selectedRepId, cashAccounts);
         
         // Auto-provision cash account for rep if missing
         if (!repCashAccount) {

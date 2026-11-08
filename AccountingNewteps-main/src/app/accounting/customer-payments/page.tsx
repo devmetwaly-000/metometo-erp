@@ -27,6 +27,7 @@ import { dictionary } from '@/lib/dictionary';
 import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
 import { useIsMobile } from '@/hooks/use-mobile';
+import { getGeneralCashAccounts, getRepCashAccount, isRepCustodyAccount } from '@/lib/accounting-utils';
 
 interface CustomerPayment {
     id?: string;
@@ -67,6 +68,7 @@ interface SaleInvoice {
   total: number;
   paidAmount?: number;
   warehouseId?: string;
+  salesRepId?: string;
   status?: 'approved' | 'pending' | 'completed' | string;
   date: string;
 }
@@ -99,8 +101,11 @@ const PaymentForm = ({ onSave, customers, cashAccounts, salesInvoices, warehouse
     
     const cashAccountOptions = React.useMemo(() => {
         return availableCashAccounts.map((c: CashAccount) => {
+            const isRep = isRepCustodyAccount(c);
             const warehouse = warehouses.find(w => w.id === c.warehouseId);
-            const label = warehouse ? `${c.name} (${warehouse.name})` : c.name;
+            const label = isRep 
+                ? `${c.name} (عهدة مندوب)`
+                : (warehouse ? `${c.name} (${warehouse.name})` : c.name);
             return { value: c.id, label };
         });
     }, [availableCashAccounts, warehouses]);
@@ -152,19 +157,30 @@ const PaymentForm = ({ onSave, customers, cashAccounts, salesInvoices, warehouse
     }, [customerInvoicesWithBalance]);
     
     useEffect(() => {
-        const nonRepAccounts = cashAccounts.filter(acc => !acc.userId && !acc.salesRepId);
+        const generalAccounts = getGeneralCashAccounts(cashAccounts);
         let filtered: CashAccount[] = [];
 
+        // في حال كانت الفاتورة تابعة لمندوب مبيعات، نتيح عهدة ذلك المندوب تحديداً للاستلام
+        const repAccount = selectedInvoiceDetails?.salesRepId 
+            ? getRepCashAccount(selectedInvoiceDetails.salesRepId, cashAccounts) 
+            : null;
+
         if (selectedInvoiceDetails?.warehouseId) {
-            const branchCashAccount = nonRepAccounts.find((acc: CashAccount) => acc.warehouseId === selectedInvoiceDetails.warehouseId);
-            if (branchCashAccount) {
-                filtered = [branchCashAccount, ...nonRepAccounts.filter(acc => acc.id !== branchCashAccount.id)];
-                setFormData(prev => ({...prev, paidToAccountId: branchCashAccount.id}));
-            } else {
-                filtered = nonRepAccounts;
+            const branchCashAccount = generalAccounts.find((acc: CashAccount) => acc.warehouseId === selectedInvoiceDetails.warehouseId);
+            const baseList = branchCashAccount 
+                ? [branchCashAccount, ...generalAccounts.filter(acc => acc.id !== branchCashAccount.id)]
+                : generalAccounts;
+            filtered = repAccount ? [repAccount, ...baseList] : baseList;
+            if (repAccount) {
+                setFormData(prev => ({ ...prev, paidToAccountId: repAccount.id }));
+            } else if (branchCashAccount) {
+                setFormData(prev => ({ ...prev, paidToAccountId: branchCashAccount.id }));
             }
         } else {
-             filtered = nonRepAccounts;
+            filtered = repAccount ? [repAccount, ...generalAccounts] : generalAccounts;
+            if (repAccount) {
+                setFormData(prev => ({ ...prev, paidToAccountId: repAccount.id }));
+            }
         }
         
         setAvailableCashAccounts(filtered);

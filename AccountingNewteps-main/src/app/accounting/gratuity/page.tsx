@@ -22,6 +22,7 @@ import {
   TableFooter
 } from "@/components/ui/table";
 import { useData } from "@/contexts/data-provider";
+import { getGeneralCashAccounts } from "@/lib/accounting-utils";
 import { 
     Loader2, Coins, HandCoins, History, ArrowDownCircle, 
     CheckCircle, Trash2, Calendar, FileText, Download, 
@@ -304,7 +305,7 @@ export default function GratuityManagementPage() {
                                     <Select value={distFromAccountId} onValueChange={setDistFromAccountId}>
                                         <SelectTrigger><SelectValue placeholder="اختر الخزينة..." /></SelectTrigger>
                                         <SelectContent>
-                                            {cashAccounts.filter(acc => !acc.userId).map(acc => (
+                                            {getGeneralCashAccounts(cashAccounts).map(acc => (
                                                 <SelectItem key={acc.id} value={acc.id}>{acc.name}</SelectItem>
                                             ))}
                                         </SelectContent>

@@ -14,6 +14,7 @@ import { Combobox } from "@/components/ui/combobox";
 import { useSearchParams } from "next/navigation";
 import Link from 'next/link';
 import { getLinkForReceipt } from "@/lib/utils";
+import { isRepCustodyAccount } from "@/lib/accounting-utils";
 
 // Data Interfaces
 interface CashAccount { id: string; name: string; openingBalance: number; warehouseId?: string; }
@@ -226,7 +227,16 @@ export default function CashAccountStatementPage() {
         }
     }, [filters, handleGenerateReport]);
 
-    const accountOptions = useMemo(() => cashAccounts.map((acc: CashAccount) => ({ value: acc.id, label: acc.name })), [cashAccounts]);
+    const accountOptions = useMemo(() => {
+        return cashAccounts.map((acc: any) => {
+            const isRep = isRepCustodyAccount(acc);
+            const prefix = isRep ? '👤 [عهدة مندوب]' : (acc.type === 'bank' ? '🏦 [بنك]' : '🏢 [خزينة]');
+            return {
+                value: acc.id,
+                label: `${prefix} ${acc.name}`
+            };
+        });
+    }, [cashAccounts]);
 
     return (
         <>

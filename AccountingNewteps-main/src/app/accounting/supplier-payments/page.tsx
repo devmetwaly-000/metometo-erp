@@ -26,7 +26,7 @@ import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
 import { useIsMobile } from '@/hooks/use-mobile';
 import { dictionary } from '@/lib/dictionary';
-import { calculateAccountBalance } from '@/lib/accounting-utils';
+import { calculateAccountBalance, getGeneralCashAccounts } from '@/lib/accounting-utils';
 
 interface SupplierPayment {
     id?: string;
@@ -86,7 +86,7 @@ const PaymentForm = ({ onSave, suppliers, cashAccounts, purchaseInvoices, suppli
     });
     
     const branchAndGeneralAccounts = useMemo(() => {
-        return cashAccounts.filter(acc => !acc.userId && !acc.salesRepId);
+        return getGeneralCashAccounts(cashAccounts);
     }, [cashAccounts]);
 
     const currentSupplierBalance = useMemo(() => {

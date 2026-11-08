@@ -21,6 +21,7 @@ import { AddEntityDialog } from '@/components/add-entity-dialog';
 import { useAuth } from '@/contexts/auth-context';
 import { useData } from '@/contexts/data-provider';
 import { Combobox } from '@/components/ui/combobox';
+import { getGeneralCashAccounts } from '@/lib/accounting-utils';
 
 interface Employee {
   id: string;
@@ -90,7 +91,7 @@ const PaymentDialogContent = ({ onConfirm, cashAccounts, accountBalances, payrol
     }
 
     const accountOptions = useMemo(() => {
-        return cashAccounts.map(acc => ({
+        return getGeneralCashAccounts(cashAccounts).map(acc => ({
             value: acc.id,
             label: `${acc.name} (الرصيد: ${(accountBalances.get(acc.id) || 0).toLocaleString()})`
         }));

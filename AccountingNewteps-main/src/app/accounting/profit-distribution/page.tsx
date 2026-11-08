@@ -24,6 +24,7 @@ import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { useAuth } from '@/contexts/auth-context';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog';
 import { useData } from '@/contexts/data-provider';
+import { getGeneralCashAccounts } from '@/lib/accounting-utils';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Separator } from '@/components/ui/separator';
@@ -311,7 +312,7 @@ export default function ProfitDistributionPage() {
                                     <Select value={formData.paidFromAccountId} onValueChange={v => setFormData({...formData, paidFromAccountId: v})}>
                                         <SelectTrigger><SelectValue placeholder="اختر حساب الدفع" /></SelectTrigger>
                                         <SelectContent>
-                                            {cashAccounts.filter((acc:any) => !acc.userId).map((acc: any) => <SelectItem key={acc.id} value={acc.id}>{acc.name}</SelectItem>)}
+                                            {getGeneralCashAccounts(cashAccounts).map((acc: any) => <SelectItem key={acc.id} value={acc.id}>{acc.name}</SelectItem>)}
                                         </SelectContent>
                                     </Select>
                                 </div>
