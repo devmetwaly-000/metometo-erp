@@ -1,5 +1,11 @@
 import { NextResponse } from 'next/server';
-import { getCentralConfig, saveCentralConfig, testCentralConnection, runFullSync, getTablesRowCountsComparison } from '@/lib/central-sync';
+import { 
+    getCentralConfig, 
+    saveCentralConfig, 
+    testCentralConnection, 
+    runFullSync, 
+    getTablesSyncMatrix 
+} from '@/lib/central-sync';
 import { createAndInitializeDatabase } from '@/lib/database-init';
 import { getDbPool } from '@/lib/db';
 
@@ -10,7 +16,7 @@ export async function GET() {
         const config = await getCentralConfig();
         const pool = await getDbPool();
 
-        // Detailed pending records breakdown from local DB across all document types
+        // إحصائيات سريعة للوثائق المعلقة من قاعدة البيانات المحلية
         const queueRes = await pool.request().query(`
             SELECT 
                 (SELECT COUNT(*) FROM dbo.SalesInvoices WHERE SyncStatus = 'pending' OR LastSyncedAt IS NULL) as salesPending,
@@ -42,7 +48,7 @@ export async function GET() {
                              (q.stockPending || 0) + (q.transfersPending || 0) +
                              (q.repPending || 0) + (q.hrPending || 0) + (q.posPending || 0);
 
-        // Recent operational sync logs / history
+        // سجل عمليات المزامنة الأخيرة
         const recentSyncLogs = [
             {
                 id: 'log_latest',
@@ -55,12 +61,12 @@ export async function GET() {
             }
         ];
 
-        // Fast comparison of row counts across all 69 tables (Branch vs Central Management)
-        let tablesComparison: Awaited<ReturnType<typeof getTablesRowCountsComparison>> | null = null;
+        // مصفوفة المزامنة الشاملة المعتمدة على التوقيت الزمني (Sync Matrix)
+        let syncMatrix: Awaited<ReturnType<typeof getTablesSyncMatrix>> | null = null;
         try {
-            tablesComparison = await getTablesRowCountsComparison();
+            syncMatrix = await getTablesSyncMatrix();
         } catch (tableErr: any) {
-            console.warn('Failed to get tables row counts comparison:', tableErr.message);
+            console.warn('Failed to get tables sync matrix:', tableErr.message);
         }
 
         return NextResponse.json({
@@ -84,7 +90,8 @@ export async function GET() {
             },
             pendingCount: totalPending,
             recentSyncLogs,
-            tablesComparison
+            syncMatrix,
+            tablesComparison: syncMatrix
         });
     } catch (error: any) {
         return NextResponse.json({ success: false, error: error.message }, { status: 500 });
@@ -94,16 +101,16 @@ export async function GET() {
 export async function POST(req: Request) {
     try {
         const body = await req.json();
-        const { action, config, initOptions } = body;
+        const { action, config, initOptions, mode, targetTable } = body;
 
-        // 1. Initialize & Create Database on Central or Local Server
+        // 1. تهيئة وإنشاء قاعدة البيانات
         if (action === 'init-database') {
             const options = initOptions || {
-                server: config?.centralServerIp || 'localhost',
+                server: config?.centralServerIp || '10.110.16.16',
                 port: Number(config?.centralSqlPort) || 1433,
                 database: config?.centralDatabase || 'MultiBranchPOS_Central_DB',
-                user: config?.centralUsername || 'sa',
-                password: config?.centralPassword || '',
+                user: config?.centralUsername || 'gmlogins',
+                password: config?.centralPassword || 'retgomladb',
                 branchCode: config?.currentBranchCode || '900',
                 branchName: config?.currentBranchName || 'الفرع الرأيسي'
             };
@@ -112,31 +119,34 @@ export async function POST(req: Request) {
             return NextResponse.json(initResult);
         }
 
-        // 2. Test Connection
+        // 2. اختبار الاتصال بالسيرفر
         if (action === 'test') {
             const testResult = await testCentralConnection(config);
             return NextResponse.json(testResult);
         }
 
-        // 3. Save Config
+        // 3. حفظ إعدادات المزامنة
         if (action === 'save') {
             const updated = await saveCentralConfig(config);
             return NextResponse.json({ success: true, config: updated, message: 'تم حفظ إعدادات السيرفر المركزي بنجاح' });
         }
 
-        // 4. Run Sync Now
+        // 4. تشغيل المزامنة الذكية (شاملة، رفع فقط، سحب فقط، أو لجدول محدد)
         if (action === 'sync') {
             if (config) {
                 await saveCentralConfig(config);
             }
-            const syncResult = await runFullSync();
+            const syncResult = await runFullSync({
+                mode: mode || 'all',
+                targetTable
+            });
             return NextResponse.json(syncResult);
         }
 
-        // 5. Fetch Table Row Counts Comparison (Branch vs Central)
-        if (action === 'tables-comparison') {
-            const tablesComparison = await getTablesRowCountsComparison();
-            return NextResponse.json({ success: true, tablesComparison });
+        // 5. جلب وتحديث مصفوفة المزامنة اللحظية
+        if (action === 'sync-matrix' || action === 'tables-comparison') {
+            const syncMatrix = await getTablesSyncMatrix();
+            return NextResponse.json({ success: true, syncMatrix, tablesComparison: syncMatrix });
         }
 
         return NextResponse.json({ success: false, error: 'إجراء غير مدعوم' }, { status: 400 });

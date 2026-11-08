@@ -16,9 +16,9 @@ import {
     Server, RefreshCw, CheckCircle2, AlertTriangle, ShieldCheck, 
     Database, Network, ArrowUpRight, ArrowDownLeft, Clock, Zap, Loader2, Save,
     ShoppingCart, Truck, Banknote, CreditCard, Receipt, Boxes, Monitor, Activity, Sparkles, Check,
-    Undo2, ArrowLeftRight, Wallet, Users, UserCheck, Terminal, Search, Layers, Filter
+    Undo2, ArrowLeftRight, Wallet, Users, UserCheck, Terminal, Search, Layers, Filter, CheckCircle
 } from "lucide-react";
-import { CentralSyncConfig } from '@/lib/central-sync';
+import { CentralSyncConfig, TableSyncMatrixItem, TablesSyncMatrixResponse } from '@/lib/central-sync';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
 
@@ -30,10 +30,10 @@ export default function CentralSyncSettingsPage() {
         currentBranchId: '',
         currentBranchCode: '900',
         currentBranchName: 'الفرع الرأيسي',
-        centralServerIp: '127.0.0.1',
+        centralServerIp: '10.110.16.16',
         centralSqlPort: 1433,
         centralDatabase: 'MultiBranchPOS_Central_DB',
-        centralUsername: 'sa',
+        centralUsername: 'gmlogins',
         centralPassword: '',
         autoSync: true,
         autoSyncIntervalMinutes: 5,
@@ -62,6 +62,8 @@ export default function CentralSyncSettingsPage() {
     const [isLoading, setIsLoading] = useState(true);
     const [isTesting, setIsTesting] = useState(false);
     const [isSyncing, setIsSyncing] = useState(false);
+    const [syncingMode, setSyncingMode] = useState<'all' | 'push' | 'pull' | null>(null);
+    const [syncingTable, setSyncingTable] = useState<string | null>(null);
     const [isSaving, setIsSaving] = useState(false);
     const [testResult, setTestResult] = useState<{ 
         success: boolean; 
@@ -75,44 +77,26 @@ export default function CentralSyncSettingsPage() {
 
     // Database Initialization State
     const [initTarget, setInitTarget] = useState<'central' | 'local'>('central');
-    const [initServer, setInitServer] = useState('127.0.0.1');
+    const [initServer, setInitServer] = useState('10.110.16.16');
     const [initPort, setInitPort] = useState(1433);
     const [initDatabase, setInitDatabase] = useState('MultiBranchPOS_Central_DB');
-    const [initUsername, setInitUsername] = useState('sa');
+    const [initUsername, setInitUsername] = useState('gmlogins');
     const [initPassword, setInitPassword] = useState('');
     const [initBranchCode, setInitBranchCode] = useState('900');
     const [initBranchName, setInitBranchName] = useState('الفرع الرأيسي');
     const [isInitializingDb, setIsInitializingDb] = useState(false);
     const [initDbResult, setInitDbResult] = useState<{ success: boolean; message: string; tablesCount?: number; error?: string } | null>(null);
-    const [activeTab, setActiveTab] = useState<'monitor' | 'tables' | 'config' | 'db-init'>('monitor');
+    const [activeTab, setActiveTab] = useState<'monitor' | 'tables' | 'config' | 'db-init'>('tables');
 
-    // Tables Row Counts Comparison State (Branch vs Central)
-    const [tablesComparison, setTablesComparison] = useState<{
-        centralConnected: boolean;
-        centralDatabase: string;
-        totalBranchRows: number;
-        totalCentralRows: number;
-        syncedTablesCount: number;
-        diffTablesCount: number;
-        tables: Array<{
-            tableName: string;
-            displayName: string;
-            category: string;
-            branchRows: number;
-            centralRows: number | null;
-            diff: number;
-            status: 'synced' | 'pending' | 'central_ahead' | 'empty' | 'unreachable';
-        }>;
-    } | null>(null);
-
-    const [isRefreshingTables, setIsRefreshingTables] = useState(false);
+    // Tables Sync Matrix State (Timestamp & Change-tracking architecture)
+    const [syncMatrix, setSyncMatrix] = useState<TablesSyncMatrixResponse | null>(null);
+    const [isRefreshingMatrix, setIsRefreshingMatrix] = useState(false);
     const [tableSearch, setTableSearch] = useState('');
     const [tableCategoryFilter, setTableCategoryFilter] = useState('all');
-    const [tableStatusFilter, setTableStatusFilter] = useState<'all' | 'diff' | 'synced' | 'has_data'>('all');
+    const [tableDirectionFilter, setTableDirectionFilter] = useState<'all' | 'push' | 'pull' | 'bidirectional'>('all');
+    const [tableStatusFilter, setTableStatusFilter] = useState<'all' | 'pending' | 'synced' | 'has_data'>('all');
 
-    // Fetch initial settings & queue from API
-    // isInitial = true updates form inputs (on mount or manual refresh).
-    // isInitial = false (periodic queue refresh) ONLY updates counters & logs, NEVER overwriting form inputs!
+    // Fetch initial settings & matrix from API
     const loadSettings = async (isInitial: boolean = false) => {
         try {
             const res = await fetch('/api/sync/central');
@@ -120,11 +104,10 @@ export default function CentralSyncSettingsPage() {
             if (data.success) {
                 if (isInitial && data.config) {
                     setConfig(data.config);
-                    // Pre-fill DB init form only on initial/explicit load
-                    setInitServer(data.config.centralServerIp || '127.0.0.1');
+                    setInitServer(data.config.centralServerIp || '10.110.16.16');
                     setInitPort(data.config.centralSqlPort || 1433);
                     setInitDatabase(data.config.centralDatabase || 'MultiBranchPOS_Central_DB');
-                    setInitUsername(data.config.centralUsername || 'sa');
+                    setInitUsername(data.config.centralUsername || 'gmlogins');
                     setInitBranchCode(data.config.currentBranchCode || '900');
                     setInitBranchName(data.config.currentBranchName || 'الفرع الرأيسي');
                 }
@@ -134,8 +117,8 @@ export default function CentralSyncSettingsPage() {
                 if (data.recentSyncLogs) {
                     setRecentSyncLogs(data.recentSyncLogs);
                 }
-                if (data.tablesComparison) {
-                    setTablesComparison(data.tablesComparison);
+                if (data.syncMatrix) {
+                    setSyncMatrix(data.syncMatrix);
                 }
             }
         } catch (err: any) {
@@ -145,31 +128,31 @@ export default function CentralSyncSettingsPage() {
         }
     };
 
-    // Manual refresh for tables comparison
-    const handleRefreshTablesComparison = async () => {
-        setIsRefreshingTables(true);
+    // Manual refresh for Sync Matrix
+    const handleRefreshMatrix = async () => {
+        setIsRefreshingMatrix(true);
         try {
             const res = await fetch('/api/sync/central', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ action: 'tables-comparison' })
+                body: JSON.stringify({ action: 'sync-matrix' })
             });
             const data = await res.json();
-            if (data.success && data.tablesComparison) {
-                setTablesComparison(data.tablesComparison);
+            if (data.success && data.syncMatrix) {
+                setSyncMatrix(data.syncMatrix);
                 toast({
-                    title: "تم تحديث مقارنة الجداول",
-                    description: `تم إحصاء ${data.tablesComparison.tables.length} جدولاً بين الفرع والإدارة بنجاح.`
+                    title: "تم تحديث مصفوفة التوقيتات والمزامنة",
+                    description: `تم فحص وتحديث ${data.syncMatrix.tables.length} جدولاً بالكامل وتتبع التعديلات.`
                 });
             }
         } catch (err: any) {
             toast({
-                title: "خطأ في جلب بيانات الجداول",
+                title: "خطأ في جلب بيانات مصفوفة المزامنة",
                 description: err.message,
                 variant: "destructive"
             });
         } finally {
-            setIsRefreshingTables(false);
+            setIsRefreshingMatrix(false);
         }
     };
 
@@ -178,7 +161,7 @@ export default function CentralSyncSettingsPage() {
         loadSettings(true);
     }, []);
 
-    // Auto-refresh queue monitor only when viewing the monitor tab (does NOT touch form inputs)
+    // Auto-refresh queue monitor when viewing monitor tab
     useEffect(() => {
         if (activeTab !== 'monitor') return;
         const timer = setInterval(() => {
@@ -271,14 +254,17 @@ export default function CentralSyncSettingsPage() {
         }
     };
 
-    // Run Full Push/Pull Sync Now
-    const handleSyncNow = async () => {
+    // Run Smart Bidirectional Sync (All, Push-only, Pull-only, or Single Table)
+    const handleSyncNow = async (mode: 'all' | 'push' | 'pull' = 'all', targetTable?: string) => {
         setIsSyncing(true);
+        setSyncingMode(mode);
+        if (targetTable) setSyncingTable(targetTable);
+
         try {
             const res = await fetch('/api/sync/central', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ action: 'sync', config })
+                body: JSON.stringify({ action: 'sync', config, mode, targetTable })
             });
             const data = await res.json();
             if (data.success) {
@@ -287,6 +273,7 @@ export default function CentralSyncSettingsPage() {
                     description: data.details || `تم رفع ${data.pushedCount} حركة وسحب ${data.pulledCount} تحديث.`
                 });
                 await loadSettings(false);
+                await handleRefreshMatrix();
             } else {
                 toast({
                     title: "فشلت عملية المزامنة",
@@ -302,6 +289,8 @@ export default function CentralSyncSettingsPage() {
             });
         } finally {
             setIsSyncing(false);
+            setSyncingMode(null);
+            setSyncingTable(null);
         }
     };
 
@@ -353,9 +342,90 @@ export default function CentralSyncSettingsPage() {
         }
     };
 
-    // Filter and search logic for tables row counts comparison
-    const filteredTables = (tablesComparison?.tables || []).filter(t => {
-        // Search filter
+    // Helper: format timestamp into Arabic readable format
+    const formatTimestamp = (ts: string | null) => {
+        if (!ts) return <span className="text-muted-foreground text-[11px]">-</span>;
+        try {
+            const d = new Date(ts);
+            return (
+                <div className="flex flex-col text-[11px] leading-tight font-mono">
+                    <span className="font-semibold text-foreground">{d.toLocaleDateString('ar-EG')}</span>
+                    <span className="text-muted-foreground text-[10px]">{d.toLocaleTimeString('ar-EG', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}</span>
+                </div>
+            );
+        } catch {
+            return <span className="text-muted-foreground text-[11px]">{ts}</span>;
+        }
+    };
+
+    // Helper: render sync direction badge
+    const renderDirectionBadge = (dir: 'push' | 'pull' | 'bidirectional') => {
+        if (dir === 'push') {
+            return (
+                <Badge variant="outline" className="text-[10px] font-bold text-amber-700 bg-amber-500/10 border-amber-500/30 gap-1">
+                    <ArrowUpRight className="h-3 w-3" /> رفع للإدارة
+                </Badge>
+            );
+        }
+        if (dir === 'pull') {
+            return (
+                <Badge variant="outline" className="text-[10px] font-bold text-blue-700 bg-blue-500/10 border-blue-500/30 gap-1">
+                    <ArrowDownLeft className="h-3 w-3" /> سحب للفرع
+                </Badge>
+            );
+        }
+        return (
+            <Badge variant="outline" className="text-[10px] font-bold text-purple-700 bg-purple-500/10 border-purple-500/30 gap-1">
+                <ArrowLeftRight className="h-3 w-3" /> متبادل 🔁
+            </Badge>
+        );
+    };
+
+    // Helper: render table sync status badge
+    const renderStatusBadge = (t: TableSyncMatrixItem) => {
+        switch (t.syncState) {
+            case 'synced':
+                return (
+                    <Badge className="bg-emerald-600 hover:bg-emerald-700 text-white gap-1 text-[11px]">
+                        <CheckCircle2 className="h-3 w-3" /> متطابق ومحدث
+                    </Badge>
+                );
+            case 'pending_push':
+                return (
+                    <Badge className="bg-amber-600 hover:bg-amber-700 text-white gap-1 text-[11px]">
+                        <ArrowUpRight className="h-3 w-3" /> {t.pendingPushCount.toLocaleString()} بانتظار الرفع
+                    </Badge>
+                );
+            case 'pending_pull':
+                return (
+                    <Badge className="bg-blue-600 hover:bg-blue-700 text-white gap-1 text-[11px]">
+                        <ArrowDownLeft className="h-3 w-3" /> {t.pendingPullCount.toLocaleString()} تحديثات بالسيرفر
+                    </Badge>
+                );
+            case 'pending_both':
+                return (
+                    <Badge className="bg-purple-600 hover:bg-purple-700 text-white gap-1 text-[11px]">
+                        <ArrowLeftRight className="h-3 w-3" /> رفع ({t.pendingPushCount}) وسحب ({t.pendingPullCount})
+                    </Badge>
+                );
+            case 'empty':
+                return (
+                    <Badge variant="outline" className="text-muted-foreground text-[10px]">
+                        لا توجد حركات (0)
+                    </Badge>
+                );
+            case 'unreachable':
+            default:
+                return (
+                    <Badge variant="destructive" className="text-[10px]">
+                        السيرفر غير متصل
+                    </Badge>
+                );
+        }
+    };
+
+    // Filter and search logic for tables Sync Matrix
+    const filteredTables = (syncMatrix?.tables || []).filter(t => {
         const matchesSearch = !tableSearch || 
             t.displayName.toLowerCase().includes(tableSearch.toLowerCase()) ||
             t.tableName.toLowerCase().includes(tableSearch.toLowerCase()) ||
@@ -368,15 +438,20 @@ export default function CentralSyncSettingsPage() {
             return false;
         }
 
+        // Direction filter
+        if (tableDirectionFilter !== 'all' && t.direction !== tableDirectionFilter) {
+            return false;
+        }
+
         // Status filter
-        if (tableStatusFilter === 'diff') {
-            return t.diff > 0;
+        if (tableStatusFilter === 'pending') {
+            return t.syncState === 'pending_push' || t.syncState === 'pending_pull' || t.syncState === 'pending_both';
         }
         if (tableStatusFilter === 'synced') {
-            return t.status === 'synced';
+            return t.syncState === 'synced';
         }
         if (tableStatusFilter === 'has_data') {
-            return t.branchRows > 0 || (t.centralRows !== null && t.centralRows > 0);
+            return t.localBranchRows > 0 || (t.centralTotalRows !== null && t.centralTotalRows > 0);
         }
 
         return true;
@@ -401,22 +476,22 @@ export default function CentralSyncSettingsPage() {
                     <Button 
                         size="sm" 
                         className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold gap-1.5 shadow"
-                        onClick={handleSyncNow}
+                        onClick={() => handleSyncNow('all')}
                         disabled={isSyncing}
                     >
                         {isSyncing ? <Loader2 className="h-4 w-4 animate-spin ml-1" /> : <RefreshCw className="h-4 w-4 ml-1" />}
-                        مزامنة لحظية الآن
+                        مزامنة شاملة الآن 🔁
                     </Button>
                 </div>
             </PageHeader>
 
-            <main className="flex flex-1 flex-col gap-6 p-4 md:gap-8 md:p-6 max-w-6xl mx-auto w-full">
+            <main className="flex flex-1 flex-col gap-6 p-4 md:gap-8 md:p-6 max-w-7xl mx-auto w-full">
                 {/* Real-time Health Cards */}
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                     <Card className="border-2 shadow-sm">
                         <CardHeader className="py-3">
                             <CardTitle className="text-sm font-medium flex items-center justify-between">
-                                <span>حالة الاتصال المركزي</span>
+                                <span>حالة الاتصال بالسيرفر المركزي</span>
                                 <Network className="h-4 w-4 text-muted-foreground" />
                             </CardTitle>
                         </CardHeader>
@@ -441,11 +516,11 @@ export default function CentralSyncSettingsPage() {
                                     </div>
                                 )
                             ) : (
-                                <Badge variant="outline" className="text-muted-foreground">اضغط اختبار الاتصال للتحقق</Badge>
+                                <div className="space-y-1">
+                                    <div className="text-xs text-muted-foreground">اضغط اختبار الاتصال للتحقق</div>
+                                    <div className="text-xs font-mono font-bold text-foreground">السيرفر: {config.centralServerIp}:{config.centralSqlPort}</div>
+                                </div>
                             )}
-                            <p className="text-xs text-muted-foreground mt-2 truncate">
-                                السيرفر: <span className="font-mono">{config.centralServerIp}:{config.centralSqlPort}</span>
-                            </p>
                         </CardContent>
                     </Card>
 
@@ -457,11 +532,11 @@ export default function CentralSyncSettingsPage() {
                             </CardTitle>
                         </CardHeader>
                         <CardContent className="py-2">
-                            <div className="text-2xl font-black text-primary">
+                            <div className="text-2xl font-black text-amber-600">
                                 {pendingBreakdown.total.toLocaleString()} حركة
                             </div>
-                            <p className="text-xs text-muted-foreground mt-1">
-                                {pendingBreakdown.total > 0 ? 'تنتظر الرفع والمزامنة مع السيرفر المركزي' : 'جميع حركات الفرع متزامنة تماماً بالكامل'}
+                            <p className="text-xs text-muted-foreground mt-0.5">
+                                تنتظر الرفع والمزامنة مع السيرفر المركزي
                             </p>
                         </CardContent>
                     </Card>
@@ -488,11 +563,11 @@ export default function CentralSyncSettingsPage() {
                 {/* Tabs */}
                 <Tabs value={activeTab} onValueChange={(val) => setActiveTab(val as any)} className="w-full">
                     <TabsList className="grid w-full grid-cols-2 lg:grid-cols-4">
-                        <TabsTrigger value="monitor" className="gap-2">
-                            <Activity className="h-4 w-4" /> متابعة المزامنة اللحظية
+                        <TabsTrigger value="tables" className="gap-2 font-bold">
+                            <Database className="h-4 w-4 text-emerald-500" /> مركز المزامنة اللحظية (Sync Matrix)
                         </TabsTrigger>
-                        <TabsTrigger value="tables" className="gap-2">
-                            <Database className="h-4 w-4 text-emerald-500" /> إحصاء الجداول والسطور (الفرع vs الإدارة)
+                        <TabsTrigger value="monitor" className="gap-2">
+                            <Activity className="h-4 w-4" /> متابعة طابور المزامنة
                         </TabsTrigger>
                         <TabsTrigger value="config" className="gap-2">
                             <Server className="h-4 w-4" /> إعدادات السيرفر المركزي
@@ -502,7 +577,318 @@ export default function CentralSyncSettingsPage() {
                         </TabsTrigger>
                     </TabsList>
 
-                    {/* TAB 1: LIVE SYNC MONITOR */}
+                    {/* TAB 1: ADVANCED TIMESTAMP & WATERMARK SYNC MATRIX */}
+                    <TabsContent value="tables" className="space-y-6 mt-4">
+                        {/* Branch Identity & Architecture Banner */}
+                        <div className="p-4 rounded-xl border bg-card/60 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4">
+                            <div className="space-y-1">
+                                <div className="flex items-center gap-2 flex-wrap">
+                                    <Badge className="bg-primary text-primary-foreground font-bold px-2.5 py-1 text-xs gap-1.5">
+                                        <Database className="h-3.5 w-3.5" /> الفرع النشط: {config.currentBranchName} (كود {config.currentBranchCode})
+                                    </Badge>
+                                    <Badge variant="outline" className="font-mono text-xs gap-1">
+                                        <Server className="h-3.5 w-3.5 text-muted-foreground" /> السيرفر المركزي: {config.centralServerIp}:{config.centralSqlPort} ({config.centralDatabase})
+                                    </Badge>
+                                </div>
+                                <p className="text-xs text-muted-foreground mt-1">
+                                    المزامنة مبنية على <strong>الطابع الزمني (UpdatedAt) وتتبع التعديلات (Change-Tracking)</strong>. تدعم بيئة الفروع المتعددة المجمعة بالإدارة بسلاسة ودقة.
+                                </p>
+                            </div>
+
+                            {/* Direct Sync Action Buttons */}
+                            <div className="flex items-center gap-2 flex-wrap">
+                                <Button 
+                                    size="sm" 
+                                    variant="outline" 
+                                    onClick={handleRefreshMatrix}
+                                    disabled={isRefreshingMatrix}
+                                    className="gap-1.5 text-xs"
+                                >
+                                    {isRefreshingMatrix ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />}
+                                    تحديث الفحص
+                                </Button>
+                                <Button 
+                                    size="sm" 
+                                    variant="secondary"
+                                    onClick={() => handleSyncNow('push')}
+                                    disabled={isSyncing}
+                                    className="gap-1.5 font-bold text-amber-700 dark:text-amber-300 text-xs shadow-sm"
+                                >
+                                    {isSyncing && syncingMode === 'push' ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <ArrowUpRight className="h-3.5 w-3.5" />}
+                                    رفع تعديلات الفرع فقط ⬆️
+                                </Button>
+                                <Button 
+                                    size="sm" 
+                                    variant="secondary"
+                                    onClick={() => handleSyncNow('pull')}
+                                    disabled={isSyncing}
+                                    className="gap-1.5 font-bold text-blue-700 dark:text-blue-300 text-xs shadow-sm"
+                                >
+                                    {isSyncing && syncingMode === 'pull' ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <ArrowDownLeft className="h-3.5 w-3.5" />}
+                                    سحب تحديثات الإدارة فقط ⬇️
+                                </Button>
+                                <Button 
+                                    size="sm" 
+                                    className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold gap-1.5 text-xs shadow"
+                                    onClick={() => handleSyncNow('all')}
+                                    disabled={isSyncing}
+                                >
+                                    {isSyncing && syncingMode === 'all' ? <Loader2 className="h-3.5 w-3.5 animate-spin ml-1" /> : <RefreshCw className="h-3.5 w-3.5 ml-1" />}
+                                    مزامنة شاملة (رفع وتنزيل) 🔁
+                                </Button>
+                            </div>
+                        </div>
+
+                        {/* KPI Summary Cards */}
+                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                            <Card className="border shadow-sm bg-amber-500/5 border-amber-500/20">
+                                <CardHeader className="py-3 pb-1">
+                                    <CardTitle className="text-xs font-semibold text-muted-foreground flex items-center justify-between">
+                                        <span>تعديلات بالفرع تنتظر الرفع (Push)</span>
+                                        <ArrowUpRight className="h-4 w-4 text-amber-500" />
+                                    </CardTitle>
+                                </CardHeader>
+                                <CardContent className="py-2">
+                                    <div className="text-2xl font-black text-amber-600">
+                                        {syncMatrix ? syncMatrix.totalPendingPush.toLocaleString() : '...'}
+                                    </div>
+                                    <p className="text-[11px] text-muted-foreground mt-0.5">
+                                        حركات جديدة أو معدلة بانتظار الإرسال
+                                    </p>
+                                </CardContent>
+                            </Card>
+
+                            <Card className="border shadow-sm bg-blue-500/5 border-blue-500/20">
+                                <CardHeader className="py-3 pb-1">
+                                    <CardTitle className="text-xs font-semibold text-muted-foreground flex items-center justify-between">
+                                        <span>تحديثات الإدارة الجاهزة للسحب (Pull)</span>
+                                        <ArrowDownLeft className="h-4 w-4 text-blue-500" />
+                                    </CardTitle>
+                                </CardHeader>
+                                <CardContent className="py-2">
+                                    <div className="text-2xl font-black text-blue-600">
+                                        {syncMatrix ? syncMatrix.totalPendingPull.toLocaleString() : '...'}
+                                    </div>
+                                    <p className="text-[11px] text-muted-foreground mt-0.5">
+                                        أصناف، أسعار، أو مستخدمين جدد بالإدارة
+                                    </p>
+                                </CardContent>
+                            </Card>
+
+                            <Card className="border shadow-sm bg-emerald-500/5 border-emerald-500/20">
+                                <CardHeader className="py-3 pb-1">
+                                    <CardTitle className="text-xs font-semibold text-muted-foreground flex items-center justify-between">
+                                        <span>الجداول المتطابقة والمحدثة</span>
+                                        <CheckCircle2 className="h-4 w-4 text-emerald-500" />
+                                    </CardTitle>
+                                </CardHeader>
+                                <CardContent className="py-2">
+                                    <div className="text-2xl font-black text-emerald-600">
+                                        {syncMatrix ? `${syncMatrix.syncedTablesCount} / ${syncMatrix.totalTablesCount}` : '...'}
+                                    </div>
+                                    <p className="text-[11px] text-muted-foreground mt-0.5">
+                                        جداول متوافقة تماماً وبلا أي فوارق معلقة
+                                    </p>
+                                </CardContent>
+                            </Card>
+
+                            <Card className="border shadow-sm bg-purple-500/5 border-purple-500/20">
+                                <CardHeader className="py-3 pb-1">
+                                    <CardTitle className="text-xs font-semibold text-muted-foreground flex items-center justify-between">
+                                        <span>آخر توقيت مزامنة معتمد</span>
+                                        <Clock className="h-4 w-4 text-purple-500" />
+                                    </CardTitle>
+                                </CardHeader>
+                                <CardContent className="py-2">
+                                    <div className="text-sm font-bold text-foreground">
+                                        {syncMatrix?.lastSyncTimestamp ? new Date(syncMatrix.lastSyncTimestamp).toLocaleString('ar-EG') : 'لم تتم بعد'}
+                                    </div>
+                                    <p className="text-[11px] text-muted-foreground mt-1">
+                                        السيرفر المركزي ({syncMatrix?.centralDatabase || config.centralDatabase})
+                                    </p>
+                                </CardContent>
+                            </Card>
+                        </div>
+
+                        {/* Main Sync Matrix Table Card */}
+                        <Card className="border shadow-sm">
+                            <CardHeader className="pb-3">
+                                <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
+                                    <div>
+                                        <CardTitle className="text-base flex items-center gap-2">
+                                            <Database className="h-5 w-5 text-emerald-600" />
+                                            مصفوفة المزامنة اللحظية الشاملة (Live Sync Matrix - 69 جدولاً)
+                                        </CardTitle>
+                                        <CardDescription>
+                                            تتبع دقيق لآخر توقيت تعديل بالفرع، آخر توقيت مزامنة للإدارة، والتعديلات المعلقة، وسجلات الفرع بالإدارة مقابل الإجمالي التراكمي لجميع الفروع.
+                                        </CardDescription>
+                                    </div>
+                                </div>
+
+                                {/* Filter and Search Bar */}
+                                <div className="grid grid-cols-1 sm:grid-cols-12 gap-3 mt-4 pt-3 border-t">
+                                    <div className="sm:col-span-4 relative">
+                                        <Search className="h-4 w-4 absolute right-3 top-2.5 text-muted-foreground" />
+                                        <Input 
+                                            placeholder="ابحث بالاسم العربي أو الإنجليزي للجدول..."
+                                            value={tableSearch}
+                                            onChange={(e) => setTableSearch(e.target.value)}
+                                            className="pr-9 h-9 text-xs"
+                                        />
+                                    </div>
+                                    <div className="sm:col-span-3">
+                                        <Select value={tableCategoryFilter} onValueChange={setTableCategoryFilter}>
+                                            <SelectTrigger className="h-9 text-xs">
+                                                <SelectValue placeholder="تصفية حسب القسم" />
+                                            </SelectTrigger>
+                                            <SelectContent>
+                                                <SelectItem value="all">جميع الأقسام (69 جدولاً)</SelectItem>
+                                                <SelectItem value="فواتير وعمليات">فواتير وعمليات</SelectItem>
+                                                <SelectItem value="حسابات ومالية">حسابات ومالية</SelectItem>
+                                                <SelectItem value="مشتريات وموردين">مشتريات وموردين</SelectItem>
+                                                <SelectItem value="عملاء ومبيعات">عملاء ومبيعات</SelectItem>
+                                                <SelectItem value="مخازن وأصناف">مخازن وأصناف</SelectItem>
+                                                <SelectItem value="توزيع ومندوبين">توزيع ومندوبين</SelectItem>
+                                                <SelectItem value="موارد بشرية">موارد بشرية</SelectItem>
+                                                <SelectItem value="نقاط البيع">نقاط البيع</SelectItem>
+                                                <SelectItem value="أصول وإهلاك">أصول وإهلاك</SelectItem>
+                                                <SelectItem value="إعدادات النظام">إعدادات النظام</SelectItem>
+                                            </SelectContent>
+                                        </Select>
+                                    </div>
+                                    <div className="sm:col-span-3">
+                                        <Select value={tableDirectionFilter} onValueChange={(val: any) => setTableDirectionFilter(val)}>
+                                            <SelectTrigger className="h-9 text-xs">
+                                                <SelectValue placeholder="تصفية حسب الاتجاه" />
+                                            </SelectTrigger>
+                                            <SelectContent>
+                                                <SelectItem value="all">كافة الاتجاهات</SelectItem>
+                                                <SelectItem value="push">رفع للإدارة فقط ⬆️</SelectItem>
+                                                <SelectItem value="pull">سحب للفرع فقط ⬇️</SelectItem>
+                                                <SelectItem value="bidirectional">متبادل ثنائي 🔁</SelectItem>
+                                            </SelectContent>
+                                        </Select>
+                                    </div>
+                                    <div className="sm:col-span-2">
+                                        <Select value={tableStatusFilter} onValueChange={(val: any) => setTableStatusFilter(val)}>
+                                            <SelectTrigger className="h-9 text-xs">
+                                                <SelectValue placeholder="الحالة" />
+                                            </SelectTrigger>
+                                            <SelectContent>
+                                                <SelectItem value="all">كل الحالات ({syncMatrix?.tables.length || 0})</SelectItem>
+                                                <SelectItem value="pending">بحاجة لمزامنة ⚠️ ({syncMatrix?.pendingTablesCount || 0})</SelectItem>
+                                                <SelectItem value="synced">متطابق ومحدث ✅ ({syncMatrix?.syncedTablesCount || 0})</SelectItem>
+                                                <SelectItem value="has_data">يحتوي بيانات</SelectItem>
+                                            </SelectContent>
+                                        </Select>
+                                    </div>
+                                </div>
+                            </CardHeader>
+
+                            <CardContent className="p-0">
+                                <div className="border-t max-h-[620px] overflow-auto">
+                                    <Table>
+                                        <TableHeader className="bg-muted/40 sticky top-0 z-10 shadow-sm text-xs">
+                                            <TableRow>
+                                                <TableHead className="w-10 text-center">#</TableHead>
+                                                <TableHead className="min-w-[170px]">الجدول والقسم</TableHead>
+                                                <TableHead className="text-center min-w-[100px]">الاتجاه</TableHead>
+                                                <TableHead className="text-center min-w-[120px]">آخر تعديل بالفرع</TableHead>
+                                                <TableHead className="text-center min-w-[120px]">آخر مزامنة للإدارة</TableHead>
+                                                <TableHead className="text-center min-w-[90px] font-bold text-amber-700 bg-amber-500/5">معلق بالفرع</TableHead>
+                                                <TableHead className="text-center min-w-[100px] font-bold text-blue-700 bg-blue-500/5">سجلات الفرع بالإدارة</TableHead>
+                                                <TableHead className="text-center min-w-[100px] font-bold text-purple-700 bg-purple-500/5">إجمالي الإدارة (كافة الفروع)</TableHead>
+                                                <TableHead className="text-center min-w-[140px]">حالة المزامنة</TableHead>
+                                                <TableHead className="text-center w-24">إجراء</TableHead>
+                                            </TableRow>
+                                        </TableHeader>
+                                        <TableBody>
+                                            {filteredTables.length === 0 ? (
+                                                <TableRow>
+                                                    <TableCell colSpan={10} className="text-center py-8 text-muted-foreground">
+                                                        لا توجد جداول مطابقة للبحث أو الفلتر المحدد
+                                                    </TableCell>
+                                                </TableRow>
+                                            ) : (
+                                                filteredTables.map((t, idx) => (
+                                                    <TableRow key={t.tableName} className="hover:bg-muted/20 text-xs">
+                                                        <TableCell className="text-center text-muted-foreground font-mono">{idx + 1}</TableCell>
+                                                        <TableCell>
+                                                            <div className="font-bold text-foreground text-sm">{t.displayName}</div>
+                                                            <div className="text-[11px] text-muted-foreground font-mono flex items-center gap-1.5 mt-0.5">
+                                                                <Database className="h-3 w-3 text-muted-foreground" />
+                                                                <span>dbo.{t.tableName}</span>
+                                                                <Badge variant="outline" className="text-[9px] px-1 py-0 font-normal">
+                                                                    {t.category}
+                                                                </Badge>
+                                                            </div>
+                                                        </TableCell>
+                                                        <TableCell className="text-center">
+                                                            {renderDirectionBadge(t.direction)}
+                                                        </TableCell>
+                                                        <TableCell className="text-center">
+                                                            {formatTimestamp(t.lastLocalModified)}
+                                                        </TableCell>
+                                                        <TableCell className="text-center">
+                                                            {formatTimestamp(t.lastSyncedAt)}
+                                                        </TableCell>
+                                                        <TableCell className="text-center font-mono font-bold bg-amber-500/5">
+                                                            {t.pendingPushCount > 0 ? (
+                                                                <Badge variant="destructive" className="bg-amber-600 hover:bg-amber-700 text-white font-mono font-bold text-xs px-2">
+                                                                    {t.pendingPushCount.toLocaleString()}
+                                                                </Badge>
+                                                            ) : (
+                                                                <span className="text-muted-foreground">0</span>
+                                                            )}
+                                                        </TableCell>
+                                                        <TableCell className="text-center font-mono font-bold bg-blue-500/5">
+                                                            {t.centralBranchRows === null ? (
+                                                                <span className="text-[11px] text-muted-foreground">غير متصل</span>
+                                                            ) : (
+                                                                <span className={cn(t.centralBranchRows > 0 ? "text-blue-700 font-extrabold" : "text-muted-foreground")}>
+                                                                    {t.centralBranchRows.toLocaleString()}
+                                                                </span>
+                                                            )}
+                                                        </TableCell>
+                                                        <TableCell className="text-center font-mono font-bold bg-purple-500/5">
+                                                            {t.centralTotalRows === null ? (
+                                                                <span className="text-[11px] text-muted-foreground">غير متصل</span>
+                                                            ) : (
+                                                                <span className={cn(t.centralTotalRows > 0 ? "text-purple-700 font-extrabold" : "text-muted-foreground")}>
+                                                                    {t.centralTotalRows.toLocaleString()}
+                                                                </span>
+                                                            )}
+                                                        </TableCell>
+                                                        <TableCell className="text-center">
+                                                            {renderStatusBadge(t)}
+                                                        </TableCell>
+                                                        <TableCell className="text-center">
+                                                            <Button
+                                                                size="sm"
+                                                                variant="ghost"
+                                                                className="h-7 px-2 text-[11px] hover:bg-primary/10 text-primary font-bold"
+                                                                onClick={() => handleSyncNow(t.direction === 'pull' ? 'pull' : 'push', t.tableName)}
+                                                                disabled={isSyncing && syncingTable === t.tableName}
+                                                                title={`مزامنة جدول ${t.displayName} الآن`}
+                                                            >
+                                                                {isSyncing && syncingTable === t.tableName ? (
+                                                                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                                                                ) : (
+                                                                    <RefreshCw className="h-3.5 w-3.5" />
+                                                                )}
+                                                            </Button>
+                                                        </TableCell>
+                                                    </TableRow>
+                                                ))
+                                            )}
+                                        </TableBody>
+                                    </Table>
+                                </div>
+                            </CardContent>
+                        </Card>
+                    </TabsContent>
+
+                    {/* TAB 2: LIVE QUEUE MONITOR & LOGS */}
                     <TabsContent value="monitor" className="space-y-6 mt-4">
                         <Card>
                             <CardHeader className="flex flex-row items-center justify-between">
@@ -519,13 +905,10 @@ export default function CentralSyncSettingsPage() {
                                     <Button size="sm" variant="outline" onClick={() => loadSettings(false)}>
                                         <RefreshCw className="h-3.5 w-3.5 ml-1" /> تحديث العدادات
                                     </Button>
-                                    <Button size="sm" variant="secondary" onClick={() => setActiveTab('tables')} className="gap-1.5 text-xs font-semibold bg-emerald-50 text-emerald-700 hover:bg-emerald-100 border border-emerald-200">
-                                        <Database className="h-3.5 w-3.5 text-emerald-600" /> مقارنة الجداول والسطور (69 جدولاً)
-                                    </Button>
                                 </div>
                             </CardHeader>
                             <CardContent>
-                                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3">
+                                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-3">
                                     <div className="p-3 bg-muted/40 rounded-xl border text-center space-y-1">
                                         <ShoppingCart className="h-5 w-5 mx-auto text-blue-500" />
                                         <div className="text-xs text-muted-foreground">فواتير مبيعات</div>
@@ -533,21 +916,9 @@ export default function CentralSyncSettingsPage() {
                                     </div>
 
                                     <div className="p-3 bg-muted/40 rounded-xl border text-center space-y-1">
-                                        <Undo2 className="h-5 w-5 mx-auto text-amber-600" />
-                                        <div className="text-xs text-muted-foreground">مرتجع مبيعات</div>
-                                        <div className="text-lg font-black text-foreground">{pendingBreakdown.salesReturns}</div>
-                                    </div>
-
-                                    <div className="p-3 bg-muted/40 rounded-xl border text-center space-y-1">
-                                        <Truck className="h-5 w-5 mx-auto text-indigo-500" />
+                                        <Truck className="h-5 w-5 mx-auto text-amber-500" />
                                         <div className="text-xs text-muted-foreground">فواتير مشتريات</div>
                                         <div className="text-lg font-black text-foreground">{pendingBreakdown.purchases}</div>
-                                    </div>
-
-                                    <div className="p-3 bg-muted/40 rounded-xl border text-center space-y-1">
-                                        <Undo2 className="h-5 w-5 mx-auto text-purple-600 rotate-180" />
-                                        <div className="text-xs text-muted-foreground">مرتجع مشتريات</div>
-                                        <div className="text-lg font-black text-foreground">{pendingBreakdown.purchaseReturns}</div>
                                     </div>
 
                                     <div className="p-3 bg-muted/40 rounded-xl border text-center space-y-1">
@@ -557,7 +928,7 @@ export default function CentralSyncSettingsPage() {
                                     </div>
 
                                     <div className="p-3 bg-muted/40 rounded-xl border text-center space-y-1">
-                                        <CreditCard className="h-5 w-5 mx-auto text-violet-500" />
+                                        <CreditCard className="h-5 w-5 mx-auto text-purple-500" />
                                         <div className="text-xs text-muted-foreground">مدفوعات موردين</div>
                                         <div className="text-lg font-black text-foreground">{pendingBreakdown.supplierPayments}</div>
                                     </div>
@@ -569,32 +940,32 @@ export default function CentralSyncSettingsPage() {
                                     </div>
 
                                     <div className="p-3 bg-muted/40 rounded-xl border text-center space-y-1">
-                                        <Wallet className="h-5 w-5 mx-auto text-amber-500" />
-                                        <div className="text-xs text-muted-foreground">حركات الخزينة</div>
-                                        <div className="text-lg font-black text-foreground">{pendingBreakdown.treasury}</div>
-                                    </div>
-
-                                    <div className="p-3 bg-muted/40 rounded-xl border text-center space-y-1">
-                                        <Boxes className="h-5 w-5 mx-auto text-teal-500" />
+                                        <Boxes className="h-5 w-5 mx-auto text-cyan-500" />
                                         <div className="text-xs text-muted-foreground">حركات مخازن</div>
                                         <div className="text-lg font-black text-foreground">{pendingBreakdown.stock}</div>
                                     </div>
 
                                     <div className="p-3 bg-muted/40 rounded-xl border text-center space-y-1">
-                                        <ArrowLeftRight className="h-5 w-5 mx-auto text-sky-500" />
-                                        <div className="text-xs text-muted-foreground">تحويلات فروع</div>
+                                        <ArrowLeftRight className="h-5 w-5 mx-auto text-indigo-500" />
+                                        <div className="text-xs text-muted-foreground">تحويلات بين الفروع</div>
                                         <div className="text-lg font-black text-foreground">{pendingBreakdown.transfers}</div>
                                     </div>
 
                                     <div className="p-3 bg-muted/40 rounded-xl border text-center space-y-1">
-                                        <UserCheck className="h-5 w-5 mx-auto text-orange-500" />
-                                        <div className="text-xs text-muted-foreground">حركات مناديب</div>
+                                        <Wallet className="h-5 w-5 mx-auto text-emerald-600" />
+                                        <div className="text-xs text-muted-foreground">حركات خزينة</div>
+                                        <div className="text-lg font-black text-foreground">{pendingBreakdown.treasury}</div>
+                                    </div>
+
+                                    <div className="p-3 bg-muted/40 rounded-xl border text-center space-y-1">
+                                        <Users className="h-5 w-5 mx-auto text-amber-600" />
+                                        <div className="text-xs text-muted-foreground">توزيع ومندوبين</div>
                                         <div className="text-lg font-black text-foreground">{pendingBreakdown.rep}</div>
                                     </div>
 
                                     <div className="p-3 bg-muted/40 rounded-xl border text-center space-y-1">
-                                        <Users className="h-5 w-5 mx-auto text-cyan-600" />
-                                        <div className="text-xs text-muted-foreground">سلف ورواتب</div>
+                                        <UserCheck className="h-5 w-5 mx-auto text-violet-500" />
+                                        <div className="text-xs text-muted-foreground">مرتبات وسلف HR</div>
                                         <div className="text-lg font-black text-foreground">{pendingBreakdown.hr}</div>
                                     </div>
 
@@ -612,7 +983,7 @@ export default function CentralSyncSettingsPage() {
                                 <Button 
                                     size="sm" 
                                     className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold gap-2"
-                                    onClick={handleSyncNow}
+                                    onClick={() => handleSyncNow('all')}
                                     disabled={isSyncing}
                                 >
                                     {isSyncing ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
@@ -671,260 +1042,6 @@ export default function CentralSyncSettingsPage() {
                                         ))}
                                     </TableBody>
                                 </Table>
-                            </CardContent>
-                        </Card>
-                    </TabsContent>
-
-                    {/* TAB 2: TABLES ROW COUNTS COMPARISON (الفرع vs الإدارة) */}
-                    <TabsContent value="tables" className="space-y-6 mt-4">
-                        {/* KPI Summary Cards */}
-                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-                            <Card className="border shadow-sm bg-blue-500/5 border-blue-500/20">
-                                <CardHeader className="py-3 pb-1">
-                                    <CardTitle className="text-xs font-semibold text-muted-foreground flex items-center justify-between">
-                                        <span>إجمالي سطور الفرع (Local)</span>
-                                        <Boxes className="h-4 w-4 text-blue-500" />
-                                    </CardTitle>
-                                </CardHeader>
-                                <CardContent className="py-2">
-                                    <div className="text-2xl font-black text-blue-600">
-                                        {tablesComparison ? tablesComparison.totalBranchRows.toLocaleString() : '...'}
-                                    </div>
-                                    <p className="text-[11px] text-muted-foreground mt-0.5">
-                                        إجمالي السجلات عبر 69 جدولاً بالفرع
-                                    </p>
-                                </CardContent>
-                            </Card>
-
-                            <Card className="border shadow-sm bg-purple-500/5 border-purple-500/20">
-                                <CardHeader className="py-3 pb-1">
-                                    <CardTitle className="text-xs font-semibold text-muted-foreground flex items-center justify-between">
-                                        <span>إجمالي سطور الإدارة (Central)</span>
-                                        <Server className="h-4 w-4 text-purple-500" />
-                                    </CardTitle>
-                                </CardHeader>
-                                <CardContent className="py-2">
-                                    <div className="text-2xl font-black text-purple-600">
-                                        {tablesComparison?.centralConnected 
-                                            ? tablesComparison.totalCentralRows.toLocaleString() 
-                                            : 'غير متصل بالسيرفر'}
-                                    </div>
-                                    <p className="text-[11px] text-muted-foreground mt-0.5">
-                                        السيرفر المركزي ({tablesComparison?.centralDatabase || config.centralDatabase})
-                                    </p>
-                                </CardContent>
-                            </Card>
-
-                            <Card className="border shadow-sm bg-emerald-500/5 border-emerald-500/20">
-                                <CardHeader className="py-3 pb-1">
-                                    <CardTitle className="text-xs font-semibold text-muted-foreground flex items-center justify-between">
-                                        <span>جداول متطابقة بالكامل</span>
-                                        <CheckCircle2 className="h-4 w-4 text-emerald-500" />
-                                    </CardTitle>
-                                </CardHeader>
-                                <CardContent className="py-2">
-                                    <div className="text-2xl font-black text-emerald-600">
-                                        {tablesComparison?.syncedTablesCount ?? 0} جدول
-                                    </div>
-                                    <p className="text-[11px] text-muted-foreground mt-0.5">
-                                        عدد السطور متطابق تماماً 100%
-                                    </p>
-                                </CardContent>
-                            </Card>
-
-                            <Card className="border shadow-sm bg-amber-500/5 border-amber-500/20">
-                                <CardHeader className="py-3 pb-1">
-                                    <CardTitle className="text-xs font-semibold text-muted-foreground flex items-center justify-between">
-                                        <span>جداول بها فوارق / معلقة</span>
-                                        <AlertTriangle className="h-4 w-4 text-amber-500" />
-                                    </CardTitle>
-                                </CardHeader>
-                                <CardContent className="py-2">
-                                    <div className="text-2xl font-black text-amber-600">
-                                        {tablesComparison?.diffTablesCount ?? 0} جدول
-                                    </div>
-                                    <p className="text-[11px] text-muted-foreground mt-0.5">
-                                        تتطلب المزامنة لمطابقة السطور
-                                    </p>
-                                </CardContent>
-                            </Card>
-                        </div>
-
-                        {/* Main Comparison Card */}
-                        <Card className="border shadow-sm">
-                            <CardHeader className="pb-3">
-                                <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
-                                    <div>
-                                        <CardTitle className="text-base flex items-center gap-2">
-                                            <Database className="h-5 w-5 text-emerald-600" />
-                                            جدول مقارنة أسماء الجداول وعدد السطور (الفرع vs الإدارة المركزية)
-                                        </CardTitle>
-                                        <CardDescription>
-                                            إحصاء فوري ومقارنة حية لعدد السطور لكل جدول من الـ 69 جدولاً بين قاعدة بيانات الفرع وقاعدة بيانات الإدارة المركزية.
-                                        </CardDescription>
-                                    </div>
-                                    <div className="flex items-center gap-2">
-                                        <Button 
-                                            size="sm" 
-                                            variant="outline" 
-                                            onClick={handleRefreshTablesComparison}
-                                            disabled={isRefreshingTables}
-                                            className="gap-1.5"
-                                        >
-                                            {isRefreshingTables ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />}
-                                            تحديث الإحصاء
-                                        </Button>
-                                        <Button 
-                                            size="sm" 
-                                            className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold gap-1.5 shadow"
-                                            onClick={handleSyncNow}
-                                            disabled={isSyncing}
-                                        >
-                                            {isSyncing ? <Loader2 className="h-4 w-4 animate-spin ml-1" /> : <RefreshCw className="h-4 w-4 ml-1" />}
-                                            مزامنة الفوارق الآن
-                                        </Button>
-                                    </div>
-                                </div>
-
-                                {/* Filter and Search Bar */}
-                                <div className="grid grid-cols-1 sm:grid-cols-12 gap-3 mt-4 pt-3 border-t">
-                                    <div className="sm:col-span-5 relative">
-                                        <Search className="h-4 w-4 absolute right-3 top-2.5 text-muted-foreground" />
-                                        <Input 
-                                            placeholder="ابحث بالاسم العربي أو الإنجليزي للجدول..."
-                                            value={tableSearch}
-                                            onChange={(e) => setTableSearch(e.target.value)}
-                                            className="pr-9 h-9 text-xs"
-                                        />
-                                    </div>
-                                    <div className="sm:col-span-4">
-                                        <Select value={tableCategoryFilter} onValueChange={setTableCategoryFilter}>
-                                            <SelectTrigger className="h-9 text-xs">
-                                                <SelectValue placeholder="تصفية حسب القسم / التصنيف" />
-                                            </SelectTrigger>
-                                            <SelectContent>
-                                                <SelectItem value="all">جميع الأقسام (الـ 69 جدولاً)</SelectItem>
-                                                <SelectItem value="فواتير وعمليات">فواتير وعمليات</SelectItem>
-                                                <SelectItem value="حسابات ومالية">حسابات ومالية</SelectItem>
-                                                <SelectItem value="مشتريات وموردين">مشتريات وموردين</SelectItem>
-                                                <SelectItem value="عملاء ومبيعات">عملاء ومبيعات</SelectItem>
-                                                <SelectItem value="مخازن وأصناف">مخازن وأصناف</SelectItem>
-                                                <SelectItem value="توزيع ومندوبين">توزيع ومندوبين</SelectItem>
-                                                <SelectItem value="موارد بشرية">موارد بشرية</SelectItem>
-                                                <SelectItem value="نقاط البيع">نقاط البيع</SelectItem>
-                                                <SelectItem value="إعدادات النظام">إعدادات النظام</SelectItem>
-                                            </SelectContent>
-                                        </Select>
-                                    </div>
-                                    <div className="sm:col-span-3">
-                                        <Select value={tableStatusFilter} onValueChange={(val: any) => setTableStatusFilter(val)}>
-                                            <SelectTrigger className="h-9 text-xs">
-                                                <SelectValue placeholder="تصفية حسب الحالة" />
-                                            </SelectTrigger>
-                                            <SelectContent>
-                                                <SelectItem value="all">كل الحالات ({tablesComparison?.tables.length || 0})</SelectItem>
-                                                <SelectItem value="diff">يوجد فوارق فقط ⚠️ ({tablesComparison?.diffTablesCount || 0})</SelectItem>
-                                                <SelectItem value="synced">متطابق بالكامل ✅ ({tablesComparison?.syncedTablesCount || 0})</SelectItem>
-                                                <SelectItem value="has_data">يحتوي بيانات فقط</SelectItem>
-                                            </SelectContent>
-                                        </Select>
-                                    </div>
-                                </div>
-                            </CardHeader>
-
-                            <CardContent className="p-0">
-                                <div className="border-t max-h-[600px] overflow-auto">
-                                    <Table>
-                                        <TableHeader className="bg-muted/40 sticky top-0 z-10 shadow-sm">
-                                            <TableRow>
-                                                <TableHead className="w-12 text-center">#</TableHead>
-                                                <TableHead>اسم الجدول في قاعدة البيانات</TableHead>
-                                                <TableHead>القسم / التصنيف</TableHead>
-                                                <TableHead className="text-center font-bold text-blue-600 bg-blue-500/5">عدد السطور في الفرع</TableHead>
-                                                <TableHead className="text-center font-bold text-purple-600 bg-purple-500/5">عدد السطور في الإدارة</TableHead>
-                                                <TableHead className="text-center">الفارق</TableHead>
-                                                <TableHead className="text-center">حالة المزامنة والتطابق</TableHead>
-                                            </TableRow>
-                                        </TableHeader>
-                                        <TableBody>
-                                            {filteredTables.length === 0 ? (
-                                                <TableRow>
-                                                    <TableCell colSpan={7} className="text-center py-8 text-muted-foreground">
-                                                        لا توجد جداول مطابقة للبحث أو الفلتر المحدد
-                                                    </TableCell>
-                                                </TableRow>
-                                            ) : (
-                                                filteredTables.map((t, idx) => (
-                                                    <TableRow key={t.tableName} className="hover:bg-muted/20">
-                                                        <TableCell className="text-center text-xs text-muted-foreground font-mono">{idx + 1}</TableCell>
-                                                        <TableCell>
-                                                            <div className="font-bold text-sm text-foreground">{t.displayName}</div>
-                                                            <div className="text-[11px] text-muted-foreground font-mono flex items-center gap-1.5 mt-0.5">
-                                                                <Database className="h-3 w-3 text-muted-foreground" />
-                                                                <span>dbo.{t.tableName}</span>
-                                                            </div>
-                                                        </TableCell>
-                                                        <TableCell>
-                                                            <Badge variant="outline" className="text-[10px] font-normal">
-                                                                {t.category}
-                                                            </Badge>
-                                                        </TableCell>
-                                                        <TableCell className="text-center font-mono font-bold text-sm bg-blue-500/5">
-                                                            <span className={cn(t.branchRows > 0 ? "text-blue-600 font-extrabold" : "text-muted-foreground")}>
-                                                                {t.branchRows.toLocaleString()}
-                                                            </span>
-                                                        </TableCell>
-                                                        <TableCell className="text-center font-mono font-bold text-sm bg-purple-500/5">
-                                                            {t.centralRows === null ? (
-                                                                <span className="text-xs text-muted-foreground">غير متصل</span>
-                                                            ) : (
-                                                                <span className={cn(t.centralRows > 0 ? "text-purple-600 font-extrabold" : "text-muted-foreground")}>
-                                                                    {t.centralRows.toLocaleString()}
-                                                                </span>
-                                                            )}
-                                                        </TableCell>
-                                                        <TableCell className="text-center font-mono text-xs">
-                                                            {t.diff > 0 ? (
-                                                                <Badge variant="destructive" className="bg-amber-600/10 text-amber-600 hover:bg-amber-600/20 border-amber-500/30 font-mono font-bold">
-                                                                    +{t.diff.toLocaleString()}
-                                                                </Badge>
-                                                            ) : (
-                                                                <span className="text-muted-foreground">0</span>
-                                                            )}
-                                                        </TableCell>
-                                                        <TableCell className="text-center">
-                                                            {t.status === 'synced' && (
-                                                                <Badge className="bg-emerald-600 text-white gap-1 text-[11px]">
-                                                                    <CheckCircle2 className="h-3 w-3" /> متطابق بالكامل
-                                                                </Badge>
-                                                            )}
-                                                            {t.status === 'pending' && (
-                                                                <Badge className="bg-amber-500 text-white gap-1 text-[11px]">
-                                                                    <ArrowUpRight className="h-3 w-3" /> {t.diff.toLocaleString()} بانتظار الرفع
-                                                                </Badge>
-                                                            )}
-                                                            {t.status === 'central_ahead' && (
-                                                                <Badge className="bg-blue-600 text-white gap-1 text-[11px]">
-                                                                    <ArrowDownLeft className="h-3 w-3" /> {t.diff.toLocaleString()} بالإدارة
-                                                                </Badge>
-                                                            )}
-                                                            {t.status === 'empty' && (
-                                                                <Badge variant="outline" className="text-muted-foreground text-[10px]">
-                                                                    جدول فارغ (0)
-                                                                </Badge>
-                                                            )}
-                                                            {t.status === 'unreachable' && (
-                                                                <Badge variant="destructive" className="text-[10px]">
-                                                                    غير متصل
-                                                                </Badge>
-                                                            )}
-                                                        </TableCell>
-                                                    </TableRow>
-                                                ))
-                                            )}
-                                        </TableBody>
-                                    </Table>
-                                </div>
                             </CardContent>
                         </Card>
                     </TabsContent>
@@ -1006,7 +1123,7 @@ export default function CentralSyncSettingsPage() {
                                             <Input 
                                                 value={config.centralServerIp} 
                                                 onChange={e => handleInputChange('centralServerIp', e.target.value)}
-                                                placeholder="مثال: 192.168.1.100 أو sql.domain.com"
+                                                placeholder="مثال: 10.110.16.16"
                                                 className="font-mono text-left dir-ltr"
                                             />
                                         </div>
@@ -1038,7 +1155,7 @@ export default function CentralSyncSettingsPage() {
                                             <Input 
                                                 value={config.centralUsername} 
                                                 onChange={e => handleInputChange('centralUsername', e.target.value)}
-                                                placeholder="sa أو meto_pos"
+                                                placeholder="sa أو gmlogins"
                                                 className="font-mono"
                                             />
                                         </div>
@@ -1125,7 +1242,7 @@ export default function CentralSyncSettingsPage() {
                         </Card>
                     </TabsContent>
 
-                    {/* TAB 3: INITIALIZE & CREATE DATABASE */}
+                    {/* TAB 4: INITIALIZE & CREATE DATABASE */}
                     <TabsContent value="db-init" className="space-y-6 mt-4">
                         <Card className="border-2 border-amber-500/30 shadow-md">
                             <CardHeader className="bg-amber-500/5 border-b pb-4">
@@ -1134,7 +1251,7 @@ export default function CentralSyncSettingsPage() {
                                     أداة إنشاء وتأسيس قاعدة البيانات (Database Setup & Initialization)
                                 </CardTitle>
                                 <CardDescription>
-                                    تتيح لك هذه الأداة إنشاء وتأسيس قاعدة البيانات بكامل جداولها (69 جدولاً) والمشغلات الآلية وإعدادات الفروع بنقرة واحدة سواء على السيرفر المركزي للإدارة أو على السيرفر المحلي للفرع.
+                                    تتيح لك هذه الأداة إنشاء وتأسيس قاعدة البيانات بكامل جداولها (70 جدولاً) والمشغلات الآلية وإعدادات الفروع بنقرة واحدة سواء على السيرفر المركزي للإدارة أو على السيرفر المحلي للفرع.
                                 </CardDescription>
                             </CardHeader>
                             <CardContent className="space-y-6 pt-6">
@@ -1148,9 +1265,9 @@ export default function CentralSyncSettingsPage() {
                                             onClick={() => {
                                                 setInitTarget('central');
                                                 setInitDatabase('MultiBranchPOS_Central_DB');
-                                                setInitServer(config.centralServerIp || '127.0.0.1');
+                                                setInitServer(config.centralServerIp || '10.110.16.16');
                                                 setInitPort(config.centralSqlPort || 1433);
-                                                setInitUsername(config.centralUsername || 'sa');
+                                                setInitUsername(config.centralUsername || 'gmlogins');
                                             }}
                                         >
                                             <Server className="h-5 w-5" />
@@ -1255,24 +1372,10 @@ export default function CentralSyncSettingsPage() {
                                         </div>
                                     </div>
                                 )}
-
-                                {testResult && (
-                                    <div className={cn("p-4 rounded-xl border text-sm mt-4", testResult.success ? "bg-emerald-500/10 border-emerald-500/30 text-emerald-900 dark:text-emerald-300" : "bg-destructive/10 border-destructive/30 text-destructive")}>
-                                        <div className="flex items-start gap-3">
-                                            {testResult.success ? <CheckCircle2 className="h-5 w-5 text-emerald-600 mt-0.5 shrink-0" /> : <AlertTriangle className="h-5 w-5 text-destructive mt-0.5 shrink-0" />}
-                                            <div className="space-y-1">
-                                                <p className="font-bold">{testResult.success ? "تم فحص الاتصال بالسيرفر بنجاح" : "تعذر الاتصال بالسيرفر"}</p>
-                                                {testResult.message && <p className="text-xs leading-relaxed">{testResult.message}</p>}
-                                                {testResult.error && <p className="text-xs leading-relaxed font-mono mt-1">{testResult.error}</p>}
-                                                {testResult.serverVersion && <p className="text-[11px] text-muted-foreground font-mono mt-1">إصدار السيرفر: {testResult.serverVersion} | زمن الاستجابة: {testResult.latencyMs}ms</p>}
-                                            </div>
-                                        </div>
-                                    </div>
-                                )}
                             </CardContent>
                             <CardFooter className="bg-muted/30 border-t py-4 flex justify-between items-center">
                                 <span className="text-xs text-muted-foreground">
-                                    تقوم هذه العملية بإنشاء قاعدة البيانات وتجهيز الهيكل كاملاً مع كود الفرع والمشغلات التلقائية.
+                                    تقوم هذه العملية بإنشاء قاعدة البيانات وتجهيز الهيكل كاملاً (70 جدولاً) مع كود الفرع والمشغلات التلقائية.
                                 </span>
                                 <Button 
                                     className="bg-amber-600 hover:bg-amber-700 text-white font-bold gap-2 shadow"

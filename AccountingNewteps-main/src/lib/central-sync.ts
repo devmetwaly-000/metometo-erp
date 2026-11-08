@@ -1,9 +1,13 @@
 /**
- * @fileOverview محرك المزامنة المركزي (Central Sync Engine)
- * يتولى الربط بين قاعدة البيانات المحلية للفرع وقاعدة البيانات المركزية للإدارة:
- * 1. اختبار الاتصال بالسيرفر المركزي (Test Connection).
- * 2. رفع حركات ومبيعات الفرع للسيرفر المركزي (Push Local -> Central).
- * 3. سحب وتحديث الأصناف والأسعار والإعدادات من السيرفر المركزي للفرع (Pull Central -> Local).
+ * @fileOverview محرك المزامنة المركزي المتقدم المبني على التوقيت الزمني وتتبع التعديلات (Timestamp & Watermark Sync Engine)
+ * يتولى الربط والتبادل الذكي بين قاعدة بيانات الفرع المحلية والسيرفر المركزي للإدارة:
+ * 1. تتبع التعديلات والتوقيتات الزمنية (UpdatedAt, LastSyncedAt, CreatedAt) على مستوى كل جدول.
+ * 2. دعم بيئة الفروع المتعددة (Multi-Branch Multi-Tenant): الإدارة تستقبل بيانات فروع متعددة (900, 901, ...)
+ *    ولا يتم الحكم على المزامنة بمجرد مقارنة عدد السطور الإجمالي بل بحساب سجلات الفرع نفسه وتواريخ التعديل.
+ * 3. المزامنة الثنائية (Bidirectional Synchronization):
+ *    - رفع الوثائق والحركات المعدلة والجديدة من الفرع للمركز (Push).
+ *    - سحب الأصناف والأسعار والمستخدمين والتعديلات المركزية من الإدارة للفرع (Pull).
+ * 4. مركز مصفوفة المزامنة اللحظية (Tables Sync Matrix) لجميع جداول النظام (69 جدولاً).
  */
 
 import sql from 'mssql';
@@ -31,16 +35,165 @@ const DEFAULT_CONFIG: CentralSyncConfig = {
     currentBranchId: '-OmnkFba_GsEb0rfdzyA',
     currentBranchCode: '900',
     currentBranchName: 'الفرع الرأيسي',
-    centralServerIp: 'localhost',
+    centralServerIp: '10.110.16.16',
     centralSqlPort: 1433,
     centralDatabase: 'MultiBranchPOS_Central_DB',
-    centralUsername: process.env.DB_USER || 'meto_pos',
-    centralPassword: process.env.DB_PASSWORD || 'MetoPosPass123!',
+    centralUsername: 'gmlogins',
+    centralPassword: 'retgomladb',
     autoSync: true,
     autoSyncIntervalMinutes: 5,
     lastSyncTime: null,
     lastSyncStatus: 'ready'
 };
+
+export type SyncDirection = 'push' | 'pull' | 'bidirectional';
+
+export interface TableSyncMeta {
+    name: string;
+    category: string;
+    direction: SyncDirection;
+    idColumn: string;
+    childTable?: string;
+    foreignKey?: string;
+}
+
+/**
+ * خريطة بيانات ومحددات جميع جداول النظام الـ 69
+ */
+export const TABLE_METADATA_MAP: Record<string, TableSyncMeta> = {
+    // 1. فواتير وعمليات (فواتير، مرتجعات، كاشير)
+    SalesInvoices: { name: 'فواتير المبيعات', category: 'فواتير وعمليات', direction: 'push', idColumn: 'Id', childTable: 'SalesInvoiceItems', foreignKey: 'InvoiceId' },
+    SalesInvoiceItems: { name: 'بنود فواتير المبيعات', category: 'فواتير وعمليات', direction: 'push', idColumn: 'Id' },
+    SalesReturns: { name: 'مردودات المبيعات', category: 'فواتير وعمليات', direction: 'push', idColumn: 'Id', childTable: 'SalesReturnItems', foreignKey: 'ReturnId' },
+    SalesReturnItems: { name: 'بنود مردودات المبيعات', category: 'فواتير وعمليات', direction: 'push', idColumn: 'Id' },
+    HeldInvoices: { name: 'الفواتير المعلقة بالكاشير', category: 'فواتير وعمليات', direction: 'push', idColumn: 'Id' },
+
+    // 2. مشتريات وموردين
+    PurchaseInvoices: { name: 'فواتير المشتريات', category: 'مشتريات وموردين', direction: 'push', idColumn: 'Id', childTable: 'PurchaseInvoiceItems', foreignKey: 'PurchaseInvoiceId' },
+    PurchaseInvoiceItems: { name: 'بنود فواتير المشتريات', category: 'مشتريات وموردين', direction: 'push', idColumn: 'Id' },
+    PurchaseReturns: { name: 'مردودات المشتريات', category: 'مشتريات وموردين', direction: 'push', idColumn: 'Id', childTable: 'PurchaseReturnItems', foreignKey: 'ReturnId' },
+    PurchaseReturnItems: { name: 'بنود مردودات المشتريات', category: 'مشتريات وموردين', direction: 'push', idColumn: 'Id' },
+    PurchaseOrders: { name: 'أوامر الشراء للموردين', category: 'مشتريات وموردين', direction: 'push', idColumn: 'Id' },
+    Suppliers: { name: 'سجل الموردين', category: 'مشتريات وموردين', direction: 'bidirectional', idColumn: 'Id' },
+    SupplierPayments: { name: 'سندات صرف الموردين', category: 'مشتريات وموردين', direction: 'push', idColumn: 'Id' },
+
+    // 3. عملاء ومبيعات
+    Customers: { name: 'سجل العملاء', category: 'عملاء ومبيعات', direction: 'bidirectional', idColumn: 'Id' },
+    CustomerPayments: { name: 'سندات قبض العملاء', category: 'عملاء ومبيعات', direction: 'push', idColumn: 'Id' },
+    CustomerVisits: { name: 'سجل زيارات العملاء', category: 'عملاء ومبيعات', direction: 'push', idColumn: 'Id' },
+
+    // 4. حسابات ومالية
+    CashAccounts: { name: 'الخزائن والحسابات البنكية', category: 'حسابات ومالية', direction: 'bidirectional', idColumn: 'Id' },
+    TreasuryTransactions: { name: 'حركات الخزينة والتحويلات', category: 'حسابات ومالية', direction: 'push', idColumn: 'Id' },
+    Expenses: { name: 'المصروفات التشغيلية', category: 'حسابات ومالية', direction: 'push', idColumn: 'Id' },
+    ExceptionalIncomes: { name: 'الإيرادات الاستثنائية', category: 'حسابات ومالية', direction: 'push', idColumn: 'Id' },
+    ProfitDistributions: { name: 'توزيعات الأرباح', category: 'حسابات ومالية', direction: 'push', idColumn: 'Id' },
+    Partners: { name: 'سجل الشركاء والمساهمين', category: 'حسابات ومالية', direction: 'bidirectional', idColumn: 'Id' },
+    PaymentMethods: { name: 'طرق الدفع والتحصيل', category: 'حسابات ومالية', direction: 'bidirectional', idColumn: 'Id' },
+
+    // 5. أصول وإهلاك
+    FixedAssets: { name: 'الأصول الثابتة', category: 'أصول وإهلاك', direction: 'bidirectional', idColumn: 'Id' },
+    DepreciationRecords: { name: 'قيود إهلاك الأصول', category: 'أصول وإهلاك', direction: 'push', idColumn: 'Id' },
+
+    // 6. مخازن وأصناف (بيانات رئيسية ومخزنية)
+    Items: { name: 'الأصناف والمنتجات', category: 'مخازن وأصناف', direction: 'bidirectional', idColumn: 'Id' },
+    ItemCategories: { name: 'تصنيفات ومجموعات الأصناف', category: 'مخازن وأصناف', direction: 'bidirectional', idColumn: 'Id' },
+    ItemSections: { name: 'أقسام الأصناف', category: 'مخازن وأصناف', direction: 'bidirectional', idColumn: 'Id' },
+    ItemGroups: { name: 'الفئات العامة للأصناف', category: 'مخازن وأصناف', direction: 'bidirectional', idColumn: 'Id' },
+    ItemSubCategories1: { name: 'تصنيفات فرعية 1 للأصناف', category: 'مخازن وأصناف', direction: 'bidirectional', idColumn: 'Id' },
+    ItemSubCategories2: { name: 'تصنيفات فرعية 2 للأصناف', category: 'مخازن وأصناف', direction: 'bidirectional', idColumn: 'Id' },
+    ItemColors: { name: 'ألوان وموديلات الأصناف', category: 'مخازن وأصناف', direction: 'bidirectional', idColumn: 'Id' },
+    ItemSizes: { name: 'مقاسات وأحجام الأصناف', category: 'مخازن وأصناف', direction: 'bidirectional', idColumn: 'Id' },
+    PriceChangeLogs: { name: 'سجل تعديلات الأسعار', category: 'مخازن وأصناف', direction: 'bidirectional', idColumn: 'Id' },
+    Warehouses: { name: 'المستودعات والفروع', category: 'مخازن وأصناف', direction: 'bidirectional', idColumn: 'Id' },
+    InventorySections: { name: 'قواطع وأقسام المستودع', category: 'مخازن وأصناف', direction: 'bidirectional', idColumn: 'Id' },
+    InventoryZones: { name: 'مناطق وأرفف التخزين', category: 'مخازن وأصناف', direction: 'bidirectional', idColumn: 'Id' },
+    StockInRecords: { name: 'أذون إضافة واستلام مخزني', category: 'مخازن وأصناف', direction: 'push', idColumn: 'Id', childTable: 'StockInRecordItems', foreignKey: 'StockInId' },
+    StockInRecordItems: { name: 'بنود أذون الإضافة المخزنية', category: 'مخازن وأصناف', direction: 'push', idColumn: 'Id' },
+    StockOutRecords: { name: 'أذون صرف وتسليم مخزني', category: 'مخازن وأصناف', direction: 'push', idColumn: 'Id' },
+    StockTransferRecords: { name: 'تحويلات المخزون بين الفروع', category: 'مخازن وأصناف', direction: 'push', idColumn: 'Id' },
+    StockAdjustmentRecords: { name: 'تسويات الجرد المخزني', category: 'مخازن وأصناف', direction: 'push', idColumn: 'Id', childTable: 'StockAdjustmentItems', foreignKey: 'AdjustmentId' },
+    StockAdjustmentItems: { name: 'بنود تسويات الجرد المخزني', category: 'مخازن وأصناف', direction: 'push', idColumn: 'Id' },
+    InventoryClosings: { name: 'تقفيلات الجرد الدوري', category: 'مخازن وأصناف', direction: 'push', idColumn: 'Id' },
+
+    // 7. توزيع ومندوبين
+    StockIssuesToReps: { name: 'صرف بضاعة لعهدة المندوبين', category: 'توزيع ومندوبين', direction: 'push', idColumn: 'Id' },
+    StockReturnsFromReps: { name: 'مرتجع بضاعة من عهدة المندوبين', category: 'توزيع ومندوبين', direction: 'push', idColumn: 'Id' },
+    RepRemittances: { name: 'توريدات نقدية المندوبين', category: 'توزيع ومندوبين', direction: 'push', idColumn: 'Id' },
+    Sellers: { name: 'البائعين والمسوقين', category: 'توزيع ومندوبين', direction: 'bidirectional', idColumn: 'Id' },
+    DeliveryStaff: { name: 'مناديب التوصيل والدليفري', category: 'توزيع ومندوبين', direction: 'bidirectional', idColumn: 'Id' },
+
+    // 8. موارد بشرية
+    Employees: { name: 'سجل الموظفين', category: 'موارد بشرية', direction: 'bidirectional', idColumn: 'Id' },
+    EmployeeAdvances: { name: 'سلف الموظفين', category: 'موارد بشرية', direction: 'push', idColumn: 'Id' },
+    EmployeeAdjustments: { name: 'بدلات وخصومات الموظفين', category: 'موارد بشرية', direction: 'push', idColumn: 'Id' },
+    PayrollRecords: { name: 'مسيرات الرواتب الشهرية', category: 'موارد بشرية', direction: 'push', idColumn: 'Id' },
+    GratuityDistributions: { name: 'توزيعات مكافأة نهاية الخدمة', category: 'موارد بشرية', direction: 'push', idColumn: 'Id' },
+    GratuityLogs: { name: 'سجل مكافآت وبقشيش الكاشير', category: 'موارد بشرية', direction: 'push', idColumn: 'Id' },
+
+    // 9. نقاط البيع
+    PosSessions: { name: 'جلسات ودورات نقاط البيع', category: 'نقاط البيع', direction: 'push', idColumn: 'Id' },
+    PosTerminals: { name: 'شاشات وأجهزة الكاشير', category: 'نقاط البيع', direction: 'bidirectional', idColumn: 'Id' },
+    PosAuditLogs: { name: 'سجل رقابة وتدقيق الكاشير', category: 'نقاط البيع', direction: 'push', idColumn: 'Id' },
+    Promotions: { name: 'العروض الترويجية والخصومات', category: 'نقاط البيع', direction: 'bidirectional', idColumn: 'Id' },
+    RestaurantTables: { name: 'طاولات وصالات المطعم', category: 'نقاط البيع', direction: 'bidirectional', idColumn: 'Id' },
+
+    // 10. إعدادات النظام ومستخدمين
+    BarcodeDesigns: { name: 'تصميمات ونماذج الباركود', category: 'إعدادات النظام', direction: 'bidirectional', idColumn: 'Id' },
+    Users: { name: 'المستخدمين وحسابات الدخول', category: 'إعدادات النظام', direction: 'bidirectional', idColumn: 'Id' },
+    Roles: { name: 'الأدوار ومصفوفة الصلاحيات', category: 'إعدادات النظام', direction: 'bidirectional', idColumn: 'Id' },
+    Licenses: { name: 'التراخيص والنسخ المرخصة', category: 'إعدادات النظام', direction: 'bidirectional', idColumn: 'Id' },
+    AppSettings: { name: 'إعدادات النظام والمتغيرات', category: 'إعدادات النظام', direction: 'bidirectional', idColumn: 'SettingKey' },
+    Counters: { name: 'عدادات الترقيم التلقائي', category: 'إعدادات النظام', direction: 'push', idColumn: 'Name' },
+    Targets: { name: 'الأهداف البيعية والعمولات', category: 'إعدادات النظام', direction: 'bidirectional', idColumn: 'Id' },
+    Requisitions: { name: 'طلبات الاحتياج والشراء', category: 'إعدادات النظام', direction: 'push', idColumn: 'Id' },
+    Notifications: { name: 'الإشعارات والتنبيهات', category: 'إعدادات النظام', direction: 'push', idColumn: 'Id' },
+    LoginHistory: { name: 'سجل الدخول والأمان', category: 'إعدادات النظام', direction: 'push', idColumn: 'Id' }
+};
+
+/**
+ * بنية عنصر مصفوفة المزامنة لكل جدول
+ */
+export interface TableSyncMatrixItem {
+    tableName: string;
+    displayName: string;
+    category: string;
+    direction: SyncDirection;
+
+    // تواريخ التعديل والمزامنة (Timestamps)
+    lastLocalModified: string | null;
+    lastSyncedAt: string | null;
+    lastCentralModified: string | null;
+
+    // أعداد السطور والتعديلات
+    localBranchRows: number;
+    pendingPushCount: number;
+    centralBranchRows: number | null;
+    centralTotalRows: number | null;
+    pendingPullCount: number;
+
+    // الحالة التفاعلية
+    syncState: 'synced' | 'pending_push' | 'pending_pull' | 'pending_both' | 'empty' | 'unreachable';
+    syncStateLabel: string;
+}
+
+export interface TablesSyncMatrixResponse {
+    centralConnected: boolean;
+    centralServer: string;
+    centralDatabase: string;
+    currentBranchCode: string;
+    currentBranchName: string;
+    lastSyncTimestamp: string | null;
+
+    // مؤشرات KPI الكلية
+    totalPendingPush: number;
+    totalPendingPull: number;
+    syncedTablesCount: number;
+    pendingTablesCount: number;
+    totalTablesCount: number;
+
+    tables: TableSyncMatrixItem[];
+}
 
 /**
  * جلب إعدادات السيرفر المركزي من قاعدة البيانات المحلية
@@ -94,13 +247,11 @@ export async function connectToCentral(config: CentralSyncConfig, targetDatabase
     let cleanServer = (config.centralServerIp || 'localhost').trim();
     let port = Number(config.centralSqlPort) || 1433;
 
-    // Handle "server:port" pattern if entered in IP field
     if (cleanServer.includes(':')) {
         const [hostPart, portPart] = cleanServer.split(':');
         cleanServer = hostPart.trim();
         port = parseInt(portPart, 10) || port;
     }
-    // Clean http:// or https:// if accidentally pasted
     cleanServer = cleanServer.replace(/^https?:\/\//i, '').replace(/\/$/, '');
 
     const centralSqlConfig: sql.config = {
@@ -113,7 +264,7 @@ export async function connectToCentral(config: CentralSyncConfig, targetDatabase
             encrypt: false,
             trustServerCertificate: true,
             enableArithAbort: true,
-            connectTimeout: 8000
+            connectTimeout: 9000
         },
         pool: {
             max: 5,
@@ -128,7 +279,7 @@ export async function connectToCentral(config: CentralSyncConfig, targetDatabase
 }
 
 /**
- * اختبار الاتصال بالسيرفر المركزي مع معالجة ذكية للأخطاء
+ * اختبار الاتصال بالسيرفر المركزي
  */
 export async function testCentralConnection(configOverride?: Partial<CentralSyncConfig>): Promise<{
     success: boolean;
@@ -142,7 +293,6 @@ export async function testCentralConnection(configOverride?: Partial<CentralSync
     const current = await getCentralConfig();
     const cleanOverride = { ...(configOverride || {}) };
     
-    // Fall back to saved or env password if empty
     if (!cleanOverride.centralPassword && current.centralPassword) {
         cleanOverride.centralPassword = current.centralPassword;
     }
@@ -152,7 +302,6 @@ export async function testCentralConnection(configOverride?: Partial<CentralSync
     let centralPool: sql.ConnectionPool | null = null;
 
     try {
-        // First try connecting to the specified database
         centralPool = await connectToCentral(config);
         const res = await centralPool.request().query('SELECT @@VERSION as version, DB_NAME() as dbName;');
         const latencyMs = Date.now() - startTime;
@@ -173,11 +322,8 @@ export async function testCentralConnection(configOverride?: Partial<CentralSync
         }
 
         const errMsg: string = err.message || '';
-
-        // Check if error is because the database does not exist on the server
         if (errMsg.toLowerCase().includes('cannot open database') || errMsg.includes('4060')) {
             try {
-                // Try connecting to master to verify server connection & credentials
                 const masterPool = await connectToCentral(config, 'master');
                 const masterRes = await masterPool.request().query('SELECT @@VERSION as version;');
                 const latencyMs = Date.now() - startTime;
@@ -189,18 +335,16 @@ export async function testCentralConnection(configOverride?: Partial<CentralSync
                     latencyMs,
                     serverVersion: masterRes.recordset[0]?.version?.split('\n')[0] || 'Microsoft SQL Server',
                     database: config.centralDatabase,
-                    message: `تم الاتصال بالسيرفر (${config.centralServerIp}) بنجاح! لكن قاعدة البيانات (${config.centralDatabase}) غير موجودة بعد. يمكنك إنشاؤها بنقرة واحدة من تبويب "تهيئة وإنشاء قاعدة البيانات".`
+                    message: `تم الاتصال بالسيرفر (${config.centralServerIp}) بنجاح! لكن قاعدة البيانات (${config.centralDatabase}) غير موجودة بعد.`
                 };
-            } catch {
-                // If connecting to master fails too, fall through to general error reporting
-            }
+            } catch {}
         }
 
         let userFriendlyError = errMsg;
         if (errMsg.toLowerCase().includes('failed to connect') || errMsg.toLowerCase().includes('timeout') || errMsg.toLowerCase().includes('etimedout')) {
-            userFriendlyError = `تعذر الاتصال بعنوان السيرفر (${config.centralServerIp}:${config.centralSqlPort}). تأكد من أن السيرفر يعمل وعنوان IP صحيح وتفعيل بروتوكول TCP/IP في SQL Server Configuration Manager وجدار الحماية.`;
+            userFriendlyError = `تعذر الاتصال بعنوان السيرفر (${config.centralServerIp}:${config.centralSqlPort}). تأكد من أن السيرفر يعمل وتفعيل TCP/IP وجدار الحماية.`;
         } else if (errMsg.toLowerCase().includes('login failed') || errMsg.toLowerCase().includes('elogin')) {
-            userFriendlyError = `فشل تسجيل الدخول للمستخدم (${config.centralUsername}). يرجى التأكد من اسم المستخدم وكلمة المرور وتفعيل نمط SQL Server and Windows Authentication (Mixed Mode).`;
+            userFriendlyError = `فشل تسجيل الدخول للمستخدم (${config.centralUsername}). يرجى التحقق من صحة كلمة المرور وتفعيل Mixed Mode في SQL Server.`;
         }
 
         return {
@@ -211,9 +355,193 @@ export async function testCentralConnection(configOverride?: Partial<CentralSync
 }
 
 /**
- * تشغيل دورة المزامنة الكاملة (رفع العمليات المحلية وتنزيل تحديثات الإدارة)
+ * استخراج مصفوفة المزامنة الدقيقة لجميع الجداول استناداً إلى الطابع الزمني وتتبع التعديلات (Sync Matrix)
  */
-export async function runFullSync(): Promise<{
+export async function getTablesSyncMatrix(): Promise<TablesSyncMatrixResponse> {
+    const localPool = await getDbPool();
+    const config = await getCentralConfig();
+    const branchCode = config.currentBranchCode || '900';
+
+    // 1. استعلام محلي موحد فائق السرعة لجلب إحصائيات التوقيت والتعديلات المعلقة
+    const localTableEntries = Object.keys(TABLE_METADATA_MAP);
+    const localUnionQueries = localTableEntries.map(table => `
+        SELECT 
+            '${table}' as tableName,
+            COUNT(*) as localRows,
+            SUM(CASE WHEN SyncStatus = 'pending' OR LastSyncedAt IS NULL OR (UpdatedAt > LastSyncedAt AND LastSyncedAt IS NOT NULL) THEN 1 ELSE 0 END) as pendingPush,
+            MAX(UpdatedAt) as lastLocalModified,
+            MAX(LastSyncedAt) as lastSyncedAt
+        FROM dbo.[${table}]
+    `).join(' UNION ALL ');
+
+    const localRes = await localPool.request().query(localUnionQueries);
+    const localDataMap = new Map<string, {
+        localRows: number;
+        pendingPush: number;
+        lastLocalModified: string | null;
+        lastSyncedAt: string | null;
+    }>();
+
+    for (const row of localRes.recordset) {
+        localDataMap.set(row.tableName, {
+            localRows: Number(row.localRows) || 0,
+            pendingPush: Number(row.pendingPush) || 0,
+            lastLocalModified: row.lastLocalModified ? new Date(row.lastLocalModified).toISOString() : null,
+            lastSyncedAt: row.lastSyncedAt ? new Date(row.lastSyncedAt).toISOString() : null
+        });
+    }
+
+    // 2. استعلام السيرفر المركزي لجلب إجمالي سطور الإدارة، سطور هذا الفرع، وآخر تاريخ تعديل
+    let centralConnected = false;
+    let centralPool: sql.ConnectionPool | null = null;
+    const centralDataMap = new Map<string, {
+        centralTotalRows: number;
+        centralBranchRows: number;
+        lastCentralModified: string | null;
+    }>();
+
+    try {
+        centralPool = await connectToCentral(config);
+        
+        // جلب قائمة الجداول الموجودة فعلياً في السيرفر المركزي
+        const tablesInCentralRes = await centralPool.request().query(`
+            SELECT TABLE_NAME FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_TYPE = 'BASE TABLE'
+        `);
+        const centralExistingTables = new Set(tablesInCentralRes.recordset.map(r => r.TABLE_NAME));
+
+        const centralValidTables = localTableEntries.filter(t => centralExistingTables.has(t));
+        if (centralValidTables.length > 0) {
+            const centralUnionQueries = centralValidTables.map(table => `
+                SELECT 
+                    '${table}' as tableName,
+                    COUNT(*) as centralTotalRows,
+                    SUM(CASE WHEN BranchCode = '${branchCode}' THEN 1 ELSE 0 END) as centralBranchRows,
+                    MAX(UpdatedAt) as lastCentralModified
+                FROM dbo.[${table}]
+            `).join(' UNION ALL ');
+
+            const centralRes = await centralPool.request().query(centralUnionQueries);
+            for (const row of centralRes.recordset) {
+                centralDataMap.set(row.tableName, {
+                    centralTotalRows: Number(row.centralTotalRows) || 0,
+                    centralBranchRows: Number(row.centralBranchRows) || 0,
+                    lastCentralModified: row.lastCentralModified ? new Date(row.lastCentralModified).toISOString() : null
+                });
+            }
+        }
+
+        centralConnected = true;
+        await centralPool.close();
+    } catch {
+        if (centralPool) {
+            try { await centralPool.close(); } catch {}
+        }
+        centralConnected = false;
+    }
+
+    // 3. تركيب المصفوفة وتحديد حالات المزامنة الدقيقة
+    let totalPendingPush = 0;
+    let totalPendingPull = 0;
+    let syncedTablesCount = 0;
+    let pendingTablesCount = 0;
+
+    const tables: TableSyncMatrixItem[] = localTableEntries.map(tableName => {
+        const meta = TABLE_METADATA_MAP[tableName];
+        const local = localDataMap.get(tableName) || {
+            localRows: 0,
+            pendingPush: 0,
+            lastLocalModified: null,
+            lastSyncedAt: null
+        };
+        const central = centralDataMap.get(tableName) || null;
+
+        totalPendingPush += local.pendingPush;
+
+        // حساب ما إذا كانت الإدارة تحتوي على تحديثات أحدث من آخر سحب للفرع
+        let pendingPullCount = 0;
+        if (central && (meta.direction === 'pull' || meta.direction === 'bidirectional')) {
+            if (central.lastCentralModified) {
+                if (!local.lastSyncedAt || new Date(central.lastCentralModified) > new Date(local.lastSyncedAt)) {
+                    // إذا كان تاريخ تعديل المركز أحدث من آخر مزامنة محلية
+                    pendingPullCount = Math.max(0, central.centralTotalRows - local.localRows);
+                    if (pendingPullCount === 0 && central.lastCentralModified !== local.lastLocalModified) {
+                        pendingPullCount = 1; // تعديل في السجلات القائمة
+                    }
+                }
+            }
+        }
+        totalPendingPull += pendingPullCount;
+
+        // حساب الحالة التفاعلية
+        let syncState: TableSyncMatrixItem['syncState'] = 'synced';
+        let syncStateLabel = 'متطابق ومتزامن ✅';
+
+        if (!centralConnected) {
+            syncState = 'unreachable';
+            syncStateLabel = 'السيرفر غير متصل ⚠️';
+        } else if (local.localRows === 0 && (!central || central.centralTotalRows === 0)) {
+            syncState = 'empty';
+            syncStateLabel = 'لا توجد بيانات ⚪';
+            syncedTablesCount++;
+        } else if (local.pendingPush > 0 && pendingPullCount > 0) {
+            syncState = 'pending_both';
+            syncStateLabel = 'تعديلات وسحب معلق 🔁';
+            pendingTablesCount++;
+        } else if (local.pendingPush > 0) {
+            syncState = 'pending_push';
+            syncStateLabel = `بانتظار الرفع (${local.pendingPush}) ⬆️`;
+            pendingTablesCount++;
+        } else if (pendingPullCount > 0) {
+            syncState = 'pending_pull';
+            syncStateLabel = `تحديثات جاهزة للسحب (${pendingPullCount}) ⬇️`;
+            pendingTablesCount++;
+        } else {
+            syncState = 'synced';
+            syncStateLabel = 'متطابق ومحدث ✅';
+            syncedTablesCount++;
+        }
+
+        return {
+            tableName,
+            displayName: meta.name,
+            category: meta.category,
+            direction: meta.direction,
+            lastLocalModified: local.lastLocalModified,
+            lastSyncedAt: local.lastSyncedAt,
+            lastCentralModified: central?.lastCentralModified || null,
+            localBranchRows: local.localRows,
+            pendingPushCount: local.pendingPush,
+            centralBranchRows: central ? central.centralBranchRows : null,
+            centralTotalRows: central ? central.centralTotalRows : null,
+            pendingPullCount,
+            syncState,
+            syncStateLabel
+        };
+    });
+
+    return {
+        centralConnected,
+        centralServer: `${config.centralServerIp}:${config.centralSqlPort}`,
+        centralDatabase: config.centralDatabase,
+        currentBranchCode: branchCode,
+        currentBranchName: config.currentBranchName || 'الفرع الرأيسي',
+        lastSyncTimestamp: config.lastSyncTime || null,
+        totalPendingPush,
+        totalPendingPull,
+        syncedTablesCount,
+        pendingTablesCount,
+        totalTablesCount: tables.length,
+        tables
+    };
+}
+
+/**
+ * تشغيل دورة المزامنة الذكية ثنائية الاتجاه المعتمدة على التوقيت الزمني (Bidirectional Timestamp Sync)
+ */
+export async function runFullSync(options?: {
+    mode?: 'all' | 'push' | 'pull';
+    targetTable?: string;
+}): Promise<{
     success: boolean;
     pushedCount: number;
     pulledCount: number;
@@ -222,6 +550,7 @@ export async function runFullSync(): Promise<{
 }> {
     const localPool = await getDbPool();
     const config = await getCentralConfig();
+    const mode = options?.mode || 'all';
 
     let centralPool: sql.ConnectionPool | null = null;
     let totalPushed = 0;
@@ -231,200 +560,236 @@ export async function runFullSync(): Promise<{
         await saveCentralConfig({ lastSyncStatus: 'in_progress' });
         centralPool = await connectToCentral(config);
 
-        // الجداول المراد رفعها من الفرع للمركز (Transactional Documents & Branch Master Data)
-        const tablesToPush = [
-            'Warehouses',
-            'CashAccounts',
-            'Customers',
-            'Suppliers',
-            'SalesInvoices',
-            'SalesReturns',
-            'PurchaseInvoices',
-            'PurchaseReturns',
-            'CustomerPayments',
-            'SupplierPayments',
-            'Expenses',
-            'ExceptionalIncomes',
-            'TreasuryTransactions',
-            'StockInRecords',
-            'StockOutRecords',
-            'StockAdjustmentRecords',
-            'StockTransferRecords',
-            'StockIssuesToReps',
-            'StockReturnsFromReps',
-            'RepRemittances',
-            'EmployeeAdvances',
-            'PayrollRecords',
-            'ProfitDistributions',
-            'GratuityDistributions',
-            'GratuityLogs',
-            'InventoryClosings',
-            'PosSessions',
-            'PosAuditLogs',
-            'CustomerVisits',
-            'LoginHistory',
-            'BarcodeDesigns',
-            'Counters',
-            'AppSettings'
-        ];
+        const tableEntries = Object.entries(TABLE_METADATA_MAP).filter(([tableName]) => {
+            if (options?.targetTable) return tableName === options.targetTable;
+            return true;
+        });
 
-        for (const tableName of tablesToPush) {
-            try {
-                const idField = (tableName === 'AppSettings') ? 'SettingKey' : 'Id';
+        // -------------------------------------------------------------
+        // المرحلة 1: رفع التعديلات والحركات من الفرع إلى السيرفر المركزي (Push)
+        // -------------------------------------------------------------
+        if (mode === 'all' || mode === 'push') {
+            const pushTables = tableEntries.filter(([_, meta]) => meta.direction === 'push' || meta.direction === 'bidirectional');
 
-                // جلب السجلات غير المزامنة من قاعدة بيانات الفرع
-                const pendingRes = await localPool.request()
-                    .input('BranchCode', sql.NVarChar(50), config.currentBranchCode)
-                    .query(`
-                        SELECT TOP 200 * FROM dbo.[${tableName}]
-                        WHERE (SyncStatus = 'pending' OR LastSyncedAt IS NULL OR SyncStatus IS NULL)
-                          AND (BranchCode = @BranchCode OR BranchCode IS NULL)
-                        ORDER BY [${idField}]
-                    `);
+            for (const [tableName, meta] of pushTables) {
+                try {
+                    const idCol = meta.idColumn;
 
-                const rows = pendingRes.recordset;
-                if (rows.length > 0) {
-                    // فحص أعمدة الجدول الموجودة فعلياً في السيرفر المركزي
-                    const centralColsRes = await centralPool.request()
-                        .input('Tbl', sql.NVarChar(128), tableName)
-                        .query(`SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = @Tbl`);
-                    const centralColSet = new Set(centralColsRes.recordset.map(r => r.COLUMN_NAME.toLowerCase()));
-
-                    // محاذاة تلقائية لأي أعمدة ناقصة في السيرفر المركزي على الطاير
-                    for (const col of Object.keys(rows[0])) {
-                        if (!centralColSet.has(col.toLowerCase())) {
-                            try {
-                                await centralPool.request().query(`ALTER TABLE dbo.[${tableName}] ADD [${col}] NVARCHAR(MAX) NULL;`);
-                                centralColSet.add(col.toLowerCase());
-                            } catch {}
-                        }
-                    }
-
-                    for (const row of rows) {
-                        const idVal = row[idField];
-                        if (!idVal) continue;
-
-                        // التأكد من وضع كود واسم الفرع
-                        row.BranchCode = row.BranchCode || config.currentBranchCode;
-                        row.BranchName = row.BranchName || config.currentBranchName;
-                        row.SyncStatus = 'synced';
-                        row.LastSyncedAt = new Date();
-
-                        // بناء استعلام الحفظ في السيرفر المركزي للأعمدة المتوافقة
-                        const colNames = Object.keys(row).filter(c => 
-                            c !== 'SyncStatus' && c !== 'LastSyncedAt' && c !== 'BranchCode' && c !== 'BranchName' &&
-                            centralColSet.has(c.toLowerCase())
-                        );
-
-                        const insertCols = [...colNames, 'BranchCode', 'BranchName', 'SyncStatus', 'LastSyncedAt'].map(c => `[${c}]`).join(', ');
-                        const paramCols = [...colNames.map(c => `@${c}`), `'${config.currentBranchCode}'`, `N'${config.currentBranchName}'`, `'synced'`, 'GETDATE()'].join(', ');
-                        const updateSet = colNames.filter(c => c !== idField).map(c => `[${c}] = @${c}`).join(', ');
-
-                        const centralReq = centralPool.request();
-                        for (const col of colNames) {
-                            let val = row[col] === undefined ? null : row[col];
-                            if (tableName === 'Expenses' && col === 'ExpenseType' && !val) {
-                                val = 'عام';
-                            }
-                            centralReq.input(col, val);
-                        }
-
-                        await centralReq.query(`
-                            IF NOT EXISTS (SELECT 1 FROM dbo.[${tableName}] WHERE [${idField}] = @${idField})
-                                INSERT INTO dbo.[${tableName}] (${insertCols}) VALUES (${paramCols});
-                            ELSE
-                                UPDATE dbo.[${tableName}]
-                                SET ${updateSet}, [BranchCode] = '${config.currentBranchCode}', [BranchName] = N'${config.currentBranchName}', [SyncStatus] = 'synced', [LastSyncedAt] = GETDATE()
-                                WHERE [${idField}] = @${idField};
+                    // فحص السجلات المعدلة أو التي لم تزامن بعد استناداً للتوقيت وحالة المزامنة
+                    const pendingRes = await localPool.request()
+                        .input('BranchCode', sql.NVarChar(50), config.currentBranchCode)
+                        .query(`
+                            SELECT TOP 300 * FROM dbo.[${tableName}]
+                            WHERE (SyncStatus = 'pending' OR LastSyncedAt IS NULL OR (UpdatedAt > LastSyncedAt AND LastSyncedAt IS NOT NULL))
+                              AND (BranchCode = @BranchCode OR BranchCode IS NULL)
+                            ORDER BY [UpdatedAt] ASC
                         `);
 
-                        // تعليم السجل في الفرع بأنه متزامن
-                        await localPool.request()
-                            .input('IdVal', sql.NVarChar(128), idVal)
-                            .query(`UPDATE dbo.[${tableName}] SET SyncStatus = 'synced', LastSyncedAt = GETDATE() WHERE [${idField}] = @IdVal;`);
+                    const rows = pendingRes.recordset;
+                    if (rows.length > 0) {
+                        // استكشاف أعمدة الجدول في السيرفر المركزي
+                        const centralColsRes = await centralPool.request()
+                            .input('Tbl', sql.NVarChar(128), tableName)
+                            .query(`SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = @Tbl`);
+                        const centralColSet = new Set(centralColsRes.recordset.map(r => r.COLUMN_NAME.toLowerCase()));
 
-                        // مزامنة بنود وأصناف الوثيقة التابعة تلقائياً (Child Items Synchronization)
-                        const childTableMap: Record<string, { table: string; foreignKey: string }> = {
-                            SalesInvoices: { table: 'SalesInvoiceItems', foreignKey: 'InvoiceId' },
-                            SalesReturns: { table: 'SalesReturnItems', foreignKey: 'ReturnId' },
-                            PurchaseInvoices: { table: 'PurchaseInvoiceItems', foreignKey: 'PurchaseInvoiceId' },
-                            PurchaseReturns: { table: 'PurchaseReturnItems', foreignKey: 'ReturnId' },
-                            StockInRecords: { table: 'StockInRecordItems', foreignKey: 'StockInId' },
-                            StockAdjustmentRecords: { table: 'StockAdjustmentItems', foreignKey: 'AdjustmentId' }
-                        };
-
-                        const childConfig = childTableMap[tableName];
-                        if (childConfig) {
-                            try {
-                                const childRowsRes = await localPool.request()
-                                    .input('ParentId', sql.NVarChar(64), row.Id)
-                                    .query(`SELECT * FROM dbo.[${childConfig.table}] WHERE [${childConfig.foreignKey}] = @ParentId`);
-
-                                if (childRowsRes.recordset.length > 0) {
-                                    // حذف البنود القديمة في المركز لمنع تكرارها عند التعديل
-                                    await centralPool.request()
-                                        .input('ParentId', sql.NVarChar(64), row.Id)
-                                        .query(`DELETE FROM dbo.[${childConfig.table}] WHERE [${childConfig.foreignKey}] = @ParentId`);
-
-                                    // إدراج البنود المحدثة
-                                    for (const cRow of childRowsRes.recordset) {
-                                        const cCols = Object.keys(cRow).filter(k => k !== 'Id' && k !== 'SyncStatus' && k !== 'LastSyncedAt');
-                                        const cInsert = cCols.join(', ');
-                                        const cParams = cCols.map(k => `@${k}`).join(', ');
-
-                                        const cReq = centralPool.request();
-                                        for (const k of cCols) {
-                                            cReq.input(k, cRow[k] === undefined ? null : cRow[k]);
-                                        }
-                                        await cReq.query(`
-                                            INSERT INTO dbo.[${childConfig.table}] (${cInsert}, BranchCode, BranchName, LastSyncedAt)
-                                            VALUES (${cParams}, '${config.currentBranchCode}', N'${config.currentBranchName}', GETDATE());
-                                        `);
-                                    }
-                                }
-                            } catch (cErr: any) {
-                                console.warn(`Sync child items warning on ${childConfig.table}:`, cErr.message);
+                        // محاذاة أي أعمدة مفقودة في السيرفر المركزي تلقائياً
+                        for (const col of Object.keys(rows[0])) {
+                            if (!centralColSet.has(col.toLowerCase())) {
+                                try {
+                                    await centralPool.request().query(`ALTER TABLE dbo.[${tableName}] ADD [${col}] NVARCHAR(MAX) NULL;`);
+                                    centralColSet.add(col.toLowerCase());
+                                } catch {}
                             }
                         }
 
-                        totalPushed++;
+                        for (const row of rows) {
+                            const idVal = row[idCol];
+                            if (idVal === undefined || idVal === null) continue;
+
+                            row.BranchCode = row.BranchCode || config.currentBranchCode;
+                            row.BranchName = row.BranchName || config.currentBranchName;
+                            row.SyncStatus = 'synced';
+                            row.LastSyncedAt = new Date();
+
+                            const colNames = Object.keys(row).filter(c => 
+                                c !== 'SyncStatus' && c !== 'LastSyncedAt' && c !== 'BranchCode' && c !== 'BranchName' &&
+                                centralColSet.has(c.toLowerCase())
+                            );
+
+                            const insertCols = [...colNames, 'BranchCode', 'BranchName', 'SyncStatus', 'LastSyncedAt'].map(c => `[${c}]`).join(', ');
+                            const paramCols = [...colNames.map(c => `@${c}`), `'${config.currentBranchCode}'`, `N'${config.currentBranchName}'`, `'synced'`, 'SYSUTCDATETIME()'].join(', ');
+                            const updateSet = colNames.filter(c => c !== idCol).map(c => `[${c}] = @${c}`).join(', ');
+
+                            const centralReq = centralPool.request();
+                            for (const col of colNames) {
+                                let val = row[col] === undefined ? null : row[col];
+                                if (tableName === 'Expenses' && col === 'ExpenseType' && !val) {
+                                    val = 'عام';
+                                }
+                                centralReq.input(col, val);
+                            }
+
+                            // حفظ الوثيقة أو الحركة في السيرفر المركزي (Upsert)
+                            await centralReq.query(`
+                                IF NOT EXISTS (SELECT 1 FROM dbo.[${tableName}] WHERE [${idCol}] = @${idCol})
+                                    INSERT INTO dbo.[${tableName}] (${insertCols}) VALUES (${paramCols});
+                                ELSE
+                                    UPDATE dbo.[${tableName}]
+                                    SET ${updateSet}, [BranchCode] = '${config.currentBranchCode}', [BranchName] = N'${config.currentBranchName}', [SyncStatus] = 'synced', [LastSyncedAt] = SYSUTCDATETIME()
+                                    WHERE [${idCol}] = @${idCol};
+                            `);
+
+                            // مزامنة البنود التابعة للوثيقة إن وجدت (Line items)
+                            if (meta.childTable && meta.foreignKey) {
+                                try {
+                                    const childRowsRes = await localPool.request()
+                                        .input('ParentId', sql.NVarChar(128), idVal)
+                                        .query(`SELECT * FROM dbo.[${meta.childTable}] WHERE [${meta.foreignKey}] = @ParentId`);
+
+                                    if (childRowsRes.recordset.length > 0) {
+                                        // حذف البنود القديمة في المركز
+                                        await centralPool.request()
+                                            .input('ParentId', sql.NVarChar(128), idVal)
+                                            .query(`DELETE FROM dbo.[${meta.childTable}] WHERE [${meta.foreignKey}] = @ParentId`);
+
+                                        for (const cRow of childRowsRes.recordset) {
+                                            const cCols = Object.keys(cRow).filter(k => k !== 'Id' && k !== 'SyncStatus' && k !== 'LastSyncedAt');
+                                            const cInsert = cCols.map(c => `[${c}]`).join(', ');
+                                            const cParams = cCols.map(k => `@${k}`).join(', ');
+
+                                            const cReq = centralPool.request();
+                                            for (const k of cCols) {
+                                                cReq.input(k, cRow[k] === undefined ? null : cRow[k]);
+                                            }
+                                            await cReq.query(`
+                                                INSERT INTO dbo.[${meta.childTable}] (${cInsert}, [BranchCode], [BranchName], [LastSyncedAt])
+                                                VALUES (${cParams}, '${config.currentBranchCode}', N'${config.currentBranchName}', SYSUTCDATETIME());
+                                            `);
+                                        }
+                                    }
+                                } catch (cErr: any) {
+                                    console.warn(`Child sync error on ${meta.childTable}:`, cErr.message);
+                                }
+                            }
+
+                            // تعليم السجل المحلي بأنه متزامن وتحديث توقيت المزامنة
+                            await localPool.request()
+                                .input('IdVal', sql.NVarChar(128), idVal)
+                                .query(`
+                                    UPDATE dbo.[${tableName}] 
+                                    SET SyncStatus = 'synced', LastSyncedAt = SYSUTCDATETIME() 
+                                    WHERE [${idCol}] = @IdVal;
+                                `);
+
+                            totalPushed++;
+                        }
+
+                        // تسجيل نقطة المزامنة العالية في SyncWatermarks
+                        await localPool.request()
+                            .input('Tbl', sql.NVarChar(128), tableName)
+                            .query(`
+                                IF NOT EXISTS (SELECT 1 FROM dbo.SyncWatermarks WHERE TableName = @Tbl)
+                                    INSERT INTO dbo.SyncWatermarks (TableName, LastPushWatermark, LastSyncCheckAt, SyncDirection)
+                                    VALUES (@Tbl, SYSUTCDATETIME(), SYSUTCDATETIME(), 'push');
+                                ELSE
+                                    UPDATE dbo.SyncWatermarks 
+                                    SET LastPushWatermark = SYSUTCDATETIME(), LastSyncCheckAt = SYSUTCDATETIME()
+                                    WHERE TableName = @Tbl;
+                            `);
                     }
+                } catch (pushErr: any) {
+                    console.warn(`Sync push error on table ${tableName}:`, pushErr.message);
                 }
-            } catch (tableErr: any) {
-                console.warn(`Sync push warning on table ${tableName}:`, tableErr.message);
             }
         }
 
-        // الجداول المراد سحبها من المركز للفرع (Master Catalog Updates)
-        const tablesToPull = ['Items', 'ItemCategories', 'ItemSections', 'ItemGroups', 'AppSettings', 'Promotions'];
-        for (const tableName of tablesToPull) {
-            try {
-                const centralItemsRes = await centralPool.request().query(`SELECT * FROM dbo.[${tableName}]`);
-                for (const item of centralItemsRes.recordset) {
-                    const colNames = Object.keys(item).filter(c => c !== 'SyncStatus' && c !== 'LastSyncedAt');
-                    const localReq = localPool.request();
-                    for (const col of colNames) {
-                        localReq.input(col, item[col] === undefined ? null : item[col]);
-                    }
+        // -------------------------------------------------------------
+        // المرحلة 2: سحب التحديثات المركزية من الإدارة إلى الفرع (Pull)
+        // -------------------------------------------------------------
+        if (mode === 'all' || mode === 'pull') {
+            const pullTables = tableEntries.filter(([_, meta]) => meta.direction === 'pull' || meta.direction === 'bidirectional');
 
-                    if (item.Id) {
-                        const insertCols = colNames.join(', ');
-                        const paramCols = colNames.map(c => `@${c}`).join(', ');
-                        const updateSet = colNames.filter(c => c !== 'Id').map(c => `target.[${c}] = source.[${c}]`).join(', ');
+            for (const [tableName, meta] of pullTables) {
+                try {
+                    const idCol = meta.idColumn;
 
-                        await localReq.query(`
-                            IF NOT EXISTS (SELECT 1 FROM dbo.[${tableName}] WHERE Id = @Id)
-                                INSERT INTO dbo.[${tableName}] (${insertCols}) VALUES (${paramCols});
-                            ELSE
-                                UPDATE dbo.[${tableName}]
-                                SET ${colNames.filter(c => c !== 'Id').map(c => `[${c}] = @${c}`).join(', ')}
-                                WHERE Id = @Id;
-                        `);
-                        totalPulled++;
+                    // جلب آخر نقطة سحب مخزنة للجدول
+                    const wmRes = await localPool.request()
+                        .input('Tbl', sql.NVarChar(128), tableName)
+                        .query(`SELECT LastPullWatermark FROM dbo.SyncWatermarks WHERE TableName = @Tbl`);
+                    const lastPullWatermark = wmRes.recordset[0]?.LastPullWatermark || null;
+
+                    // جلب التحديثات الجديدة من السيرفر المركزي استناداً إلى UpdatedAt
+                    let centralQuery = `SELECT * FROM dbo.[${tableName}]`;
+                    const centralReq = centralPool.request();
+                    if (lastPullWatermark) {
+                        centralReq.input('Watermark', sql.DateTime2, lastPullWatermark);
+                        centralQuery += ` WHERE UpdatedAt > @Watermark`;
                     }
+                    centralQuery += ` ORDER BY UpdatedAt ASC`;
+
+                    const centralRes = await centralReq.query(centralQuery);
+                    const centralRows = centralRes.recordset;
+
+                    if (centralRows.length > 0) {
+                        let maxCentralUpdatedAt: Date | null = null;
+
+                        for (const row of centralRows) {
+                            const idVal = row[idCol];
+                            if (!idVal) continue;
+
+                            // تخطي السجلات التي قام هذا الفرع نفسه برفعها لمنع التكرار الدائري
+                            if (row.BranchCode === config.currentBranchCode && row.LastSyncedAt) {
+                                continue;
+                            }
+
+                            if (row.UpdatedAt && (!maxCentralUpdatedAt || new Date(row.UpdatedAt) > maxCentralUpdatedAt)) {
+                                maxCentralUpdatedAt = new Date(row.UpdatedAt);
+                            }
+
+                            const colNames = Object.keys(row).filter(c => c !== 'SyncStatus' && c !== 'LastSyncedAt');
+                            const insertCols = colNames.map(c => `[${c}]`).join(', ');
+                            const paramCols = colNames.map(c => `@${c}`).join(', ');
+                            const updateSet = colNames.filter(c => c !== idCol).map(c => `[${c}] = @${c}`).join(', ');
+
+                            const localReq = localPool.request();
+                            for (const c of colNames) {
+                                localReq.input(c, row[c] === undefined ? null : row[c]);
+                            }
+
+                            await localReq.query(`
+                                IF NOT EXISTS (SELECT 1 FROM dbo.[${tableName}] WHERE [${idCol}] = @${idCol})
+                                    INSERT INTO dbo.[${tableName}] (${insertCols}, SyncStatus, LastSyncedAt)
+                                    VALUES (${paramCols}, 'synced', SYSUTCDATETIME());
+                                ELSE
+                                    UPDATE dbo.[${tableName}]
+                                    SET ${updateSet}, SyncStatus = 'synced', LastSyncedAt = SYSUTCDATETIME()
+                                    WHERE [${idCol}] = @${idCol};
+                            `);
+
+                            totalPulled++;
+                        }
+
+                        // تحديث نقطة السحب في SyncWatermarks
+                        if (maxCentralUpdatedAt) {
+                            await localPool.request()
+                                .input('Tbl', sql.NVarChar(128), tableName)
+                                .input('NewWatermark', sql.DateTime2, maxCentralUpdatedAt)
+                                .query(`
+                                    IF NOT EXISTS (SELECT 1 FROM dbo.SyncWatermarks WHERE TableName = @Tbl)
+                                        INSERT INTO dbo.SyncWatermarks (TableName, LastPullWatermark, LastSyncCheckAt, SyncDirection)
+                                        VALUES (@Tbl, @NewWatermark, SYSUTCDATETIME(), 'pull');
+                                    ELSE
+                                        UPDATE dbo.SyncWatermarks 
+                                        SET LastPullWatermark = @NewWatermark, LastSyncCheckAt = SYSUTCDATETIME()
+                                        WHERE TableName = @Tbl;
+                                `);
+                        }
+                    }
+                } catch (pullErr: any) {
+                    console.warn(`Sync pull error on table ${tableName}:`, pullErr.message);
                 }
-            } catch (pullErr: any) {
-                console.warn(`Sync pull warning on table ${tableName}:`, pullErr.message);
             }
         }
 
@@ -464,203 +829,9 @@ export async function runFullSync(): Promise<{
     }
 }
 
-export interface TableRowComparison {
-    tableName: string;
-    displayName: string;
-    category: string;
-    branchRows: number;
-    centralRows: number | null;
-    diff: number;
-    status: 'synced' | 'pending' | 'central_ahead' | 'empty' | 'unreachable';
+/**
+ * دالة مساعدة متوافقة مع الواجهات السابقة
+ */
+export async function getTablesRowCountsComparison() {
+    return await getTablesSyncMatrix();
 }
-
-export const TABLE_METADATA_MAP: Record<string, { name: string; category: string }> = {
-    SalesInvoices: { name: 'فواتير المبيعات', category: 'فواتير وعمليات' },
-    SalesInvoiceItems: { name: 'بنود فواتير المبيعات', category: 'فواتير وعمليات' },
-    SalesReturns: { name: 'مردودات المبيعات', category: 'فواتير وعمليات' },
-    SalesReturnItems: { name: 'بنود مردودات المبيعات', category: 'فواتير وعمليات' },
-    PurchaseInvoices: { name: 'فواتير المشتريات', category: 'مشتريات وموردين' },
-    PurchaseInvoiceItems: { name: 'بنود فواتير المشتريات', category: 'مشتريات وموردين' },
-    PurchaseReturns: { name: 'مردودات المشتريات', category: 'مشتريات وموردين' },
-    PurchaseReturnItems: { name: 'بنود مردودات المشتريات', category: 'مشتريات وموردين' },
-    PurchaseOrders: { name: 'أوامر الشراء للموردين', category: 'مشتريات وموردين' },
-    Suppliers: { name: 'بيانات الموردين', category: 'مشتريات وموردين' },
-    SupplierPayments: { name: 'سندات صرف الموردين', category: 'حسابات ومالية' },
-    Customers: { name: 'سجل العملاء', category: 'عملاء ومبيعات' },
-    CustomerPayments: { name: 'سندات قبض العملاء', category: 'حسابات ومالية' },
-    CustomerVisits: { name: 'سجل زيارات العملاء', category: 'عملاء ومبيعات' },
-    Expenses: { name: 'المصروفات التشغيلية', category: 'حسابات ومالية' },
-    ExceptionalIncomes: { name: 'الإيرادات الاستثنائية', category: 'حسابات ومالية' },
-    CashAccounts: { name: 'الخزائن والحسابات البنكية', category: 'حسابات ومالية' },
-    TreasuryTransactions: { name: 'حركات الخزينة والتحويلات', category: 'حسابات ومالية' },
-    ProfitDistributions: { name: 'توزيعات الأرباح', category: 'حسابات ومالية' },
-    Partners: { name: 'سجل الشركاء', category: 'حسابات ومالية' },
-    PaymentMethods: { name: 'طرق الدفع والتحصيل', category: 'حسابات ومالية' },
-    FixedAssets: { name: 'الأصول الثابتة', category: 'أصول وإهلاك' },
-    DepreciationRecords: { name: 'قيود إهلاك الأصول', category: 'أصول وإهلاك' },
-    Items: { name: 'الأصناف والمنتجات', category: 'مخازن وأصناف' },
-    ItemCategories: { name: 'تصنيفات ومجموعات الأصناف', category: 'مخازن وأصناف' },
-    ItemSections: { name: 'أقسام الأصناف', category: 'مخازن وأصناف' },
-    ItemGroups: { name: 'الفئات العامة للأصناف', category: 'مخازن وأصناف' },
-    ItemSubCategories1: { name: 'تصنيفات فرعية 1 للأصناف', category: 'مخازن وأصناف' },
-    ItemSubCategories2: { name: 'تصنيفات فرعية 2 للأصناف', category: 'مخازن وأصناف' },
-    ItemColors: { name: 'ألوان وموديلات الأصناف', category: 'مخازن وأصناف' },
-    ItemSizes: { name: 'مقاسات وأحجام الأصناف', category: 'مخازن وأصناف' },
-    PriceChangeLogs: { name: 'سجل تعديلات الأسعار', category: 'مخازن وأصناف' },
-    Warehouses: { name: 'المستودعات والفروع', category: 'مخازن وأصناف' },
-    InventorySections: { name: 'قواطع وأقسام المستودع', category: 'مخازن وأصناف' },
-    InventoryZones: { name: 'مناطق وأرفف التخزين', category: 'مخازن وأصناف' },
-    StockInRecords: { name: 'أذون إضافة واستلام مخزني', category: 'مخازن وأصناف' },
-    StockInRecordItems: { name: 'بنود أذون الإضافة المخزنية', category: 'مخازن وأصناف' },
-    StockOutRecords: { name: 'أذون صرف وتسليم مخزني', category: 'مخازن وأصناف' },
-    StockTransferRecords: { name: 'تحويلات المخزون بين الفروع', category: 'مخازن وأصناف' },
-    StockAdjustmentRecords: { name: 'تسويات الجرد المخزني', category: 'مخازن وأصناف' },
-    StockAdjustmentItems: { name: 'بنود تسويات الجرد المخزني', category: 'مخازن وأصناف' },
-    InventoryClosings: { name: 'تقفيلات الجرد الدوري', category: 'مخازن وأصناف' },
-    StockIssuesToReps: { name: 'صرف بضاعة لعهدة المندوبين', category: 'توزيع ومندوبين' },
-    StockReturnsFromReps: { name: 'مرتجع بضاعة من عهدة المندوبين', category: 'توزيع ومندوبين' },
-    RepRemittances: { name: 'توريدات نقدية المندوبين', category: 'توزيع ومندوبين' },
-    Sellers: { name: 'البائعين والمسوقين', category: 'توزيع ومندوبين' },
-    DeliveryStaff: { name: 'مناديب التوصيل والدليفري', category: 'توزيع ومندوبين' },
-    Employees: { name: 'سجل الموظفين', category: 'موارد بشرية' },
-    EmployeeAdvances: { name: 'سلف الموظفين', category: 'موارد بشرية' },
-    EmployeeAdjustments: { name: 'بدلات وخصومات الموظفين', category: 'موارد بشرية' },
-    PayrollRecords: { name: 'مسيرات الرواتب الشهرية', category: 'موارد بشرية' },
-    GratuityDistributions: { name: 'توزيعات مكافأة نهاية الخدمة', category: 'موارد بشرية' },
-    GratuityLogs: { name: 'سجل مكافآت وبقشيش الكاشير', category: 'موارد بشرية' },
-    PosSessions: { name: 'جلسات ودورات نقاط البيع', category: 'نقاط البيع' },
-    PosTerminals: { name: 'شاشات وأجهزة الكاشير', category: 'نقاط البيع' },
-    PosAuditLogs: { name: 'سجل رقابة وتدقيق الكاشير', category: 'نقاط البيع' },
-    HeldInvoices: { name: 'الفواتير المعلقة بالكاشير', category: 'نقاط البيع' },
-    Promotions: { name: 'العروض الترويجية والخصومات', category: 'نقاط البيع' },
-    RestaurantTables: { name: 'طاولات وصالات المطعم', category: 'نقاط البيع' },
-    BarcodeDesigns: { name: 'تصميمات ونماذج الباركود', category: 'إعدادات النظام' },
-    Users: { name: 'المستخدمين وحسابات النظام', category: 'إعدادات النظام' },
-    Roles: { name: 'الأدوار والصلاحيات', category: 'إعدادات النظام' },
-    Licenses: { name: 'التراخيص والنسخ', category: 'إعدادات النظام' },
-    AppSettings: { name: 'إعدادات النظام والمتغيرات', category: 'إعدادات النظام' },
-    Counters: { name: 'عدادات الترقيم التلقائي', category: 'إعدادات النظام' },
-    Targets: { name: 'الأهداف البيعية والعمولات', category: 'إعدادات النظام' },
-    Requisitions: { name: 'طلبات الاحتياج والشراء', category: 'إعدادات النظام' },
-    Notifications: { name: 'الإشعارات والتنبيهات', category: 'إعدادات النظام' },
-    LoginHistory: { name: 'سجل الدخول والأمان', category: 'إعدادات النظام' }
-};
-
-export async function getTablesRowCountsComparison(): Promise<{
-    centralConnected: boolean;
-    centralDatabase: string;
-    totalBranchRows: number;
-    totalCentralRows: number;
-    syncedTablesCount: number;
-    diffTablesCount: number;
-    tables: TableRowComparison[];
-}> {
-    const localPool = await getDbPool();
-    const config = await getCentralConfig();
-
-    // 1. Fetch Local DB Row Counts via DMV
-    const localRes = await localPool.request().query(`
-        SELECT t.name as TableName, SUM(p.rows) as RowCounts 
-        FROM sys.tables t 
-        JOIN sys.partitions p ON t.object_id = p.object_id 
-        WHERE p.index_id IN (0, 1) AND t.is_ms_shipped = 0 
-        GROUP BY t.name 
-        ORDER BY t.name
-    `);
-
-    const localMap = new Map<string, number>();
-    for (const r of localRes.recordset) {
-        localMap.set(r.TableName, Number(r.RowCounts) || 0);
-    }
-
-    // 2. Fetch Central DB Row Counts if reachable
-    let centralConnected = false;
-    const centralMap = new Map<string, number>();
-    let centralPool: sql.ConnectionPool | null = null;
-
-    try {
-        centralPool = await connectToCentral(config);
-        const centralRes = await centralPool.request().query(`
-            SELECT t.name as TableName, SUM(p.rows) as RowCounts 
-            FROM sys.tables t 
-            JOIN sys.partitions p ON t.object_id = p.object_id 
-            WHERE p.index_id IN (0, 1) AND t.is_ms_shipped = 0 
-            GROUP BY t.name 
-            ORDER BY t.name
-        `);
-        for (const r of centralRes.recordset) {
-            centralMap.set(r.TableName, Number(r.RowCounts) || 0);
-        }
-        centralConnected = true;
-        await centralPool.close();
-    } catch {
-        if (centralPool) {
-            try { await centralPool.close(); } catch {}
-        }
-        centralConnected = false;
-    }
-
-    // 3. Assemble comparison for all tables
-    const allTableNames = Array.from(new Set([
-        ...Object.keys(TABLE_METADATA_MAP),
-        ...Array.from(localMap.keys()),
-        ...Array.from(centralMap.keys())
-    ])).sort();
-
-    let totalBranchRows = 0;
-    let totalCentralRows = 0;
-    let syncedTablesCount = 0;
-    let diffTablesCount = 0;
-
-    const tables: TableRowComparison[] = allTableNames.map(tableName => {
-        const meta = TABLE_METADATA_MAP[tableName] || { name: tableName, category: 'عام' };
-        const branchRows = localMap.get(tableName) || 0;
-        const centralRows = centralConnected ? (centralMap.get(tableName) ?? 0) : null;
-        totalBranchRows += branchRows;
-        if (centralRows !== null) {
-            totalCentralRows += centralRows;
-        }
-
-        let diff = 0;
-        let status: TableRowComparison['status'] = 'synced';
-
-        if (!centralConnected) {
-            status = 'unreachable';
-        } else if (branchRows === 0 && centralRows === 0) {
-            status = 'empty';
-            syncedTablesCount++;
-        } else if (branchRows === centralRows) {
-            status = 'synced';
-            syncedTablesCount++;
-        } else if (branchRows > (centralRows || 0)) {
-            diff = branchRows - (centralRows || 0);
-            status = 'pending';
-            diffTablesCount++;
-        } else {
-            diff = (centralRows || 0) - branchRows;
-            status = 'central_ahead';
-            diffTablesCount++;
-        }
-
-        return {
-            tableName,
-            displayName: meta.name,
-            category: meta.category,
-            branchRows,
-            centralRows,
-            diff,
-            status
-        };
-    });
-
-    return {
-        centralConnected,
-        centralDatabase: config.centralDatabase,
-        totalBranchRows,
-        totalCentralRows,
-        syncedTablesCount,
-        diffTablesCount,
-        tables
-    };
-}
-
