@@ -25,11 +25,15 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { useData } from "@/contexts/data-provider";
-import { Loader2, ChevronDown, ChevronUp, Plus, Minus, AlertTriangle } from "lucide-react";
+import { Loader2, ChevronDown, ChevronUp, Plus, Minus, AlertTriangle, Scale, CheckCircle2, Search, Filter } from "lucide-react";
 import { useMemo, useState } from "react";
 import { cn } from "@/lib/utils";
 import { calculateStockForItemInWarehouse } from "@/lib/inventory-utils";
 import { calculateAccountBalance } from "@/lib/accounting-utils";
+import { computeTrialBalance, generateAllJournalEntries, TrialBalanceRow } from "@/lib/chart-of-accounts";
+import { Input } from "@/components/ui/input";
+import { Badge } from "@/components/ui/badge";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
 // Data Interfaces
 interface SaleInvoice {
@@ -56,7 +60,7 @@ interface PurchaseInvoice {
 }
 
 const useIncomeStatementData = () => {
-  const { salesInvoices, expenses, exceptionalIncomes, items, salesReturns, posSales, posReturns, payrollRecords, stockAdjustmentRecords, stockOutRecords, depreciationRecords, settings } = useData();
+  const { salesInvoices, purchaseInvoices, expenses, exceptionalIncomes, items, salesReturns, posSales, posReturns, payrollRecords, stockAdjustmentRecords, stockOutRecords, depreciationRecords, settings } = useData();
 
   return useMemo(() => {
     const approvedSales = salesInvoices.filter((s: any) => s.status === 'approved' || s.status === 'completed' || !s.status);
@@ -107,6 +111,9 @@ const useIncomeStatementData = () => {
     }, 0) || 0;
     totalExceptionalIncome += inventoryAdjustmentGains;
 
+    // الخصم المكتسب من الموردين على فواتير الشراء
+    const totalEarnedDiscount = (purchaseInvoices || []).reduce((acc: number, p: any) => acc + (Number(p.discount) || 0), 0);
+
     const expensesByType: { [key: string]: number } = {};
     expenses.forEach(expense => {
         expensesByType[expense.expenseType] = (expensesByType[expense.expenseType] || 0) + expense.amount;
@@ -148,15 +155,15 @@ const useIncomeStatementData = () => {
     const netRevenue = grossRevenue - totalSalesReturns - totalSalesDiscount;
     const grossProfit = netRevenue - costOfGoodsSold;
     const netOperatingIncome = grossProfit - totalExpenses;
-    const netIncome = netOperatingIncome + totalExceptionalIncome;
+    const netIncome = netOperatingIncome + totalExceptionalIncome + totalEarnedDiscount;
     
-    return { grossRevenue, totalSalesReturns, totalSalesDiscount, costOfGoodsSold, totalExceptionalIncome, expensesByType, totalExpenses, netRevenue, grossProfit, netOperatingIncome, netIncome };
-  }, [salesInvoices, posSales, posReturns, expenses, exceptionalIncomes, items, salesReturns, payrollRecords, stockAdjustmentRecords, stockOutRecords, depreciationRecords, settings]);
+    return { grossRevenue, totalSalesReturns, totalSalesDiscount, costOfGoodsSold, totalExceptionalIncome, totalEarnedDiscount, expensesByType, totalExpenses, netRevenue, grossProfit, netOperatingIncome, netIncome };
+  }, [salesInvoices, purchaseInvoices, posSales, posReturns, expenses, exceptionalIncomes, items, salesReturns, payrollRecords, stockAdjustmentRecords, stockOutRecords, depreciationRecords, settings]);
 };
 
 function IncomeStatement() {
   const { loading } = useData();
-  const { grossRevenue, totalSalesReturns, totalSalesDiscount, costOfGoodsSold, totalExceptionalIncome, expensesByType, netRevenue, grossProfit, netOperatingIncome, netIncome } = useIncomeStatementData();
+  const { grossRevenue, totalSalesReturns, totalSalesDiscount, costOfGoodsSold, totalExceptionalIncome, totalEarnedDiscount, expensesByType, netRevenue, grossProfit, netOperatingIncome, netIncome } = useIncomeStatementData();
   
   if (loading) return <div className="flex justify-center items-center py-10"><Loader2 className="h-8 w-8 animate-spin" /></div>;
 
@@ -174,11 +181,16 @@ function IncomeStatement() {
              <TableRow key={type}><TableCell className="pl-8 text-muted-foreground">{type}</TableCell><TableCell className="text-left text-destructive">- ج.م {amount.toLocaleString(undefined, { minimumFractionDigits: 2 })}</TableCell></TableRow>
         ))}
         <TableRow><TableHead>صافي الدخل التشغيلي</TableHead><TableHead className="text-left">ج.م {netOperatingIncome.toLocaleString(undefined, { minimumFractionDigits: 2 })}</TableHead></TableRow>
-        <TableRow><TableCell className="font-medium">الدخل الاستثنائي</TableCell><TableCell className="text-left">ج.م {totalExceptionalIncome.toLocaleString(undefined, { minimumFractionDigits: 2 })}</TableCell></TableRow>
+        <TableRow><TableCell colSpan={2} className="font-medium pt-4">الإيرادات والخصومات الأخرى:</TableCell></TableRow>
+        <TableRow className="bg-emerald-50/40 dark:bg-emerald-950/20 font-medium">
+          <TableCell className="text-emerald-700 dark:text-emerald-400 pl-8">(+) الخصم المكتسب على المشتريات (تخفيض تكلفة المشتريات)</TableCell>
+          <TableCell className="text-left font-bold text-emerald-700 dark:text-emerald-400">+ ج.م {totalEarnedDiscount.toLocaleString(undefined, { minimumFractionDigits: 2 })}</TableCell>
+        </TableRow>
+        <TableRow><TableCell className="pl-8 text-muted-foreground">(+) الإيرادات الاستثنائية والبنكية</TableCell><TableCell className="text-left">+ ج.م {totalExceptionalIncome.toLocaleString(undefined, { minimumFractionDigits: 2 })}</TableCell></TableRow>
       </TableBody>
       <TableFooter>
-        <TableRow className="bg-muted/50">
-          <TableHead className="font-bold text-lg">صافي الدخل النهائي</TableHead>
+        <TableRow className="bg-muted/50 border-t-2">
+          <TableHead className="font-bold text-lg">صافي الدخل النهائي (الأرباح المحتجزة للفترة)</TableHead>
           <TableHead className={`font-bold text-lg text-left ${netIncome >= 0 ? 'text-green-600' : 'text-destructive'}`}>ج.م {netIncome.toLocaleString(undefined, { minimumFractionDigits: 2 })}</TableHead>
         </TableRow>
       </TableFooter>
@@ -395,26 +407,265 @@ function BalanceSheet() {
     )
 }
 
+function TrialBalanceView() {
+    const allDataContext = useData();
+    const { loading } = allDataContext;
+    const [fromDate, setFromDate] = useState(`${new Date().getFullYear()}-01-01`);
+    const [toDate, setToDate] = useState(new Date().toISOString().split('T')[0]);
+    const [search, setSearch] = useState('');
+    const [levelFilter, setLevelFilter] = useState('all');
+
+    const journalEntries = useMemo(() => {
+        return generateAllJournalEntries(allDataContext);
+    }, [allDataContext]);
+
+    const trialBalance = useMemo(() => {
+        return computeTrialBalance(journalEntries, fromDate, toDate);
+    }, [journalEntries, fromDate, toDate]);
+
+    const filteredRows = useMemo(() => {
+        return trialBalance.rows.filter(row => {
+            if (levelFilter !== 'all' && String(row.level) !== levelFilter) return false;
+            if (search.trim()) {
+                const term = search.trim().toLowerCase();
+                const matchCode = row.accountCode.toLowerCase().includes(term);
+                const matchName = row.accountName.toLowerCase().includes(term);
+                if (!matchCode && !matchName) return false;
+            }
+            return true;
+        });
+    }, [trialBalance.rows, levelFilter, search]);
+
+    if (loading) return <div className="flex justify-center items-center py-10"><Loader2 className="h-8 w-8 animate-spin" /></div>;
+
+    const { totals } = trialBalance;
+
+    return (
+        <div className="space-y-6">
+            {/* Filters & Status Bar */}
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-4 p-4 rounded-xl bg-muted/40 border">
+                <div className="space-y-1">
+                    <label className="text-xs font-semibold text-muted-foreground">من تاريخ</label>
+                    <Input type="date" value={fromDate} onChange={e => setFromDate(e.target.value)} />
+                </div>
+                <div className="space-y-1">
+                    <label className="text-xs font-semibold text-muted-foreground">إلى تاريخ</label>
+                    <Input type="date" value={toDate} onChange={e => setToDate(e.target.value)} />
+                </div>
+                <div className="space-y-1">
+                    <label className="text-xs font-semibold text-muted-foreground">بحث في الدليل</label>
+                    <div className="relative">
+                        <Search className="absolute right-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+                        <Input
+                            placeholder="كود أو اسم الحساب..."
+                            className="pr-8"
+                            value={search}
+                            onChange={e => setSearch(e.target.value)}
+                        />
+                    </div>
+                </div>
+                <div className="space-y-1">
+                    <label className="text-xs font-semibold text-muted-foreground">مستوى الحسابات</label>
+                    <Select value={levelFilter} onValueChange={setLevelFilter}>
+                        <SelectTrigger><SelectValue placeholder="المستوى" /></SelectTrigger>
+                        <SelectContent>
+                            <SelectItem value="all">كل المستويات (1-3)</SelectItem>
+                            <SelectItem value="1">المستوى الرئيسي (1 - أصول/خصوم/حقوق/إيرادات/مصروفات)</SelectItem>
+                            <SelectItem value="2">المستوى العام (2 - مجموعات)</SelectItem>
+                            <SelectItem value="3">المستوى الفرعي / التحليلي (3)</SelectItem>
+                        </SelectContent>
+                    </Select>
+                </div>
+            </div>
+
+            {/* Equilibrium Summary Banner */}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <Card className={cn(
+                    "border-2",
+                    totals.isBalanced ? "border-green-500/40 bg-green-500/5" : "border-destructive/40 bg-destructive/5"
+                )}>
+                    <CardHeader className="py-3">
+                        <CardTitle className="text-sm font-medium flex items-center justify-between">
+                            <span>حالة ميزان المراجعة</span>
+                            {totals.isBalanced ? (
+                                <Badge className="bg-green-600 text-white gap-1"><CheckCircle2 className="h-3.5 w-3.5"/> متزن ومحكم</Badge>
+                            ) : (
+                                <Badge variant="destructive" className="gap-1"><AlertTriangle className="h-3.5 w-3.5"/> غير متزن</Badge>
+                            )}
+                        </CardTitle>
+                    </CardHeader>
+                    <CardContent className="py-2">
+                        <div className="text-lg font-black">
+                            الفارق المحاسبي: {Math.abs(totals.endingDebit - totals.endingCredit).toFixed(2)} ج.م
+                        </div>
+                        <p className="text-xs text-muted-foreground mt-0.5">
+                            {totals.isBalanced ? 'إجمالي الأرصدة المدينة يطابق الدائنة وفقاً لقواعد القيد المزدوج.' : 'يوجد تباين يجب تدقيقه.'}
+                        </p>
+                    </CardContent>
+                </Card>
+
+                <Card>
+                    <CardHeader className="py-3">
+                        <CardTitle className="text-sm font-medium text-muted-foreground">حركة الفترة (المدين والدائن)</CardTitle>
+                    </CardHeader>
+                    <CardContent className="py-2">
+                        <div className="flex justify-between items-center text-sm font-bold">
+                            <span className="text-blue-600">مدين: {totals.periodDebit.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
+                            <span className="text-amber-600">دائن: {totals.periodCredit.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
+                        </div>
+                        <p className="text-xs text-muted-foreground mt-1">إجمالي الحركات المسجلة بالفترة المحددة</p>
+                    </CardContent>
+                </Card>
+
+                <Card>
+                    <CardHeader className="py-3">
+                        <CardTitle className="text-sm font-medium text-muted-foreground">الأرصدة الختامية</CardTitle>
+                    </CardHeader>
+                    <CardContent className="py-2">
+                        <div className="flex justify-between items-center text-sm font-black">
+                            <span className="text-primary">مدين: {totals.endingDebit.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
+                            <span className="text-primary">دائن: {totals.endingCredit.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
+                        </div>
+                        <p className="text-xs text-muted-foreground mt-1">الرصيد الصافي التراكمي في نهاية الفترة</p>
+                    </CardContent>
+                </Card>
+            </div>
+
+            {/* Trial Balance Multi-Column Table */}
+            <div className="border rounded-xl overflow-hidden shadow-sm bg-card">
+                <Table>
+                    <TableHeader className="bg-muted/70">
+                        <TableRow>
+                            <TableHead rowSpan={2} className="w-[100px] text-center font-bold">الكود</TableHead>
+                            <TableHead rowSpan={2} className="font-bold">اسم الحساب (الدليل المحاسبي)</TableHead>
+                            <TableHead rowSpan={2} className="text-center font-bold w-[90px]">الطبيعة</TableHead>
+                            <TableHead colSpan={2} className="text-center font-bold border-x bg-muted/90">رصيد أول المدة</TableHead>
+                            <TableHead colSpan={2} className="text-center font-bold border-x bg-muted/80">حركة الفترة</TableHead>
+                            <TableHead colSpan={2} className="text-center font-bold border-r bg-muted/90">رصيد آخر المدة</TableHead>
+                        </TableRow>
+                        <TableRow>
+                            <TableHead className="text-center text-xs font-semibold border-r">مدين</TableHead>
+                            <TableHead className="text-center text-xs font-semibold">دائن</TableHead>
+                            <TableHead className="text-center text-xs font-semibold border-x">مدين</TableHead>
+                            <TableHead className="text-center text-xs font-semibold border-l">دائن</TableHead>
+                            <TableHead className="text-center text-xs font-semibold border-r">مدين</TableHead>
+                            <TableHead className="text-center text-xs font-semibold">دائن</TableHead>
+                        </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                        {filteredRows.map((row) => {
+                            const isLevel1 = row.level === 1;
+                            const isLevel2 = row.level === 2;
+                            return (
+                                <TableRow
+                                    key={row.accountCode}
+                                    className={cn(
+                                        "transition-colors",
+                                        isLevel1 && "bg-muted/40 font-black text-base hover:bg-muted/60",
+                                        isLevel2 && "bg-background font-bold text-sm hover:bg-muted/30",
+                                        row.level === 3 && "text-sm hover:bg-muted/20"
+                                    )}
+                                >
+                                    <TableCell className="font-mono text-center text-xs font-bold text-muted-foreground">
+                                        {row.accountCode}
+                                    </TableCell>
+                                    <TableCell className={cn(
+                                        row.level === 2 && "pr-6 text-foreground",
+                                        row.level === 3 && "pr-12 text-muted-foreground"
+                                    )}>
+                                        {row.accountName}
+                                    </TableCell>
+                                    <TableCell className="text-center">
+                                        <Badge variant="outline" className={cn(
+                                            "text-[10px] px-1.5 py-0 font-medium",
+                                            row.normalBalance === 'debit' ? "text-blue-600 border-blue-200" : "text-amber-600 border-amber-200"
+                                        )}>
+                                            {row.normalBalance === 'debit' ? 'مدين' : 'دائن'}
+                                        </Badge>
+                                    </TableCell>
+                                    {/* Opening */}
+                                    <TableCell className="text-center font-mono text-xs border-r">
+                                        {row.openingDebit > 0 ? row.openingDebit.toLocaleString(undefined, { minimumFractionDigits: 2 }) : '-'}
+                                    </TableCell>
+                                    <TableCell className="text-center font-mono text-xs">
+                                        {row.openingCredit > 0 ? row.openingCredit.toLocaleString(undefined, { minimumFractionDigits: 2 }) : '-'}
+                                    </TableCell>
+                                    {/* Period */}
+                                    <TableCell className="text-center font-mono text-xs border-x text-blue-600">
+                                        {row.periodDebit > 0 ? row.periodDebit.toLocaleString(undefined, { minimumFractionDigits: 2 }) : '-'}
+                                    </TableCell>
+                                    <TableCell className="text-center font-mono text-xs border-l text-amber-600">
+                                        {row.periodCredit > 0 ? row.periodCredit.toLocaleString(undefined, { minimumFractionDigits: 2 }) : '-'}
+                                    </TableCell>
+                                    {/* Ending */}
+                                    <TableCell className="text-center font-mono text-xs font-bold border-r text-primary">
+                                        {row.endingDebit > 0 ? row.endingDebit.toLocaleString(undefined, { minimumFractionDigits: 2 }) : '-'}
+                                    </TableCell>
+                                    <TableCell className="text-center font-mono text-xs font-bold text-primary">
+                                        {row.endingCredit > 0 ? row.endingCredit.toLocaleString(undefined, { minimumFractionDigits: 2 }) : '-'}
+                                    </TableCell>
+                                </TableRow>
+                            );
+                        })}
+                    </TableBody>
+                    <TableFooter className="bg-primary/5 border-t-2 border-primary font-black">
+                        <TableRow>
+                            <TableCell colSpan={3} className="text-base font-black">
+                                إجمالي ميزان المراجعة (المجاميع المحاسبية)
+                            </TableCell>
+                            <TableCell className="text-center font-mono text-sm border-r font-black">
+                                {totals.openingDebit.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                            </TableCell>
+                            <TableCell className="text-center font-mono text-sm font-black">
+                                {totals.openingCredit.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                            </TableCell>
+                            <TableCell className="text-center font-mono text-sm border-x text-blue-700 font-black">
+                                {totals.periodDebit.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                            </TableCell>
+                            <TableCell className="text-center font-mono text-sm border-l text-amber-700 font-black">
+                                {totals.periodCredit.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                            </TableCell>
+                            <TableCell className="text-center font-mono text-sm border-r text-primary font-black">
+                                {totals.endingDebit.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                            </TableCell>
+                            <TableCell className="text-center font-mono text-sm text-primary font-black">
+                                {totals.endingCredit.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                            </TableCell>
+                        </TableRow>
+                    </TableFooter>
+                </Table>
+            </div>
+        </div>
+    );
+}
+
 export default function FinancialStatementsPage() {
   return (
     <>
-      <PageHeader title="القوائم المالية" />
+      <PageHeader title="القوائم والتقارير المالية المحاسبية" />
       <main className="flex flex-1 flex-col gap-4 p-4 md:gap-8 md:p-6">
         <Tabs defaultValue="balance-sheet">
-          <TabsList className="grid w-full grid-cols-2">
-            <TabsTrigger value="income-statement">قائمة الدخل (P&L)</TabsTrigger>
-            <TabsTrigger value="balance-sheet">الميزانية العمومية</TabsTrigger>
+          <TabsList className="grid w-full grid-cols-3">
+            <TabsTrigger value="income-statement">قائمة الدخل والأرباح (P&L)</TabsTrigger>
+            <TabsTrigger value="balance-sheet">الميزانية العمومية والمركز المالي</TabsTrigger>
+            <TabsTrigger value="trial-balance">ميزان المراجعة (Trial Balance)</TabsTrigger>
           </TabsList>
           <TabsContent value="income-statement">
             <Card>
-              <CardHeader><CardTitle>قائمة الدخل</CardTitle><CardDescription>ملخص الإيرادات والمصروفات والأرباح المحققة خلال نشاط الشركة.</CardDescription></CardHeader>
+              <CardHeader><CardTitle>قائمة الدخل</CardTitle><CardDescription>ملخص الإيرادات والمصروفات والخصم المكتسب والأرباح المحققة خلال نشاط الشركة.</CardDescription></CardHeader>
               <CardContent><IncomeStatement /></CardContent>
             </Card>
           </TabsContent>
           <TabsContent value="balance-sheet">
             <Card>
-              <CardHeader><CardTitle>الميزانية العمومية</CardTitle><CardDescription>لقطة تفصيلية عن المركز المالي للشركة تشمل كافة الحسابات والأصول والخصوم.</CardDescription></CardHeader>
+              <CardHeader><CardTitle>الميزانية العمومية</CardTitle><CardDescription>لقطة تفصيلية عن المركز المالي للشركة تشمل كافة الحسابات والأصول والخصوم وحقوق الملكية.</CardDescription></CardHeader>
               <CardContent><BalanceSheet /></CardContent>
+            </Card>
+          </TabsContent>
+          <TabsContent value="trial-balance">
+            <Card>
+              <CardHeader><CardTitle>ميزان المراجعة بالمجاميع والأرصدة</CardTitle><CardDescription>كشف شامل بأرصدة أول المدة وحركة الفترة والأرصدة الختامية لجميع حسابات شجرة الحسابات والتحقق من التوازن المالي.</CardDescription></CardHeader>
+              <CardContent><TrialBalanceView /></CardContent>
             </Card>
           </TabsContent>
         </Tabs>

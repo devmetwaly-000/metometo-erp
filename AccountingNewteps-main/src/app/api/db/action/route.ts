@@ -1073,6 +1073,29 @@ export async function POST(req: Request) {
                 return NextResponse.json({ success: true });
             }
 
+            if (path === 'purchaseInvoices' && updateId) {
+                await pool.request()
+                    .input('Id', sql.NVarChar(64), updateId)
+                    .input('Discount', sql.Decimal(18, 4), data.discount !== undefined ? Number(data.discount) : null)
+                    .input('Total', sql.Decimal(18, 4), data.total !== undefined ? Number(data.total) : null)
+                    .input('Subtotal', sql.Decimal(18, 4), data.subtotal !== undefined ? Number(data.subtotal) : null)
+                    .input('PaidAmount', sql.Decimal(18, 4), data.paidAmount !== undefined ? Number(data.paidAmount) : null)
+                    .input('Notes', sql.NVarChar(sql.MAX), data.notes !== undefined ? (data.notes || '') : null)
+                    .input('ItemsJson', sql.NVarChar(sql.MAX), data.items ? jsonString(data.items) : null)
+                    .query(`
+                        UPDATE dbo.PurchaseInvoices
+                        SET 
+                            Discount = COALESCE(@Discount, Discount),
+                            Total = COALESCE(@Total, Total),
+                            Subtotal = COALESCE(@Subtotal, Subtotal),
+                            PaidAmount = COALESCE(@PaidAmount, PaidAmount),
+                            Notes = COALESCE(@Notes, Notes),
+                            ItemsJson = COALESCE(@ItemsJson, ItemsJson)
+                        WHERE Id = @Id;
+                    `);
+                return NextResponse.json({ success: true });
+            }
+
             if (path === 'posSessions' && updateId) {
                 await pool.request()
                     .input('Id', sql.NVarChar(64), updateId)

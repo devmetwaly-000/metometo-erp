@@ -323,6 +323,7 @@ export const navStructure = [
         { type: 'link', href: '/accounting/supplier-payments', module: 'accounting_supplierPayments', title: dictionary.nav.supplierPayments },
     ]},
     { type: 'collapsible', title: dictionary.nav.accountingAndFinance, icon: <BookCopy />, modules: ['accounting_journal', 'accounting_expenses', 'accounting_exceptionalIncome', 'accounting_treasury', 'accounting_profitDistribution', 'accounting_assets', 'accounting_vat', 'accounting_gratuity'], children: [
+        { type: 'link', href: '/accounting/chart-of-accounts', module: 'accounting_journal', title: 'دليل الحسابات (شجرة الحسابات)' },
         { type: 'link', href: '/accounting/journal', module: 'accounting_journal', title: dictionary.nav.journal },
         { type: 'link', href: '/accounting/assets', module: 'accounting_assets', title: dictionary.nav.fixedAssets },
         { type: 'link', href: '/accounting/vat', module: 'accounting_vat', title: dictionary.nav.vatReport },
