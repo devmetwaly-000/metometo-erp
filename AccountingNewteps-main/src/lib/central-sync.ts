@@ -31,11 +31,11 @@ const DEFAULT_CONFIG: CentralSyncConfig = {
     currentBranchId: '-OmnkFba_GsEb0rfdzyA',
     currentBranchCode: '900',
     currentBranchName: 'الفرع الرأيسي',
-    centralServerIp: '127.0.0.1',
+    centralServerIp: 'localhost',
     centralSqlPort: 1433,
     centralDatabase: 'MultiBranchPOS_Central_DB',
-    centralUsername: 'sa',
-    centralPassword: '',
+    centralUsername: process.env.DB_USER || 'meto_pos',
+    centralPassword: process.env.DB_PASSWORD || 'MetoPosPass123!',
     autoSync: true,
     autoSyncIntervalMinutes: 5,
     lastSyncTime: null,
@@ -90,18 +90,30 @@ export async function saveCentralConfig(config: Partial<CentralSyncConfig>): Pro
 /**
  * إنشاء اتصال منفصل بالسيرفر المركزي للإدارة
  */
-export async function connectToCentral(config: CentralSyncConfig): Promise<sql.ConnectionPool> {
+export async function connectToCentral(config: CentralSyncConfig, targetDatabase?: string): Promise<sql.ConnectionPool> {
+    let cleanServer = (config.centralServerIp || 'localhost').trim();
+    let port = Number(config.centralSqlPort) || 1433;
+
+    // Handle "server:port" pattern if entered in IP field
+    if (cleanServer.includes(':')) {
+        const [hostPart, portPart] = cleanServer.split(':');
+        cleanServer = hostPart.trim();
+        port = parseInt(portPart, 10) || port;
+    }
+    // Clean http:// or https:// if accidentally pasted
+    cleanServer = cleanServer.replace(/^https?:\/\//i, '').replace(/\/$/, '');
+
     const centralSqlConfig: sql.config = {
         user: config.centralUsername,
         password: config.centralPassword,
-        server: config.centralServerIp,
-        port: Number(config.centralSqlPort) || 1433,
-        database: config.centralDatabase,
+        server: cleanServer,
+        port: port,
+        database: targetDatabase || config.centralDatabase,
         options: {
             encrypt: false,
             trustServerCertificate: true,
             enableArithAbort: true,
-            connectTimeout: 7000
+            connectTimeout: 8000
         },
         pool: {
             max: 5,
@@ -116,22 +128,31 @@ export async function connectToCentral(config: CentralSyncConfig): Promise<sql.C
 }
 
 /**
- * اختبار الاتصال بالسيرفر المركزي
+ * اختبار الاتصال بالسيرفر المركزي مع معالجة ذكية للأخطاء
  */
 export async function testCentralConnection(configOverride?: Partial<CentralSyncConfig>): Promise<{
     success: boolean;
     latencyMs?: number;
     serverVersion?: string;
     database?: string;
+    databaseExists?: boolean;
+    message?: string;
     error?: string;
 }> {
     const current = await getCentralConfig();
-    const config: CentralSyncConfig = { ...current, ...(configOverride || {}) };
+    const cleanOverride = { ...(configOverride || {}) };
+    
+    // Fall back to saved or env password if empty
+    if (!cleanOverride.centralPassword && current.centralPassword) {
+        cleanOverride.centralPassword = current.centralPassword;
+    }
 
+    const config: CentralSyncConfig = { ...current, ...cleanOverride };
     const startTime = Date.now();
     let centralPool: sql.ConnectionPool | null = null;
 
     try {
+        // First try connecting to the specified database
         centralPool = await connectToCentral(config);
         const res = await centralPool.request().query('SELECT @@VERSION as version, DB_NAME() as dbName;');
         const latencyMs = Date.now() - startTime;
@@ -139,17 +160,52 @@ export async function testCentralConnection(configOverride?: Partial<CentralSync
         await centralPool.close();
         return {
             success: true,
+            databaseExists: true,
             latencyMs,
             serverVersion: res.recordset[0]?.version?.split('\n')[0] || 'Microsoft SQL Server',
-            database: res.recordset[0]?.dbName || config.centralDatabase
+            database: res.recordset[0]?.dbName || config.centralDatabase,
+            message: 'تم الاتصال بالسيرفر المركزي وقاعدة البيانات بنجاح تام.'
         };
     } catch (err: any) {
         if (centralPool) {
             try { await centralPool.close(); } catch {}
+            centralPool = null;
         }
+
+        const errMsg: string = err.message || '';
+
+        // Check if error is because the database does not exist on the server
+        if (errMsg.toLowerCase().includes('cannot open database') || errMsg.includes('4060')) {
+            try {
+                // Try connecting to master to verify server connection & credentials
+                const masterPool = await connectToCentral(config, 'master');
+                const masterRes = await masterPool.request().query('SELECT @@VERSION as version;');
+                const latencyMs = Date.now() - startTime;
+                await masterPool.close();
+
+                return {
+                    success: true,
+                    databaseExists: false,
+                    latencyMs,
+                    serverVersion: masterRes.recordset[0]?.version?.split('\n')[0] || 'Microsoft SQL Server',
+                    database: config.centralDatabase,
+                    message: `تم الاتصال بالسيرفر (${config.centralServerIp}) بنجاح! لكن قاعدة البيانات (${config.centralDatabase}) غير موجودة بعد. يمكنك إنشاؤها بنقرة واحدة من تبويب "تهيئة وإنشاء قاعدة البيانات".`
+                };
+            } catch {
+                // If connecting to master fails too, fall through to general error reporting
+            }
+        }
+
+        let userFriendlyError = errMsg;
+        if (errMsg.toLowerCase().includes('failed to connect') || errMsg.toLowerCase().includes('timeout') || errMsg.toLowerCase().includes('etimedout')) {
+            userFriendlyError = `تعذر الاتصال بعنوان السيرفر (${config.centralServerIp}:${config.centralSqlPort}). تأكد من أن السيرفر يعمل وعنوان IP صحيح وتفعيل بروتوكول TCP/IP في SQL Server Configuration Manager وجدار الحماية.`;
+        } else if (errMsg.toLowerCase().includes('login failed') || errMsg.toLowerCase().includes('elogin')) {
+            userFriendlyError = `فشل تسجيل الدخول للمستخدم (${config.centralUsername}). يرجى التأكد من اسم المستخدم وكلمة المرور وتفعيل نمط SQL Server and Windows Authentication (Mixed Mode).`;
+        }
+
         return {
             success: false,
-            error: err.message || 'تعذر الاتصال بالسيرفر المركزي، يرجى التحقق من عنوان IP والبورت وصلاحيات المستخدم.'
+            error: userFriendlyError
         };
     }
 }

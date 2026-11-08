@@ -56,7 +56,15 @@ export default function CentralSyncSettingsPage() {
     const [isTesting, setIsTesting] = useState(false);
     const [isSyncing, setIsSyncing] = useState(false);
     const [isSaving, setIsSaving] = useState(false);
-    const [testResult, setTestResult] = useState<{ success: boolean; latencyMs?: number; serverVersion?: string; database?: string; error?: string } | null>(null);
+    const [testResult, setTestResult] = useState<{ 
+        success: boolean; 
+        latencyMs?: number; 
+        serverVersion?: string; 
+        database?: string; 
+        databaseExists?: boolean;
+        message?: string;
+        error?: string 
+    } | null>(null);
 
     // Database Initialization State
     const [initTarget, setInitTarget] = useState<'central' | 'local'>('central');
@@ -314,12 +322,22 @@ export default function CentralSyncSettingsPage() {
                         <CardContent className="py-2">
                             {testResult ? (
                                 testResult.success ? (
-                                    <div className="flex items-center gap-2">
-                                        <Badge className="bg-green-600 text-white gap-1"><CheckCircle2 className="h-3.5 w-3.5"/> متصل بالسيرفر</Badge>
-                                        <span className="text-xs text-muted-foreground font-mono font-bold">{testResult.latencyMs}ms</span>
+                                    <div className="space-y-1">
+                                        <div className="flex items-center gap-2">
+                                            {testResult.databaseExists === false ? (
+                                                <Badge className="bg-amber-600 text-white gap-1"><AlertTriangle className="h-3.5 w-3.5"/> متصل (القاعدة غير منشأة)</Badge>
+                                            ) : (
+                                                <Badge className="bg-green-600 text-white gap-1"><CheckCircle2 className="h-3.5 w-3.5"/> متصل بالسيرفر</Badge>
+                                            )}
+                                            <span className="text-xs text-muted-foreground font-mono font-bold">{testResult.latencyMs}ms</span>
+                                        </div>
+                                        {testResult.message && <p className="text-[11px] text-muted-foreground leading-relaxed mt-1">{testResult.message}</p>}
                                     </div>
                                 ) : (
-                                    <Badge variant="destructive" className="gap-1"><AlertTriangle className="h-3.5 w-3.5"/> غير متصل</Badge>
+                                    <div className="space-y-1">
+                                        <Badge variant="destructive" className="gap-1"><AlertTriangle className="h-3.5 w-3.5"/> غير متصل</Badge>
+                                        {testResult.error && <p className="text-[11px] text-destructive leading-relaxed mt-1 font-medium">{testResult.error}</p>}
+                                    </div>
                                 )
                             ) : (
                                 <Badge variant="outline" className="text-muted-foreground">اضغط اختبار الاتصال للتحقق</Badge>
@@ -670,6 +688,20 @@ export default function CentralSyncSettingsPage() {
                                         <span className="text-sm text-muted-foreground">دقائق</span>
                                     </div>
                                 )}
+
+                                {testResult && (
+                                    <div className={cn("p-4 rounded-xl border text-sm mt-4", testResult.success ? "bg-emerald-500/10 border-emerald-500/30 text-emerald-900 dark:text-emerald-300" : "bg-destructive/10 border-destructive/30 text-destructive")}>
+                                        <div className="flex items-start gap-3">
+                                            {testResult.success ? <CheckCircle2 className="h-5 w-5 text-emerald-600 mt-0.5 shrink-0" /> : <AlertTriangle className="h-5 w-5 text-destructive mt-0.5 shrink-0" />}
+                                            <div className="space-y-1">
+                                                <p className="font-bold">{testResult.success ? "تم فحص الاتصال بالسيرفر بنجاح" : "تعذر الاتصال بالسيرفر"}</p>
+                                                {testResult.message && <p className="text-xs leading-relaxed">{testResult.message}</p>}
+                                                {testResult.error && <p className="text-xs leading-relaxed font-mono mt-1">{testResult.error}</p>}
+                                                {testResult.serverVersion && <p className="text-[11px] text-muted-foreground font-mono mt-1">إصدار السيرفر: {testResult.serverVersion} | زمن الاستجابة: {testResult.latencyMs}ms</p>}
+                                            </div>
+                                        </div>
+                                    </div>
+                                )}
                             </CardContent>
                             <CardFooter className="flex justify-between items-center bg-muted/30 border-t py-4">
                                 <Button variant="outline" onClick={handleTestConnection} disabled={isTesting}>
@@ -815,6 +847,20 @@ export default function CentralSyncSettingsPage() {
                                             <div className="font-bold text-sm">{initDbResult.message}</div>
                                             {initDbResult.error && <p className="text-xs font-mono">{initDbResult.error}</p>}
                                             {initDbResult.tablesCount && <p className="text-xs font-semibold">إجمالي الجداول التي تم بناؤها: {initDbResult.tablesCount} جدولاً.</p>}
+                                        </div>
+                                    </div>
+                                )}
+
+                                {testResult && (
+                                    <div className={cn("p-4 rounded-xl border text-sm mt-4", testResult.success ? "bg-emerald-500/10 border-emerald-500/30 text-emerald-900 dark:text-emerald-300" : "bg-destructive/10 border-destructive/30 text-destructive")}>
+                                        <div className="flex items-start gap-3">
+                                            {testResult.success ? <CheckCircle2 className="h-5 w-5 text-emerald-600 mt-0.5 shrink-0" /> : <AlertTriangle className="h-5 w-5 text-destructive mt-0.5 shrink-0" />}
+                                            <div className="space-y-1">
+                                                <p className="font-bold">{testResult.success ? "تم فحص الاتصال بالسيرفر بنجاح" : "تعذر الاتصال بالسيرفر"}</p>
+                                                {testResult.message && <p className="text-xs leading-relaxed">{testResult.message}</p>}
+                                                {testResult.error && <p className="text-xs leading-relaxed font-mono mt-1">{testResult.error}</p>}
+                                                {testResult.serverVersion && <p className="text-[11px] text-muted-foreground font-mono mt-1">إصدار السيرفر: {testResult.serverVersion} | زمن الاستجابة: {testResult.latencyMs}ms</p>}
+                                            </div>
                                         </div>
                                     </div>
                                 )}
