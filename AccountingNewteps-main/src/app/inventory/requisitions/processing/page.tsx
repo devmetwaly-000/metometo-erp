@@ -180,7 +180,10 @@ export default function RequisitionProcessingPage() {
                  return;
             }
 
-            // Instead of creating a stock transfer, create a pending stock-in record for the destination.
+            const destWarehouse = warehouses.find((w: any) => w.id === requisition.fromWarehouseId);
+            const isDestMain = Boolean(destWarehouse?.isMain);
+
+            // Instead of creating a stock transfer, create a transit / pending stock-in record for the destination.
             const newStockInRecord = {
                 warehouseId: requisition.fromWarehouseId, // The destination
                 fromWarehouseId: requisition.toWarehouseId, // The source
@@ -192,7 +195,7 @@ export default function RequisitionProcessingPage() {
                 createdById: user?.id,
                 createdByName: user?.name,
                 requisitionId: requisition.id,
-                status: 'pending_putaway', // The key status for "Goods in Transit"
+                status: isDestMain ? 'pending_putaway' : 'in_transit', // Only main warehouses do putaway; normal branches receive directly in goods-in-transit!
             };
 
             const newStockInId = await dbAction('stockInRecords', 'add', newStockInRecord);

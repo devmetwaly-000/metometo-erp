@@ -1426,6 +1426,42 @@ export async function POST(req: Request) {
                     `);
                 return NextResponse.json({ success: true });
             }
+
+            if (path === 'stockInRecords' && updateId) {
+                await pool.request()
+                    .input('Id', sql.NVarChar(64), updateId)
+                    .input('Status', sql.NVarChar(50), data.status || null)
+                    .input('Notes', sql.NVarChar(sql.MAX), data.notes || null)
+                    .input('ItemsJson', sql.NVarChar(sql.MAX), data.items ? jsonString(data.items) : null)
+                    .query(`
+                        UPDATE dbo.StockInRecords
+                        SET 
+                            Status = COALESCE(@Status, Status),
+                            Notes = COALESCE(@Notes, Notes),
+                            ItemsJson = COALESCE(@ItemsJson, ItemsJson),
+                            UpdatedAt = sysutcdatetime()
+                        WHERE Id = @Id;
+                    `);
+                return NextResponse.json({ success: true });
+            }
+
+            if (path === 'requisitions' && updateId) {
+                await pool.request()
+                    .input('Id', sql.NVarChar(64), updateId)
+                    .input('Status', sql.NVarChar(50), data.status || null)
+                    .input('Notes', sql.NVarChar(sql.MAX), data.notes || null)
+                    .input('ItemsJson', sql.NVarChar(sql.MAX), data.items ? jsonString(data.items) : null)
+                    .query(`
+                        UPDATE dbo.Requisitions
+                        SET 
+                            Status = COALESCE(@Status, Status),
+                            Notes = COALESCE(@Notes, Notes),
+                            ItemsJson = COALESCE(@ItemsJson, ItemsJson),
+                            UpdatedAt = sysutcdatetime()
+                        WHERE Id = @Id;
+                    `);
+                return NextResponse.json({ success: true });
+            }
         }
 
         // =====================================================================

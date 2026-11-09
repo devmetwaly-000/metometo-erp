@@ -287,6 +287,12 @@ export default function StockInPage() {
         setFilters(prev => ({ ...prev, [key]: value }));
     };
 
+    const isMainWarehouse = useCallback((warehouseId?: string) => {
+        if (!warehouseId) return false;
+        const wh = warehouses.find((w: any) => w.id === warehouseId);
+        return Boolean(wh?.isMain);
+    }, [warehouses]);
+
     const records = useMemo(() => {
         if (loading) return [];
         
@@ -294,6 +300,9 @@ export default function StockInPage() {
 
         return stockInRecords
             .filter((rec: any) => {
+                 // ONLY include records where receiving warehouse is a MAIN warehouse
+                 if (!isMainWarehouse(rec.warehouseId)) return false;
+
                  if (stockInId) {
                     return rec.id === stockInId;
                 }
@@ -311,10 +320,10 @@ export default function StockInPage() {
                 return true; 
             })
             .sort((a:any,b:any) => new Date(b.date).getTime() - new Date(a.date).getTime());
-    }, [searchParams, stockInRecords, filters, loading]);
+    }, [searchParams, stockInRecords, filters, loading, isMainWarehouse]);
 
-    const pendingRecords = useMemo(() => records.filter(r => r.status === 'pending_putaway' || !r.status), [records]);
-    const completedRecords = useMemo(() => records.filter(r => r.status === 'completed'), [records]);
+    const pendingRecords = useMemo(() => records.filter(r => r.status === 'pending_putaway'), [records]);
+    const completedRecords = useMemo(() => records.filter(r => r.status === 'completed' || r.status === 'approved'), [records]);
 
     const warehouseOptions = useMemo(() => {
         const options = [
@@ -415,9 +424,9 @@ export default function StockInPage() {
                     <TabsContent value="pending">
                         <Card>
                             <CardHeader>
-                                <CardTitle>أذونات الدخول المعلقة</CardTitle>
+                                <CardTitle>أذونات الدخول المعلقة (المخازن الرئيسية فقط)</CardTitle>
                                 <CardDescription>
-                                    هذه قائمة بأذونات الدخول التي تنتظر توزيع أصنافها على الأقسام الداخلية (الحاويات).
+                                    توزيع بضاعة أذونات الاستلام الواردة للمخازن الرئيسية على الأقسام الداخلية والحاويات (تسكين لوجستي).
                                 </CardDescription>
                             </CardHeader>
                             <CardContent>
@@ -442,7 +451,15 @@ export default function StockInPage() {
                                                 </AccordionTrigger>
                                                 <PutAwaySection record={record} onPutAway={handlePutAway} onOpenChange={()=>{}} />
                                             </AccordionItem>
-                                        )) : <p className="text-center text-muted-foreground p-6">لا توجد أذونات بانتظار التسكين.</p>}
+                                        )) : (
+                                            <div className="text-center p-8 border rounded-lg border-dashed bg-muted/20">
+                                                <Package className="h-10 w-10 mx-auto text-muted-foreground/50 mb-2" />
+                                                <p className="font-bold text-foreground text-sm">لا توجد أذونات استلام بانتظار التسكين</p>
+                                                <p className="text-xs text-muted-foreground mt-1 max-w-md mx-auto">
+                                                    تسكين البضاعة وتوزيعها على الأقسام والحاويات مخصص حصرياً للمخازن الرئيسية. الفروع العادية تستلم بضاعتها وتضاف لأرصدتها مباشرة دون مرحلة تسكين.
+                                                </p>
+                                            </div>
+                                        )}
                                     </Accordion>
                                 )}
                             </CardContent>

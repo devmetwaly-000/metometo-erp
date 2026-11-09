@@ -377,7 +377,23 @@ export async function GET() {
                 purchaseInvoices,
                 purchaseReturns,
                 purchaseOrders: purchaseOrdersRes.recordset.map(po => ({ ...po, id: po.Id, items: parseItemsArray(po) })),
-                requisitions: requisitionsRes.recordset.map(r => ({ ...r, id: r.Id, items: parseItemsArray(r) })),
+                requisitions: requisitionsRes.recordset.map(r => {
+                    const extra = parseJson(r.DetailsJson || r.ItemsJson, {});
+                    return {
+                        ...r,
+                        id: r.Id,
+                        requisitionNumber: r.RequisitionNumber || r.requisitionNumber,
+                        date: r.Date ? new Date(r.Date).toISOString() : null,
+                        fromWarehouseId: r.FromWarehouseId || r.fromWarehouseId || r.WarehouseId || extra.fromWarehouseId,
+                        toWarehouseId: r.ToWarehouseId || r.toWarehouseId || extra.toWarehouseId,
+                        requestedById: r.RequestedById || r.requestedById,
+                        requestedByName: r.RequestedByName || r.requestedByName,
+                        status: r.Status || r.status || 'pending',
+                        priority: r.Priority || r.priority || 'normal',
+                        notes: r.Notes || r.notes || '',
+                        items: parseItemsArray(r)
+                    };
+                }),
                 
                 // Financial Documents
                 customerPayments: customerPaymentsRes.recordset.map(cp => ({
@@ -513,6 +529,8 @@ export async function GET() {
                     date: si.Date ? new Date(si.Date).toISOString() : null,
                     warehouseId: si.WarehouseId,
                     receiptNumber: si.ReceiptNumber,
+                    status: (si.Status || si.status || 'completed'),
+                    allocations: parseJson(si.AllocationsJson, []),
                     items: parseItemsArray(si)
                 })),
                 stockOutRecords: stockOutRes.recordset.map(so => ({
@@ -522,6 +540,7 @@ export async function GET() {
                     warehouseId: so.WarehouseId || so.SourceId,
                     sourceId: so.SourceId || so.WarehouseId,
                     receiptNumber: so.ReceiptNumber,
+                    status: (so.Status || so.status || 'completed'),
                     items: parseItemsArray(so)
                 })),
                 stockTransferRecords: stockTransferRes.recordset.map(st => ({

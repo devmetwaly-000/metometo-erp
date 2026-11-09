@@ -74,26 +74,33 @@ export default function RequisitionsListPage() {
         .sort((a,b) => new Date(b.date).getTime() - new Date(a.date).getTime());
   }, [requisitions, warehouses, loading]);
   
-  const handlePutAway = async (req: Requisition) => {
+  const handlePutAway = async (req: any) => {
       setIsProcessing(req.id);
       try {
+          const fromWarehouse = warehouses.find((w: any) => w.id === req.fromWarehouseId);
+          const isRequesterMain = Boolean(fromWarehouse?.isMain);
+
           const newStockInRecord = {
               warehouseId: req.fromWarehouseId,
               fromWarehouseId: req.toWarehouseId,
               date: new Date().toISOString(),
-              items: req.items.map(i => ({ itemId: i.itemId, name: i.name, qty: i.quantity, cost: i.cost || 0 })),
+              items: req.items.map((i: any) => ({ itemId: i.itemId, name: i.name, qty: i.quantity, cost: i.cost || 0 })),
               reason: 'requisition',
               notes: `وارد بناءً على طلب بضاعة رقم ${req.requisitionNumber}`,
               receiptNumber: `إذ-د-${await getNextId('stockIn')}`,
               createdById: user?.id,
               createdByName: user?.name,
               requisitionId: req.id,
-              status: 'pending_putaway', // New status for main warehouses
+              status: isRequesterMain ? 'pending_putaway' : 'completed', // Only main warehouses do putaway; normal branches complete immediately
           };
 
           const newStockInId = await dbAction('stockInRecords', 'add', newStockInRecord);
           if (newStockInId) {
-              router.push(`/inventory/stock-in?stockInId=${newStockInId}`);
+              if (isRequesterMain) {
+                  router.push(`/inventory/stock-in?stockInId=${newStockInId}`);
+              } else {
+                  toast({ title: "تم الاستلام بنجاح", description: "تم استلام البضاعة وإضافتها لرصيد الفرع مباشرة." });
+              }
           } else {
               throw new Error("Failed to create stock-in record.");
           }

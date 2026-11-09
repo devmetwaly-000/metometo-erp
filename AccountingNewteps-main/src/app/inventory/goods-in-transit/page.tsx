@@ -120,7 +120,7 @@ export default function GoodsInTransitPage() {
         }));
         
     const pendingRequisitions = stockInRecords
-        .filter((rec: StockInRecord) => rec.status === 'pending_putaway')
+        .filter((rec: StockInRecord) => rec.status === 'pending_putaway' || rec.status === 'in_transit')
         .map((rec: StockInRecord) => ({
              id: rec.id,
              type: 'requisition',
