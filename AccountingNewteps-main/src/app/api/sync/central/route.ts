@@ -4,7 +4,10 @@ import {
     saveCentralConfig, 
     testCentralConnection, 
     runFullSync, 
-    getTablesSyncMatrix 
+    getTablesSyncMatrix,
+    updateTableSyncDirection,
+    updateTableSyncDirectionsBulk,
+    resetTableSyncDirections
 } from '@/lib/central-sync';
 import { createAndInitializeDatabase } from '@/lib/database-init';
 import { getDbPool } from '@/lib/db';
@@ -212,6 +215,56 @@ export async function POST(req: Request) {
                 message: targetRole === 'central' 
                     ? 'تم بنجاح تحويل دور النظام إلى [إدارة مركزية Central HQ] وحفظ الإعداد في قاعدة البيانات.' 
                     : 'تم بنجاح تحويل دور النظام إلى [فرع محلي Sub-Branch] وحفظ الإعداد في قاعدة البيانات.'
+            });
+        }
+
+        // 7. تحديث اتجاه مزامنة جدول محدد
+        if (action === 'update-direction') {
+            const { tableName, direction } = body;
+            if (!tableName || !direction) {
+                return NextResponse.json({ success: false, error: 'اسم الجدول والاتجاه مطلوبان.' }, { status: 400 });
+            }
+            const res = await updateTableSyncDirection(tableName, direction);
+            return NextResponse.json({
+                success: true,
+                tableName,
+                direction,
+                message: `تم تحديث اتجاه مزامنة "${tableName}" إلى "${direction}" وحفظه في قاعدة البيانات.`
+            });
+        }
+
+        // 8. تحديث جماعي لاتجاهات المزامنة لقسم كامل أو قائمة
+        if (action === 'update-directions-bulk') {
+            const { category, direction, updates } = body;
+            if (category && direction) {
+                const pool = await getDbPool();
+                const sqlMod = await import('mssql');
+                await pool.request()
+                    .input('Category', sqlMod.default.NVarChar(100), category)
+                    .input('Direction', sqlMod.default.NVarChar(50), direction)
+                    .query(`
+                        UPDATE dbo.SyncTrackingMatrix 
+                        SET SyncDirection = @Direction, UpdatedAt = SYSUTCDATETIME()
+                        WHERE Category = @Category;
+                    `);
+                return NextResponse.json({
+                    success: true,
+                    message: `تم تحديث اتجاه مزامنة جميع جداول قسم "${category}" إلى "${direction}" بنجاح.`
+                });
+            }
+            if (Array.isArray(updates) && updates.length > 0) {
+                const res = await updateTableSyncDirectionsBulk(updates);
+                return NextResponse.json(res);
+            }
+            return NextResponse.json({ success: false, error: 'بيانات التحديث غير صالحة.' }, { status: 400 });
+        }
+
+        // 9. استعادة اتجاهات المزامنة الافتراضية الموصى بها
+        if (action === 'reset-directions') {
+            await resetTableSyncDirections();
+            return NextResponse.json({
+                success: true,
+                message: 'تمت استعادة اتجاهات المزامنة القياسية الموصى بها لجميع الجداول الـ 69 بنجاح.'
             });
         }
 

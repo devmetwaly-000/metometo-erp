@@ -19,9 +19,9 @@ import {
     ShoppingCart, Truck, Banknote, CreditCard, Receipt, Boxes, Activity, Sparkles,
     ArrowLeftRight, Wallet, Users, UserCheck, Terminal, Search, CheckCircle,
     HardDrive, Cpu, AlertCircle, FileText, CheckCheck, X, ListChecks, ShieldAlert,
-    Lock, Key, Building2, Store, Shield
+    Lock, Key, Building2, Store, Shield, SlidersHorizontal, RotateCcw, PauseCircle, PlayCircle, Filter, ArrowUp, ArrowDown
 } from "lucide-react";
-import { CentralSyncConfig, TableSyncMatrixItem, TablesSyncMatrixResponse } from '@/lib/central-sync';
+import { CentralSyncConfig, TableSyncMatrixItem, TablesSyncMatrixResponse, SyncDirection } from '@/lib/central-sync';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
 
@@ -86,16 +86,25 @@ export default function CentralSyncSettingsPage() {
     const [isInitializingDb, setIsInitializingDb] = useState(false);
     const [initDbResult, setInitDbResult] = useState<{ success: boolean; message: string; tablesCount?: number; error?: string } | null>(null);
 
-    // Active Tab: 'matrix' | 'queue' | 'config'
-    const [activeTab, setActiveTab] = useState<'matrix' | 'queue' | 'config'>('matrix');
+    // Active Tab: 'matrix' | 'directions' | 'queue' | 'config'
+    const [activeTab, setActiveTab] = useState<'matrix' | 'directions' | 'queue' | 'config'>('matrix');
 
     // Matrix Filters State
     const [syncMatrix, setSyncMatrix] = useState<TablesSyncMatrixResponse | null>(null);
     const [isRefreshingMatrix, setIsRefreshingMatrix] = useState(false);
     const [tableSearch, setTableSearch] = useState('');
     const [tableCategoryFilter, setTableCategoryFilter] = useState('all');
-    const [tableDirectionFilter, setTableDirectionFilter] = useState<'all' | 'push' | 'pull' | 'bidirectional'>('all');
+    const [tableDirectionFilter, setTableDirectionFilter] = useState<'all' | 'push' | 'pull' | 'bidirectional' | 'disabled'>('all');
     const [tableStatusFilter, setTableStatusFilter] = useState<'all' | 'pending' | 'synced' | 'has_data'>('all');
+
+    // Directions Tab Filters & State
+    const [dirSearch, setDirSearch] = useState('');
+    const [dirCategoryFilter, setDirCategoryFilter] = useState('all');
+    const [dirTypeFilter, setDirTypeFilter] = useState<'all' | 'push' | 'pull' | 'bidirectional' | 'disabled'>('all');
+    const [updatingDirTable, setUpdatingDirTable] = useState<string | null>(null);
+    const [isResettingDirs, setIsResettingDirs] = useState(false);
+    const [bulkCategoryDir, setBulkCategoryDir] = useState<string>('push');
+    const [isApplyingBulkDir, setIsApplyingBulkDir] = useState(false);
 
     // Role Switch Security Modal State
     const [isRoleDialogOpen, setIsRoleDialogOpen] = useState(false);
@@ -407,8 +416,8 @@ export default function CentralSyncSettingsPage() {
         }
     };
 
-    // Helper: render sync direction badge (NO PURPLE - uses Amber, Sky, Teal)
-    const renderDirectionBadge = (dir: 'push' | 'pull' | 'bidirectional') => {
+    // Helper: render sync direction badge (NO PURPLE - uses Amber, Sky, Teal, Rose)
+    const renderDirectionBadge = (dir: SyncDirection) => {
         if (dir === 'push') {
             return (
                 <Badge variant="outline" className="text-[10px] font-semibold text-amber-700 dark:text-amber-300 bg-amber-500/10 border-amber-500/30 gap-1 px-2 py-0.5">
@@ -423,11 +432,171 @@ export default function CentralSyncSettingsPage() {
                 </Badge>
             );
         }
+        if (dir === 'bidirectional') {
+            return (
+                <Badge variant="outline" className="text-[10px] font-semibold text-teal-700 dark:text-teal-300 bg-teal-500/10 border-teal-500/30 gap-1 px-2 py-0.5">
+                    <ArrowLeftRight className="h-3 w-3" /> متبادل
+                </Badge>
+            );
+        }
         return (
-            <Badge variant="outline" className="text-[10px] font-semibold text-teal-700 dark:text-teal-300 bg-teal-500/10 border-teal-500/30 gap-1 px-2 py-0.5">
-                <ArrowLeftRight className="h-3 w-3" /> متبادل
+            <Badge variant="outline" className="text-[10px] font-semibold text-rose-700 dark:text-rose-400 bg-rose-500/10 border-rose-500/30 gap-1 px-2 py-0.5">
+                <PauseCircle className="h-3 w-3" /> إيقاف المزامنة
             </Badge>
         );
+    };
+
+    // Helper: Direction operational impact
+    const getDirectionImpactText = (dir: SyncDirection) => {
+        switch (dir) {
+            case 'push':
+                return {
+                    title: 'رفع للإدارة فقط (Push)',
+                    desc: 'الفرع يرسل حركاته وسجلاته للإدارة المركزية ولا يستقبل تعديلات من السيرفر المركزي.',
+                    color: 'text-amber-700 dark:text-amber-400',
+                    border: 'border-amber-500/25',
+                    bg: 'bg-amber-500/5'
+                };
+            case 'pull':
+                return {
+                    title: 'سحب من الإدارة فقط (Pull)',
+                    desc: 'الفرع يستقبل التحديثات الصادرة من المركز ولا يقوم برفع أي تعديلات مسجلة بالفرع.',
+                    color: 'text-sky-700 dark:text-sky-400',
+                    border: 'border-sky-500/25',
+                    bg: 'bg-sky-500/5'
+                };
+            case 'bidirectional':
+                return {
+                    title: 'مزامنة تبادلية كاملة (Bidirectional)',
+                    desc: 'مزامنة ثنائية: أي حركة أو تعديل بالفرع يُرفع للإدارة وأي تعديل بالمركز يُسحب للفرع.',
+                    color: 'text-teal-700 dark:text-teal-400',
+                    border: 'border-teal-500/25',
+                    bg: 'bg-teal-500/5'
+                };
+            case 'disabled':
+                return {
+                    title: 'مزامنة موقوفة تماماً (Disabled)',
+                    desc: 'الجدول مستثنى تماماً من دورات المزامنة؛ لن يتم رفع أو سحب أي سجل منه نهائياً.',
+                    color: 'text-rose-700 dark:text-rose-400',
+                    border: 'border-rose-500/25',
+                    bg: 'bg-rose-500/5'
+                };
+        }
+    };
+
+    // Update direction of a single table in DB
+    const handleUpdateTableDirection = async (tableName: string, newDir: SyncDirection) => {
+        setUpdatingDirTable(tableName);
+        try {
+            const res = await fetch('/api/sync/central', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    action: 'update-direction',
+                    tableName,
+                    direction: newDir
+                })
+            });
+            const data = await res.json();
+            if (data.success) {
+                toast({
+                    title: "تم حفظ اتجاه المزامنة بنجاح",
+                    description: `تم تعيين اتجاه جدول "${tableName}" إلى "${newDir}".`
+                });
+                setSyncMatrix(prev => {
+                    if (!prev) return prev;
+                    return {
+                        ...prev,
+                        tables: prev.tables.map(t => t.tableName === tableName ? { ...t, direction: newDir } : t)
+                    };
+                });
+            } else {
+                throw new Error(data.error);
+            }
+        } catch (err: any) {
+            toast({
+                title: "فشل حفظ اتجاه المزامنة",
+                description: err.message,
+                variant: "destructive"
+            });
+        } finally {
+            setUpdatingDirTable(null);
+        }
+    };
+
+    // Bulk apply direction to all tables in the selected category
+    const handleApplyBulkCategoryDir = async () => {
+        if (!dirCategoryFilter || dirCategoryFilter === 'all') {
+            toast({
+                title: "يرجى اختيار قسم محدد",
+                description: "اختر القسم المراد تطبيق الاتجاه عليه جماعياً من قائمة الفلترة أولاً.",
+                variant: "destructive"
+            });
+            return;
+        }
+        setIsApplyingBulkDir(true);
+        try {
+            const res = await fetch('/api/sync/central', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    action: 'update-directions-bulk',
+                    category: dirCategoryFilter,
+                    direction: bulkCategoryDir
+                })
+            });
+            const data = await res.json();
+            if (data.success) {
+                toast({
+                    title: "تم التطبيق الجماعي بنجاح",
+                    description: data.message
+                });
+                await handleRefreshMatrix();
+            } else {
+                throw new Error(data.error);
+            }
+        } catch (err: any) {
+            toast({
+                title: "خطأ في التطبيق الجماعي",
+                description: err.message,
+                variant: "destructive"
+            });
+        } finally {
+            setIsApplyingBulkDir(false);
+        }
+    };
+
+    // Reset directions to recommended standard configuration
+    const handleResetDirections = async () => {
+        if (!confirm('هل تريد فعلاً استعادة اتجاهات المزامنة القياسية الموصى بها لكافة الجداول الـ 69؟')) {
+            return;
+        }
+        setIsResettingDirs(true);
+        try {
+            const res = await fetch('/api/sync/central', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ action: 'reset-directions' })
+            });
+            const data = await res.json();
+            if (data.success) {
+                toast({
+                    title: "تمت استعادة الاتجاهات القياسية",
+                    description: data.message
+                });
+                await handleRefreshMatrix();
+            } else {
+                throw new Error(data.error);
+            }
+        } catch (err: any) {
+            toast({
+                title: "خطأ في استعادة الاتجاهات",
+                description: err.message,
+                variant: "destructive"
+            });
+        } finally {
+            setIsResettingDirs(false);
+        }
     };
 
     // Helper: render table sync status badge (NO PURPLE - uses Emerald, Amber, Sky, Cyan)
@@ -512,6 +681,43 @@ export default function CentralSyncSettingsPage() {
     // Tables with pending sync operations (Used in the Queue tab)
     const pendingTablesList = useMemo(() => {
         return (syncMatrix?.tables || []).filter(t => t.pendingPushCount > 0 || t.pendingPullCount > 0);
+    }, [syncMatrix]);
+
+    // Filter and search logic for Directions Tab
+    const filteredDirectionsTables = useMemo(() => {
+        return (syncMatrix?.tables || []).filter(t => {
+            const matchesSearch = !dirSearch || 
+                t.displayName.toLowerCase().includes(dirSearch.toLowerCase()) ||
+                t.tableName.toLowerCase().includes(dirSearch.toLowerCase()) ||
+                (t.description && t.description.toLowerCase().includes(dirSearch.toLowerCase())) ||
+                (t.dataScope && t.dataScope.toLowerCase().includes(dirSearch.toLowerCase())) ||
+                t.category.toLowerCase().includes(dirSearch.toLowerCase());
+            
+            if (!matchesSearch) return false;
+
+            if (dirCategoryFilter !== 'all' && t.category !== dirCategoryFilter) {
+                return false;
+            }
+
+            if (dirTypeFilter !== 'all' && t.direction !== dirTypeFilter) {
+                return false;
+            }
+
+            return true;
+        });
+    }, [syncMatrix, dirSearch, dirCategoryFilter, dirTypeFilter]);
+
+    // Statistics counts for sync directions
+    const dirStats = useMemo(() => {
+        const list = syncMatrix?.tables || [];
+        let push = 0, pull = 0, bidirectional = 0, disabled = 0;
+        for (const t of list) {
+            if (t.direction === 'push') push++;
+            else if (t.direction === 'pull') pull++;
+            else if (t.direction === 'bidirectional') bidirectional++;
+            else if (t.direction === 'disabled') disabled++;
+        }
+        return { total: list.length, push, pull, bidirectional, disabled };
     }, [syncMatrix]);
 
     if (isLoading) {
@@ -675,23 +881,32 @@ export default function CentralSyncSettingsPage() {
 
                 {/* 3. Re-engineered Navigation Tabs */}
                 <Tabs value={activeTab} onValueChange={(val) => setActiveTab(val as any)} className="w-full">
-                    <TabsList className="grid w-full grid-cols-3 max-w-xl mx-auto h-11 bg-muted/60 p-1 rounded-xl shadow-inner border">
-                        <TabsTrigger value="matrix" className="gap-2 font-bold text-xs rounded-lg data-[state=active]:shadow-sm">
+                    <TabsList className="grid w-full grid-cols-2 md:grid-cols-4 max-w-3xl mx-auto h-auto md:h-11 bg-muted/60 p-1 rounded-xl shadow-inner border gap-1">
+                        <TabsTrigger value="matrix" className="gap-2 font-bold text-xs rounded-lg data-[state=active]:shadow-sm py-2 md:py-1.5">
                             <Database className="h-4 w-4 text-emerald-600" /> 
                             مصفوفة الجداول ({syncMatrix?.tables.length || 69})
                         </TabsTrigger>
-                        <TabsTrigger value="queue" className="gap-2 font-bold text-xs rounded-lg data-[state=active]:shadow-sm">
+                        <TabsTrigger value="directions" className="gap-2 font-bold text-xs rounded-lg data-[state=active]:shadow-sm py-2 md:py-1.5">
+                            <SlidersHorizontal className="h-4 w-4 text-teal-600" />
+                            اتجاهات المزامنة 🎛️
+                            {dirStats.disabled > 0 && (
+                                <span className="mr-1 px-1.5 py-0.2 rounded-full text-[10px] bg-rose-600 text-white font-bold">
+                                    {dirStats.disabled} معطل
+                                </span>
+                            )}
+                        </TabsTrigger>
+                        <TabsTrigger value="queue" className="gap-2 font-bold text-xs rounded-lg data-[state=active]:shadow-sm py-2 md:py-1.5">
                             <Activity className="h-4 w-4 text-amber-600" /> 
-                            طابور الحركات المعلقة
+                            طابور الحركات
                             {pendingBreakdown.total > 0 && (
                                 <span className="mr-1 px-1.5 py-0.2 rounded-full text-[10px] bg-amber-600 text-white font-bold">
                                     {pendingBreakdown.total}
                                 </span>
                             )}
                         </TabsTrigger>
-                        <TabsTrigger value="config" className="gap-2 font-bold text-xs rounded-lg data-[state=active]:shadow-sm">
+                        <TabsTrigger value="config" className="gap-2 font-bold text-xs rounded-lg data-[state=active]:shadow-sm py-2 md:py-1.5">
                             <Server className="h-4 w-4 text-sky-600" /> 
-                            إعدادات الربط ونمط النظام
+                            إعدادات الربط والنظام
                         </TabsTrigger>
                     </TabsList>
 
@@ -841,6 +1056,7 @@ export default function CentralSyncSettingsPage() {
                                                 <SelectItem value="push">رفع للإدارة ⬆️</SelectItem>
                                                 <SelectItem value="pull">سحب للفرع ⬇️</SelectItem>
                                                 <SelectItem value="bidirectional">متبادل ثنائي 🔁</SelectItem>
+                                                <SelectItem value="disabled">معطل ومستثنى ⏸️</SelectItem>
                                             </SelectContent>
                                         </Select>
                                     </div>
@@ -957,8 +1173,357 @@ export default function CentralSyncSettingsPage() {
                     </TabsContent>
 
                     {/* ========================================================= */}
-                    {/* TAB 2: RE-ENGINEERED QUEUE & AUDIT LOGS (طابور الحركات المعلقة) */}
+                    {/* TAB 2: SYNC DIRECTIONS CONTROL PANEL (التحكم في اتجاهات المزامنة) */}
                     {/* ========================================================= */}
+                    <TabsContent value="directions" className="space-y-5 mt-4">
+                        
+                        {/* 1. Header Overview & Operational Concept Banner */}
+                        <div className="rounded-xl border bg-card p-4 shadow-sm space-y-3">
+                            <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
+                                <div>
+                                    <h3 className="text-base font-black text-foreground flex items-center gap-2">
+                                        <SlidersHorizontal className="h-5 w-5 text-teal-600" />
+                                        لوحة التحكم في اتجاهات وسلوك مزامنة الجداول
+                                    </h3>
+                                    <p className="text-xs text-muted-foreground mt-1">
+                                        حدد وجهة تدفق البيانات لكل جدول بين الفرع المحلي والإدارة المركزية. كافة دورات المزامنة المجدولة واليدوية تلتزم بالاتجاهات المحددة هنا والمخزنة في قاعدة البيانات.
+                                    </p>
+                                </div>
+                                <div className="flex items-center gap-2 flex-wrap">
+                                    <Button
+                                        variant="outline"
+                                        size="sm"
+                                        onClick={handleResetDirections}
+                                        disabled={isResettingDirs}
+                                        className="h-8 text-xs font-semibold gap-1.5 border-border hover:bg-muted"
+                                        title="إرجاع جميع الجداول للوضع القياسي المعتمد"
+                                    >
+                                        {isResettingDirs ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RotateCcw className="h-3.5 w-3.5 text-muted-foreground" />}
+                                        استعادة التوزيع القياسي الموصى به
+                                    </Button>
+                                    <Button
+                                        size="sm"
+                                        onClick={handleRefreshMatrix}
+                                        disabled={isRefreshingMatrix}
+                                        className="h-8 text-xs font-semibold gap-1.5 bg-teal-600 hover:bg-teal-700 text-white"
+                                    >
+                                        {isRefreshingMatrix ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />}
+                                        تحديث الفحص
+                                    </Button>
+                                </div>
+                            </div>
+
+                            {/* 2. 5 Direction Metric Summary Cards */}
+                            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-3 pt-2 border-t">
+                                <div className="rounded-lg border bg-muted/30 p-2.5 text-center">
+                                    <span className="text-[11px] font-semibold text-muted-foreground block">إجمالي الجداول</span>
+                                    <span className="text-xl font-black text-foreground font-mono">{dirStats.total}</span>
+                                    <span className="text-[10px] text-muted-foreground/80 block mt-0.5">جدول نظام متكامل</span>
+                                </div>
+
+                                <div className="rounded-lg border border-amber-500/25 bg-amber-500/5 p-2.5 text-center">
+                                    <span className="text-[11px] font-semibold text-amber-700 dark:text-amber-400 flex items-center justify-center gap-1">
+                                        <ArrowUpRight className="h-3 w-3" /> رفع للإدارة فقط
+                                    </span>
+                                    <span className="text-xl font-black text-amber-700 dark:text-amber-400 font-mono">{dirStats.push}</span>
+                                    <span className="text-[10px] text-amber-700/80 dark:text-amber-400/80 block mt-0.5">فواتير وسندات وحركات</span>
+                                </div>
+
+                                <div className="rounded-lg border border-sky-500/25 bg-sky-500/5 p-2.5 text-center">
+                                    <span className="text-[11px] font-semibold text-sky-700 dark:text-sky-400 flex items-center justify-center gap-1">
+                                        <ArrowDownLeft className="h-3 w-3" /> سحب للفرع فقط
+                                    </span>
+                                    <span className="text-xl font-black text-sky-700 dark:text-sky-400 font-mono">{dirStats.pull}</span>
+                                    <span className="text-[10px] text-sky-700/80 dark:text-sky-400/80 block mt-0.5">تحديثات مركزية</span>
+                                </div>
+
+                                <div className="rounded-lg border border-teal-500/25 bg-teal-500/5 p-2.5 text-center">
+                                    <span className="text-[11px] font-semibold text-teal-700 dark:text-teal-400 flex items-center justify-center gap-1">
+                                        <ArrowLeftRight className="h-3 w-3" /> تبادلي ثنائي
+                                    </span>
+                                    <span className="text-xl font-black text-teal-700 dark:text-teal-400 font-mono">{dirStats.bidirectional}</span>
+                                    <span className="text-[10px] text-teal-700/80 dark:text-teal-400/80 block mt-0.5">أصناف، عملاء، أسعار</span>
+                                </div>
+
+                                <div className="rounded-lg border border-rose-500/25 bg-rose-500/5 p-2.5 text-center">
+                                    <span className="text-[11px] font-semibold text-rose-700 dark:text-rose-400 flex items-center justify-center gap-1">
+                                        <PauseCircle className="h-3 w-3" /> موقوفة ومعطلة
+                                    </span>
+                                    <span className="text-xl font-black text-rose-700 dark:text-rose-400 font-mono">{dirStats.disabled}</span>
+                                    <span className="text-[10px] text-rose-700/80 dark:text-rose-400/80 block mt-0.5">مستثناة من المزامنة</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* 3. Bulk Category Management Card */}
+                        <div className="rounded-xl border bg-card p-4 shadow-sm">
+                            <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
+                                <div className="space-y-0.5">
+                                    <h4 className="text-sm font-bold text-foreground flex items-center gap-1.5">
+                                        <Zap className="h-4 w-4 text-amber-500" />
+                                        إجراء تطبيق جماعي على قسم كامل
+                                    </h4>
+                                    <p className="text-[11px] text-muted-foreground">
+                                        اختر قسماً وقم بتطبيق اتجاه مزامنة موحد لكافة الجداول التابعة له بضغطة زر واحدة وحفظها في قاعدة البيانات.
+                                    </p>
+                                </div>
+                                <div className="flex items-center gap-2 flex-wrap">
+                                    <Select value={dirCategoryFilter} onValueChange={setDirCategoryFilter}>
+                                        <SelectTrigger className="w-[180px] h-8 text-xs font-semibold">
+                                            <SelectValue placeholder="اختر القسم" />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            <SelectItem value="all">-- حدد قسماً للتطبيق --</SelectItem>
+                                            <SelectItem value="فواتير وعمليات">فواتير وعمليات (5 جداول)</SelectItem>
+                                            <SelectItem value="مشتريات وموردين">مشتريات وموردين (7 جداول)</SelectItem>
+                                            <SelectItem value="عملاء ومبيعات">عملاء ومبيعات (3 جداول)</SelectItem>
+                                            <SelectItem value="حسابات ومالية">حسابات ومالية (8 جداول)</SelectItem>
+                                            <SelectItem value="مخازن وأصناف">مخازن وأصناف (20 جدولاً)</SelectItem>
+                                            <SelectItem value="توزيع ومندوبين">توزيع ومندوبين (5 جداول)</SelectItem>
+                                            <SelectItem value="موارد بشرية">موارد بشرية (6 جداول)</SelectItem>
+                                            <SelectItem value="نقاط البيع">نقاط البيع (5 جداول)</SelectItem>
+                                            <SelectItem value="أصول وإهلاك">أصول وإهلاك (2 جدول)</SelectItem>
+                                            <SelectItem value="إعدادات النظام">إعدادات النظام (8 جداول)</SelectItem>
+                                        </SelectContent>
+                                    </Select>
+
+                                    <Select value={bulkCategoryDir} onValueChange={setBulkCategoryDir}>
+                                        <SelectTrigger className="w-[160px] h-8 text-xs font-semibold">
+                                            <SelectValue placeholder="الاتجاه المطلوب" />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            <SelectItem value="push">⬆️ رفع للإدارة فقط</SelectItem>
+                                            <SelectItem value="pull">⬇️ سحب للفرع فقط</SelectItem>
+                                            <SelectItem value="bidirectional">🔁 تبادلي متزامن</SelectItem>
+                                            <SelectItem value="disabled">⏸️ إيقاف المزامنة</SelectItem>
+                                        </SelectContent>
+                                    </Select>
+
+                                    <Button
+                                        size="sm"
+                                        onClick={handleApplyBulkCategoryDir}
+                                        disabled={isApplyingBulkDir || dirCategoryFilter === 'all'}
+                                        className="h-8 text-xs font-bold bg-foreground text-background hover:bg-foreground/90 gap-1.5"
+                                    >
+                                        {isApplyingBulkDir ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <CheckCircle2 className="h-3.5 w-3.5 text-emerald-500" />}
+                                        تطبيق على القسم
+                                    </Button>
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* 4. Table Controls: Search & Direction Filter */}
+                        <div className="rounded-xl border bg-card shadow-sm overflow-hidden">
+                            <div className="p-3 bg-muted/20 border-b flex flex-col md:flex-row items-center justify-between gap-3">
+                                <div className="flex items-center gap-2 w-full md:w-auto flex-1">
+                                    <div className="relative flex-1 max-w-md">
+                                        <Search className="h-4 w-4 absolute right-3 top-2.5 text-muted-foreground" />
+                                        <Input
+                                            placeholder="ابحث باسم الجدول العربي أو التقني dbo.* أو نوع البيانات..."
+                                            value={dirSearch}
+                                            onChange={(e) => setDirSearch(e.target.value)}
+                                            className="pr-9 h-9 text-xs"
+                                        />
+                                        {dirSearch && (
+                                            <button 
+                                                onClick={() => setDirSearch('')} 
+                                                className="absolute left-3 top-2.5 text-muted-foreground hover:text-foreground"
+                                            >
+                                                <X className="h-4 w-4" />
+                                            </button>
+                                        )}
+                                    </div>
+                                    <Select value={dirTypeFilter} onValueChange={(val: any) => setDirTypeFilter(val)}>
+                                        <SelectTrigger className="w-[150px] h-9 text-xs font-semibold">
+                                            <SelectValue placeholder="تصفية بالاتجاه" />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            <SelectItem value="all">كافة الاتجاهات ({dirStats.total})</SelectItem>
+                                            <SelectItem value="push">⬆️ رفع فقط ({dirStats.push})</SelectItem>
+                                            <SelectItem value="pull">⬇️ سحب فقط ({dirStats.pull})</SelectItem>
+                                            <SelectItem value="bidirectional">🔁 تبادلي ({dirStats.bidirectional})</SelectItem>
+                                            <SelectItem value="disabled">⏸️ معطل ({dirStats.disabled})</SelectItem>
+                                        </SelectContent>
+                                    </Select>
+                                </div>
+                                <div className="text-xs text-muted-foreground font-semibold">
+                                    عرض <strong className="text-foreground">{filteredDirectionsTables.length}</strong> من <strong className="text-foreground">{dirStats.total}</strong> جدولاً
+                                </div>
+                            </div>
+
+                            {/* 5. Master Directions Interactive Table */}
+                            <div className="max-h-[650px] overflow-auto">
+                                <Table>
+                                    <TableHeader className="bg-muted/40 sticky top-0 z-10 shadow-xs">
+                                        <TableRow className="border-b">
+                                            <TableHead className="w-[45px] text-center font-bold text-xs">#</TableHead>
+                                            <TableHead className="w-[240px] text-right font-bold text-xs">اسم الجدول والتعريف</TableHead>
+                                            <TableHead className="w-[300px] text-right font-bold text-xs">نوع ومحتوى البيانات بداخل الجدول</TableHead>
+                                            <TableHead className="w-[200px] text-center font-bold text-xs">تحديد اتجاه المزامنة</TableHead>
+                                            <TableHead className="text-right font-bold text-xs">الأثر التشغيلي للمزامنة</TableHead>
+                                            <TableHead className="w-[100px] text-center font-bold text-xs">إجراء فوري</TableHead>
+                                        </TableRow>
+                                    </TableHeader>
+                                    <TableBody>
+                                        {filteredDirectionsTables.length === 0 ? (
+                                            <TableRow>
+                                                <TableCell colSpan={6} className="text-center py-16 text-muted-foreground text-xs">
+                                                    <Search className="h-8 w-8 mx-auto text-muted-foreground/40 mb-2" />
+                                                    لا توجد جداول مطابقة للبحث أو الفلتر المحدد.
+                                                </TableCell>
+                                            </TableRow>
+                                        ) : (
+                                            filteredDirectionsTables.map((t, idx) => {
+                                                const impact = getDirectionImpactText(t.direction);
+                                                const isUpdating = updatingDirTable === t.tableName;
+
+                                                return (
+                                                    <TableRow 
+                                                        key={t.tableName} 
+                                                        className={cn(
+                                                            "hover:bg-muted/40 text-xs transition-colors border-b",
+                                                            t.direction === 'disabled' && "bg-rose-500/[0.02] opacity-80"
+                                                        )}
+                                                    >
+                                                        {/* 1. Index */}
+                                                        <TableCell className="text-center font-mono text-muted-foreground font-semibold">
+                                                            {idx + 1}
+                                                        </TableCell>
+
+                                                        {/* 2. Table Name & Identity */}
+                                                        <TableCell>
+                                                            <div className="font-bold text-foreground text-sm flex items-center gap-1.5">
+                                                                <span>{t.displayName}</span>
+                                                            </div>
+                                                            <div className="text-[11px] text-muted-foreground font-mono flex items-center gap-1.5 mt-0.5">
+                                                                <Database className="h-3 w-3 text-muted-foreground/60" />
+                                                                <span>dbo.{t.tableName}</span>
+                                                                <Badge variant="outline" className="text-[9px] px-1 py-0 font-normal">
+                                                                    {t.category}
+                                                                </Badge>
+                                                            </div>
+                                                        </TableCell>
+
+                                                        {/* 3. Data Type & Description */}
+                                                        <TableCell>
+                                                            <div className="flex items-center gap-1.5 mb-1">
+                                                                <Badge 
+                                                                    variant="outline" 
+                                                                    className="text-[10px] font-semibold bg-primary/5 text-primary border-primary/20 px-2 py-0.5"
+                                                                >
+                                                                    {t.dataScope || 'بيانات عامة'}
+                                                                </Badge>
+                                                                {t.localBranchRows > 0 && (
+                                                                    <span className="text-[10px] text-muted-foreground font-mono">
+                                                                        ({t.localBranchRows.toLocaleString()} سجل بالفرع)
+                                                                    </span>
+                                                                )}
+                                                            </div>
+                                                            <p className="text-[11px] text-muted-foreground leading-relaxed">
+                                                                {t.description || 'جدول تشغيلي لحفظ وتوثيق بيانات ومعاملات النظام.'}
+                                                            </p>
+                                                        </TableCell>
+
+                                                        {/* 4. Direction Selector (Saves directly to DB) */}
+                                                        <TableCell className="text-center">
+                                                            <div className="flex items-center justify-center gap-1.5">
+                                                                {isUpdating ? (
+                                                                    <div className="flex items-center gap-1.5 text-xs text-muted-foreground font-semibold">
+                                                                        <Loader2 className="h-4 w-4 animate-spin text-teal-600" />
+                                                                        <span>جاري الحفظ...</span>
+                                                                    </div>
+                                                                ) : (
+                                                                    <Select
+                                                                        value={t.direction}
+                                                                        onValueChange={(newVal: SyncDirection) => handleUpdateTableDirection(t.tableName, newVal)}
+                                                                    >
+                                                                        <SelectTrigger className={cn(
+                                                                            "h-8 text-xs font-bold w-[165px] border shadow-xs transition-colors",
+                                                                            t.direction === 'push' && "border-amber-500/40 bg-amber-500/10 text-amber-700 dark:text-amber-300",
+                                                                            t.direction === 'pull' && "border-sky-500/40 bg-sky-500/10 text-sky-700 dark:text-sky-300",
+                                                                            t.direction === 'bidirectional' && "border-teal-500/40 bg-teal-500/10 text-teal-700 dark:text-teal-300",
+                                                                            t.direction === 'disabled' && "border-rose-500/40 bg-rose-500/10 text-rose-700 dark:text-rose-400"
+                                                                        )}>
+                                                                            <SelectValue />
+                                                                        </SelectTrigger>
+                                                                        <SelectContent>
+                                                                            <SelectItem value="push" className="text-xs font-bold text-amber-700 dark:text-amber-300">
+                                                                                <div className="flex items-center gap-1.5">
+                                                                                    <ArrowUpRight className="h-3.5 w-3.5" />
+                                                                                    <span>⬆️ رفع للإدارة (Push)</span>
+                                                                                </div>
+                                                                            </SelectItem>
+                                                                            <SelectItem value="pull" className="text-xs font-bold text-sky-700 dark:text-sky-300">
+                                                                                <div className="flex items-center gap-1.5">
+                                                                                    <ArrowDownLeft className="h-3.5 w-3.5" />
+                                                                                    <span>⬇️ سحب للفرع (Pull)</span>
+                                                                                </div>
+                                                                            </SelectItem>
+                                                                            <SelectItem value="bidirectional" className="text-xs font-bold text-teal-700 dark:text-teal-300">
+                                                                                <div className="flex items-center gap-1.5">
+                                                                                    <ArrowLeftRight className="h-3.5 w-3.5" />
+                                                                                    <span>🔁 تبادلي (Bidirectional)</span>
+                                                                                </div>
+                                                                            </SelectItem>
+                                                                            <SelectItem value="disabled" className="text-xs font-bold text-rose-700 dark:text-rose-400">
+                                                                                <div className="flex items-center gap-1.5">
+                                                                                    <PauseCircle className="h-3.5 w-3.5" />
+                                                                                    <span>⏸️ إيقاف المزامنة (Disabled)</span>
+                                                                                </div>
+                                                                            </SelectItem>
+                                                                        </SelectContent>
+                                                                    </Select>
+                                                                )}
+                                                            </div>
+                                                        </TableCell>
+
+                                                        {/* 5. Operational Impact Card */}
+                                                        <TableCell>
+                                                            <div className={cn(
+                                                                "p-2 rounded-lg border text-[11px] leading-relaxed transition-all",
+                                                                impact.bg, impact.border
+                                                            )}>
+                                                                <strong className={cn("font-bold block mb-0.5", impact.color)}>
+                                                                    {impact.title}
+                                                                </strong>
+                                                                <span className="text-muted-foreground text-[10.5px]">
+                                                                    {impact.desc}
+                                                                </span>
+                                                            </div>
+                                                        </TableCell>
+
+                                                        {/* 6. Single Sync Action */}
+                                                        <TableCell className="text-center">
+                                                            <Button
+                                                                size="sm"
+                                                                variant="outline"
+                                                                className={cn(
+                                                                    "h-7 px-2.5 text-[11px] font-bold shadow-xs transition-colors",
+                                                                    t.direction === 'disabled' && "opacity-40 cursor-not-allowed"
+                                                                )}
+                                                                onClick={() => handleSyncNow(t.direction === 'pull' ? 'pull' : 'push', t.tableName)}
+                                                                disabled={t.direction === 'disabled' || (isSyncing && syncingTable === t.tableName)}
+                                                                title={t.direction === 'disabled' ? "الجدول معطل من المزامنة" : `مزامنة جدول ${t.displayName} فوراً`}
+                                                            >
+                                                                {isSyncing && syncingTable === t.tableName ? (
+                                                                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                                                                ) : (
+                                                                    <>
+                                                                        <RefreshCw className="h-3 w-3 ml-1 text-teal-600" />
+                                                                        مزامنة
+                                                                    </>
+                                                                )}
+                                                            </Button>
+                                                        </TableCell>
+                                                    </TableRow>
+                                                );
+                                            })
+                                        )}
+                                    </TableBody>
+                                </Table>
+                            </div>
+                        </div>
+                    </TabsContent>
                     <TabsContent value="queue" className="space-y-5 mt-4">
                         
                         {/* Queue Hero Status */}
@@ -1062,7 +1627,7 @@ export default function CentralSyncSettingsPage() {
                                 "p-3 rounded-xl border text-center space-y-1 transition-all",
                                 pendingBreakdown.supplierPayments > 0 ? "bg-amber-500/10 border-amber-500/30 shadow-xs" : "bg-card hover:bg-muted/30"
                             )}>
-                                <CreditCard className="h-5 w-5 mx-auto text-indigo-600" />
+                                <CreditCard className="h-5 w-5 mx-auto text-blue-600" />
                                 <div className="text-xs text-muted-foreground font-medium">سندات صرف</div>
                                 <div className={cn("text-xl font-black font-mono", pendingBreakdown.supplierPayments > 0 ? "text-amber-600" : "text-foreground")}>
                                     {pendingBreakdown.supplierPayments}

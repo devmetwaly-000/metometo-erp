@@ -45,7 +45,7 @@ const DEFAULT_CONFIG: CentralSyncConfig = {
     lastSyncStatus: 'ready'
 };
 
-export type SyncDirection = 'push' | 'pull' | 'bidirectional';
+export type SyncDirection = 'push' | 'pull' | 'bidirectional' | 'disabled';
 
 export interface TableSyncMeta {
     name: string;
@@ -54,100 +54,102 @@ export interface TableSyncMeta {
     idColumn: string;
     childTable?: string;
     foreignKey?: string;
+    description?: string;
+    dataScope?: string;
 }
 
 /**
- * خريطة بيانات ومحددات جميع جداول النظام الـ 69
+ * خريطة بيانات ومحددات وتوصيف جميع جداول النظام الـ 69
  */
 export const TABLE_METADATA_MAP: Record<string, TableSyncMeta> = {
     // 1. فواتير وعمليات (فواتير، مرتجعات، كاشير)
-    SalesInvoices: { name: 'فواتير المبيعات', category: 'فواتير وعمليات', direction: 'push', idColumn: 'Id', childTable: 'SalesInvoiceItems', foreignKey: 'InvoiceId' },
-    SalesInvoiceItems: { name: 'بنود فواتير المبيعات', category: 'فواتير وعمليات', direction: 'push', idColumn: 'Id' },
-    SalesReturns: { name: 'مردودات المبيعات', category: 'فواتير وعمليات', direction: 'push', idColumn: 'Id', childTable: 'SalesReturnItems', foreignKey: 'ReturnId' },
-    SalesReturnItems: { name: 'بنود مردودات المبيعات', category: 'فواتير وعمليات', direction: 'push', idColumn: 'Id' },
-    HeldInvoices: { name: 'الفواتير المعلقة بالكاشير', category: 'فواتير وعمليات', direction: 'push', idColumn: 'Id' },
+    SalesInvoices: { name: 'فواتير المبيعات', category: 'فواتير وعمليات', direction: 'push', idColumn: 'Id', childTable: 'SalesInvoiceItems', foreignKey: 'InvoiceId', description: 'بيانات فواتير المبيعات الصادرة من نقاط البيع، أرقام الفواتير، الإجماليات، والضرائب', dataScope: 'حركات مبيعات' },
+    SalesInvoiceItems: { name: 'بنود فواتير المبيعات', category: 'فواتير وعمليات', direction: 'push', idColumn: 'Id', description: 'تفاصيل بنود الأصناف المباعة، الكميات، أسعار البيع والتكلفة والخصم', dataScope: 'حركات مبيعات' },
+    SalesReturns: { name: 'مردودات المبيعات', category: 'فواتير وعمليات', direction: 'push', idColumn: 'Id', childTable: 'SalesReturnItems', foreignKey: 'ReturnId', description: 'سجل فواتير مرتجعات المبيعات المستردة من العملاء وقيم الاسترداد', dataScope: 'حركات مرتجعات' },
+    SalesReturnItems: { name: 'بنود مردودات المبيعات', category: 'فواتير وعمليات', direction: 'push', idColumn: 'Id', description: 'تفاصيل بنود الأصناف المرتجعة والكميات المستردة للمخزن', dataScope: 'حركات مرتجعات' },
+    HeldInvoices: { name: 'الفواتير المعلقة بالكاشير', category: 'فواتير وعمليات', direction: 'push', idColumn: 'Id', description: 'الفواتير المعلقة مؤقتاً على شاشات الكاشير قبل استكمال الدفع', dataScope: 'عمليات معلقة' },
 
     // 2. مشتريات وموردين
-    PurchaseInvoices: { name: 'فواتير المشتريات', category: 'مشتريات وموردين', direction: 'push', idColumn: 'Id', childTable: 'PurchaseInvoiceItems', foreignKey: 'PurchaseInvoiceId' },
-    PurchaseInvoiceItems: { name: 'بنود فواتير المشتريات', category: 'مشتريات وموردين', direction: 'push', idColumn: 'Id' },
-    PurchaseReturns: { name: 'مردودات المشتريات', category: 'مشتريات وموردين', direction: 'push', idColumn: 'Id', childTable: 'PurchaseReturnItems', foreignKey: 'ReturnId' },
-    PurchaseReturnItems: { name: 'بنود مردودات المشتريات', category: 'مشتريات وموردين', direction: 'push', idColumn: 'Id' },
-    PurchaseOrders: { name: 'أوامر الشراء للموردين', category: 'مشتريات وموردين', direction: 'push', idColumn: 'Id' },
-    Suppliers: { name: 'سجل الموردين', category: 'مشتريات وموردين', direction: 'bidirectional', idColumn: 'Id' },
-    SupplierPayments: { name: 'سندات صرف الموردين', category: 'مشتريات وموردين', direction: 'push', idColumn: 'Id' },
+    PurchaseInvoices: { name: 'فواتير المشتريات', category: 'مشتريات وموردين', direction: 'push', idColumn: 'Id', childTable: 'PurchaseInvoiceItems', foreignKey: 'PurchaseInvoiceId', description: 'فواتير الشراء الواردة من الموردين بالمخازن وتكاليف الاستلام', dataScope: 'حركات مشتريات' },
+    PurchaseInvoiceItems: { name: 'بنود فواتير المشتريات', category: 'مشتريات وموردين', direction: 'push', idColumn: 'Id', description: 'بنود وأسعار وتكاليف أصناف فواتير المشتريات المستلمة', dataScope: 'حركات مشتريات' },
+    PurchaseReturns: { name: 'مردودات المشتريات', category: 'مشتريات وموردين', direction: 'push', idColumn: 'Id', childTable: 'PurchaseReturnItems', foreignKey: 'ReturnId', description: 'أذون إرجاع البضاعة والمشتريات للموردين وتسوية حساباتهم', dataScope: 'حركات مشتريات' },
+    PurchaseReturnItems: { name: 'بنود مردودات المشتريات', category: 'مشتريات وموردين', direction: 'push', idColumn: 'Id', description: 'تفاصيل بنود الأصناف المرتجعة إلى الموردين', dataScope: 'حركات مشتريات' },
+    PurchaseOrders: { name: 'أوامر الشراء للموردين', category: 'مشتريات وموردين', direction: 'push', idColumn: 'Id', description: 'أوامر وطلبات الشراء الصادرة للموردين قيد التنفيذ', dataScope: 'أوامر شراء' },
+    Suppliers: { name: 'سجل الموردين', category: 'مشتريات وموردين', direction: 'bidirectional', idColumn: 'Id', description: 'سجل الموردين، بيانات الاتصال، والأرصدة الافتتاحية والآجلة', dataScope: 'بيانات رئيسية' },
+    SupplierPayments: { name: 'سندات صرف الموردين', category: 'مشتريات وموردين', direction: 'push', idColumn: 'Id', description: 'سندات صرف النقدية والشيكات للموردين لتسوية الحسابات', dataScope: 'سندات صرف' },
 
     // 3. عملاء ومبيعات
-    Customers: { name: 'سجل العملاء', category: 'عملاء ومبيعات', direction: 'bidirectional', idColumn: 'Id' },
-    CustomerPayments: { name: 'سندات قبض العملاء', category: 'عملاء ومبيعات', direction: 'push', idColumn: 'Id' },
-    CustomerVisits: { name: 'سجل زيارات العملاء', category: 'عملاء ومبيعات', direction: 'push', idColumn: 'Id' },
+    Customers: { name: 'سجل العملاء', category: 'عملاء ومبيعات', direction: 'bidirectional', idColumn: 'Id', description: 'قاعدة بيانات العملاء، أرقام الهواتف، والعناوين والحد الائتماني', dataScope: 'بيانات رئيسية' },
+    CustomerPayments: { name: 'سندات قبض العملاء', category: 'عملاء ومبيعات', direction: 'push', idColumn: 'Id', description: 'سندات تحصيل وقبض النقدية من العملاء وتسوية المديونيات', dataScope: 'سندات قبض' },
+    CustomerVisits: { name: 'سجل زيارات العملاء', category: 'عملاء ومبيعات', direction: 'push', idColumn: 'Id', description: 'سجل زيارات ومتابعات مندوبي المبيعات للعملاء والمحلات', dataScope: 'متابعة بيعية' },
 
     // 4. حسابات ومالية
-    CashAccounts: { name: 'الخزائن والحسابات البنكية', category: 'حسابات ومالية', direction: 'bidirectional', idColumn: 'Id' },
-    TreasuryTransactions: { name: 'حركات الخزينة والتحويلات', category: 'حسابات ومالية', direction: 'push', idColumn: 'Id' },
-    Expenses: { name: 'المصروفات التشغيلية', category: 'حسابات ومالية', direction: 'push', idColumn: 'Id' },
-    ExceptionalIncomes: { name: 'الإيرادات الاستثنائية', category: 'حسابات ومالية', direction: 'push', idColumn: 'Id' },
-    ProfitDistributions: { name: 'توزيعات الأرباح', category: 'حسابات ومالية', direction: 'push', idColumn: 'Id' },
-    Partners: { name: 'سجل الشركاء والمساهمين', category: 'حسابات ومالية', direction: 'bidirectional', idColumn: 'Id' },
-    PaymentMethods: { name: 'طرق الدفع والتحصيل', category: 'حسابات ومالية', direction: 'bidirectional', idColumn: 'Id' },
+    CashAccounts: { name: 'الخزائن والحسابات البنكية', category: 'حسابات ومالية', direction: 'bidirectional', idColumn: 'Id', description: 'دفاتر الخزائن النقدية، الحسابات البنكية، والعهد المالية', dataScope: 'حسابات مالية' },
+    TreasuryTransactions: { name: 'حركات الخزينة والتحويلات', category: 'حسابات ومالية', direction: 'push', idColumn: 'Id', description: 'سجل حركة المقبوضات والمدفوعات والتحويلات بين الخزائن', dataScope: 'حركات مالية' },
+    Expenses: { name: 'المصروفات التشغيلية', category: 'حسابات ومالية', direction: 'push', idColumn: 'Id', description: 'بنود المصروفات التشغيلية، الإيجارات، الفواتير، والمصاريف العامة', dataScope: 'مصروفات تشغيل' },
+    ExceptionalIncomes: { name: 'الإيرادات الاستثنائية', category: 'حسابات ومالية', direction: 'push', idColumn: 'Id', description: 'الإيرادات العرضية والاستثنائية خارج النشاط البيعي المعتاد', dataScope: 'إيرادات أخرى' },
+    ProfitDistributions: { name: 'توزيعات الأرباح', category: 'حسابات ومالية', direction: 'push', idColumn: 'Id', description: 'حركات توزيع الأرباح على الشركاء والمساهمين', dataScope: 'حقوق ملكية' },
+    Partners: { name: 'سجل الشركاء والمساهمين', category: 'حسابات ومالية', direction: 'bidirectional', idColumn: 'Id', description: 'سجل الشركاء والمساهمين ونسب الحصص في رأس المال', dataScope: 'بيانات رئيسية' },
+    PaymentMethods: { name: 'طرق الدفع والتحصيل', category: 'حسابات ومالية', direction: 'bidirectional', idColumn: 'Id', description: 'وسائل وطرق الدفع المقبولة (نقدي، فيزا، فودافون كاش، محفظة)', dataScope: 'إعدادات دفع' },
 
     // 5. أصول وإهلاك
-    FixedAssets: { name: 'الأصول الثابتة', category: 'أصول وإهلاك', direction: 'bidirectional', idColumn: 'Id' },
-    DepreciationRecords: { name: 'قيود إهلاك الأصول', category: 'أصول وإهلاك', direction: 'push', idColumn: 'Id' },
+    FixedAssets: { name: 'الأصول الثابتة', category: 'أصول وإهلاك', direction: 'bidirectional', idColumn: 'Id', description: 'سجل الأصول والعدد والأجهزة ومواقعها وقيمتها الدفترية', dataScope: 'أصول ثابتة' },
+    DepreciationRecords: { name: 'قيود إهلاك الأصول', category: 'أصول وإهلاك', direction: 'push', idColumn: 'Id', description: 'قيود الإهلاك الدورية للأصول الثابتة ومجمع الإهلاك', dataScope: 'قيود إهلاك' },
 
     // 6. مخازن وأصناف
-    Items: { name: 'الأصناف والمنتجات', category: 'مخازن وأصناف', direction: 'bidirectional', idColumn: 'Id' },
-    ItemCategories: { name: 'تصنيفات ومجموعات الأصناف', category: 'مخازن وأصناف', direction: 'bidirectional', idColumn: 'Id' },
-    ItemSections: { name: 'أقسام الأصناف', category: 'مخازن وأصناف', direction: 'bidirectional', idColumn: 'Id' },
-    ItemGroups: { name: 'الفئات العامة للأصناف', category: 'مخازن وأصناف', direction: 'bidirectional', idColumn: 'Id' },
-    ItemSubCategories1: { name: 'تصنيفات فرعية 1 للأصناف', category: 'مخازن وأصناف', direction: 'bidirectional', idColumn: 'Id' },
-    ItemSubCategories2: { name: 'تصنيفات فرعية 2 للأصناف', category: 'مخازن وأصناف', direction: 'bidirectional', idColumn: 'Id' },
-    ItemColors: { name: 'ألوان وموديلات الأصناف', category: 'مخازن وأصناف', direction: 'bidirectional', idColumn: 'Id' },
-    ItemSizes: { name: 'مقاسات وأحجام الأصناف', category: 'مخازن وأصناف', direction: 'bidirectional', idColumn: 'Id' },
-    PriceChangeLogs: { name: 'سجل تعديلات الأسعار', category: 'مخازن وأصناف', direction: 'bidirectional', idColumn: 'Id' },
-    Warehouses: { name: 'المستودعات والفروع', category: 'مخازن وأصناف', direction: 'bidirectional', idColumn: 'Id' },
-    InventorySections: { name: 'قواطع وأقسام المستودع', category: 'مخازن وأصناف', direction: 'bidirectional', idColumn: 'Id' },
-    InventoryZones: { name: 'مناطق وأرفف التخزين', category: 'مخازن وأصناف', direction: 'bidirectional', idColumn: 'Id' },
-    StockInRecords: { name: 'أذون إضافة واستلام مخزني', category: 'مخازن وأصناف', direction: 'push', idColumn: 'Id', childTable: 'StockInRecordItems', foreignKey: 'StockInId' },
-    StockInRecordItems: { name: 'بنود أذون الإضافة المخزنية', category: 'مخازن وأصناف', direction: 'push', idColumn: 'Id' },
-    StockOutRecords: { name: 'أذون صرف وتسليم مخزني', category: 'مخازن وأصناف', direction: 'push', idColumn: 'Id' },
-    StockTransferRecords: { name: 'تحويلات المخزون بين الفروع', category: 'مخازن وأصناف', direction: 'push', idColumn: 'Id' },
-    StockAdjustmentRecords: { name: 'تسويات الجرد المخزني', category: 'مخازن وأصناف', direction: 'push', idColumn: 'Id', childTable: 'StockAdjustmentItems', foreignKey: 'AdjustmentId' },
-    StockAdjustmentItems: { name: 'بنود تسويات الجرد المخزني', category: 'مخازن وأصناف', direction: 'push', idColumn: 'Id' },
-    InventoryClosings: { name: 'تقفيلات الجرد الدوري', category: 'مخازن وأصناف', direction: 'push', idColumn: 'Id' },
+    Items: { name: 'الأصناف والمنتجات', category: 'مخازن وأصناف', direction: 'bidirectional', idColumn: 'Id', description: 'بطاقات الأصناف، الأسعار، التكلفة، الوحدات، والباركودات', dataScope: 'بيانات رئيسية' },
+    ItemCategories: { name: 'تصنيفات ومجموعات الأصناف', category: 'مخازن وأصناف', direction: 'bidirectional', idColumn: 'Id', description: 'التصنيفات والفئات لفرز وترتيب الأصناف في القوائم', dataScope: 'شجرة الأصناف' },
+    ItemSections: { name: 'أقسام الأصناف', category: 'مخازن وأصناف', direction: 'bidirectional', idColumn: 'Id', description: 'الأقسام الرئيسية لتصنيف المخزون (مكملات، أغذية، أدوات)', dataScope: 'شجرة الأصناف' },
+    ItemGroups: { name: 'الفئات العامة للأصناف', category: 'مخازن وأصناف', direction: 'bidirectional', idColumn: 'Id', description: 'المجموعات العامة التابعة للفئات لترتيب المنتجات', dataScope: 'شجرة الأصناف' },
+    ItemSubCategories1: { name: 'تصنيفات فرعية 1 للأصناف', category: 'مخازن وأصناف', direction: 'bidirectional', idColumn: 'Id', description: 'تصنيفات الماركات والبراندات التجارية للأصناف', dataScope: 'شجرة الأصناف' },
+    ItemSubCategories2: { name: 'تصنيفات فرعية 2 للأصناف', category: 'مخازن وأصناف', direction: 'bidirectional', idColumn: 'Id', description: 'تصنيفات الموديل والطراز والنوع التفصيلي للأصناف', dataScope: 'شجرة الأصناف' },
+    ItemColors: { name: 'ألوان وموديلات الأصناف', category: 'مخازن وأصناف', direction: 'bidirectional', idColumn: 'Id', description: 'ألوان ومتغيرات الأصناف وموديلاتها', dataScope: 'متغيرات أصناف' },
+    ItemSizes: { name: 'مقاسات وأحجام الأصناف', category: 'مخازن وأصناف', direction: 'bidirectional', idColumn: 'Id', description: 'مقاسات وأحجام وأوزان المنتجات', dataScope: 'متغيرات أصناف' },
+    PriceChangeLogs: { name: 'سجل تعديلات الأسعار', category: 'مخازن وأصناف', direction: 'bidirectional', idColumn: 'Id', description: 'سجل تتبع ومراجعة تعديلات الأسعار وتاريخ التغيير', dataScope: 'سجل رقابي' },
+    Warehouses: { name: 'المستودعات والفروع', category: 'مخازن وأصناف', direction: 'bidirectional', idColumn: 'Id', description: 'دليل المستودعات، المخازن الفرعية، ونقاط التوزيع', dataScope: 'مستودعات' },
+    InventorySections: { name: 'قواطع وأقسام المستودع', category: 'مخازن وأصناف', direction: 'bidirectional', idColumn: 'Id', description: 'تقسيمات وقواطع المستودع الداخلية لتنظيم التخزين', dataScope: 'مستودعات' },
+    InventoryZones: { name: 'مناطق وأرفف التخزين', category: 'مخازن وأصناف', direction: 'bidirectional', idColumn: 'Id', description: 'الممرات والأرفف التفصيلية داخل أقسام المستودع', dataScope: 'مستودعات' },
+    StockInRecords: { name: 'أذون إضافة واستلام مخزني', category: 'مخازن وأصناف', direction: 'push', idColumn: 'Id', childTable: 'StockInRecordItems', foreignKey: 'StockInId', description: 'أذون استلام وإضافة البضاعة والمنتجات للمخزن', dataScope: 'حركات مخزنية' },
+    StockInRecordItems: { name: 'بنود أذون الإضافة المخزنية', category: 'مخازن وأصناف', direction: 'push', idColumn: 'Id', description: 'بنود أصناف وكميات أذون الإضافة المخزنية', dataScope: 'حركات مخزنية' },
+    StockOutRecords: { name: 'أذون صرف وتسليم مخزني', category: 'مخازن وأصناف', direction: 'push', idColumn: 'Id', description: 'أذون صرف وتسليم البضاعة من المخزن للأقسام', dataScope: 'حركات مخزنية' },
+    StockTransferRecords: { name: 'تحويلات المخزون بين الفروع', category: 'مخازن وأصناف', direction: 'push', idColumn: 'Id', description: 'مناقلات وتحويلات المخزون بين الفروع والمستودعات', dataScope: 'حركات مخزنية' },
+    StockAdjustmentRecords: { name: 'تسويات الجرد المخزني', category: 'مخازن وأصناف', direction: 'push', idColumn: 'Id', childTable: 'StockAdjustmentItems', foreignKey: 'AdjustmentId', description: 'تسويات العجز والزيادة الناتجة عن الجرد الفعلي للمخزون', dataScope: 'تسويات جرد' },
+    StockAdjustmentItems: { name: 'بنود تسويات الجرد المخزني', category: 'مخازن وأصناف', direction: 'push', idColumn: 'Id', description: 'تفاصيل بنود أصناف تسويات الجرد المخزني وتكاليفها', dataScope: 'تسويات جرد' },
+    InventoryClosings: { name: 'تقفيلات الجرد الدوري', category: 'مخازن وأصناف', direction: 'push', idColumn: 'Id', description: 'محاضر إغلاق وتقفيل الجرد السنوي والدوري للمخازن', dataScope: 'إغلاق جرد' },
 
     // 7. توزيع ومندوبين
-    StockIssuesToReps: { name: 'صرف بضاعة لعهدة المندوبين', category: 'توزيع ومندوبين', direction: 'push', idColumn: 'Id' },
-    StockReturnsFromReps: { name: 'مرتجع بضاعة من عهدة المندوبين', category: 'توزيع ومندوبين', direction: 'push', idColumn: 'Id' },
-    RepRemittances: { name: 'توريدات نقدية المندوبين', category: 'توزيع ومندوبين', direction: 'push', idColumn: 'Id' },
-    Sellers: { name: 'البائعين والمسوقين', category: 'توزيع ومندوبين', direction: 'bidirectional', idColumn: 'Id' },
-    DeliveryStaff: { name: 'مناديب التوصيل والدليفري', category: 'توزيع ومندوبين', direction: 'bidirectional', idColumn: 'Id' },
+    StockIssuesToReps: { name: 'صرف بضاعة لعهدة المندوبين', category: 'توزيع ومندوبين', direction: 'push', idColumn: 'Id', description: 'إذن تسليم بضاعة لسيارات وعهدة مناديب البيع والتوزيع', dataScope: 'عهدة مناديب' },
+    StockReturnsFromReps: { name: 'مرتجع بضاعة من عهدة المندوبين', category: 'توزيع ومندوبين', direction: 'push', idColumn: 'Id', description: 'سجل استرجاع البضاعة المتبقية من سيارات المندوبين للمخزن', dataScope: 'عهدة مناديب' },
+    RepRemittances: { name: 'توريدات نقدية المندوبين', category: 'توزيع ومندوبين', direction: 'push', idColumn: 'Id', description: 'توريدات النقدية اليومية المحصلة من المندوبين للخزينة', dataScope: 'توريد مناديب' },
+    Sellers: { name: 'البائعين والمسوقين', category: 'توزيع ومندوبين', direction: 'bidirectional', idColumn: 'Id', description: 'دليل البائعين وموظفي المبيعات ونسب عمولاتهم البيعية', dataScope: 'بيانات بيعية' },
+    DeliveryStaff: { name: 'مناديب التوصيل والدليفري', category: 'توزيع ومندوبين', direction: 'bidirectional', idColumn: 'Id', description: 'سجل عمال الدليفري ومناديب الشحن والتوصيل للعملاء', dataScope: 'فريق التوصيل' },
 
     // 8. موارد بشرية
-    Employees: { name: 'سجل الموظفين', category: 'موارد بشرية', direction: 'bidirectional', idColumn: 'Id' },
-    EmployeeAdvances: { name: 'سلف الموظفين', category: 'موارد بشرية', direction: 'push', idColumn: 'Id' },
-    EmployeeAdjustments: { name: 'بدلات وخصومات الموظفين', category: 'موارد بشرية', direction: 'push', idColumn: 'Id' },
-    PayrollRecords: { name: 'مسيرات الرواتب الشهرية', category: 'موارد بشرية', direction: 'push', idColumn: 'Id' },
-    GratuityDistributions: { name: 'توزيعات مكافأة نهاية الخدمة', category: 'موارد بشرية', direction: 'push', idColumn: 'Id' },
-    GratuityLogs: { name: 'سجل مكافآت وبقشيش الكاشير', category: 'موارد بشرية', direction: 'push', idColumn: 'Id' },
+    Employees: { name: 'سجل الموظفين', category: 'موارد بشرية', direction: 'bidirectional', idColumn: 'Id', description: 'ملفات الموظفين، الوظائف، والبيانات الشخصية والتعاقدية', dataScope: 'شؤون عاملين' },
+    EmployeeAdvances: { name: 'سلف الموظفين', category: 'موارد بشرية', direction: 'push', idColumn: 'Id', description: 'سجل سلف الموظفين والخصومات الشهرية من الرواتب', dataScope: 'استحقاقات رواتب' },
+    EmployeeAdjustments: { name: 'بدلات وخصومات الموظفين', category: 'موارد بشرية', direction: 'push', idColumn: 'Id', description: 'بدلات ومكافآت وجزاءات العاملين المعتمدة', dataScope: 'استحقاقات رواتب' },
+    PayrollRecords: { name: 'مسيرات الرواتب الشهرية', category: 'موارد بشرية', direction: 'push', idColumn: 'Id', description: 'كشوفات واعتمادات صرف الرواتب الشهرية وصافي المستحق', dataScope: 'مسيرات رواتب' },
+    GratuityDistributions: { name: 'توزيعات مكافأة نهاية الخدمة', category: 'موارد بشرية', direction: 'push', idColumn: 'Id', description: 'صرف مستحقات ومكافآت نهاية الخدمة والتعويضات', dataScope: 'مستحقات نهاية خدمة' },
+    GratuityLogs: { name: 'سجل مكافآت وبقشيش الكاشير', category: 'موارد بشرية', direction: 'push', idColumn: 'Id', description: 'سجل وتوزيع بقشيش وإكراميات عمال الصالة والكاشير', dataScope: 'إكراميات' },
 
     // 9. نقاط البيع
-    PosSessions: { name: 'جلسات ودورات نقاط البيع', category: 'نقاط البيع', direction: 'push', idColumn: 'Id' },
-    PosTerminals: { name: 'شاشات وأجهزة الكاشير', category: 'نقاط البيع', direction: 'bidirectional', idColumn: 'Id' },
-    PosAuditLogs: { name: 'سجل رقابة وتدقيق الكاشير', category: 'نقاط البيع', direction: 'push', idColumn: 'Id' },
-    Promotions: { name: 'العروض الترويجية والخصومات', category: 'نقاط البيع', direction: 'bidirectional', idColumn: 'Id' },
-    RestaurantTables: { name: 'طاولات وصالات المطعم', category: 'نقاط البيع', direction: 'bidirectional', idColumn: 'Id' },
+    PosSessions: { name: 'جلسات ودورات نقاط البيع', category: 'نقاط البيع', direction: 'push', idColumn: 'Id', description: 'سجل فتح وإغلاق دوريات وشفتات الكاشير اليومية وحصيلة الدرج', dataScope: 'جلسات كاشير' },
+    PosTerminals: { name: 'شاشات وأجهزة الكاشير', category: 'نقاط البيع', direction: 'bidirectional', idColumn: 'Id', description: 'تعريف أجهزة وشاشات نقاط البيع وطابعات الإيصالات', dataScope: 'أجهزة نقاط بيع' },
+    PosAuditLogs: { name: 'سجل رقابة وتدقيق الكاشير', category: 'نقاط البيع', direction: 'push', idColumn: 'Id', description: 'سجل رقابة عمليات الكاشير الحساسة وحذف الفواتير والبنود', dataScope: 'سجل رقابي' },
+    Promotions: { name: 'العروض الترويجية والخصومات', category: 'نقاط البيع', direction: 'bidirectional', idColumn: 'Id', description: 'خطط الخصومات، العروض الترويجية، وكوبونات التخفيض', dataScope: 'عروض وخصومات' },
+    RestaurantTables: { name: 'طاولات وصالات المطعم', category: 'نقاط البيع', direction: 'bidirectional', idColumn: 'Id', description: 'خريطة طاولات وصالات تقديم الطلبات ومواقع الجلوس', dataScope: 'صالات وطاولات' },
 
     // 10. إعدادات النظام ومستخدمين
-    BarcodeDesigns: { name: 'تصميمات ونماذج الباركود', category: 'إعدادات النظام', direction: 'bidirectional', idColumn: 'Id' },
-    Users: { name: 'المستخدمين وحسابات الدخول', category: 'إعدادات النظام', direction: 'bidirectional', idColumn: 'Id' },
-    Roles: { name: 'الأدوار ومصفوفة الصلاحيات', category: 'إعدادات النظام', direction: 'bidirectional', idColumn: 'Id' },
-    Licenses: { name: 'التراخيص والنسخ المرخصة', category: 'إعدادات النظام', direction: 'bidirectional', idColumn: 'Id' },
-    AppSettings: { name: 'إعدادات النظام والمتغيرات', category: 'إعدادات النظام', direction: 'bidirectional', idColumn: 'SettingKey' },
-    Counters: { name: 'عدادات الترقيم التلقائي', category: 'إعدادات النظام', direction: 'push', idColumn: 'Name' },
-    Targets: { name: 'الأهداف البيعية والعمولات', category: 'إعدادات النظام', direction: 'bidirectional', idColumn: 'Id' },
-    Requisitions: { name: 'طلبات الاحتياج والشراء', category: 'إعدادات النظام', direction: 'push', idColumn: 'Id' },
-    Notifications: { name: 'الإشعارات والتنبيهات', category: 'إعدادات النظام', direction: 'push', idColumn: 'Id' },
-    LoginHistory: { name: 'سجل الدخول والأمان', category: 'إعدادات النظام', direction: 'push', idColumn: 'Id' }
+    BarcodeDesigns: { name: 'تصميمات ونماذج الباركود', category: 'إعدادات النظام', direction: 'bidirectional', idColumn: 'Id', description: 'قوالب وتصميمات طباعة استيكر الباركود والمقاسات', dataScope: 'نماذج باركود' },
+    Users: { name: 'المستخدمين وحسابات الدخول', category: 'إعدادات النظام', direction: 'bidirectional', idColumn: 'Id', description: 'حسابات المستخدمين، كلمات المرور المشفرة، وبيانات الدخول', dataScope: 'مستخدمين وأمان' },
+    Roles: { name: 'الأدوار ومصفوفة الصلاحيات', category: 'إعدادات النظام', direction: 'bidirectional', idColumn: 'Id', description: 'الأدوار الوظيفية ومصفوفة الصلاحيات وشاشات النظام', dataScope: 'مستخدمين وأمان' },
+    Licenses: { name: 'التراخيص والنسخ المرخصة', category: 'إعدادات النظام', direction: 'bidirectional', idColumn: 'Id', description: 'بيانات ترخيص النسخة وتاريخ صلاحية البرنامج والأجهزة', dataScope: 'تراخيص النظام' },
+    AppSettings: { name: 'إعدادات النظام والمتغيرات', category: 'إعدادات النظام', direction: 'bidirectional', idColumn: 'SettingKey', description: 'الإعدادات العامة للشركة، الضرائب، الترويسة، ودور النظام', dataScope: 'إعدادات النظام' },
+    Counters: { name: 'عدادات الترقيم التلقائي', category: 'إعدادات النظام', direction: 'push', idColumn: 'Name', description: 'سلسلة الترقيم التلقائي التراكمي للفواتير والسندات المالية', dataScope: 'إعدادات الترقيم' },
+    Targets: { name: 'الأهداف البيعية والعمولات', category: 'إعدادات النظام', direction: 'bidirectional', idColumn: 'Id', description: 'أهداف المبيعات المحددة للفروع والموظفين ونسب العمولات', dataScope: 'خطط مبيعات' },
+    Requisitions: { name: 'طلبات الاحتياج والشراء', category: 'إعدادات النظام', direction: 'push', idColumn: 'Id', description: 'طلبات الاحتياج الداخلي ومذكرات الشراء المرفوعة من الفروع', dataScope: 'طلبات شراء' },
+    Notifications: { name: 'الإشعارات والتنبيهات', category: 'إعدادات النظام', direction: 'push', idColumn: 'Id', description: 'إشعارات النظام اللحظية والتنبيهات الإدارية الهامة', dataScope: 'إشعارات' },
+    LoginHistory: { name: 'سجل الدخول والأمان', category: 'إعدادات النظام', direction: 'push', idColumn: 'Id', description: 'سجل أمان وتتبع تسجيل دخول وخروج المستخدمين وعناوين IP', dataScope: 'سجل أمان' }
 };
 
 /**
@@ -170,6 +172,8 @@ export interface TableSyncMatrixItem {
     displayName: string;
     category: string;
     direction: SyncDirection;
+    description?: string;
+    dataScope?: string;
 
     // تواريخ التعديل والمزامنة (Timestamps)
     lastLocalModified: string | null;     // آخر timestamp في الجدول
@@ -497,6 +501,16 @@ export async function getTablesSyncMatrix(): Promise<TablesSyncMatrixResponse> {
     let syncedTablesCount = 0;
     let pendingTablesCount = 0;
 
+    // جلب التوجيهات المخصصة والأوصاف المخزنة في قاعدة البيانات
+    let dbMatrixMap = new Map<string, any>();
+    try {
+        const dbMatrixRes = await localPool.request().query(`
+            SELECT TableName, SyncDirection, DataDescription, DataScope 
+            FROM dbo.SyncTrackingMatrix
+        `);
+        dbMatrixMap = new Map<string, any>(dbMatrixRes.recordset.map(r => [r.TableName, r]));
+    } catch {}
+
     const tables: TableSyncMatrixItem[] = localTableEntries.map(tableName => {
         const meta = TABLE_METADATA_MAP[tableName];
         const local = localDataMap.get(tableName) || {
@@ -506,11 +520,15 @@ export async function getTablesSyncMatrix(): Promise<TablesSyncMatrixResponse> {
             lastSyncedAt: null
         };
         const central = centralDataMap.get(tableName) || null;
+        const dbRow = dbMatrixMap.get(tableName);
+        const effectiveDirection: SyncDirection = (dbRow?.SyncDirection || meta.direction) as SyncDirection;
+        const effectiveDescription: string = dbRow?.DataDescription || meta.description || '';
+        const effectiveScope: string = dbRow?.DataScope || meta.dataScope || '';
 
         totalPendingPush += local.pendingPush;
 
         let pendingPullCount = 0;
-        if (central && (meta.direction === 'pull' || meta.direction === 'bidirectional')) {
+        if (central && (effectiveDirection === 'pull' || effectiveDirection === 'bidirectional')) {
             if (central.lastCentralModified) {
                 if (!local.lastSyncedAt || new Date(central.lastCentralModified) > new Date(local.lastSyncedAt)) {
                     pendingPullCount = Math.max(0, central.centralTotalRows - local.localRows);
@@ -525,7 +543,11 @@ export async function getTablesSyncMatrix(): Promise<TablesSyncMatrixResponse> {
         let syncState: TableSyncMatrixItem['syncState'] = 'synced';
         let syncStateLabel = 'متطابق ومتزامن ✅';
 
-        if (!centralConnected) {
+        if (effectiveDirection === 'disabled') {
+            syncState = 'empty';
+            syncStateLabel = 'المزامنة متوقفة لهذا الجدول ⏸️';
+            syncedTablesCount++;
+        } else if (!centralConnected) {
             syncState = 'unreachable';
             syncStateLabel = 'السيرفر غير متصل ⚠️';
         } else if (local.localRows === 0 && (!central || central.centralTotalRows === 0)) {
@@ -554,7 +576,9 @@ export async function getTablesSyncMatrix(): Promise<TablesSyncMatrixResponse> {
             tableName,
             displayName: meta.name,
             category: meta.category,
-            direction: meta.direction,
+            direction: effectiveDirection,
+            description: effectiveDescription,
+            dataScope: effectiveScope,
             lastLocalModified: local.lastLocalModified,
             lastSyncedAt: local.lastSyncedAt,
             lastCentralModified: central?.lastCentralModified || null,
@@ -568,7 +592,7 @@ export async function getTablesSyncMatrix(): Promise<TablesSyncMatrixResponse> {
         };
     });
 
-    // حفظ وتحديث بيانات كل جدول في dbo.SyncTrackingMatrix في قاعدة البيانات
+    // حفظ وتحديث بيانات كل جدول في dbo.SyncTrackingMatrix في قاعدة البيانات مع الحفاظ على التوجيه المخصص
     try {
         for (const t of tables) {
             const maxLocal = t.lastLocalModified ? `'${t.lastLocalModified}'` : 'NULL';
@@ -576,17 +600,19 @@ export async function getTablesSyncMatrix(): Promise<TablesSyncMatrixResponse> {
             const maxCentral = t.lastCentralModified ? `'${t.lastCentralModified}'` : 'NULL';
             const cBranch = t.centralBranchRows !== null ? t.centralBranchRows : 'NULL';
             const cTotal = t.centralTotalRows !== null ? t.centralTotalRows : 'NULL';
+            const desc = (t.description || '').replace(/'/g, "''");
+            const scope = (t.dataScope || '').replace(/'/g, "''");
 
             await localPool.request().query(`
                 IF NOT EXISTS (SELECT 1 FROM dbo.SyncTrackingMatrix WHERE TableName = '${t.tableName}')
                 BEGIN
                     INSERT INTO dbo.SyncTrackingMatrix (
-                        TableName, TableDisplayName, Category, SyncDirection,
+                        TableName, TableDisplayName, Category, SyncDirection, DataDescription, DataScope,
                         LastLocalTimestamp, LastSyncedTimestamp, LastCentralTimestamp,
                         LocalRowsCount, CentralBranchRowsCount, CentralTotalRowsCount,
                         PendingChangesCount, SyncStatus, LastSyncCheckAt, UpdatedAt
                     ) VALUES (
-                        '${t.tableName}', N'${t.displayName}', N'${t.category}', '${t.direction}',
+                        '${t.tableName}', N'${t.displayName}', N'${t.category}', '${t.direction}', N'${desc}', N'${scope}',
                         ${maxLocal}, ${maxSynced}, ${maxCentral},
                         ${t.localBranchRows}, ${cBranch}, ${cTotal},
                         ${t.pendingPushCount}, '${t.syncState}', SYSUTCDATETIME(), SYSUTCDATETIME()
@@ -597,7 +623,8 @@ export async function getTablesSyncMatrix(): Promise<TablesSyncMatrixResponse> {
                     UPDATE dbo.SyncTrackingMatrix
                     SET TableDisplayName = N'${t.displayName}',
                         Category = N'${t.category}',
-                        SyncDirection = '${t.direction}',
+                        DataDescription = COALESCE(NULLIF(DataDescription, ''), N'${desc}'),
+                        DataScope = COALESCE(NULLIF(DataScope, ''), N'${scope}'),
                         LastLocalTimestamp = ${maxLocal},
                         LastSyncedTimestamp = ${maxSynced},
                         LastCentralTimestamp = ${maxCentral},
@@ -669,11 +696,38 @@ export async function runFullSync(options?: {
             return true;
         });
 
+        // جلب اتجاهات المزامنة المخزنة في قاعدة البيانات
+        let dbDirectionsMap = new Map<string, SyncDirection>();
+        try {
+            const dbDirsRes = await localPool.request().query('SELECT TableName, SyncDirection FROM dbo.SyncTrackingMatrix');
+            dbDirectionsMap = new Map<string, SyncDirection>(dbDirsRes.recordset.map(r => [r.TableName, r.SyncDirection]));
+        } catch {}
+
+        const getTableDirection = (tName: string, defDir: SyncDirection): SyncDirection => {
+            return (dbDirectionsMap.get(tName) || defDir) as SyncDirection;
+        };
+
+        if (options?.targetTable) {
+            const targetDir = getTableDirection(options.targetTable, TABLE_METADATA_MAP[options.targetTable]?.direction || 'push');
+            if (targetDir === 'disabled') {
+                await centralPool.close();
+                return {
+                    success: true,
+                    pushedCount: 0,
+                    pulledCount: 0,
+                    details: `تم تخطي مزامنة جدول ${options.targetTable} لأن اتجاه المزامنة محدد كـ "معطل" في قاعدة البيانات.`
+                };
+            }
+        }
+
         // -------------------------------------------------------------
         // المرحلة 1: رفع التعديلات والحركات من الفرع للإدارة (Push: Insert or Update)
         // -------------------------------------------------------------
         if (mode === 'all' || mode === 'push') {
-            const pushTables = tableEntries.filter(([_, meta]) => meta.direction === 'push' || meta.direction === 'bidirectional');
+            const pushTables = tableEntries.filter(([tName, meta]) => {
+                const dir = getTableDirection(tName, meta.direction);
+                return dir === 'push' || dir === 'bidirectional';
+            });
 
             for (const [tableName, meta] of pushTables) {
                 try {
@@ -905,7 +959,10 @@ export async function runFullSync(options?: {
         // المرحلة 2: سحب التحديثات المركزية من الإدارة للفرع (Pull: Insert or Update)
         // -------------------------------------------------------------
         if (mode === 'all' || mode === 'pull') {
-            const pullTables = tableEntries.filter(([_, meta]) => meta.direction === 'pull' || meta.direction === 'bidirectional');
+            const pullTables = tableEntries.filter(([tName, meta]) => {
+                const dir = getTableDirection(tName, meta.direction);
+                return dir === 'pull' || dir === 'bidirectional';
+            });
 
             for (const [tableName, meta] of pullTables) {
                 try {
@@ -1027,4 +1084,56 @@ export async function runFullSync(options?: {
  */
 export async function getTablesRowCountsComparison() {
     return await getTablesSyncMatrix();
+}
+
+/**
+ * تحديث اتجاه مزامنة جدول محدد في قاعدة البيانات
+ */
+export async function updateTableSyncDirection(tableName: string, direction: SyncDirection) {
+    const pool = await getDbPool();
+    await pool.request()
+        .input('TableName', sql.NVarChar(128), tableName)
+        .input('Direction', sql.NVarChar(50), direction)
+        .query(`
+            UPDATE dbo.SyncTrackingMatrix 
+            SET SyncDirection = @Direction, UpdatedAt = SYSUTCDATETIME()
+            WHERE TableName = @TableName;
+        `);
+    return { success: true, tableName, direction };
+}
+
+/**
+ * تحديث جماعي لاتجاهات المزامنة لقائمة جداول
+ */
+export async function updateTableSyncDirectionsBulk(updates: { tableName: string; direction: SyncDirection }[]) {
+    const pool = await getDbPool();
+    for (const item of updates) {
+        await pool.request()
+            .input('TableName', sql.NVarChar(128), item.tableName)
+            .input('Direction', sql.NVarChar(50), item.direction)
+            .query(`
+                UPDATE dbo.SyncTrackingMatrix 
+                SET SyncDirection = @Direction, UpdatedAt = SYSUTCDATETIME()
+                WHERE TableName = @TableName;
+            `);
+    }
+    return { success: true, updatedCount: updates.length };
+}
+
+/**
+ * استعادة التوزيع القياسي الموصى به لجميع الجداول الـ 69
+ */
+export async function resetTableSyncDirections() {
+    const pool = await getDbPool();
+    for (const [tableName, meta] of Object.entries(TABLE_METADATA_MAP)) {
+        await pool.request()
+            .input('TableName', sql.NVarChar(128), tableName)
+            .input('Direction', sql.NVarChar(50), meta.direction)
+            .query(`
+                UPDATE dbo.SyncTrackingMatrix 
+                SET SyncDirection = @Direction, UpdatedAt = SYSUTCDATETIME()
+                WHERE TableName = @TableName;
+            `);
+    }
+    return { success: true };
 }
