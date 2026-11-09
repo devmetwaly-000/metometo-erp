@@ -71,7 +71,7 @@ interface BackupInfo {
 
 export default function BackupPage() {
     const { toast } = useToast();
-    const { refreshDataFromSqlServer } = useData();
+    const { processSyncQueue } = useData();
 
     const [backupInfo, setBackupInfo] = useState<BackupInfo | null>(null);
     const [isLoadingInfo, setIsLoadingInfo] = useState(false);
@@ -278,8 +278,8 @@ export default function BackupPage() {
                 if (fileInput) fileInput.value = '';
 
                 // تحديث بيانات النظام المحلي
-                if (refreshDataFromSqlServer) {
-                    await refreshDataFromSqlServer();
+                if (processSyncQueue) {
+                    await processSyncQueue();
                 }
                 await fetchBackupInfo();
             } else {
@@ -326,8 +326,8 @@ export default function BackupPage() {
                 setIsResetDialogOpen(false);
 
                 // تحديث الشاشات المحلية
-                if (refreshDataFromSqlServer) {
-                    await refreshDataFromSqlServer();
+                if (processSyncQueue) {
+                    await processSyncQueue();
                 }
                 await fetchBackupInfo();
             } else {

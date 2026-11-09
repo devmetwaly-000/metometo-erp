@@ -10,3 +10,4 @@ node "%~dp0\AccountingNewteps-main\scripts\service\stop_service.js"
 
 echo.
 pause
+

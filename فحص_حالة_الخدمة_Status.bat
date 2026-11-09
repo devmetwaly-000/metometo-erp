@@ -7,3 +7,4 @@ node "%~dp0\AccountingNewteps-main\scripts\service\status_service.js"
 
 echo.
 pause
+

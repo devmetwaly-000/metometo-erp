@@ -1332,6 +1332,10 @@ export async function createAndInitializeDatabase(options: DbInitOptions): Promi
                 [SyncStatus] NVARCHAR(50) NOT NULL DEFAULT ('pending'),
                 [LastSyncCheckAt] DATETIME2 NOT NULL DEFAULT sysutcdatetime(),
                 [UpdatedAt] DATETIME2 NOT NULL DEFAULT sysutcdatetime(),
+                [LastPushRowVersion] BIGINT NULL,
+                [LastPullRowVersion] BIGINT NULL,
+                [CurrentLocalRowVersion] BIGINT NULL,
+                [CurrentCentralRowVersion] BIGINT NULL,
                 CONSTRAINT [PK_SyncTrackingMatrix] PRIMARY KEY CLUSTERED ([TableName])
             );`,
 
@@ -1703,6 +1707,23 @@ export async function createAndInitializeDatabase(options: DbInitOptions): Promi
                     ELSE
                         UPDATE dbo.AppSettings SET SettingValue = @Val WHERE SettingKey = @Key;
                 `);
+        } catch {}
+
+        // 10. Ensure ROWVERSION on all tables for monotonic synchronization
+        try {
+            const allTablesRes = await targetPool.request().query(`
+                SELECT TABLE_NAME FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_TYPE = 'BASE TABLE' AND TABLE_NAME != 'sysdiagrams';
+            `);
+            for (const t of allTablesRes.recordset.map((r: any) => r.TABLE_NAME)) {
+                try {
+                    const hasRv = await targetPool.request().query(`
+                        SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = '${t}' AND DATA_TYPE = 'timestamp';
+                    `);
+                    if (hasRv.recordset.length === 0) {
+                        await targetPool.request().query(`ALTER TABLE dbo.[${t}] ADD [RowVersion] ROWVERSION;`);
+                    }
+                } catch {}
+            }
         } catch {}
 
         // Count created tables

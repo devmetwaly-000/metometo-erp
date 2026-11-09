@@ -267,7 +267,12 @@ export async function POST(req: Request) {
 
                     for (const row of rows) {
                         try {
-                            const keys = Object.keys(row).filter(k => validCols.has(k));
+                            const keys = Object.keys(row).filter(k => 
+                                validCols.has(k) && 
+                                k.toLowerCase() !== 'rowversion' && 
+                                k.toLowerCase() !== 'syncrowversion' && 
+                                k !== '_RowVersionBigInt'
+                            );
                             if (keys.length === 0) continue;
 
                             const insertCols = keys.map(k => `[${k}]`).join(', ');

@@ -175,10 +175,14 @@ export interface TableSyncMatrixItem {
     description?: string;
     dataScope?: string;
 
-    // تواريخ التعديل والمزامنة (Timestamps)
+    // تواريخ التعديل والمزامنة (Timestamps & RowVersions)
     lastLocalModified: string | null;     // آخر timestamp في الجدول
     lastSyncedAt: string | null;          // آخر timestamp تم مزامنته بنجاح في الإدارة
     lastCentralModified: string | null;   // آخر timestamp في الإدارة
+    lastPushRowVersion?: string | null;   // آخر rowversion تم رفعه للإدارة
+    lastPullRowVersion?: string | null;   // آخر rowversion تم سحبه من الإدارة
+    currentLocalRowVersion?: string | null;
+    currentCentralRowVersion?: string | null;
 
     // أعداد السطور والتعديلات
     localBranchRows: number;
@@ -413,8 +417,23 @@ async function ensureSyncTrackingMatrixTable(pool: sql.ConnectionPool) {
                 SyncStatus NVARCHAR(50) NOT NULL DEFAULT ('pending'),
                 LastSyncCheckAt DATETIME2 NOT NULL DEFAULT SYSUTCDATETIME(),
                 UpdatedAt DATETIME2 NOT NULL DEFAULT SYSUTCDATETIME(),
+                LastPushRowVersion BIGINT NULL,
+                LastPullRowVersion BIGINT NULL,
+                CurrentLocalRowVersion BIGINT NULL,
+                CurrentCentralRowVersion BIGINT NULL,
                 CONSTRAINT PK_SyncTrackingMatrix PRIMARY KEY CLUSTERED (TableName)
             );
+        END
+        ELSE
+        BEGIN
+            IF NOT EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = 'SyncTrackingMatrix' AND COLUMN_NAME = 'LastPushRowVersion')
+                ALTER TABLE dbo.SyncTrackingMatrix ADD LastPushRowVersion BIGINT NULL;
+            IF NOT EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = 'SyncTrackingMatrix' AND COLUMN_NAME = 'LastPullRowVersion')
+                ALTER TABLE dbo.SyncTrackingMatrix ADD LastPullRowVersion BIGINT NULL;
+            IF NOT EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = 'SyncTrackingMatrix' AND COLUMN_NAME = 'CurrentLocalRowVersion')
+                ALTER TABLE dbo.SyncTrackingMatrix ADD CurrentLocalRowVersion BIGINT NULL;
+            IF NOT EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = 'SyncTrackingMatrix' AND COLUMN_NAME = 'CurrentCentralRowVersion')
+                ALTER TABLE dbo.SyncTrackingMatrix ADD CurrentCentralRowVersion BIGINT NULL;
         END
     `);
 }
@@ -429,21 +448,40 @@ export async function getTablesSyncMatrix(): Promise<TablesSyncMatrixResponse> {
 
     await ensureSyncTrackingMatrixTable(localPool);
 
-    // 1. استعلام محلي موحد فائق السرعة
+    // جلب التوجيهات المخصصة وأرقام الـ RowVersion المخزنة في قاعدة البيانات أولاً
+    let dbMatrixMap = new Map<string, any>();
+    try {
+        const dbMatrixRes = await localPool.request().query(`
+            SELECT TableName, SyncDirection, DataDescription, DataScope,
+                   LastPushRowVersion, LastPullRowVersion, CurrentLocalRowVersion, CurrentCentralRowVersion,
+                   LastSyncedTimestamp, LastLocalTimestamp, LastCentralTimestamp
+            FROM dbo.SyncTrackingMatrix
+        `);
+        dbMatrixMap = new Map<string, any>(dbMatrixRes.recordset.map(r => [r.TableName, r]));
+    } catch {}
+
+    // 1. استعلام محلي موحد فائق السرعة عبر الـ RowVersion والـ Timestamps
     const localTableEntries = Object.keys(TABLE_METADATA_MAP);
     const localUnionQueries = localTableEntries.map(table => `
         SELECT 
             '${table}' as tableName,
             COUNT(*) as localRows,
-            SUM(CASE WHEN SyncStatus = 'pending' OR LastSyncedAt IS NULL OR (UpdatedAt > LastSyncedAt AND LastSyncedAt IS NOT NULL) THEN 1 ELSE 0 END) as pendingPush,
-            MAX(UpdatedAt) as lastLocalModified,
-            MAX(LastSyncedAt) as lastSyncedAt
-        FROM dbo.[${table}]
+            MAX(CAST(t.[RowVersion] AS BIGINT)) as currentLocalRowVersion,
+            SUM(CASE 
+                WHEN (m.LastPushRowVersion IS NULL OR CAST(t.[RowVersion] AS BIGINT) > m.LastPushRowVersion)
+                     AND (t.BranchCode = '${branchCode}' OR t.BranchCode IS NULL)
+                THEN 1 ELSE 0 
+            END) as pendingPush,
+            MAX(t.UpdatedAt) as lastLocalModified,
+            MAX(t.LastSyncedAt) as lastSyncedAt
+        FROM dbo.[${table}] t
+        LEFT JOIN dbo.SyncTrackingMatrix m ON m.TableName = '${table}'
     `).join(' UNION ALL ');
 
     const localRes = await localPool.request().query(localUnionQueries);
     const localDataMap = new Map<string, {
         localRows: number;
+        currentLocalRowVersion: string | null;
         pendingPush: number;
         lastLocalModified: string | null;
         lastSyncedAt: string | null;
@@ -452,18 +490,20 @@ export async function getTablesSyncMatrix(): Promise<TablesSyncMatrixResponse> {
     for (const row of localRes.recordset) {
         localDataMap.set(row.tableName, {
             localRows: Number(row.localRows) || 0,
+            currentLocalRowVersion: row.currentLocalRowVersion ? String(row.currentLocalRowVersion) : null,
             pendingPush: Number(row.pendingPush) || 0,
             lastLocalModified: row.lastLocalModified ? new Date(row.lastLocalModified).toISOString() : null,
             lastSyncedAt: row.lastSyncedAt ? new Date(row.lastSyncedAt).toISOString() : null
         });
     }
 
-    // 2. استعلام السيرفر المركزي
+    // 2. استعلام السيرفر المركزي عبر الـ RowVersion
     let centralConnected = false;
     let centralPool: sql.ConnectionPool | null = null;
     const centralDataMap = new Map<string, {
         centralTotalRows: number;
         centralBranchRows: number;
+        currentCentralRowVersion: string | null;
         lastCentralModified: string | null;
     }>();
 
@@ -483,6 +523,7 @@ export async function getTablesSyncMatrix(): Promise<TablesSyncMatrixResponse> {
                     '${table}' as tableName,
                     COUNT(*) as centralTotalRows,
                     SUM(CASE WHEN BranchCode = '${branchCode}' THEN 1 ELSE 0 END) as centralBranchRows,
+                    MAX(CAST([RowVersion] AS BIGINT)) as currentCentralRowVersion,
                     MAX(UpdatedAt) as lastCentralModified
                 FROM dbo.[${table}]
             `).join(' UNION ALL ');
@@ -492,6 +533,7 @@ export async function getTablesSyncMatrix(): Promise<TablesSyncMatrixResponse> {
                 centralDataMap.set(row.tableName, {
                     centralTotalRows: Number(row.centralTotalRows) || 0,
                     centralBranchRows: Number(row.centralBranchRows) || 0,
+                    currentCentralRowVersion: row.currentCentralRowVersion ? String(row.currentCentralRowVersion) : null,
                     lastCentralModified: row.lastCentralModified ? new Date(row.lastCentralModified).toISOString() : null
                 });
             }
@@ -512,20 +554,11 @@ export async function getTablesSyncMatrix(): Promise<TablesSyncMatrixResponse> {
     let syncedTablesCount = 0;
     let pendingTablesCount = 0;
 
-    // جلب التوجيهات المخصصة والأوصاف المخزنة في قاعدة البيانات
-    let dbMatrixMap = new Map<string, any>();
-    try {
-        const dbMatrixRes = await localPool.request().query(`
-            SELECT TableName, SyncDirection, DataDescription, DataScope 
-            FROM dbo.SyncTrackingMatrix
-        `);
-        dbMatrixMap = new Map<string, any>(dbMatrixRes.recordset.map(r => [r.TableName, r]));
-    } catch {}
-
     const tables: TableSyncMatrixItem[] = localTableEntries.map(tableName => {
         const meta = TABLE_METADATA_MAP[tableName];
         const local = localDataMap.get(tableName) || {
             localRows: 0,
+            currentLocalRowVersion: null,
             pendingPush: 0,
             lastLocalModified: null,
             lastSyncedAt: null
@@ -543,10 +576,17 @@ export async function getTablesSyncMatrix(): Promise<TablesSyncMatrixResponse> {
 
         let effectivePendingPull = 0;
         if (effectiveDirection === 'pull' || effectiveDirection === 'bidirectional') {
-            if (central && central.lastCentralModified) {
-                const lastSynced = dbRow?.LastSyncedTimestamp ? new Date(dbRow.LastSyncedTimestamp) : (local.lastSyncedAt ? new Date(local.lastSyncedAt) : null);
-                if (!lastSynced || new Date(central.lastCentralModified) > lastSynced) {
-                    effectivePendingPull = Math.max(0, central.centralTotalRows - central.centralBranchRows);
+            if (central && central.currentCentralRowVersion) {
+                const lastPullRv = dbRow?.LastPullRowVersion ? String(dbRow.LastPullRowVersion) : null;
+                const centralRv = central.currentCentralRowVersion;
+                const otherBranchRows = Math.max(0, central.centralTotalRows - central.centralBranchRows);
+
+                if (otherBranchRows > 0) {
+                    if (!lastPullRv) {
+                        effectivePendingPull = otherBranchRows;
+                    } else if (BigInt(centralRv) > BigInt(lastPullRv)) {
+                        effectivePendingPull = otherBranchRows;
+                    }
                 }
             }
         }
@@ -594,8 +634,12 @@ export async function getTablesSyncMatrix(): Promise<TablesSyncMatrixResponse> {
             description: effectiveDescription,
             dataScope: effectiveScope,
             lastLocalModified: local.lastLocalModified,
-            lastSyncedAt: local.lastSyncedAt,
+            lastSyncedAt: local.lastSyncedAt || (dbRow?.LastSyncedTimestamp ? new Date(dbRow.LastSyncedTimestamp).toISOString() : null),
             lastCentralModified: central?.lastCentralModified || null,
+            lastPushRowVersion: dbRow?.LastPushRowVersion ? String(dbRow.LastPushRowVersion) : null,
+            lastPullRowVersion: dbRow?.LastPullRowVersion ? String(dbRow.LastPullRowVersion) : null,
+            currentLocalRowVersion: local.currentLocalRowVersion,
+            currentCentralRowVersion: central?.currentCentralRowVersion || null,
             localBranchRows: local.localRows,
             pendingPushCount: effectivePendingPush,
             centralBranchRows: central ? central.centralBranchRows : null,
@@ -612,6 +656,8 @@ export async function getTablesSyncMatrix(): Promise<TablesSyncMatrixResponse> {
             const maxLocal = t.lastLocalModified ? `'${t.lastLocalModified}'` : 'NULL';
             const maxSynced = t.lastSyncedAt ? `'${t.lastSyncedAt}'` : 'NULL';
             const maxCentral = t.lastCentralModified ? `'${t.lastCentralModified}'` : 'NULL';
+            const curLocalRv = t.currentLocalRowVersion ? `'${t.currentLocalRowVersion}'` : 'NULL';
+            const curCentralRv = t.currentCentralRowVersion ? `'${t.currentCentralRowVersion}'` : 'NULL';
             const cBranch = t.centralBranchRows !== null ? t.centralBranchRows : 'NULL';
             const cTotal = t.centralTotalRows !== null ? t.centralTotalRows : 'NULL';
             const desc = (t.description || '').replace(/'/g, "''");
@@ -623,11 +669,13 @@ export async function getTablesSyncMatrix(): Promise<TablesSyncMatrixResponse> {
                     INSERT INTO dbo.SyncTrackingMatrix (
                         TableName, TableDisplayName, Category, SyncDirection, DataDescription, DataScope,
                         LastLocalTimestamp, LastSyncedTimestamp, LastCentralTimestamp,
+                        CurrentLocalRowVersion, CurrentCentralRowVersion,
                         LocalRowsCount, CentralBranchRowsCount, CentralTotalRowsCount,
                         PendingChangesCount, SyncStatus, LastSyncCheckAt, UpdatedAt
                     ) VALUES (
                         '${t.tableName}', N'${t.displayName}', N'${t.category}', '${t.direction}', N'${desc}', N'${scope}',
                         ${maxLocal}, ${maxSynced}, ${maxCentral},
+                        ${curLocalRv}, ${curCentralRv},
                         ${t.localBranchRows}, ${cBranch}, ${cTotal},
                         ${t.pendingPushCount}, '${t.syncState}', SYSUTCDATETIME(), SYSUTCDATETIME()
                     );
@@ -642,10 +690,12 @@ export async function getTablesSyncMatrix(): Promise<TablesSyncMatrixResponse> {
                         LastLocalTimestamp = ${maxLocal},
                         LastSyncedTimestamp = ${maxSynced},
                         LastCentralTimestamp = ${maxCentral},
+                        CurrentLocalRowVersion = ${curLocalRv},
+                        CurrentCentralRowVersion = ${curCentralRv},
                         LocalRowsCount = ${t.localBranchRows},
                         CentralBranchRowsCount = ${cBranch},
                         CentralTotalRowsCount = ${cTotal},
-                        PendingChangesCount = ${t.pendingPushCount},
+                        PendingChangesCount = ${t.pendingPushCount + t.pendingPullCount},
                         SyncStatus = '${t.syncState}',
                         LastSyncCheckAt = SYSUTCDATETIME()
                     WHERE TableName = '${t.tableName}';
@@ -710,10 +760,15 @@ export async function runFullSync(options?: {
             return true;
         });
 
-        // جلب اتجاهات المزامنة المخزنة في قاعدة البيانات
+        // جلب اتجاهات المزامنة وأرقام الـ RowVersion المخزنة في قاعدة البيانات
+        let dbMatrixMap = new Map<string, any>();
         let dbDirectionsMap = new Map<string, SyncDirection>();
         try {
-            const dbDirsRes = await localPool.request().query('SELECT TableName, SyncDirection FROM dbo.SyncTrackingMatrix');
+            const dbDirsRes = await localPool.request().query(`
+                SELECT TableName, SyncDirection, LastPushRowVersion, LastPullRowVersion, CurrentLocalRowVersion, CurrentCentralRowVersion, LastSyncedTimestamp 
+                FROM dbo.SyncTrackingMatrix
+            `);
+            dbMatrixMap = new Map<string, any>(dbDirsRes.recordset.map(r => [r.TableName, r]));
             dbDirectionsMap = new Map<string, SyncDirection>(dbDirsRes.recordset.map(r => [r.TableName, r.SyncDirection]));
         } catch {}
 
@@ -741,7 +796,7 @@ export async function runFullSync(options?: {
             : mode;
 
         // -------------------------------------------------------------
-        // المرحلة 1: رفع التعديلات والحركات من الفرع للإدارة (Push: Insert or Update)
+        // المرحلة 1: رفع التعديلات والحركات من الفرع للإدارة عبر RowVersion (Push: Upsert)
         // -------------------------------------------------------------
         if (effectiveMode === 'all' || effectiveMode === 'push') {
             const pushTables = tableEntries.filter(([tName, meta]) => {
@@ -752,15 +807,21 @@ export async function runFullSync(options?: {
             for (const [tableName, meta] of pushTables) {
                 try {
                     const idCol = meta.idColumn;
+                    const dbRow = dbMatrixMap.get(tableName);
+                    const lastPushRv = dbRow?.LastPushRowVersion ? String(dbRow.LastPushRowVersion) : null;
 
-                    // جلب السجلات غير المزامنة أو التي تم تعديلها بعد آخر مزامنة
+                    // جلب السجلات المعدلة محلياً استناداً إلى الـ RowVersion المتصاعد
                     const pendingRes = await localPool.request()
                         .input('BranchCode', sql.NVarChar(50), config.currentBranchCode)
                         .query(`
-                            SELECT TOP 300 * FROM dbo.[${tableName}]
-                            WHERE (SyncStatus = 'pending' OR LastSyncedAt IS NULL OR (UpdatedAt > LastSyncedAt AND LastSyncedAt IS NOT NULL))
-                              AND (BranchCode = @BranchCode OR BranchCode IS NULL)
-                            ORDER BY [UpdatedAt] ASC
+                            SELECT TOP 300 *, CAST([RowVersion] AS BIGINT) as _RowVersionBigInt 
+                            FROM dbo.[${tableName}]
+                            WHERE (
+                                ${lastPushRv ? `CAST([RowVersion] AS BIGINT) > ${lastPushRv}` : '1=1'}
+                                OR SyncStatus = 'pending'
+                            )
+                            AND (BranchCode = @BranchCode OR BranchCode IS NULL)
+                            ORDER BY [RowVersion] ASC
                         `);
 
                     const rows = pendingRes.recordset;
@@ -772,6 +833,7 @@ export async function runFullSync(options?: {
                         const centralColSet = new Set(centralColsRes.recordset.map(r => r.COLUMN_NAME.toLowerCase()));
 
                         for (const col of Object.keys(rows[0])) {
+                            if (col === '_RowVersionBigInt') continue;
                             if (!centralColSet.has(col.toLowerCase())) {
                                 try {
                                     await centralPool.request().query(`ALTER TABLE dbo.[${tableName}] ADD [${col}] NVARCHAR(MAX) NULL;`);
@@ -780,22 +842,23 @@ export async function runFullSync(options?: {
                             }
                         }
 
-                        let lastPushedTimestamp: Date | null = null;
+                        let maxPushedRv = lastPushRv ? BigInt(lastPushRv) : BigInt(0);
                         const isChildTableFk = CHILD_TABLE_FK_MAP[tableName];
 
                         for (const row of rows) {
                             const idVal = row[idCol];
                             if (idVal === undefined || idVal === null) continue;
 
-                            const rowUpdatedAt = row.UpdatedAt ? new Date(row.UpdatedAt) : new Date();
-                            if (!lastPushedTimestamp || rowUpdatedAt > lastPushedTimestamp) {
-                                lastPushedTimestamp = rowUpdatedAt;
+                            if (row._RowVersionBigInt) {
+                                const rRv = BigInt(row._RowVersionBigInt);
+                                if (rRv > maxPushedRv) maxPushedRv = rRv;
                             }
 
-                            // تصفية الأعمدة المتوافقة واستبعاد Id إذا كان الجدول فرعياً به Identity
+                            // تصفية الأعمدة واستبعاد RowVersion نهائياً منعاً للخطأ 273 في SQL Server
                             const colNames = Object.keys(row).filter(c => 
                                 (isChildTableFk ? c !== 'Id' : true) &&
                                 c !== 'SyncStatus' && c !== 'LastSyncedAt' && c !== 'BranchCode' && c !== 'BranchName' &&
+                                c.toLowerCase() !== 'rowversion' && c.toLowerCase() !== 'syncrowversion' && c !== '_RowVersionBigInt' &&
                                 centralColSet.has(c.toLowerCase())
                             );
 
@@ -815,7 +878,6 @@ export async function runFullSync(options?: {
                             }
 
                             if (isChildTableFk) {
-                                // معالجة الجداول الفرعية ذات عمود Identity
                                 const fk = isChildTableFk;
                                 const updateSet = colNames.filter(c => c !== fk && c !== 'ItemId').map(c => `[${c}] = @${c}`).join(', ');
                                 await centralReq.query(`
@@ -843,7 +905,6 @@ export async function runFullSync(options?: {
                                     END
                                 `);
                             } else {
-                                // التنفيذ الذكي للجداول العادية: إذا كان موجوداً قم بتحديثه، وإذا لم يكن موجوداً قم بإضافته
                                 const isUsersTable = tableName === 'Users';
                                 const checkCondition = isUsersTable 
                                     ? `([Id] = @Id OR [LoginName] = @LoginName)`
@@ -869,7 +930,7 @@ export async function runFullSync(options?: {
                                 `);
                             }
 
-                            // مزامنة البنود التابعة (Child line items)
+                            // مزامنة البنود التابعة (Child line items) مع استبعاد RowVersion
                             if (meta.childTable && meta.foreignKey) {
                                 try {
                                     const childRowsRes = await localPool.request()
@@ -877,13 +938,11 @@ export async function runFullSync(options?: {
                                         .query(`SELECT * FROM dbo.[${meta.childTable}] WHERE [${meta.foreignKey}] = @ParentId`);
 
                                     if (childRowsRes.recordset.length > 0) {
-                                        // جلب أعمدة الجدول الفرعي في السيرفر المركزي
                                         const cColsRes = await centralPool.request()
                                             .input('Tbl', sql.NVarChar(128), meta.childTable)
                                             .query(`SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = @Tbl`);
                                         const cCentralCols = new Set(cColsRes.recordset.map(r => r.COLUMN_NAME.toLowerCase()));
 
-                                        // حذف البنود القديمة في المركز لمنع التكرار لهذا المستند
                                         await centralPool.request()
                                             .input('ParentId', sql.NVarChar(128), idVal)
                                             .input('BranchCode', sql.NVarChar(50), config.currentBranchCode)
@@ -896,6 +955,9 @@ export async function runFullSync(options?: {
                                                 k !== 'LastSyncedAt' && 
                                                 k !== 'BranchCode' && 
                                                 k !== 'BranchName' &&
+                                                k.toLowerCase() !== 'rowversion' && 
+                                                k.toLowerCase() !== 'syncrowversion' && 
+                                                k !== '_RowVersionBigInt' &&
                                                 cCentralCols.has(k.toLowerCase())
                                             );
                                             const cInsert = [...cCols, 'BranchCode', 'BranchName', 'SyncStatus', 'LastSyncedAt'].map(c => `[${c}]`).join(', ');
@@ -911,7 +973,6 @@ export async function runFullSync(options?: {
                                             `);
                                         }
 
-                                        // تعليم البنود المحلية بأنها متزامنة وتحديث LastSyncedAt
                                         await localPool.request()
                                             .input('ParentId', sql.NVarChar(128), idVal)
                                             .query(`
@@ -925,7 +986,7 @@ export async function runFullSync(options?: {
                                 }
                             }
 
-                            // تعليم السجل المحلي بأنه متزامن وتحديث LastSyncedAt
+                            // تعليم السجل المحلي بأنه متزامن
                             await localPool.request()
                                 .input('IdVal', isChildTableFk ? sql.Int : sql.NVarChar(128), idVal)
                                 .query(`
@@ -936,37 +997,58 @@ export async function runFullSync(options?: {
 
                             totalPushed++;
                         }
-                    }
 
-                    // تحديث جدول تتبع المزامنة في قاعدة البيانات
-                    const maxLocalRes = await localPool.request().query(`SELECT MAX(UpdatedAt) as maxU, COUNT(*) as c FROM dbo.[${tableName}]`);
-                    const maxU = maxLocalRes.recordset[0]?.maxU ? `'${new Date(maxLocalRes.recordset[0].maxU).toISOString()}'` : 'NULL';
-                    const totalRows = maxLocalRes.recordset[0]?.c || 0;
+                        // تحديث علامة LastPushRowVersion في جدول المزامنة استناداً إلى أقصى RowVersion محلي حالي
+                        const maxLocalRes = await localPool.request().query(`
+                            SELECT MAX(CAST([RowVersion] AS BIGINT)) as maxRv, MAX(UpdatedAt) as maxU, COUNT(*) as c 
+                            FROM dbo.[${tableName}]
+                        `);
+                        const maxRv = maxLocalRes.recordset[0]?.maxRv || maxPushedRv.toString();
+                        const maxU = maxLocalRes.recordset[0]?.maxU ? `'${new Date(maxLocalRes.recordset[0].maxU).toISOString()}'` : 'NULL';
+                        const totalRows = maxLocalRes.recordset[0]?.c || 0;
 
-                    await localPool.request().query(`
-                        UPDATE dbo.SyncTrackingMatrix
-                        SET LastLocalTimestamp = ${maxU},
-                            LastSyncedTimestamp = SYSUTCDATETIME(),
-                            LocalRowsCount = ${totalRows},
-                            PendingChangesCount = 0,
-                            SyncStatus = 'synced',
-                            LastSyncCheckAt = SYSUTCDATETIME()
-                        WHERE TableName = '${tableName}';
-                    `);
-
-                    if (meta.childTable) {
-                        const cMaxRes = await localPool.request().query(`SELECT MAX(UpdatedAt) as maxU, COUNT(*) as c FROM dbo.[${meta.childTable}]`);
-                        const cMaxU = cMaxRes.recordset[0]?.maxU ? `'${new Date(cMaxRes.recordset[0].maxU).toISOString()}'` : 'NULL';
-                        const cTotalRows = cMaxRes.recordset[0]?.c || 0;
                         await localPool.request().query(`
                             UPDATE dbo.SyncTrackingMatrix
-                            SET LastLocalTimestamp = ${cMaxU},
+                            SET LastPushRowVersion = ${maxRv},
+                                CurrentLocalRowVersion = ${maxRv},
+                                LastLocalTimestamp = ${maxU},
                                 LastSyncedTimestamp = SYSUTCDATETIME(),
-                                LocalRowsCount = ${cTotalRows},
+                                LocalRowsCount = ${totalRows},
                                 PendingChangesCount = 0,
                                 SyncStatus = 'synced',
                                 LastSyncCheckAt = SYSUTCDATETIME()
-                            WHERE TableName = '${meta.childTable}';
+                            WHERE TableName = '${tableName}';
+                        `);
+
+                        if (meta.childTable) {
+                            const cMaxRes = await localPool.request().query(`SELECT MAX(UpdatedAt) as maxU, COUNT(*) as c FROM dbo.[${meta.childTable}]`);
+                            const cMaxU = cMaxRes.recordset[0]?.maxU ? `'${new Date(cMaxRes.recordset[0].maxU).toISOString()}'` : 'NULL';
+                            const cTotalRows = cMaxRes.recordset[0]?.c || 0;
+                            await localPool.request().query(`
+                                UPDATE dbo.SyncTrackingMatrix
+                                SET LastLocalTimestamp = ${cMaxU},
+                                    LastSyncedTimestamp = SYSUTCDATETIME(),
+                                    LocalRowsCount = ${cTotalRows},
+                                    PendingChangesCount = 0,
+                                    SyncStatus = 'synced',
+                                    LastSyncCheckAt = SYSUTCDATETIME()
+                                WHERE TableName = '${meta.childTable}';
+                            `);
+                        }
+                    } else if (!lastPushRv) {
+                        // إذا كانت السجلات متزامنة بالفعل ولم يتم تسجيل RowVersion بعد
+                        const curMaxRvRes = await localPool.request().query(`SELECT MAX(CAST([RowVersion] AS BIGINT)) as maxRv, COUNT(*) as c FROM dbo.[${tableName}]`);
+                        const maxRv = curMaxRvRes.recordset[0]?.maxRv || 0;
+                        const totalRows = curMaxRvRes.recordset[0]?.c || 0;
+                        await localPool.request().query(`
+                            UPDATE dbo.SyncTrackingMatrix
+                            SET LastPushRowVersion = ${maxRv},
+                                CurrentLocalRowVersion = ${maxRv},
+                                LocalRowsCount = ${totalRows},
+                                PendingChangesCount = 0,
+                                SyncStatus = 'synced',
+                                LastSyncCheckAt = SYSUTCDATETIME()
+                            WHERE TableName = '${tableName}';
                         `);
                     }
                 } catch (pushErr: any) {
@@ -976,7 +1058,7 @@ export async function runFullSync(options?: {
         }
 
         // -------------------------------------------------------------
-        // المرحلة 2: سحب التحديثات المركزية من الإدارة للفرع (Pull: Insert or Update)
+        // المرحلة 2: سحب التحديثات المركزية من الإدارة للفرع عبر RowVersion (Pull: Upsert)
         // -------------------------------------------------------------
         if (effectiveMode === 'all' || effectiveMode === 'pull') {
             const pullTables = tableEntries.filter(([tName, meta]) => {
@@ -987,41 +1069,49 @@ export async function runFullSync(options?: {
             for (const [tableName, meta] of pullTables) {
                 try {
                     const idCol = meta.idColumn;
+                    const dbRow = dbMatrixMap.get(tableName);
+                    const lastPullRv = dbRow?.LastPullRowVersion ? String(dbRow.LastPullRowVersion) : null;
 
-                    // معرفة آخر توقيت تم سحبه لهذا الجدول
-                    const matrixRes = await localPool.request()
-                        .input('Tbl', sql.NVarChar(128), tableName)
-                        .query(`SELECT LastSyncedTimestamp FROM dbo.SyncTrackingMatrix WHERE TableName = @Tbl`);
-                    const lastSyncTs = matrixRes.recordset[0]?.LastSyncedTimestamp || null;
-
-                    let centralQuery = `SELECT * FROM dbo.[${tableName}]`;
-                    const centralReq = centralPool.request();
-                    if (lastSyncTs) {
-                        centralReq.input('Watermark', sql.DateTime2, lastSyncTs);
-                        centralQuery += ` WHERE UpdatedAt > @Watermark`;
-                    }
-                    centralQuery += ` ORDER BY UpdatedAt ASC`;
-
-                    const centralRes = await centralReq.query(centralQuery);
+                    // سحب الحركات التي رقم RowVersion الخاص بها أكبر من آخر سحب
+                    const centralReq = centralPool.request()
+                        .input('CurrentBranchCode', sql.NVarChar(50), config.currentBranchCode);
+                    
+                    const centralRes = await centralReq.query(`
+                        SELECT TOP 300 *, CAST([RowVersion] AS BIGINT) as _RowVersionBigInt 
+                        FROM dbo.[${tableName}]
+                        WHERE (${lastPullRv ? `CAST([RowVersion] AS BIGINT) > ${lastPullRv}` : '1=1'})
+                          AND (BranchCode <> @CurrentBranchCode OR BranchCode IS NULL)
+                        ORDER BY [RowVersion] ASC
+                    `);
                     const centralRows = centralRes.recordset;
 
                     if (centralRows.length > 0) {
-                        let maxCentralUpdatedAt: Date | null = null;
+                        // جلب أسماء الأعمدة المحلية المتاحة
+                        const localColsRes = await localPool.request()
+                            .input('Tbl', sql.NVarChar(128), tableName)
+                            .query(`SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = @Tbl`);
+                        const localColSet = new Set(localColsRes.recordset.map(r => r.COLUMN_NAME.toLowerCase()));
+
+                        let maxPulledRv = lastPullRv ? BigInt(lastPullRv) : BigInt(0);
+                        const isChildTableFk = CHILD_TABLE_FK_MAP[tableName];
 
                         for (const row of centralRows) {
                             const idVal = row[idCol];
                             if (!idVal) continue;
 
-                            // تخطي السجلات التي رفعها هذا الفرع ولم تعدل بالإدارة
-                            if (row.BranchCode === config.currentBranchCode && row.LastSyncedAt) {
-                                continue;
+                            if (row._RowVersionBigInt) {
+                                const rRv = BigInt(row._RowVersionBigInt);
+                                if (rRv > maxPulledRv) maxPulledRv = rRv;
                             }
 
-                            if (row.UpdatedAt && (!maxCentralUpdatedAt || new Date(row.UpdatedAt) > maxCentralUpdatedAt)) {
-                                maxCentralUpdatedAt = new Date(row.UpdatedAt);
-                            }
+                            // تصفية الأعمدة واستبعاد RowVersion نهائياً منعاً للخطأ 273
+                            const colNames = Object.keys(row).filter(c => 
+                                (isChildTableFk ? c !== 'Id' : true) &&
+                                c !== 'SyncStatus' && c !== 'LastSyncedAt' &&
+                                c.toLowerCase() !== 'rowversion' && c.toLowerCase() !== 'syncrowversion' && c !== '_RowVersionBigInt' &&
+                                localColSet.has(c.toLowerCase())
+                            );
 
-                            const colNames = Object.keys(row).filter(c => c !== 'SyncStatus' && c !== 'LastSyncedAt');
                             const insertCols = colNames.map(c => `[${c}]`).join(', ');
                             const paramCols = colNames.map(c => `@${c}`).join(', ');
                             const updateSet = colNames.filter(c => c !== idCol).map(c => `[${c}] = @${c}`).join(', ');
@@ -1031,7 +1121,7 @@ export async function runFullSync(options?: {
                                 localReq.input(c, row[c] === undefined ? null : row[c]);
                             }
 
-                            // تطبيق قاعدة المستخدم: إذا كان موجوداً قم بتحديثه، وإذا لم يكن موجوداً قم بإضافته
+                            // إذا كان موجوداً قم بتحديثه، وإذا لم يكن موجوداً قم بإضافته
                             await localReq.query(`
                                 IF EXISTS (SELECT 1 FROM dbo.[${tableName}] WHERE [${idCol}] = @${idCol})
                                 BEGIN
@@ -1046,17 +1136,71 @@ export async function runFullSync(options?: {
                                 END
                             `);
 
+                            // سحب البنود التابعة (Child line items)
+                            if (meta.childTable && meta.foreignKey) {
+                                try {
+                                    const cRowsRes = await centralPool.request()
+                                        .input('ParentId', sql.NVarChar(128), idVal)
+                                        .query(`SELECT * FROM dbo.[${meta.childTable}] WHERE [${meta.foreignKey}] = @ParentId`);
+
+                                    if (cRowsRes.recordset.length > 0) {
+                                        const lColsRes = await localPool.request()
+                                            .input('Tbl', sql.NVarChar(128), meta.childTable)
+                                            .query(`SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = @Tbl`);
+                                        const lCols = new Set(lColsRes.recordset.map(r => r.COLUMN_NAME.toLowerCase()));
+
+                                        await localPool.request()
+                                            .input('ParentId', sql.NVarChar(128), idVal)
+                                            .query(`DELETE FROM dbo.[${meta.childTable}] WHERE [${meta.foreignKey}] = @ParentId`);
+
+                                        for (const cRow of cRowsRes.recordset) {
+                                            const cCols = Object.keys(cRow).filter(k => 
+                                                k !== 'Id' && k !== 'SyncStatus' && k !== 'LastSyncedAt' &&
+                                                k.toLowerCase() !== 'rowversion' && k.toLowerCase() !== 'syncrowversion' && k !== '_RowVersionBigInt' &&
+                                                lCols.has(k.toLowerCase())
+                                            );
+                                            const cInsert = [...cCols, 'SyncStatus', 'LastSyncedAt'].map(c => `[${c}]`).join(', ');
+                                            const cParams = [...cCols.map(k => `@${k}`), `'synced'`, 'SYSUTCDATETIME()'].join(', ');
+
+                                            const cReq = localPool.request();
+                                            for (const k of cCols) {
+                                                cReq.input(k, cRow[k] === undefined ? null : cRow[k]);
+                                            }
+                                            await cReq.query(`
+                                                INSERT INTO dbo.[${meta.childTable}] (${cInsert})
+                                                VALUES (${cParams});
+                                            `);
+                                        }
+                                    }
+                                } catch (pullChildErr: any) {
+                                    console.warn(`Pull child sync error on ${meta.childTable}:`, pullChildErr.message);
+                                }
+                            }
+
                             totalPulled++;
                         }
-                    }
 
-                    // تحديث آخر مزامنة في جدول التتبع
-                    await localPool.request().query(`
-                        UPDATE dbo.SyncTrackingMatrix
-                        SET LastSyncedTimestamp = SYSUTCDATETIME(),
-                            LastSyncCheckAt = SYSUTCDATETIME()
-                        WHERE TableName = '${tableName}';
-                    `);
+                        // تحديث علامة LastPullRowVersion في جدول التتبع
+                        await localPool.request().query(`
+                            UPDATE dbo.SyncTrackingMatrix
+                            SET LastPullRowVersion = ${maxPulledRv.toString()},
+                                CurrentCentralRowVersion = ${maxPulledRv.toString()},
+                                LastSyncedTimestamp = SYSUTCDATETIME(),
+                                LastSyncCheckAt = SYSUTCDATETIME()
+                            WHERE TableName = '${tableName}';
+                        `);
+                    } else if (!lastPullRv) {
+                        const curMaxCentralRvRes = await centralPool.request().query(`SELECT MAX(CAST([RowVersion] AS BIGINT)) as maxRv FROM dbo.[${tableName}]`);
+                        const maxRv = curMaxCentralRvRes.recordset[0]?.maxRv || 0;
+                        await localPool.request().query(`
+                            UPDATE dbo.SyncTrackingMatrix
+                            SET LastPullRowVersion = ${maxRv},
+                                CurrentCentralRowVersion = ${maxRv},
+                                LastSyncedTimestamp = SYSUTCDATETIME(),
+                                LastSyncCheckAt = SYSUTCDATETIME()
+                            WHERE TableName = '${tableName}';
+                        `);
+                    }
                 } catch (pullErr: any) {
                     console.warn(`Sync pull error on table ${tableName}:`, pullErr.message);
                 }

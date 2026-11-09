@@ -10,3 +10,4 @@ node "%~dp0\AccountingNewteps-main\scripts\service\install_autostart.js"
 
 echo.
 pause
+

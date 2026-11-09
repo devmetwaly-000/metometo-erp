@@ -10,3 +10,4 @@ node "%~dp0\AccountingNewteps-main\scripts\service\uninstall_autostart.js"
 
 echo.
 pause
+
