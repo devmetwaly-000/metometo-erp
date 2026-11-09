@@ -87,20 +87,26 @@ const DiscrepancyItemsDialog = ({ sale, type, allItems, stockInRecords }: { sale
         } else if (type === 'purchase') {
             const receivedQuantities = new Map<string, number>();
             stockInRecords
-                .filter(rec => rec.purchaseInvoiceId === sale.id)
+                .filter(rec => (rec.purchaseInvoiceId || (rec as any).PurchaseInvoiceId) === sale.id)
                 .forEach(rec => {
-                    rec.items.forEach(item => {
-                        const itemId = item.itemId || (item as any).id;
-                        receivedQuantities.set(itemId, (receivedQuantities.get(itemId) || 0) + item.qty);
+                    (rec.items || []).forEach(item => {
+                        const itemId = item.itemId || (item as any).id || (item as any).ItemId;
+                        if (itemId) {
+                            receivedQuantities.set(itemId, (receivedQuantities.get(itemId) || 0) + (Number(item.qty) || 0));
+                        }
                     });
                 });
             
-            const itemsWithRemaining = sale.items
-                .map((item: any) => ({
-                    ...item,
-                    receivedQty: receivedQuantities.get(item.id) || 0,
-                    remainingQty: item.qty - (receivedQuantities.get(item.id) || 0),
-                }))
+            const itemsWithRemaining = (sale.items || [])
+                .map((item: any) => {
+                    const itemId = item.id || item.itemId || (item as any).ItemId;
+                    const recQty = receivedQuantities.get(itemId) || 0;
+                    return {
+                        ...item,
+                        receivedQty: recQty,
+                        remainingQty: (Number(item.qty) || 0) - recQty,
+                    };
+                })
                 .filter((item: any) => item.remainingQty > 0);
 
             return (
@@ -140,13 +146,34 @@ export default function DiscrepancyReportPage() {
 
   const posDiscrepancies: PosSale[] = useMemo(() => {
     if (loading) return [];
+    
+    // A sale's inventory is already deducted if:
+    // 1. It has an explicit StockOutRecord (e.g. manufacturing recipe stock-out or manual stock-out)
+    // 2. OR it is an approved/completed sale with a designated warehouse (deducted in real-time by inventory engine)
     const deductedSaleIds = new Set(
         stockOutRecords
-            .filter((rec: StockOutRecord) => rec.saleInvoiceId)
-            .map((rec: StockOutRecord) => rec.saleInvoiceId)
+            .filter((rec: StockOutRecord) => rec.saleInvoiceId || (rec as any).SaleInvoiceId)
+            .map((rec: StockOutRecord) => rec.saleInvoiceId || (rec as any).SaleInvoiceId)
     );
-    return posSales
-      .filter((sale: PosSale) => !deductedSaleIds.has(sale.id))
+
+    return (posSales || [])
+      .filter((sale: PosSale) => {
+        // If it has an explicit stock out record, it is accounted for
+        if (sale.id && deductedSaleIds.has(sale.id)) return false;
+
+        // If it is an approved/completed sale with a valid warehouse, it was automatically deducted in real time
+        const status = (sale as any).status;
+        const isApprovedOrCompleted = status === 'approved' || status === 'completed' || !status;
+        const hasWarehouse = !!(sale.warehouseId || (sale as any).WarehouseId);
+
+        if (isApprovedOrCompleted && hasWarehouse) {
+            // Correctly deducted in real-time by the ERP inventory engine
+            return false;
+        }
+
+        // Otherwise (missing warehouse, unapproved draft/pending/held without deduction), it is a discrepancy
+        return true;
+      })
       .sort((a: PosSale, b: PosSale) => new Date(b.date).getTime() - new Date(a.date).getTime());
   }, [posSales, stockOutRecords, loading]);
 
@@ -155,27 +182,31 @@ export default function DiscrepancyReportPage() {
       const receivedInvoiceItems = new Map<string, Map<string, number>>(); // invoiceId -> Map<itemId, qty>
       
       stockInRecords.forEach((record: StockInRecord) => {
-          if (record.purchaseInvoiceId) {
-              if (!receivedInvoiceItems.has(record.purchaseInvoiceId)) {
-                  receivedInvoiceItems.set(record.purchaseInvoiceId, new Map());
+          const purchId = record.purchaseInvoiceId || (record as any).PurchaseInvoiceId;
+          if (purchId) {
+              if (!receivedInvoiceItems.has(purchId)) {
+                  receivedInvoiceItems.set(purchId, new Map());
               }
-              const itemMap = receivedInvoiceItems.get(record.purchaseInvoiceId)!;
-              record.items.forEach(item => {
-                  const itemId = item.itemId || (item as any).id;
-                  itemMap.set(itemId, (itemMap.get(itemId) || 0) + item.qty);
+              const itemMap = receivedInvoiceItems.get(purchId)!;
+              (record.items || []).forEach(item => {
+                  const itemId = item.itemId || (item as any).id || (item as any).ItemId;
+                  if (itemId) {
+                      itemMap.set(itemId, (itemMap.get(itemId) || 0) + (Number(item.qty) || 0));
+                  }
               });
           }
       });
 
-      return purchaseInvoices.filter((invoice: PurchaseInvoice) => {
+      return (purchaseInvoices || []).filter((invoice: PurchaseInvoice) => {
           const receivedItems = receivedInvoiceItems.get(invoice.id);
           if (!receivedItems) { // Not received at all
               return true;
           }
           // Check for quantity discrepancies
-          return invoice.items.some(invoiceItem => {
-              const receivedQty = receivedItems.get(invoiceItem.id) || 0;
-              return receivedQty < invoiceItem.qty;
+          return (invoice.items || []).some(invoiceItem => {
+              const itemId = invoiceItem.id || (invoiceItem as any).itemId || (invoiceItem as any).ItemId;
+              const receivedQty = receivedItems.get(itemId) || 0;
+              return receivedQty < (Number(invoiceItem.qty) || 0);
           });
       });
   }, [purchaseInvoices, stockInRecords, loading]);
@@ -197,7 +228,7 @@ export default function DiscrepancyReportPage() {
                     فواتير بيع لم يتم خصمها من المخزون
                 </CardTitle>
                 <CardDescription>
-                  يعرض هذا التقرير جميع فواتير نقاط البيع التي تم تسجيلها ماليًا ولكن لم يتم إنشاء إذن صرف مخزني مقابل لها.
+                  يعرض هذا التقرير فواتير البيع التي لم يتم خصمها من المخزون (مثل الفواتير غير المعتمدة أو المعلقة أو التي تفتقر لمخزن محدد). ملاحظة: مبيعات الكاشير المعتمدة تخصم آلياً وفورياً من رصيد المخزن.
                 </CardDescription>
               </CardHeader>
               <CardContent>

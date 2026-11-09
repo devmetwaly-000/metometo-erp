@@ -529,6 +529,9 @@ export async function GET() {
                     date: si.Date ? new Date(si.Date).toISOString() : null,
                     warehouseId: si.WarehouseId,
                     receiptNumber: si.ReceiptNumber,
+                    purchaseInvoiceId: si.PurchaseInvoiceId || si.purchaseInvoiceId || null,
+                    stockTransferId: si.StockTransferId || si.stockTransferId || null,
+                    reason: si.Reason || si.reason || null,
                     status: (si.Status || si.status || 'completed'),
                     allocations: parseJson(si.AllocationsJson, []),
                     items: parseItemsArray(si)
@@ -540,6 +543,8 @@ export async function GET() {
                     warehouseId: so.WarehouseId || so.SourceId,
                     sourceId: so.SourceId || so.WarehouseId,
                     receiptNumber: so.ReceiptNumber,
+                    saleInvoiceId: so.SaleInvoiceId || so.saleInvoiceId || null,
+                    reason: so.Reason || so.reason || null,
                     status: (so.Status || so.status || 'completed'),
                     items: parseItemsArray(so)
                 })),
