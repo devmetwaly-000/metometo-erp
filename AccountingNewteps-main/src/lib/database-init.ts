@@ -85,6 +85,7 @@ export async function createAndInitializeDatabase(options: DbInitOptions): Promi
                 [LastSyncedAt] DATETIME2 NULL,
                 [UpdatedAt] DATETIME2 NOT NULL DEFAULT (sysutcdatetime()),
                 [CreatedAt] DATETIME2 NOT NULL DEFAULT (sysutcdatetime()),
+                [RowVersion] ROWVERSION,
                 CONSTRAINT [PK_AppSettings] PRIMARY KEY CLUSTERED ([SettingKey])
             );`,
 
@@ -99,6 +100,7 @@ export async function createAndInitializeDatabase(options: DbInitOptions): Promi
                 [LastSyncedAt] DATETIME2 NULL,
                 [UpdatedAt] DATETIME2 NOT NULL DEFAULT (sysutcdatetime()),
                 [CreatedAt] DATETIME2 NOT NULL DEFAULT (sysutcdatetime()),
+                [RowVersion] ROWVERSION,
                 CONSTRAINT [PK_BarcodeDesigns] PRIMARY KEY CLUSTERED ([Id])
             );`,
 
@@ -117,6 +119,7 @@ export async function createAndInitializeDatabase(options: DbInitOptions): Promi
                 [SyncStatus] NVARCHAR(20) NULL DEFAULT ('synced'),
                 [LastSyncedAt] DATETIME2 NULL,
                 [UpdatedAt] DATETIME2 NOT NULL DEFAULT (sysutcdatetime()),
+                [RowVersion] ROWVERSION,
                 CONSTRAINT [PK_CashAccounts] PRIMARY KEY CLUSTERED ([Id])
             );`,
 
@@ -130,6 +133,7 @@ export async function createAndInitializeDatabase(options: DbInitOptions): Promi
                 [LastSyncedAt] DATETIME2 NULL,
                 [UpdatedAt] DATETIME2 NOT NULL DEFAULT (sysutcdatetime()),
                 [CreatedAt] DATETIME2 NOT NULL DEFAULT (sysutcdatetime()),
+                [RowVersion] ROWVERSION,
                 CONSTRAINT [PK_Counters] PRIMARY KEY CLUSTERED ([Name])
             );`,
 
@@ -151,6 +155,7 @@ export async function createAndInitializeDatabase(options: DbInitOptions): Promi
                 [SyncStatus] NVARCHAR(20) NULL DEFAULT ('synced'),
                 [LastSyncedAt] DATETIME2 NULL,
                 [UpdatedAt] DATETIME2 NOT NULL DEFAULT (sysutcdatetime()),
+                [RowVersion] ROWVERSION,
                 CONSTRAINT [PK_CustomerPayments] PRIMARY KEY CLUSTERED ([Id])
             );`,
 
@@ -171,6 +176,7 @@ export async function createAndInitializeDatabase(options: DbInitOptions): Promi
                 [SyncStatus] NVARCHAR(20) NULL DEFAULT ('synced'),
                 [LastSyncedAt] DATETIME2 NULL,
                 [UpdatedAt] DATETIME2 NOT NULL DEFAULT (sysutcdatetime()),
+                [RowVersion] ROWVERSION,
                 CONSTRAINT [PK_Customers] PRIMARY KEY CLUSTERED ([Id])
             );`,
 
@@ -189,6 +195,7 @@ export async function createAndInitializeDatabase(options: DbInitOptions): Promi
                 [LastSyncedAt] DATETIME2 NULL,
                 [UpdatedAt] DATETIME2 NOT NULL DEFAULT (sysutcdatetime()),
                 [CreatedAt] DATETIME2 NOT NULL DEFAULT (sysutcdatetime()),
+                [RowVersion] ROWVERSION,
                 CONSTRAINT [PK_CustomerVisits] PRIMARY KEY CLUSTERED ([Id])
             );`,
 
@@ -207,6 +214,7 @@ export async function createAndInitializeDatabase(options: DbInitOptions): Promi
                 [LastSyncedAt] DATETIME2 NULL,
                 [UpdatedAt] DATETIME2 NOT NULL DEFAULT (sysutcdatetime()),
                 [CreatedAt] DATETIME2 NOT NULL DEFAULT (sysutcdatetime()),
+                [RowVersion] ROWVERSION,
                 CONSTRAINT [PK_DeliveryStaff] PRIMARY KEY CLUSTERED ([Id])
             );`,
 
@@ -225,6 +233,7 @@ export async function createAndInitializeDatabase(options: DbInitOptions): Promi
                 [SyncStatus] NVARCHAR(20) NULL DEFAULT ('synced'),
                 [LastSyncedAt] DATETIME2 NULL,
                 [UpdatedAt] DATETIME2 NOT NULL DEFAULT (sysutcdatetime()),
+                [RowVersion] ROWVERSION,
                 CONSTRAINT [PK_DepreciationRecords] PRIMARY KEY CLUSTERED ([Id])
             );`,
 
@@ -245,6 +254,7 @@ export async function createAndInitializeDatabase(options: DbInitOptions): Promi
                 [SyncStatus] NVARCHAR(20) NULL DEFAULT ('synced'),
                 [LastSyncedAt] DATETIME2 NULL,
                 [UpdatedAt] DATETIME2 NOT NULL DEFAULT (sysutcdatetime()),
+                [RowVersion] ROWVERSION,
                 CONSTRAINT [PK_EmployeeAdjustments] PRIMARY KEY CLUSTERED ([Id])
             );`,
 
@@ -262,6 +272,7 @@ export async function createAndInitializeDatabase(options: DbInitOptions): Promi
                 [LastSyncedAt] DATETIME2 NULL,
                 [UpdatedAt] DATETIME2 NOT NULL DEFAULT (sysutcdatetime()),
                 [CreatedAt] DATETIME2 NOT NULL DEFAULT (sysutcdatetime()),
+                [RowVersion] ROWVERSION,
                 CONSTRAINT [PK_EmployeeAdvances] PRIMARY KEY CLUSTERED ([Id])
             );`,
 
@@ -279,6 +290,7 @@ export async function createAndInitializeDatabase(options: DbInitOptions): Promi
                 [LastSyncedAt] DATETIME2 NULL,
                 [UpdatedAt] DATETIME2 NOT NULL DEFAULT (sysutcdatetime()),
                 [CreatedAt] DATETIME2 NOT NULL DEFAULT (sysutcdatetime()),
+                [RowVersion] ROWVERSION,
                 CONSTRAINT [PK_Employees] PRIMARY KEY CLUSTERED ([Id])
             );`,
 
@@ -300,6 +312,7 @@ export async function createAndInitializeDatabase(options: DbInitOptions): Promi
                 [SyncStatus] NVARCHAR(20) NULL DEFAULT ('synced'),
                 [LastSyncedAt] DATETIME2 NULL,
                 [UpdatedAt] DATETIME2 NOT NULL DEFAULT (sysutcdatetime()),
+                [RowVersion] ROWVERSION,
                 CONSTRAINT [PK_ExceptionalIncomes] PRIMARY KEY CLUSTERED ([Id])
             );`,
 
@@ -323,6 +336,7 @@ export async function createAndInitializeDatabase(options: DbInitOptions): Promi
                 [SyncStatus] NVARCHAR(20) NULL DEFAULT ('synced'),
                 [LastSyncedAt] DATETIME2 NULL,
                 [UpdatedAt] DATETIME2 NOT NULL DEFAULT (sysutcdatetime()),
+                [RowVersion] ROWVERSION,
                 CONSTRAINT [PK_Expenses] PRIMARY KEY CLUSTERED ([Id])
             );`,
 
@@ -345,6 +359,7 @@ export async function createAndInitializeDatabase(options: DbInitOptions): Promi
                 [SyncStatus] NVARCHAR(20) NULL DEFAULT ('synced'),
                 [LastSyncedAt] DATETIME2 NULL,
                 [UpdatedAt] DATETIME2 NOT NULL DEFAULT (sysutcdatetime()),
+                [RowVersion] ROWVERSION,
                 CONSTRAINT [PK_FixedAssets] PRIMARY KEY CLUSTERED ([Id])
             );`,
 
@@ -360,6 +375,7 @@ export async function createAndInitializeDatabase(options: DbInitOptions): Promi
                 [SyncStatus] NVARCHAR(20) NULL DEFAULT ('synced'),
                 [LastSyncedAt] DATETIME2 NULL,
                 [UpdatedAt] DATETIME2 NOT NULL DEFAULT (sysutcdatetime()),
+                [RowVersion] ROWVERSION,
                 CONSTRAINT [PK_GratuityDistributions] PRIMARY KEY CLUSTERED ([Id])
             );`,
 
@@ -379,6 +395,7 @@ export async function createAndInitializeDatabase(options: DbInitOptions): Promi
                 [SyncStatus] NVARCHAR(20) NULL DEFAULT ('synced'),
                 [LastSyncedAt] DATETIME2 NULL,
                 [UpdatedAt] DATETIME2 NOT NULL DEFAULT (sysutcdatetime()),
+                [RowVersion] ROWVERSION,
                 CONSTRAINT [PK_GratuityLogs] PRIMARY KEY CLUSTERED ([Id])
             );`,
 
@@ -399,6 +416,7 @@ export async function createAndInitializeDatabase(options: DbInitOptions): Promi
                 [LastSyncedAt] DATETIME2 NULL,
                 [UpdatedAt] DATETIME2 NOT NULL DEFAULT (sysutcdatetime()),
                 [CreatedAt] DATETIME2 NOT NULL DEFAULT (sysutcdatetime()),
+                [RowVersion] ROWVERSION,
                 CONSTRAINT [PK_HeldInvoices] PRIMARY KEY CLUSTERED ([Id])
             );`,
 
@@ -417,6 +435,7 @@ export async function createAndInitializeDatabase(options: DbInitOptions): Promi
                 [SyncStatus] NVARCHAR(20) NULL DEFAULT ('synced'),
                 [LastSyncedAt] DATETIME2 NULL,
                 [UpdatedAt] DATETIME2 NOT NULL DEFAULT (sysutcdatetime()),
+                [RowVersion] ROWVERSION,
                 CONSTRAINT [PK_InventoryClosings] PRIMARY KEY CLUSTERED ([Id])
             );`,
 
@@ -433,6 +452,7 @@ export async function createAndInitializeDatabase(options: DbInitOptions): Promi
                 [SyncStatus] NVARCHAR(20) NULL DEFAULT ('synced'),
                 [LastSyncedAt] DATETIME2 NULL,
                 [UpdatedAt] DATETIME2 NOT NULL DEFAULT (sysutcdatetime()),
+                [RowVersion] ROWVERSION,
                 CONSTRAINT [PK_InventorySections] PRIMARY KEY CLUSTERED ([Id])
             );`,
 
@@ -447,6 +467,7 @@ export async function createAndInitializeDatabase(options: DbInitOptions): Promi
                 [SyncStatus] NVARCHAR(20) NULL DEFAULT ('synced'),
                 [LastSyncedAt] DATETIME2 NULL,
                 [UpdatedAt] DATETIME2 NOT NULL DEFAULT (sysutcdatetime()),
+                [RowVersion] ROWVERSION,
                 CONSTRAINT [PK_InventoryZones] PRIMARY KEY CLUSTERED ([Id])
             );`,
 
@@ -461,6 +482,7 @@ export async function createAndInitializeDatabase(options: DbInitOptions): Promi
                 [LastSyncedAt] DATETIME2 NULL,
                 [UpdatedAt] DATETIME2 NOT NULL DEFAULT (sysutcdatetime()),
                 [CreatedAt] DATETIME2 NOT NULL DEFAULT (sysutcdatetime()),
+                [RowVersion] ROWVERSION,
                 CONSTRAINT [PK_ItemCategories] PRIMARY KEY CLUSTERED ([Id])
             );`,
 
@@ -475,6 +497,7 @@ export async function createAndInitializeDatabase(options: DbInitOptions): Promi
                 [LastSyncedAt] DATETIME2 NULL,
                 [UpdatedAt] DATETIME2 NOT NULL DEFAULT (sysutcdatetime()),
                 [CreatedAt] DATETIME2 NOT NULL DEFAULT (sysutcdatetime()),
+                [RowVersion] ROWVERSION,
                 CONSTRAINT [PK_ItemColors] PRIMARY KEY CLUSTERED ([Id])
             );`,
 
@@ -489,6 +512,7 @@ export async function createAndInitializeDatabase(options: DbInitOptions): Promi
                 [LastSyncedAt] DATETIME2 NULL,
                 [UpdatedAt] DATETIME2 NOT NULL DEFAULT (sysutcdatetime()),
                 [CreatedAt] DATETIME2 NOT NULL DEFAULT (sysutcdatetime()),
+                [RowVersion] ROWVERSION,
                 CONSTRAINT [PK_ItemGroups] PRIMARY KEY CLUSTERED ([Id])
             );`,
 
@@ -521,6 +545,7 @@ export async function createAndInitializeDatabase(options: DbInitOptions): Promi
                 [SyncStatus] NVARCHAR(20) NULL DEFAULT ('synced'),
                 [LastSyncedAt] DATETIME2 NULL,
                 [UpdatedAt] DATETIME2 NOT NULL DEFAULT (sysutcdatetime()),
+                [RowVersion] ROWVERSION,
                 CONSTRAINT [PK_Items] PRIMARY KEY CLUSTERED ([Id])
             );`,
 
@@ -535,6 +560,7 @@ export async function createAndInitializeDatabase(options: DbInitOptions): Promi
                 [LastSyncedAt] DATETIME2 NULL,
                 [UpdatedAt] DATETIME2 NOT NULL DEFAULT (sysutcdatetime()),
                 [CreatedAt] DATETIME2 NOT NULL DEFAULT (sysutcdatetime()),
+                [RowVersion] ROWVERSION,
                 CONSTRAINT [PK_ItemSections] PRIMARY KEY CLUSTERED ([Id])
             );`,
 
@@ -548,6 +574,7 @@ export async function createAndInitializeDatabase(options: DbInitOptions): Promi
                 [LastSyncedAt] DATETIME2 NULL,
                 [UpdatedAt] DATETIME2 NOT NULL DEFAULT (sysutcdatetime()),
                 [CreatedAt] DATETIME2 NOT NULL DEFAULT (sysutcdatetime()),
+                [RowVersion] ROWVERSION,
                 CONSTRAINT [PK_ItemSizes] PRIMARY KEY CLUSTERED ([Id])
             );`,
 
@@ -561,6 +588,7 @@ export async function createAndInitializeDatabase(options: DbInitOptions): Promi
                 [SyncStatus] NVARCHAR(20) NULL DEFAULT ('synced'),
                 [LastSyncedAt] DATETIME2 NULL,
                 [UpdatedAt] DATETIME2 NOT NULL DEFAULT (sysutcdatetime()),
+                [RowVersion] ROWVERSION,
                 CONSTRAINT [PK_ItemSubCategories1] PRIMARY KEY CLUSTERED ([Id])
             );`,
 
@@ -574,6 +602,7 @@ export async function createAndInitializeDatabase(options: DbInitOptions): Promi
                 [SyncStatus] NVARCHAR(20) NULL DEFAULT ('synced'),
                 [LastSyncedAt] DATETIME2 NULL,
                 [UpdatedAt] DATETIME2 NOT NULL DEFAULT (sysutcdatetime()),
+                [RowVersion] ROWVERSION,
                 CONSTRAINT [PK_ItemSubCategories2] PRIMARY KEY CLUSTERED ([Id])
             );`,
 
@@ -592,6 +621,7 @@ export async function createAndInitializeDatabase(options: DbInitOptions): Promi
                 [LastSyncedAt] DATETIME2 NULL,
                 [UpdatedAt] DATETIME2 NOT NULL DEFAULT (sysutcdatetime()),
                 [CreatedAt] DATETIME2 NOT NULL DEFAULT (sysutcdatetime()),
+                [RowVersion] ROWVERSION,
                 CONSTRAINT [PK_Licenses] PRIMARY KEY CLUSTERED ([Id])
             );`,
 
@@ -609,6 +639,7 @@ export async function createAndInitializeDatabase(options: DbInitOptions): Promi
                 [LastSyncedAt] DATETIME2 NULL,
                 [UpdatedAt] DATETIME2 NOT NULL DEFAULT (sysutcdatetime()),
                 [CreatedAt] DATETIME2 NOT NULL DEFAULT (sysutcdatetime()),
+                [RowVersion] ROWVERSION,
                 CONSTRAINT [PK_LoginHistory] PRIMARY KEY CLUSTERED ([Id])
             );`,
 
@@ -627,6 +658,7 @@ export async function createAndInitializeDatabase(options: DbInitOptions): Promi
                 [LastSyncedAt] DATETIME2 NULL,
                 [UpdatedAt] DATETIME2 NOT NULL DEFAULT (sysutcdatetime()),
                 [CreatedAt] DATETIME2 NOT NULL DEFAULT (sysutcdatetime()),
+                [RowVersion] ROWVERSION,
                 CONSTRAINT [PK_Notifications] PRIMARY KEY CLUSTERED ([Id])
             );`,
 
@@ -642,6 +674,7 @@ export async function createAndInitializeDatabase(options: DbInitOptions): Promi
                 [LastSyncedAt] DATETIME2 NULL,
                 [UpdatedAt] DATETIME2 NOT NULL DEFAULT (sysutcdatetime()),
                 [CreatedAt] DATETIME2 NOT NULL DEFAULT (sysutcdatetime()),
+                [RowVersion] ROWVERSION,
                 CONSTRAINT [PK_Partners] PRIMARY KEY CLUSTERED ([Id])
             );`,
 
@@ -656,6 +689,7 @@ export async function createAndInitializeDatabase(options: DbInitOptions): Promi
                 [LastSyncedAt] DATETIME2 NULL,
                 [UpdatedAt] DATETIME2 NOT NULL DEFAULT (sysutcdatetime()),
                 [CreatedAt] DATETIME2 NOT NULL DEFAULT (sysutcdatetime()),
+                [RowVersion] ROWVERSION,
                 CONSTRAINT [PK_PaymentMethods] PRIMARY KEY CLUSTERED ([Id])
             );`,
 
@@ -673,6 +707,7 @@ export async function createAndInitializeDatabase(options: DbInitOptions): Promi
                 [LastSyncedAt] DATETIME2 NULL,
                 [UpdatedAt] DATETIME2 NOT NULL DEFAULT (sysutcdatetime()),
                 [CreatedAt] DATETIME2 NOT NULL DEFAULT (sysutcdatetime()),
+                [RowVersion] ROWVERSION,
                 CONSTRAINT [PK_PayrollRecords] PRIMARY KEY CLUSTERED ([Id])
             );`,
 
@@ -692,6 +727,7 @@ export async function createAndInitializeDatabase(options: DbInitOptions): Promi
                 [LastSyncedAt] DATETIME2 NULL,
                 [UpdatedAt] DATETIME2 NOT NULL DEFAULT (sysutcdatetime()),
                 [CreatedAt] DATETIME2 NOT NULL DEFAULT (sysutcdatetime()),
+                [RowVersion] ROWVERSION,
                 CONSTRAINT [PK_PosAuditLogs] PRIMARY KEY CLUSTERED ([Id])
             );`,
 
@@ -713,6 +749,7 @@ export async function createAndInitializeDatabase(options: DbInitOptions): Promi
                 [SyncStatus] NVARCHAR(20) NULL DEFAULT ('synced'),
                 [LastSyncedAt] DATETIME2 NULL,
                 [UpdatedAt] DATETIME2 NOT NULL DEFAULT (sysutcdatetime()),
+                [RowVersion] ROWVERSION,
                 CONSTRAINT [PK_PosSessions] PRIMARY KEY CLUSTERED ([Id])
             );`,
 
@@ -728,6 +765,7 @@ export async function createAndInitializeDatabase(options: DbInitOptions): Promi
                 [LastSyncedAt] DATETIME2 NULL,
                 [UpdatedAt] DATETIME2 NOT NULL DEFAULT (sysutcdatetime()),
                 [CreatedAt] DATETIME2 NOT NULL DEFAULT (sysutcdatetime()),
+                [RowVersion] ROWVERSION,
                 CONSTRAINT [PK_PosTerminals] PRIMARY KEY CLUSTERED ([Id])
             );`,
 
@@ -751,6 +789,7 @@ export async function createAndInitializeDatabase(options: DbInitOptions): Promi
                 [LastSyncedAt] DATETIME2 NULL,
                 [UpdatedAt] DATETIME2 NOT NULL DEFAULT (sysutcdatetime()),
                 [CreatedAt] DATETIME2 NOT NULL DEFAULT (sysutcdatetime()),
+                [RowVersion] ROWVERSION,
                 CONSTRAINT [PK_PriceChangeLogs] PRIMARY KEY CLUSTERED ([Id])
             );`,
 
@@ -772,6 +811,7 @@ export async function createAndInitializeDatabase(options: DbInitOptions): Promi
                 [SyncStatus] NVARCHAR(20) NULL DEFAULT ('synced'),
                 [LastSyncedAt] DATETIME2 NULL,
                 [UpdatedAt] DATETIME2 NOT NULL DEFAULT (sysutcdatetime()),
+                [RowVersion] ROWVERSION,
                 CONSTRAINT [PK_ProfitDistributions] PRIMARY KEY CLUSTERED ([Id])
             );`,
 
@@ -791,6 +831,7 @@ export async function createAndInitializeDatabase(options: DbInitOptions): Promi
                 [SyncStatus] NVARCHAR(20) NULL DEFAULT ('synced'),
                 [LastSyncedAt] DATETIME2 NULL,
                 [UpdatedAt] DATETIME2 NOT NULL DEFAULT (sysutcdatetime()),
+                [RowVersion] ROWVERSION,
                 CONSTRAINT [PK_Promotions] PRIMARY KEY CLUSTERED ([Id])
             );`,
 
@@ -814,6 +855,7 @@ export async function createAndInitializeDatabase(options: DbInitOptions): Promi
                 [LastSyncedAt] DATETIME2 NULL,
                 [UpdatedAt] DATETIME2 NOT NULL DEFAULT (sysutcdatetime()),
                 [CreatedAt] DATETIME2 NOT NULL DEFAULT (sysutcdatetime()),
+                [RowVersion] ROWVERSION,
                 CONSTRAINT [PK_PurchaseInvoiceItems] PRIMARY KEY CLUSTERED ([Id])
             );`,
 
@@ -844,6 +886,7 @@ export async function createAndInitializeDatabase(options: DbInitOptions): Promi
                 [SyncStatus] NVARCHAR(20) NULL DEFAULT ('synced'),
                 [LastSyncedAt] DATETIME2 NULL,
                 [UpdatedAt] DATETIME2 NOT NULL DEFAULT (sysutcdatetime()),
+                [RowVersion] ROWVERSION,
                 CONSTRAINT [PK_PurchaseInvoices] PRIMARY KEY CLUSTERED ([Id])
             );`,
 
@@ -868,6 +911,7 @@ export async function createAndInitializeDatabase(options: DbInitOptions): Promi
                 [SyncStatus] NVARCHAR(20) NULL DEFAULT ('synced'),
                 [LastSyncedAt] DATETIME2 NULL,
                 [UpdatedAt] DATETIME2 NOT NULL DEFAULT (sysutcdatetime()),
+                [RowVersion] ROWVERSION,
                 CONSTRAINT [PK_PurchaseOrders] PRIMARY KEY CLUSTERED ([Id])
             );`,
 
@@ -887,6 +931,7 @@ export async function createAndInitializeDatabase(options: DbInitOptions): Promi
                 [LastSyncedAt] DATETIME2 NULL,
                 [UpdatedAt] DATETIME2 NOT NULL DEFAULT (sysutcdatetime()),
                 [CreatedAt] DATETIME2 NOT NULL DEFAULT (sysutcdatetime()),
+                [RowVersion] ROWVERSION,
                 CONSTRAINT [PK_PurchaseReturnItems] PRIMARY KEY CLUSTERED ([Id])
             );`,
 
@@ -913,6 +958,7 @@ export async function createAndInitializeDatabase(options: DbInitOptions): Promi
                 [SyncStatus] NVARCHAR(20) NULL DEFAULT ('synced'),
                 [LastSyncedAt] DATETIME2 NULL,
                 [UpdatedAt] DATETIME2 NOT NULL DEFAULT (sysutcdatetime()),
+                [RowVersion] ROWVERSION,
                 CONSTRAINT [PK_PurchaseReturns] PRIMARY KEY CLUSTERED ([Id])
             );`,
 
@@ -934,6 +980,7 @@ export async function createAndInitializeDatabase(options: DbInitOptions): Promi
                 [SyncStatus] NVARCHAR(20) NULL DEFAULT ('synced'),
                 [LastSyncedAt] DATETIME2 NULL,
                 [UpdatedAt] DATETIME2 NOT NULL DEFAULT (sysutcdatetime()),
+                [RowVersion] ROWVERSION,
                 CONSTRAINT [PK_RepRemittances] PRIMARY KEY CLUSTERED ([Id])
             );`,
 
@@ -955,6 +1002,7 @@ export async function createAndInitializeDatabase(options: DbInitOptions): Promi
                 [SyncStatus] NVARCHAR(20) NULL DEFAULT ('synced'),
                 [LastSyncedAt] DATETIME2 NULL,
                 [UpdatedAt] DATETIME2 NOT NULL DEFAULT (sysutcdatetime()),
+                [RowVersion] ROWVERSION,
                 CONSTRAINT [PK_Requisitions] PRIMARY KEY CLUSTERED ([Id])
             );`,
 
@@ -972,6 +1020,7 @@ export async function createAndInitializeDatabase(options: DbInitOptions): Promi
                 [LastSyncedAt] DATETIME2 NULL,
                 [UpdatedAt] DATETIME2 NOT NULL DEFAULT (sysutcdatetime()),
                 [CreatedAt] DATETIME2 NOT NULL DEFAULT (sysutcdatetime()),
+                [RowVersion] ROWVERSION,
                 CONSTRAINT [PK_RestaurantTables] PRIMARY KEY CLUSTERED ([Id])
             );`,
 
@@ -985,6 +1034,7 @@ export async function createAndInitializeDatabase(options: DbInitOptions): Promi
                 [LastSyncedAt] DATETIME2 NULL,
                 [UpdatedAt] DATETIME2 NOT NULL DEFAULT (sysutcdatetime()),
                 [CreatedAt] DATETIME2 NOT NULL DEFAULT (sysutcdatetime()),
+                [RowVersion] ROWVERSION,
                 CONSTRAINT [PK_Roles] PRIMARY KEY CLUSTERED ([Id])
             );`,
 
@@ -1005,6 +1055,7 @@ export async function createAndInitializeDatabase(options: DbInitOptions): Promi
                 [LastSyncedAt] DATETIME2 NULL,
                 [UpdatedAt] DATETIME2 NOT NULL DEFAULT (sysutcdatetime()),
                 [CreatedAt] DATETIME2 NOT NULL DEFAULT (sysutcdatetime()),
+                [RowVersion] ROWVERSION,
                 CONSTRAINT [PK_SalesInvoiceItems] PRIMARY KEY CLUSTERED ([Id])
             );`,
 
@@ -1036,6 +1087,7 @@ export async function createAndInitializeDatabase(options: DbInitOptions): Promi
                 [SyncStatus] NVARCHAR(20) NULL DEFAULT ('synced'),
                 [LastSyncedAt] DATETIME2 NULL,
                 [UpdatedAt] DATETIME2 NOT NULL DEFAULT (sysutcdatetime()),
+                [RowVersion] ROWVERSION,
                 CONSTRAINT [PK_SalesInvoices] PRIMARY KEY CLUSTERED ([Id])
             );`,
 
@@ -1056,6 +1108,7 @@ export async function createAndInitializeDatabase(options: DbInitOptions): Promi
                 [LastSyncedAt] DATETIME2 NULL,
                 [UpdatedAt] DATETIME2 NOT NULL DEFAULT (sysutcdatetime()),
                 [CreatedAt] DATETIME2 NOT NULL DEFAULT (sysutcdatetime()),
+                [RowVersion] ROWVERSION,
                 CONSTRAINT [PK_SalesReturnItems] PRIMARY KEY CLUSTERED ([Id])
             );`,
 
@@ -1081,6 +1134,7 @@ export async function createAndInitializeDatabase(options: DbInitOptions): Promi
                 [SyncStatus] NVARCHAR(20) NULL DEFAULT ('synced'),
                 [LastSyncedAt] DATETIME2 NULL,
                 [UpdatedAt] DATETIME2 NOT NULL DEFAULT (sysutcdatetime()),
+                [RowVersion] ROWVERSION,
                 CONSTRAINT [PK_SalesReturns] PRIMARY KEY CLUSTERED ([Id])
             );`,
 
@@ -1098,6 +1152,7 @@ export async function createAndInitializeDatabase(options: DbInitOptions): Promi
                 [LastSyncedAt] DATETIME2 NULL,
                 [UpdatedAt] DATETIME2 NOT NULL DEFAULT (sysutcdatetime()),
                 [CreatedAt] DATETIME2 NOT NULL DEFAULT (sysutcdatetime()),
+                [RowVersion] ROWVERSION,
                 CONSTRAINT [PK_Sellers] PRIMARY KEY CLUSTERED ([Id])
             );`,
 
@@ -1116,6 +1171,7 @@ export async function createAndInitializeDatabase(options: DbInitOptions): Promi
                 [LastSyncedAt] DATETIME2 NULL,
                 [UpdatedAt] DATETIME2 NOT NULL DEFAULT (sysutcdatetime()),
                 [CreatedAt] DATETIME2 NOT NULL DEFAULT (sysutcdatetime()),
+                [RowVersion] ROWVERSION,
                 CONSTRAINT [PK_StockAdjustmentItems] PRIMARY KEY CLUSTERED ([Id])
             );`,
 
@@ -1136,6 +1192,7 @@ export async function createAndInitializeDatabase(options: DbInitOptions): Promi
                 [SyncStatus] NVARCHAR(20) NULL DEFAULT ('synced'),
                 [LastSyncedAt] DATETIME2 NULL,
                 [UpdatedAt] DATETIME2 NOT NULL DEFAULT (sysutcdatetime()),
+                [RowVersion] ROWVERSION,
                 CONSTRAINT [PK_StockAdjustmentRecords] PRIMARY KEY CLUSTERED ([Id])
             );`,
 
@@ -1155,6 +1212,7 @@ export async function createAndInitializeDatabase(options: DbInitOptions): Promi
                 [LastSyncedAt] DATETIME2 NULL,
                 [UpdatedAt] DATETIME2 NOT NULL DEFAULT (sysutcdatetime()),
                 [CreatedAt] DATETIME2 NOT NULL DEFAULT (sysutcdatetime()),
+                [RowVersion] ROWVERSION,
                 CONSTRAINT [PK_StockInRecordItems] PRIMARY KEY CLUSTERED ([Id])
             );`,
 
@@ -1176,6 +1234,7 @@ export async function createAndInitializeDatabase(options: DbInitOptions): Promi
                 [SyncStatus] NVARCHAR(20) NULL DEFAULT ('synced'),
                 [LastSyncedAt] DATETIME2 NULL,
                 [UpdatedAt] DATETIME2 NOT NULL DEFAULT (sysutcdatetime()),
+                [RowVersion] ROWVERSION,
                 CONSTRAINT [PK_StockInRecords] PRIMARY KEY CLUSTERED ([Id])
             );`,
 
@@ -1198,6 +1257,7 @@ export async function createAndInitializeDatabase(options: DbInitOptions): Promi
                 [SyncStatus] NVARCHAR(20) NULL DEFAULT ('synced'),
                 [LastSyncedAt] DATETIME2 NULL,
                 [UpdatedAt] DATETIME2 NOT NULL DEFAULT (sysutcdatetime()),
+                [RowVersion] ROWVERSION,
                 CONSTRAINT [PK_StockIssuesToReps] PRIMARY KEY CLUSTERED ([Id])
             );`,
 
@@ -1221,6 +1281,7 @@ export async function createAndInitializeDatabase(options: DbInitOptions): Promi
                 [SyncStatus] NVARCHAR(20) NULL DEFAULT ('synced'),
                 [LastSyncedAt] DATETIME2 NULL,
                 [UpdatedAt] DATETIME2 NOT NULL DEFAULT (sysutcdatetime()),
+                [RowVersion] ROWVERSION,
                 CONSTRAINT [PK_StockOutRecords] PRIMARY KEY CLUSTERED ([Id])
             );`,
 
@@ -1243,6 +1304,7 @@ export async function createAndInitializeDatabase(options: DbInitOptions): Promi
                 [SyncStatus] NVARCHAR(20) NULL DEFAULT ('synced'),
                 [LastSyncedAt] DATETIME2 NULL,
                 [UpdatedAt] DATETIME2 NOT NULL DEFAULT (sysutcdatetime()),
+                [RowVersion] ROWVERSION,
                 CONSTRAINT [PK_StockReturnsFromReps] PRIMARY KEY CLUSTERED ([Id])
             );`,
 
@@ -1262,6 +1324,7 @@ export async function createAndInitializeDatabase(options: DbInitOptions): Promi
                 [SyncStatus] NVARCHAR(20) NULL DEFAULT ('synced'),
                 [LastSyncedAt] DATETIME2 NULL,
                 [UpdatedAt] DATETIME2 NOT NULL DEFAULT (sysutcdatetime()),
+                [RowVersion] ROWVERSION,
                 CONSTRAINT [PK_StockTransferRecords] PRIMARY KEY CLUSTERED ([Id])
             );`,
 
@@ -1283,6 +1346,7 @@ export async function createAndInitializeDatabase(options: DbInitOptions): Promi
                 [SyncStatus] NVARCHAR(20) NULL DEFAULT ('synced'),
                 [LastSyncedAt] DATETIME2 NULL,
                 [UpdatedAt] DATETIME2 NOT NULL DEFAULT (sysutcdatetime()),
+                [RowVersion] ROWVERSION,
                 CONSTRAINT [PK_SupplierPayments] PRIMARY KEY CLUSTERED ([Id])
             );`,
 
@@ -1300,6 +1364,7 @@ export async function createAndInitializeDatabase(options: DbInitOptions): Promi
                 [SyncStatus] NVARCHAR(20) NULL DEFAULT ('synced'),
                 [LastSyncedAt] DATETIME2 NULL,
                 [UpdatedAt] DATETIME2 NOT NULL DEFAULT (sysutcdatetime()),
+                [RowVersion] ROWVERSION,
                 CONSTRAINT [PK_Suppliers] PRIMARY KEY CLUSTERED ([Id])
             );`,
 
@@ -1311,6 +1376,7 @@ export async function createAndInitializeDatabase(options: DbInitOptions): Promi
                 [LastSyncCheckAt] DATETIME2 NULL,
                 [SyncDirection] NVARCHAR(20) NULL DEFAULT ('push'),
                 [Notes] NVARCHAR(255) NULL,
+                [RowVersion] ROWVERSION,
                 CONSTRAINT [PK_SyncWatermarks] PRIMARY KEY CLUSTERED ([TableName])
             );`,
 
@@ -1336,6 +1402,7 @@ export async function createAndInitializeDatabase(options: DbInitOptions): Promi
                 [LastPullRowVersion] BIGINT NULL,
                 [CurrentLocalRowVersion] BIGINT NULL,
                 [CurrentCentralRowVersion] BIGINT NULL,
+                [RowVersion] ROWVERSION,
                 CONSTRAINT [PK_SyncTrackingMatrix] PRIMARY KEY CLUSTERED ([TableName])
             );`,
 
@@ -1353,6 +1420,7 @@ export async function createAndInitializeDatabase(options: DbInitOptions): Promi
                 [LastSyncedAt] DATETIME2 NULL,
                 [UpdatedAt] DATETIME2 NOT NULL DEFAULT (sysutcdatetime()),
                 [CreatedAt] DATETIME2 NOT NULL DEFAULT (sysutcdatetime()),
+                [RowVersion] ROWVERSION,
                 CONSTRAINT [PK_Targets] PRIMARY KEY CLUSTERED ([Id])
             );`,
 
@@ -1374,6 +1442,7 @@ export async function createAndInitializeDatabase(options: DbInitOptions): Promi
                 [SyncStatus] NVARCHAR(20) NULL DEFAULT ('synced'),
                 [LastSyncedAt] DATETIME2 NULL,
                 [UpdatedAt] DATETIME2 NOT NULL DEFAULT (sysutcdatetime()),
+                [RowVersion] ROWVERSION,
                 CONSTRAINT [PK_TreasuryTransactions] PRIMARY KEY CLUSTERED ([Id])
             );`,
 
@@ -1403,6 +1472,7 @@ export async function createAndInitializeDatabase(options: DbInitOptions): Promi
                 [SyncStatus] NVARCHAR(20) NULL DEFAULT ('synced'),
                 [LastSyncedAt] DATETIME2 NULL,
                 [UpdatedAt] DATETIME2 NOT NULL DEFAULT (sysutcdatetime()),
+                [RowVersion] ROWVERSION,
                 CONSTRAINT [PK_Users] PRIMARY KEY CLUSTERED ([Id])
             );`,
 

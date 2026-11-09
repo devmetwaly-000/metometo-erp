@@ -134,7 +134,7 @@ interface DataContextType {
 }
 
 const DataContext = createContext<DataContextType | undefined>(undefined);
-const CACHE_KEY = 'multibranch-pos-sql-cache-v4';
+const CACHE_KEY = 'multibranch-pos-sql-cache-v5';
 
 export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
     const [allData, setAllData] = useState<any>({});
