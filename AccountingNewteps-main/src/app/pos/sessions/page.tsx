@@ -1112,36 +1112,34 @@ export default function PosSessionsPage() {
                                 {cashierSessionsData.length === 0 && <p className="text-center text-muted-foreground py-4">لا توجد ورديات مفتوحة حاليًا.</p>}
                             </CardContent>
                         </Card>
-                        {!isCentral && (
-                            <Card>
-                                <CardHeader><CardTitle>إدارة اليومية</CardTitle></CardHeader>
-                                <CardContent className="flex gap-4">
-                                   {availableCashiers.length > 0 && (
-                                         <AddEntityDialog
-                                            title="تسليم عهدة وبدء وردية"
-                                            description="اختر الكاشير وأدخل رصيد بداية الوردية."
-                                            triggerButton={<Button><UserPlus className="ml-2 h-4 w-4" />تسليم عهدة جديدة</Button>}
-                                         >
-                                            <AssignCustodyDialog users={availableCashiers} onConfirm={handleAssignCustody} onClose={()=>{}} cashAccounts={cashAccounts} accountBalances={accountBalances} warehouses={warehouses} terminals={posTerminals} activeSessions={cashierSessionsData} />
-                                         </AddEntityDialog>
-                                   )}
-                                    <Button variant="secondary" onClick={handleCloseWorkDay} disabled={!canCloseWorkDay}>
-                                        <PowerOff className="ml-2 h-4 w-4" />
-                                        إقفال يوم العمل بالكامل
-                                    </Button>
-                                </CardContent>
-                                 {!canCloseWorkDay && <CardFooter>
-                                    <div className="text-xs text-destructive flex items-center gap-2">
-                                        <AlertTriangle className="h-4 w-4" />
-                                        <span>
-                                            لا يمكن إقفال يوم العمل. 
-                                            {!allSessionsClosed && " يجب إقفال جميع ورديات الكاشيرات أولاً."}
-                                            {unreconciledDeliveryCount > 0 && ` يوجد ${unreconciledDeliveryCount} فاتورة دليفري معلقة لم يتم تحصيلها.`}
-                                        </span>
-                                    </div>
-                                 </CardFooter>}
-                            </Card>
-                        )}
+                         <Card>
+                            <CardHeader><CardTitle>إدارة اليومية</CardTitle></CardHeader>
+                            <CardContent className="flex gap-4">
+                               {availableCashiers.length > 0 && !isCentral && (
+                                     <AddEntityDialog
+                                        title="تسليم عهدة وبدء وردية"
+                                        description="اختر الكاشير وأدخل رصيد بداية الوردية."
+                                        triggerButton={<Button><UserPlus className="ml-2 h-4 w-4" />تسليم عهدة جديدة</Button>}
+                                    >
+                                        <AssignCustodyDialog users={availableCashiers} onConfirm={handleAssignCustody} onClose={()=>{}} cashAccounts={cashAccounts} accountBalances={accountBalances} warehouses={warehouses} terminals={posTerminals} activeSessions={cashierSessionsData} />
+                                    </AddEntityDialog>
+                               )}
+                                <Button variant="secondary" onClick={handleCloseWorkDay} disabled={!canCloseWorkDay || isCentral}>
+                                    <PowerOff className="ml-2 h-4 w-4" />
+                                    إقفال يوم العمل بالكامل
+                                </Button>
+                            </CardContent>
+                             {!canCloseWorkDay && <CardFooter>
+                                <div className="text-xs text-destructive flex items-center gap-2">
+                                    <AlertTriangle className="h-4 w-4" />
+                                    <span>
+                                        لا يمكن إقفال يوم العمل. 
+                                        {!allSessionsClosed && " يجب إقفال جميع ورديات الكاشيرات أولاً."} 
+                                        {unreconciledDeliveryCount > 0 && ` يوجد ${unreconciledDeliveryCount} فاتورة دليفري معلقة لم يتم تحصيلها.`}
+                                    </span>
+                                </div>
+                             </CardFooter>}
+                        </Card>
                     </div>
                 ) : (
                     <Card className='text-center border-dashed'>

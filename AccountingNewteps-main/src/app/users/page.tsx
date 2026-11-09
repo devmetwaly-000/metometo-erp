@@ -366,7 +366,7 @@ const UserForm = ({
 };
 
 export default function UsersPage() {
-  const { users, warehouses, roles: rolesData, cashAccounts: cashAccountsData, loading, dbAction, licenses } = useData();
+  const { users, warehouses, allWarehouses, roles: rolesData, cashAccounts: cashAccountsData, loading, dbAction, licenses } = useData();
   const { user } = useAuth();
   const { toast } = useToast();
   const { can } = usePermissions();
@@ -485,7 +485,7 @@ export default function UsersPage() {
                 const currentIds = dataToUpdate.warehouseIds || [];
                 dataToUpdate.warehouseIds = newWarehouseId ? [...currentIds, newWarehouseId as string] : currentIds;
             } else if (!willBeRep && isCurrentlyRep) {
-                const repWarehouse = warehouses.find((w: any) => w.repId === id);
+                const repWarehouse = allWarehouses.find((w: any) => w.repId === id);
                 if (repWarehouse) await dbAction('warehouses', 'remove', { id: repWarehouse.id });
                 const repCashAccount = cashAccountsData.find((acc: any) => acc.userId === id);
                 if (repCashAccount) await dbAction('cashAccounts', 'remove', { id: repCashAccount.id });
@@ -493,7 +493,7 @@ export default function UsersPage() {
             }
 
             if (willBeRep && id) {
-                 const repWarehouse = warehouses.find((w: any) => w.repId === id);
+                 const repWarehouse = allWarehouses.find((w: any) => w.repId === id);
                  if (repWarehouse) {
                      const currentIds = dataToUpdate.warehouseIds || [];
                      if (!currentIds.includes(repWarehouse.id)) {

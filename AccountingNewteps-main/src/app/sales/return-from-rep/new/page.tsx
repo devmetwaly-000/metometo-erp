@@ -54,6 +54,7 @@ export default function ReturnFromRepPage() {
         users, 
         warehouses, 
         salesInvoices,
+        salesReturns,
         stockIssuesToReps,
         stockReturnsFromReps,
         dbAction, 
@@ -76,6 +77,15 @@ export default function ReturnFromRepPage() {
                 });
             });
 
+        // Add customer returns collected by the rep in the field
+        salesReturns
+            .filter((ret:any) => (ret.salesRepId === selectedRep || ret.userId === selectedRep) && (ret.status === 'approved' || !ret.status || ret.status === 'completed'))
+            .forEach((ret:any) => {
+                (ret.items || []).forEach((item:any) => {
+                    repStock.set(item.id, (repStock.get(item.id) || 0) + (Number(item.qty) || 0));
+                });
+            });
+
         salesInvoices
             .filter((sale:any) => sale.salesRepId === selectedRep && sale.status === 'approved')
             .forEach((sale:any) => {
@@ -95,7 +105,7 @@ export default function ReturnFromRepPage() {
         return allItems
             .map((item:any) => ({...item, stock: repStock.get(item.id) || 0}))
             .filter((item:any) => item.stock > 0);
-    }, [selectedRep, allItems, stockIssuesToReps, salesInvoices, stockReturnsFromReps]);
+    }, [selectedRep, allItems, stockIssuesToReps, salesReturns, salesInvoices, stockReturnsFromReps]);
 
 
     const handleFillFromCustody = () => {

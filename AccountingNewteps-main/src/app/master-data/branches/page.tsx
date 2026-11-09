@@ -161,7 +161,7 @@ const BranchForm = ({ branch, onSave, onClose, allWarehouses }: { branch?: Branc
 
 
 export default function BranchesPage() {
-  const { warehouses, posTerminals, loading, dbAction, licenses } = useData();
+  const { warehouses, allWarehouses, posTerminals, loading, dbAction, licenses } = useData();
   const { user } = useAuth();
   const { toast } = useToast();
   const [clickCount, setClickCount] = useState(0);
@@ -309,7 +309,7 @@ export default function BranchesPage() {
                 </Button>
             }
             >
-            {({onClose}) => <BranchForm onSave={handleSave} onClose={onClose} allWarehouses={warehouses} />}
+            {({onClose}) => <BranchForm onSave={handleSave} onClose={onClose} allWarehouses={allWarehouses} />}
             </AddEntityDialog>
         )}
       </PageHeader>
@@ -389,7 +389,7 @@ export default function BranchesPage() {
                                                             </DropdownMenuItem>
                                                         }
                                                     >
-                                                        {({onClose}) => <BranchForm branch={branch} onSave={handleSave} onClose={onClose} allWarehouses={warehouses} />}
+                                                        {({onClose}) => <BranchForm branch={branch} onSave={handleSave} onClose={onClose} allWarehouses={allWarehouses} />}
                                                     </AddEntityDialog>
                                                      <AlertDialogTrigger asChild>
                                                         <DropdownMenuItem className="text-destructive" onSelect={(e) => e.preventDefault()}>

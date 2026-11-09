@@ -82,6 +82,7 @@ export default function RepOperationsPage() {
         stockIssuesToReps: issues,
         stockReturnsFromReps: returns,
         salesInvoices: sales,
+        salesReturns: returnsFromCustomers,
         repRemittances: remittances,
         loading
     } = useData();
@@ -106,11 +107,11 @@ export default function RepOperationsPage() {
             return true;
         };
         
-        const itemMovements = new Map<string, { name: string; issued: number; sold: number; returned: number; }>();
+        const itemMovements = new Map<string, { name: string; issued: number; sold: number; returned: number; customerReturns: number; }>();
         const transactionLog: any[] = [];
         
         allItems.forEach((item: any) => {
-            itemMovements.set(item.id, { name: item.name, issued: 0, sold: 0, returned: 0 });
+            itemMovements.set(item.id, { name: item.name, issued: 0, sold: 0, returned: 0, customerReturns: 0 });
         });
 
         let totalCollectedByRep = 0;
@@ -145,10 +146,30 @@ export default function RepOperationsPage() {
             });
         });
 
+        const customerReturns = (returnsFromCustomers || []).filter((r:any) => (r.salesRepId === filters.salesRepId || r.userId === filters.salesRepId) && (r.status === 'approved' || !r.status || r.status === 'completed') && filterByDate(r));
+        customerReturns.forEach((ret: any) => {
+            transactionLog.push({
+                date: ret.date,
+                type: 'مرتجع مبيعات عميل (ميداني)',
+                ref: ret.returnNumber || ret.invoiceNumber || ret.id,
+                value: -(ret.paidAmount || 0),
+                isCustomerReturn: true,
+            });
+            if (ret.paidAmount) {
+                totalCollectedByRep -= ret.paidAmount;
+            }
+            (ret.items || []).forEach((item: any) => {
+                const current = itemMovements.get(item.id);
+                if (current) {
+                    current.customerReturns += (Number(item.qty) || 0);
+                }
+            });
+        });
+
         issues.filter((i:any) => i.salesRepId === filters.salesRepId && filterByDate(i)).forEach((issue: IssueToRep) => {
             transactionLog.push({
                 date: issue.date,
-                type: 'صرف عهدة',
+                type: 'صرف عهدة للمندوب',
                 ref: issue.receiptNumber,
                 isIssue: true,
             });
@@ -163,7 +184,7 @@ export default function RepOperationsPage() {
         returns.filter((r:any) => r.salesRepId === filters.salesRepId && filterByDate(r)).forEach((ret: ReturnFromRep) => {
              transactionLog.push({
                 date: ret.date,
-                type: 'مرتجع عهدة',
+                type: 'تفريغ عهدة للمخزن',
                 ref: ret.receiptNumber,
                 isReturn: true,
             });
@@ -192,15 +213,15 @@ export default function RepOperationsPage() {
             .reduce((sum, rem) => sum + rem.amount, 0);
 
         const inventory = Array.from(itemMovements.values())
-            .filter(d => d.issued > 0 || d.sold > 0 || d.returned > 0)
+            .filter(d => d.issued > 0 || d.sold > 0 || d.returned > 0 || d.customerReturns > 0)
             .map(d => ({
                 ...d,
-                balance: d.issued - d.sold - d.returned,
+                balance: d.issued - d.sold - d.returned + d.customerReturns,
             }));
         
         return { inventory, totalRemitted, totalSoldValue: totalSoldByRep, totalCollectedValue: totalCollectedByRep, transactionLog: transactionLog.sort((a,b) => new Date(b.date).getTime() - new Date(a.date).getTime()) };
 
-    }, [filters, issues, sales, returns, allItems, remittances, loading]);
+    }, [filters, issues, sales, returns, returnsFromCustomers, allItems, remittances, loading]);
     
 
   return (
@@ -282,10 +303,11 @@ export default function RepOperationsPage() {
                             <TableHeader>
                                 <TableRow>
                                 <TableHead>الصنف</TableHead>
-                                <TableHead className="text-center">مصروف</TableHead>
+                                <TableHead className="text-center">مصروف عهدة</TableHead>
                                 <TableHead className="text-center">مباع</TableHead>
-                                <TableHead className="text-center">مرتجع</TableHead>
-                                <TableHead className="text-center font-bold">الرصيد</TableHead>
+                                <TableHead className="text-center text-teal-600">مرتجع عملاء (+)</TableHead>
+                                <TableHead className="text-center text-amber-600">تفريغ مخزن (-)</TableHead>
+                                <TableHead className="text-center font-bold">رصيد بالسيارة</TableHead>
                                 </TableRow>
                             </TableHeader>
                             <TableBody>
@@ -294,12 +316,13 @@ export default function RepOperationsPage() {
                                     <TableCell className="font-medium">{item.name}</TableCell>
                                     <TableCell className="text-center">{item.issued > 0 ? item.issued : '-'}</TableCell>
                                     <TableCell className="text-center text-green-600">{item.sold > 0 ? item.sold : '-'}</TableCell>
+                                    <TableCell className="text-center text-teal-600 font-bold">{item.customerReturns > 0 ? `+${item.customerReturns}` : '-'}</TableCell>
                                     <TableCell className="text-center text-amber-600">{item.returned > 0 ? item.returned: '-'}</TableCell>
                                     <TableCell className={`text-center font-bold ${item.balance < 0 ? 'text-destructive' : 'text-primary'}`}>{item.balance}</TableCell>
                                 </TableRow>
                                 )) : (
                                     <TableRow>
-                                        <TableCell colSpan={5} className="text-center py-10">لا توجد حركات للأصناف.</TableCell>
+                                        <TableCell colSpan={6} className="text-center py-10">لا توجد حركات للأصناف.</TableCell>
                                     </TableRow>
                                 )}
                             </TableBody>

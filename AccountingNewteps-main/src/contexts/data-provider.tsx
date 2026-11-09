@@ -45,6 +45,8 @@ interface DataContextType {
     customers: any[];
     suppliers: any[];
     warehouses: any[];
+    allWarehouses: any[];
+    repWarehouses: any[];
     cashAccounts: any[];
     partners: any[];
     users: any[];
@@ -283,7 +285,9 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     const items = useMemo(() => (allData?.items || []).filter((i: any) => !i.isDisabled), [allData?.items]);
     const customers = useMemo(() => allData?.customers || [], [allData?.customers]);
     const suppliers = useMemo(() => allData?.suppliers || [], [allData?.suppliers]);
-    const warehouses = useMemo(() => allData?.warehouses || [], [allData?.warehouses]);
+    const allWarehouses = useMemo(() => allData?.warehouses || [], [allData?.warehouses]);
+    const warehouses = useMemo(() => (allData?.warehouses || []).filter((w: any) => !w.isRepWarehouse && w.warehouseType !== 'rep' && !w.repId), [allData?.warehouses]);
+    const repWarehouses = useMemo(() => (allData?.warehouses || []).filter((w: any) => Boolean(w.isRepWarehouse) || w.warehouseType === 'rep' || Boolean(w.repId)), [allData?.warehouses]);
     const cashAccounts = useMemo(() => allData?.cashAccounts || [], [allData?.cashAccounts]);
     const partners = useMemo(() => allData?.partners || [], [allData?.partners]);
     const users = useMemo(() => allData?.users || [], [allData?.users]);
@@ -376,7 +380,7 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     const isCentral = systemRole === 'central';
 
     const value: DataContextType = {
-        allItems, items, customers, suppliers, warehouses, cashAccounts, partners, users, deliveryStaff, itemGroups, itemSections, itemCategories, itemSubCategories1, itemSubCategories2, inventoryZones, inventorySections, itemColors, itemSizes, barcodeDesigns, posTerminals, promotions, roles, settings, inventory, restaurantTables, paymentMethods, sellers, targets, licenses, snoozedRecommendations, syncHistory, customerVisits, loginHistory, gratuityLogs, gratuityDistributions,
+        allItems, items, customers, suppliers, warehouses, allWarehouses, repWarehouses, cashAccounts, partners, users, deliveryStaff, itemGroups, itemSections, itemCategories, itemSubCategories1, itemSubCategories2, inventoryZones, inventorySections, itemColors, itemSizes, barcodeDesigns, posTerminals, promotions, roles, settings, inventory, restaurantTables, paymentMethods, sellers, targets, licenses, snoozedRecommendations, syncHistory, customerVisits, loginHistory, gratuityLogs, gratuityDistributions,
         stockInRecords, stockOutRecords, stockTransferRecords, stockAdjustmentRecords, stockIssuesToReps, stockReturnsFromReps, inventoryClosings, requisitions,
         salesInvoices, salesReturns, purchaseInvoices, purchaseReturns, posSales, posReturns, posSessions, posAuditLogs, heldInvoices, posCounters,
         expenses, exceptionalIncomes, customerPayments, supplierPayments, treasuryTransactions, profitDistributions, priceChangeLogs,
