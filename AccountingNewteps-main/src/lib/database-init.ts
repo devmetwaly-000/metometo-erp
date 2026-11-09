@@ -1713,8 +1713,8 @@ export async function createAndInitializeDatabase(options: DbInitOptions): Promi
 
         // 7. Seed canonical Warehouses
         const warehousesSeed = [
-            { id: '-OmnkFba_GsEb0rfdzyA', code: branchCode, name: branchName, type: 'branch', isRep: 0, isMain: 0 },
-            { id: '-P2S4PYETwslu4f4ym70', code: '5000', name: 'ألنهضة', type: 'warehouse', isRep: 0, isMain: 1 },
+            { id: '-OmnkFba_GsEb0rfdzyA', code: branchCode, name: branchName, type: 'branch', isRep: 0, isMain: 1 },
+            { id: '-P2S4PYETwslu4f4ym70', code: '5000', name: 'المخزن الرئيسي (ألنهضة)', type: 'warehouse', isRep: 0, isMain: 1 },
             { id: '-OnwGtz2HzhPQCqm55No', code: 'REP-01', name: 'عهدة المندوب: محاسب', type: 'rep', isRep: 1, isMain: 0, repId: '-OnwGtvQ3IuU_85UL0l9' }
         ];
 
@@ -1766,7 +1766,211 @@ export async function createAndInitializeDatabase(options: DbInitOptions): Promi
                 `);
         } catch {}
 
-        // 9. Seed AppSettings system role
+        // 9. Seed default Roles & Permissions
+        try {
+            const defaultRoles = [
+                {
+                    id: 'مسؤول',
+                    perms: JSON.stringify({
+                        dashboard: { view: true },
+                        pos: { view: true },
+                        pos_sessions: { view: true },
+                        pos_itemGroups: { view: true },
+                        pos_terminals: { view: true },
+                        pos_paymentMethods: { view: true },
+                        sales_invoices: { view: true, add: true, edit: true, delete: true, print: true },
+                        sales_returns: { view: true, add: true, edit: true, delete: true, print: true },
+                        sales_posReturns: { view: true, add: true },
+                        purchases_invoices: { view: true, add: true, edit: true, delete: true, print: true },
+                        purchases_returns: { view: true, add: true, edit: true, delete: true, print: true },
+                        purchases_orders: { view: true, add: true, edit: true, delete: true },
+                        inventory_items: { view: true, add: true, edit: true, delete: true },
+                        inventory_items_categories: { view: true, add: true, edit: true, delete: true },
+                        inventory_warehouses: { view: true, add: true, edit: true, delete: true },
+                        inventory_movements: { view: true },
+                        inventory_stockIn: { view: true, add: true, delete: true, print: true },
+                        inventory_stockOut: { view: true, add: true, print: true },
+                        inventory_transfer: { view: true, add: true },
+                        inventory_adjustment: { view: true, add: true, delete: true, print: true },
+                        inventory_stockStatus: { view: true, generate: true, print: true },
+                        accounting_treasury: { view: true, add: true },
+                        accounting_expenses: { view: true, add: true },
+                        accounting_customerPayments: { view: true, add: true, delete: true },
+                        accounting_supplierPayments: { view: true, add: true, delete: true },
+                        reports_sales: { view: true },
+                        reports_posSales: { view: true },
+                        reports_itemLedger: { view: true },
+                        reports_financialStatements: { view: true },
+                        reports_discrepancies: { view: true },
+                        settings_users: { view: true, add: true, edit: true, delete: true },
+                        settings_cashAccounts: { view: true, add: true, edit: true, delete: true },
+                        settings_printers: { view: true, edit: true },
+                        users: { view: true, add: true, edit: true, delete: true }
+                    })
+                },
+                {
+                    id: 'كاشير',
+                    perms: JSON.stringify({
+                        pos: { view: true },
+                        sales_invoices: { view: true, add: true, print: true },
+                        sales_posReturns: { view: true, add: true },
+                        accounting_customerPayments: { view: true, add: true },
+                        customers_data: { view: true, add: true }
+                    })
+                },
+                {
+                    id: 'محاسب',
+                    perms: JSON.stringify({
+                        dashboard: { view: true },
+                        sales_invoices: { view: true, add: true, edit: true, print: true },
+                        purchases_invoices: { view: true, add: true, edit: true, print: true },
+                        inventory_movements: { view: true },
+                        inventory_stockStatus: { view: true, print: true },
+                        accounting_treasury: { view: true, add: true },
+                        accounting_expenses: { view: true, add: true },
+                        accounting_customerPayments: { view: true, add: true },
+                        accounting_supplierPayments: { view: true, add: true },
+                        reports_sales: { view: true },
+                        reports_financialStatements: { view: true }
+                    })
+                }
+            ];
+
+            for (const r of defaultRoles) {
+                await targetPool.request()
+                    .input('Id', sql.NVarChar(100), r.id)
+                    .input('Perms', sql.NVarChar(sql.MAX), r.perms)
+                    .input('BranchCode', sql.NVarChar(50), branchCode)
+                    .input('BranchName', sql.NVarChar(255), branchName)
+                    .query(`
+                        IF NOT EXISTS (SELECT 1 FROM dbo.Roles WHERE Id = @Id)
+                            INSERT INTO dbo.Roles (Id, PermissionsJson, BranchCode, BranchName, SyncStatus)
+                            VALUES (@Id, @Perms, @BranchCode, @BranchName, 'synced');
+                    `);
+            }
+        } catch (rErr: any) {
+            console.warn('Roles seed error:', rErr.message);
+        }
+
+        // 10. Seed default Users (Ensures system is never locked on fresh install)
+        try {
+            const defaultUsers = [
+                {
+                    id: 'admin_master',
+                    loginName: 'admin',
+                    name: 'مدير النظام',
+                    password: 'admin',
+                    phone: '01000000000',
+                    role: 'مسؤول',
+                    warehouseIds: JSON.stringify(['all']),
+                    uid: 'admin_master',
+                    isCashier: 1,
+                    isDelivery: 1,
+                    isSalesRep: 1,
+                    canOpenOwnShift: 1,
+                    canDeleteFromCart: 1,
+                    canProcessReturn: 1,
+                    canCancelInvoice: 1,
+                    canBypassScannerForReturn: 1,
+                    isDisabled: 0,
+                    themeSettings: JSON.stringify({ licenseKey: 'SA-KEY-99ED28E7-023953BC', licenseStatus: 'active', zoomLevel: 1.0 })
+                },
+                {
+                    id: 'cashier_default',
+                    loginName: 'cashier',
+                    name: 'كاشير الفرع',
+                    password: '1234',
+                    phone: '01100000000',
+                    role: 'كاشير',
+                    warehouseIds: JSON.stringify(['-OmnkFba_GsEb0rfdzyA']),
+                    uid: 'cashier_default',
+                    isCashier: 1,
+                    isDelivery: 0,
+                    isSalesRep: 0,
+                    canOpenOwnShift: 1,
+                    canDeleteFromCart: 0,
+                    canProcessReturn: 1,
+                    canCancelInvoice: 0,
+                    canBypassScannerForReturn: 0,
+                    isDisabled: 0,
+                    themeSettings: JSON.stringify({ licenseKey: 'SA-KEY-99ED28E7-023953BC', licenseStatus: 'active', zoomLevel: 1.0 })
+                }
+            ];
+
+            for (const u of defaultUsers) {
+                await targetPool.request()
+                    .input('Id', sql.NVarChar(64), u.id)
+                    .input('LoginName', sql.NVarChar(100), u.loginName)
+                    .input('Name', sql.NVarChar(255), u.name)
+                    .input('Password', sql.NVarChar(255), u.password)
+                    .input('Phone', sql.NVarChar(50), u.phone)
+                    .input('Role', sql.NVarChar(100), u.role)
+                    .input('WarehouseIds', sql.NVarChar(sql.MAX), u.warehouseIds)
+                    .input('Uid', sql.NVarChar(100), u.uid)
+                    .input('IsCashier', sql.Bit, u.isCashier)
+                    .input('IsDelivery', sql.Bit, u.isDelivery)
+                    .input('IsSalesRep', sql.Bit, u.isSalesRep)
+                    .input('CanOpenOwnShift', sql.Bit, u.canOpenOwnShift)
+                    .input('CanDeleteFromCart', sql.Bit, u.canDeleteFromCart)
+                    .input('CanProcessReturn', sql.Bit, u.canProcessReturn)
+                    .input('CanCancelInvoice', sql.Bit, u.canCancelInvoice)
+                    .input('CanBypassScannerForReturn', sql.Bit, u.canBypassScannerForReturn)
+                    .input('IsDisabled', sql.Bit, u.isDisabled)
+                    .input('ThemeSettings', sql.NVarChar(sql.MAX), u.themeSettings)
+                    .input('BranchCode', sql.NVarChar(50), branchCode)
+                    .input('BranchName', sql.NVarChar(255), branchName)
+                    .query(`
+                        IF NOT EXISTS (SELECT 1 FROM dbo.Users WHERE LoginName = @LoginName OR Id = @Id)
+                        BEGIN
+                            INSERT INTO dbo.Users (Id, LoginName, Name, Password, Phone, Role, WarehouseIds, Uid, IsCashier, IsDelivery, IsSalesRep, CanOpenOwnShift, CanDeleteFromCart, CanProcessReturn, CanCancelInvoice, CanBypassScannerForReturn, IsDisabled, ThemeSettings, BranchCode, BranchName, SyncStatus)
+                            VALUES (@Id, @LoginName, @Name, @Password, @Phone, @Role, @WarehouseIds, @Uid, @IsCashier, @IsDelivery, @IsSalesRep, @CanOpenOwnShift, @CanDeleteFromCart, @CanProcessReturn, @CanCancelInvoice, @CanBypassScannerForReturn, @IsDisabled, @ThemeSettings, @BranchCode, @BranchName, 'synced');
+                        END
+                    `);
+            }
+        } catch (uErr: any) {
+            console.warn('Users seed error:', uErr.message);
+        }
+
+        // 11. Seed default Active License
+        try {
+            await targetPool.request()
+                .input('Id', sql.NVarChar(64), 'default_license')
+                .input('Key', sql.NVarChar(255), 'SA-KEY-99ED28E7-023953BC')
+                .input('Status', sql.NVarChar(50), 'active')
+                .input('BranchCode', sql.NVarChar(50), branchCode)
+                .input('BranchName', sql.NVarChar(255), branchName)
+                .query(`
+                    IF NOT EXISTS (SELECT 1 FROM dbo.Licenses WHERE [Key] = @Key)
+                    BEGIN
+                        INSERT INTO dbo.Licenses (Id, [Key], StartDate, EndDate, Status, MaxUsers, BranchCode, BranchName, SyncStatus)
+                        VALUES (@Id, @Key, '2025-01-01', '2099-12-31', @Status, 100, @BranchCode, @BranchName, 'synced');
+                    END
+                `);
+        } catch {}
+
+        // 12. Seed default PaymentMethods
+        try {
+            const defaultMethods = [
+                { id: 'cash', name: 'نقدي' },
+                { id: 'visa', name: 'شبكة / فيزا' },
+                { id: 'transfer', name: 'تحويل بنكي' }
+            ];
+            for (const pm of defaultMethods) {
+                await targetPool.request()
+                    .input('Id', sql.NVarChar(64), pm.id)
+                    .input('Name', sql.NVarChar(255), pm.name)
+                    .input('AccountId', sql.NVarChar(64), '-OmnkFeLDTdEKiFIrlq7')
+                    .input('BranchCode', sql.NVarChar(50), branchCode)
+                    .input('BranchName', sql.NVarChar(255), branchName)
+                    .query(`
+                        IF NOT EXISTS (SELECT 1 FROM dbo.PaymentMethods WHERE Id = @Id)
+                            INSERT INTO dbo.PaymentMethods (Id, Name, AccountId, BranchCode, BranchName, SyncStatus)
+                            VALUES (@Id, @Name, @AccountId, @BranchCode, @BranchName, 'synced');
+                    `);
+            }
+        } catch {}
+
+        // 13. Seed default AppSettings ('main' & 'system_role')
         try {
             const roleVal = options.isCentral ? 'central' : 'branch';
             await targetPool.request()
@@ -1778,7 +1982,114 @@ export async function createAndInitializeDatabase(options: DbInitOptions): Promi
                     ELSE
                         UPDATE dbo.AppSettings SET SettingValue = @Val WHERE SettingKey = @Key;
                 `);
+
+            const defaultMainSettings = JSON.stringify({
+                general: {
+                    companyName: branchName || 'نظام إدارة الفروع ونقاط البيع',
+                    companyAddress: 'الفرع الرئيسي',
+                    language: 'ar',
+                    licenseKey: 'SA-KEY-99ED28E7-023953BC',
+                    licenseStatus: 'active',
+                    isClothingStore: false,
+                    desktopLayout: 'sidebar',
+                    toastDuration: 2
+                },
+                financial: {
+                    currency: 'EGP',
+                    vatRate: 14,
+                    allowNegativeStock: false,
+                    standardItemBarcodePrefix: '25',
+                    scaleBarcodePrefix: '21',
+                    clothingBarcodePrefix: '23',
+                    roundingDecimals: 2
+                },
+                posSettings: {
+                    workDay: new Date().toISOString().split('T')[0],
+                    autoPrintReceipt: true,
+                    showItemStock: true,
+                    layout: { layout: 'cart-left', cartWidth: 50, itemsWidth: 50, groupsPosition: 'right', paymentPosition: 'bottom' }
+                }
+            });
+
+            await targetPool.request()
+                .input('Key', sql.NVarChar(100), 'main')
+                .input('Val', sql.NVarChar(sql.MAX), defaultMainSettings)
+                .input('BranchCode', sql.NVarChar(50), branchCode)
+                .input('BranchName', sql.NVarChar(255), branchName)
+                .query(`
+                    IF NOT EXISTS (SELECT 1 FROM dbo.AppSettings WHERE SettingKey = @Key)
+                        INSERT INTO dbo.AppSettings (SettingKey, SettingValue, BranchCode, BranchName, SyncStatus)
+                        VALUES (@Key, @Val, @BranchCode, @BranchName, 'synced');
+                `);
+        } catch (sErr: any) {
+            console.warn('AppSettings seed error:', sErr.message);
+        }
+
+        // 14. Seed default Counters
+        try {
+            const defaultCounters = [
+                { name: 'standardItemCode', val: 1 },
+                { name: 'rawMaterialCode', val: 1000 },
+                { name: 'salesInvoice', val: 1 },
+                { name: 'purchaseInvoice', val: 1 },
+                { name: 'stockInReceipt', val: 1 },
+                { name: 'stockOutReceipt', val: 1 },
+                { name: 'stockTransferReceipt', val: 1 },
+                { name: 'stockAdjustmentReceipt', val: 1 }
+            ];
+            for (const c of defaultCounters) {
+                await targetPool.request()
+                    .input('Name', sql.NVarChar(100), c.name)
+                    .input('Val', sql.BigInt, c.val)
+                    .input('BranchCode', sql.NVarChar(50), branchCode)
+                    .input('BranchName', sql.NVarChar(255), branchName)
+                    .query(`
+                        IF NOT EXISTS (SELECT 1 FROM dbo.Counters WHERE Name = @Name)
+                            INSERT INTO dbo.Counters (Name, CurrentValue, BranchCode, BranchName, SyncStatus)
+                            VALUES (@Name, @Val, @BranchCode, @BranchName, 'synced');
+                    `);
+            }
         } catch {}
+
+        // 15. Create high-performance database indexes
+        const performanceIndexes = [
+            `IF NOT EXISTS (SELECT * FROM sys.indexes WHERE name = 'IX_Items_IsDisabled_Name' AND object_id = OBJECT_ID('dbo.Items'))
+             CREATE NONCLUSTERED INDEX IX_Items_IsDisabled_Name ON dbo.Items (IsDisabled, Name) INCLUDE (Code, Price, Cost, BaseUnit, SectionId, CategoryId, ItemGroupId);`,
+            `IF NOT EXISTS (SELECT * FROM sys.indexes WHERE name = 'IX_Items_Code' AND object_id = OBJECT_ID('dbo.Items'))
+             CREATE NONCLUSTERED INDEX IX_Items_Code ON dbo.Items (Code);`,
+            `IF NOT EXISTS (SELECT * FROM sys.indexes WHERE name = 'IX_Items_SectionId' AND object_id = OBJECT_ID('dbo.Items'))
+             CREATE NONCLUSTERED INDEX IX_Items_SectionId ON dbo.Items (SectionId, IsDisabled);`,
+            `IF NOT EXISTS (SELECT * FROM sys.indexes WHERE name = 'IX_Items_CategoryId' AND object_id = OBJECT_ID('dbo.Items'))
+             CREATE NONCLUSTERED INDEX IX_Items_CategoryId ON dbo.Items (CategoryId, IsDisabled);`,
+            `IF NOT EXISTS (SELECT * FROM sys.indexes WHERE name = 'IX_Items_ItemGroupId' AND object_id = OBJECT_ID('dbo.Items'))
+             CREATE NONCLUSTERED INDEX IX_Items_ItemGroupId ON dbo.Items (ItemGroupId, IsDisabled);`,
+            `IF NOT EXISTS (SELECT * FROM sys.indexes WHERE name = 'IX_SalesInvoices_CashierId' AND object_id = OBJECT_ID('dbo.SalesInvoices'))
+             CREATE NONCLUSTERED INDEX IX_SalesInvoices_CashierId ON dbo.SalesInvoices (CashierId, Date DESC);`,
+            `IF NOT EXISTS (SELECT * FROM sys.indexes WHERE name = 'IX_SalesInvoices_InvoiceNumber' AND object_id = OBJECT_ID('dbo.SalesInvoices'))
+             CREATE NONCLUSTERED INDEX IX_SalesInvoices_InvoiceNumber ON dbo.SalesInvoices (InvoiceNumber);`,
+            `IF NOT EXISTS (SELECT * FROM sys.indexes WHERE name = 'IX_StockInRecords_PurchaseInvoiceId' AND object_id = OBJECT_ID('dbo.StockInRecords'))
+             CREATE NONCLUSTERED INDEX IX_StockInRecords_PurchaseInvoiceId ON dbo.StockInRecords (PurchaseInvoiceId);`,
+            `IF NOT EXISTS (SELECT * FROM sys.indexes WHERE name = 'IX_StockInRecords_Status' AND object_id = OBJECT_ID('dbo.StockInRecords'))
+             CREATE NONCLUSTERED INDEX IX_StockInRecords_Status ON dbo.StockInRecords (Status);`,
+            `IF NOT EXISTS (SELECT * FROM sys.indexes WHERE name = 'IX_StockOutRecords_SaleInvoiceId' AND object_id = OBJECT_ID('dbo.StockOutRecords'))
+             CREATE NONCLUSTERED INDEX IX_StockOutRecords_SaleInvoiceId ON dbo.StockOutRecords (SaleInvoiceId);`,
+            `IF NOT EXISTS (SELECT * FROM sys.indexes WHERE name = 'IX_StockOutRecords_Status' AND object_id = OBJECT_ID('dbo.StockOutRecords'))
+             CREATE NONCLUSTERED INDEX IX_StockOutRecords_Status ON dbo.StockOutRecords (Status);`,
+            `IF NOT EXISTS (SELECT * FROM sys.indexes WHERE name = 'IX_PurchaseInvoices_InvoiceNumber' AND object_id = OBJECT_ID('dbo.PurchaseInvoices'))
+             CREATE NONCLUSTERED INDEX IX_PurchaseInvoices_InvoiceNumber ON dbo.PurchaseInvoices (InvoiceNumber);`,
+            `IF NOT EXISTS (SELECT * FROM sys.indexes WHERE name = 'IX_Customers_Name' AND object_id = OBJECT_ID('dbo.Customers'))
+             CREATE NONCLUSTERED INDEX IX_Customers_Name ON dbo.Customers (Name);`,
+            `IF NOT EXISTS (SELECT * FROM sys.indexes WHERE name = 'IX_Suppliers_Name' AND object_id = OBJECT_ID('dbo.Suppliers'))
+             CREATE NONCLUSTERED INDEX IX_Suppliers_Name ON dbo.Suppliers (Name);`
+        ];
+
+        for (const idxSql of performanceIndexes) {
+            try {
+                await targetPool.request().query(idxSql);
+            } catch (idxErr: any) {
+                console.warn('Index creation warning:', idxErr.message);
+            }
+        }
 
         // 10. Ensure ROWVERSION on all tables for monotonic synchronization
         try {

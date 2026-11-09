@@ -8,6 +8,7 @@
     "genkit:watch": "genkit start -- tsx --watch src/ai/dev.ts",
     "build": "next build",
     "start": "next start -p 9002",
+    "init-db": "node scripts/init-database-cli.js",
     "lint": "next lint",
     "typecheck": "tsc --noEmit"
   },

@@ -40,9 +40,65 @@ export async function getDbPool(): Promise<sql.ConnectionPool> {
                 localPool = null;
             }
 
-            const pool = new sql.ConnectionPool(sqlConfig);
-            localPool = await pool.connect();
-            return localPool;
+            try {
+                const pool = new sql.ConnectionPool(sqlConfig);
+                localPool = await pool.connect();
+
+                // If connected to an empty database (0 tables), automatically run initialization
+                try {
+                    const tableCheck = await localPool.request().query(`
+                        SELECT COUNT(*) as cnt FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_TYPE = 'BASE TABLE' AND TABLE_NAME != 'sysdiagrams';
+                    `);
+                    if (tableCheck.recordset[0]?.cnt === 0) {
+                        console.log(`[Database Auto-Setup] Database [${sqlConfig.database}] is empty (0 tables). Initializing schema and seed data...`);
+                        const { createAndInitializeDatabase } = await import('./database-init');
+                        await createAndInitializeDatabase({
+                            server: String(sqlConfig.server),
+                            port: Number(sqlConfig.port) || 1433,
+                            database: String(sqlConfig.database),
+                            user: String(sqlConfig.user),
+                            password: String(sqlConfig.password),
+                            branchCode: '900',
+                            branchName: 'الفرع الرأيسي',
+                            isCentral: false
+                        });
+                    }
+                } catch (tcErr: any) {
+                    console.warn('[Database Auto-Setup] Table check error:', tcErr.message);
+                }
+
+                return localPool;
+            } catch (connErr: any) {
+                // If database does not exist (error 4060 or message includes Cannot open database)
+                const isDbMissing = connErr.number === 4060 || 
+                                    (connErr.message && connErr.message.includes('Cannot open database'));
+                
+                if (isDbMissing) {
+                    console.log(`[Database Auto-Setup] Database [${sqlConfig.database}] does not exist. Initializing automatically on first run...`);
+                    const { createAndInitializeDatabase } = await import('./database-init');
+                    const initRes = await createAndInitializeDatabase({
+                        server: String(sqlConfig.server),
+                        port: Number(sqlConfig.port) || 1433,
+                        database: String(sqlConfig.database),
+                        user: String(sqlConfig.user),
+                        password: String(sqlConfig.password),
+                        branchCode: '900',
+                        branchName: 'الفرع الرأيسي',
+                        isCentral: false
+                    });
+
+                    if (initRes.success) {
+                        console.log(`[Database Auto-Setup] ${initRes.message}`);
+                        const pool = new sql.ConnectionPool(sqlConfig);
+                        localPool = await pool.connect();
+                        return localPool;
+                    } else {
+                        console.error('[Database Auto-Setup Failed]', initRes.error);
+                        throw new Error(`فشل إنشاء وتهيئة قاعدة البيانات تلقائياً: ${initRes.error}`);
+                    }
+                }
+                throw connErr;
+            }
         } finally {
             connectingPromise = null;
         }
