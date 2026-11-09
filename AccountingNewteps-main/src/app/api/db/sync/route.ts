@@ -284,7 +284,12 @@ export async function GET() {
             id: w.Id,
             code: w.Code,
             name: w.Name,
-            address: w.Address
+            address: w.Address,
+            isRepWarehouse: !!w.IsRepWarehouse,
+            isMain: !!w.IsMain,
+            isClosed: !!w.IsClosed,
+            repId: w.RepId || null,
+            warehouseType: w.WarehouseType || (w.IsRepWarehouse ? 'rep' : w.IsMain ? 'warehouse' : 'branch')
         }));
 
         const cashAccounts = cashAccountsRes.recordset.map(ca => ({

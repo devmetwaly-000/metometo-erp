@@ -740,9 +740,14 @@ export async function POST(req: Request) {
                     .input('Code', sql.NVarChar(50), payload.code || null)
                     .input('Name', sql.NVarChar(255), payload.name || 'Warehouse')
                     .input('Address', sql.NVarChar(500), payload.address || null)
+                    .input('WarehouseType', sql.NVarChar(50), payload.warehouseType || (payload.isRepWarehouse ? 'rep' : payload.isMain ? 'warehouse' : 'branch'))
+                    .input('IsRepWarehouse', sql.Bit, payload.isRepWarehouse ? 1 : 0)
+                    .input('IsMain', sql.Bit, payload.isMain ? 1 : 0)
+                    .input('IsClosed', sql.Bit, payload.isClosed ? 1 : 0)
+                    .input('RepId', sql.NVarChar(64), payload.repId || null)
                     .query(`
-                        INSERT INTO dbo.Warehouses (Id, Code, Name, Address)
-                        VALUES (@Id, @Code, @Name, @Address);
+                        INSERT INTO dbo.Warehouses (Id, Code, Name, Address, WarehouseType, IsRepWarehouse, IsMain, IsClosed, RepId)
+                        VALUES (@Id, @Code, @Name, @Address, @WarehouseType, @IsRepWarehouse, @IsMain, @IsClosed, @RepId);
                     `);
                 return NextResponse.json({ success: true, id });
             }
@@ -1136,6 +1141,34 @@ export async function POST(req: Request) {
                     .query(`
                         UPDATE dbo.ItemGroups 
                         SET Name = COALESCE(@Name, Name), Code = COALESCE(@Code, Code), ParentCategoryId = COALESCE(@ParentCategoryId, ParentCategoryId) 
+                        WHERE Id = @Id;
+                    `);
+                return NextResponse.json({ success: true });
+            }
+
+            if (path === 'warehouses' && updateId) {
+                await pool.request()
+                    .input('Id', sql.NVarChar(64), updateId)
+                    .input('Name', sql.NVarChar(255), data.name || data.Name || null)
+                    .input('Code', sql.NVarChar(50), data.code || data.Code || null)
+                    .input('Address', sql.NVarChar(500), data.address || data.Address || null)
+                    .input('WarehouseType', sql.NVarChar(50), data.warehouseType || null)
+                    .input('IsRepWarehouse', sql.Bit, data.isRepWarehouse !== undefined ? (data.isRepWarehouse ? 1 : 0) : null)
+                    .input('IsMain', sql.Bit, data.isMain !== undefined ? (data.isMain ? 1 : 0) : null)
+                    .input('IsClosed', sql.Bit, data.isClosed !== undefined ? (data.isClosed ? 1 : 0) : null)
+                    .input('RepId', sql.NVarChar(64), data.repId || null)
+                    .query(`
+                        UPDATE dbo.Warehouses 
+                        SET 
+                            Name = COALESCE(@Name, Name), 
+                            Code = COALESCE(@Code, Code), 
+                            Address = COALESCE(@Address, Address),
+                            WarehouseType = COALESCE(@WarehouseType, WarehouseType),
+                            IsRepWarehouse = COALESCE(@IsRepWarehouse, IsRepWarehouse),
+                            IsMain = COALESCE(@IsMain, IsMain),
+                            IsClosed = COALESCE(@IsClosed, IsClosed),
+                            RepId = COALESCE(@RepId, RepId),
+                            UpdatedAt = SYSUTCDATETIME()
                         WHERE Id = @Id;
                     `);
                 return NextResponse.json({ success: true });

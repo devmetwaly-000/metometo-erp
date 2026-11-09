@@ -125,7 +125,7 @@ export default function DelegateWarehousesPage() {
   const { warehouses, loading, dbAction } = useData();
   const { toast } = useToast();
 
-  const branches = useMemo(() => warehouses.filter((w: any) => w.isRepWarehouse), [warehouses]);
+  const branches = useMemo(() => warehouses.filter((w: any) => w.isRepWarehouse || w.warehouseType === 'rep'), [warehouses]);
 
   const handleSave = async (branch: Partial<Branch>) => {
     try {

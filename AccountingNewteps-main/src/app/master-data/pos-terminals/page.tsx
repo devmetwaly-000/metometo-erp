@@ -282,9 +282,11 @@ export default function PosTerminalsPage() {
   const { toast } = useToast();
   
   const authorizedWarehouses = useMemo(() => {
+    // نقاط البيع (الكاشيرات) ترتبط بفروع البيع الفعلية فقط، ولا ترتبط بعهدة مندوب أو مخزن لوجستي مغلق
+    const salesBranches = warehouses.filter((w: any) => !w.isRepWarehouse && !w.repId && !w.isClosed && w.warehouseType !== 'rep' && w.warehouseType !== 'warehouse');
     const wIds = user?.warehouseIds || [];
-    if (wIds.includes('all')) return warehouses;
-    return warehouses.filter((w: any) => wIds.includes(w.id));
+    if (wIds.includes('all')) return salesBranches;
+    return salesBranches.filter((w: any) => wIds.includes(w.id));
   }, [warehouses, user]);
 
   const [systemPrinters, setSystemPrinters] = useState<Array<{ deviceId?: string, name: string }>>([]);

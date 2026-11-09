@@ -170,7 +170,8 @@ export default function BranchesPage() {
   const [password, setPassword] = useState("");
 
   const branches = useMemo(() => {
-    const b = warehouses.filter((w: any) => !w.isMain && !w.isRepWarehouse && !w.repId);
+    // قائمة الفروع: تستبعد عهدة المناديب وتستبعد المخازن اللوجستية العامة
+    const b = warehouses.filter((w: any) => !w.isMain && !w.isRepWarehouse && !w.repId && w.warehouseType !== 'rep' && w.warehouseType !== 'warehouse');
     if (user?.warehouseIds?.includes('all')) return b;
     return b.filter((w: any) => user?.warehouseIds?.includes(w.id));
   }, [warehouses, user]);
