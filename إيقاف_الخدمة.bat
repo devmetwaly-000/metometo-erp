@@ -7,3 +7,4 @@ node scripts\service\stop_service.js
 echo.
 timeout /t 3 > nul
 exit
+

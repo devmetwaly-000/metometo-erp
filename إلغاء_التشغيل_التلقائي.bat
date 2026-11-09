@@ -6,3 +6,4 @@ cd /d "%~dp0\AccountingNewteps-main"
 node scripts\service\uninstall_autostart.js
 echo.
 pause
+

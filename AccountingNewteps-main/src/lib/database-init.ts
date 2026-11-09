@@ -1313,6 +1313,25 @@ export async function createAndInitializeDatabase(options: DbInitOptions): Promi
                 CONSTRAINT [PK_SyncWatermarks] PRIMARY KEY CLUSTERED ([TableName])
             );`,
 
+            `IF NOT EXISTS (SELECT * FROM sys.tables WHERE name = 'SyncTrackingMatrix')
+            CREATE TABLE dbo.[SyncTrackingMatrix] (
+                [TableName] NVARCHAR(128) NOT NULL,
+                [TableDisplayName] NVARCHAR(255) NOT NULL,
+                [Category] NVARCHAR(100) NOT NULL,
+                [SyncDirection] NVARCHAR(30) NOT NULL DEFAULT ('push'),
+                [LastLocalTimestamp] DATETIME2 NULL,
+                [LastSyncedTimestamp] DATETIME2 NULL,
+                [LastCentralTimestamp] DATETIME2 NULL,
+                [LocalRowsCount] INT NOT NULL DEFAULT 0,
+                [CentralBranchRowsCount] INT NULL DEFAULT 0,
+                [CentralTotalRowsCount] INT NULL DEFAULT 0,
+                [PendingChangesCount] INT NOT NULL DEFAULT 0,
+                [SyncStatus] NVARCHAR(50) NOT NULL DEFAULT ('pending'),
+                [LastSyncCheckAt] DATETIME2 NOT NULL DEFAULT sysutcdatetime(),
+                [UpdatedAt] DATETIME2 NOT NULL DEFAULT sysutcdatetime(),
+                CONSTRAINT [PK_SyncTrackingMatrix] PRIMARY KEY CLUSTERED ([TableName])
+            );`,
+
             `IF NOT EXISTS (SELECT * FROM sys.tables WHERE name = 'Targets')
             CREATE TABLE dbo.[Targets] (
                 [Id] NVARCHAR(64) NOT NULL,

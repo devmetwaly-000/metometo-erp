@@ -2,12 +2,9 @@
  * @fileOverview محرك المزامنة المركزي المتقدم المبني على التوقيت الزمني وتتبع التعديلات (Timestamp & Watermark Sync Engine)
  * يتولى الربط والتبادل الذكي بين قاعدة بيانات الفرع المحلية والسيرفر المركزي للإدارة:
  * 1. تتبع التعديلات والتوقيتات الزمنية (UpdatedAt, LastSyncedAt, CreatedAt) على مستوى كل جدول.
- * 2. دعم بيئة الفروع المتعددة (Multi-Branch Multi-Tenant): الإدارة تستقبل بيانات فروع متعددة (900, 901, ...)
- *    ولا يتم الحكم على المزامنة بمجرد مقارنة عدد السطور الإجمالي بل بحساب سجلات الفرع نفسه وتواريخ التعديل.
- * 3. المزامنة الثنائية (Bidirectional Synchronization):
- *    - رفع الوثائق والحركات المعدلة والجديدة من الفرع للمركز (Push).
- *    - سحب الأصناف والأسعار والمستخدمين والتعديلات المركزية من الإدارة للفرع (Pull).
- * 4. مركز مصفوفة المزامنة اللحظية (Tables Sync Matrix) لجميع جداول النظام (69 جدولاً).
+ * 2. جدول تتبع المزامنة المركزي في قاعدة البيانات: dbo.SyncTrackingMatrix (يخزن لكل جدول آخر تعديل وآخر مزامنة ناجحة).
+ * 3. المزامنة الذكية القائمة على التحقق من وجود السطر (إذا وجد يُحدث، وإذا لم يوجد يُضاف - Upsert / Merge).
+ * 4. دعم بيئة الفروع المتعددة: الإدارة تستقبل بيانات فروع متعددة بدون خلط الأعداد.
  */
 
 import sql from 'mssql';
@@ -95,7 +92,7 @@ export const TABLE_METADATA_MAP: Record<string, TableSyncMeta> = {
     FixedAssets: { name: 'الأصول الثابتة', category: 'أصول وإهلاك', direction: 'bidirectional', idColumn: 'Id' },
     DepreciationRecords: { name: 'قيود إهلاك الأصول', category: 'أصول وإهلاك', direction: 'push', idColumn: 'Id' },
 
-    // 6. مخازن وأصناف (بيانات رئيسية ومخزنية)
+    // 6. مخازن وأصناف
     Items: { name: 'الأصناف والمنتجات', category: 'مخازن وأصناف', direction: 'bidirectional', idColumn: 'Id' },
     ItemCategories: { name: 'تصنيفات ومجموعات الأصناف', category: 'مخازن وأصناف', direction: 'bidirectional', idColumn: 'Id' },
     ItemSections: { name: 'أقسام الأصناف', category: 'مخازن وأصناف', direction: 'bidirectional', idColumn: 'Id' },
@@ -161,9 +158,9 @@ export interface TableSyncMatrixItem {
     direction: SyncDirection;
 
     // تواريخ التعديل والمزامنة (Timestamps)
-    lastLocalModified: string | null;
-    lastSyncedAt: string | null;
-    lastCentralModified: string | null;
+    lastLocalModified: string | null;     // آخر timestamp في الجدول
+    lastSyncedAt: string | null;          // آخر timestamp تم مزامنته بنجاح في الإدارة
+    lastCentralModified: string | null;   // آخر timestamp في الإدارة
 
     // أعداد السطور والتعديلات
     localBranchRows: number;
@@ -244,7 +241,7 @@ export async function saveCentralConfig(config: Partial<CentralSyncConfig>): Pro
  * إنشاء اتصال منفصل بالسيرفر المركزي للإدارة
  */
 export async function connectToCentral(config: CentralSyncConfig, targetDatabase?: string): Promise<sql.ConnectionPool> {
-    let cleanServer = (config.centralServerIp || 'localhost').trim();
+    let cleanServer = (config.centralServerIp || '10.110.16.16').trim();
     let port = Number(config.centralSqlPort) || 1433;
 
     if (cleanServer.includes(':')) {
@@ -355,14 +352,44 @@ export async function testCentralConnection(configOverride?: Partial<CentralSync
 }
 
 /**
- * استخراج مصفوفة المزامنة الدقيقة لجميع الجداول استناداً إلى الطابع الزمني وتتبع التعديلات (Sync Matrix)
+ * التأكد من وجود جدول dbo.SyncTrackingMatrix وتحديثه في قاعدة البيانات
+ */
+async function ensureSyncTrackingMatrixTable(pool: sql.ConnectionPool) {
+    await pool.request().query(`
+        IF NOT EXISTS (SELECT * FROM sys.tables WHERE name = 'SyncTrackingMatrix')
+        BEGIN
+            CREATE TABLE dbo.SyncTrackingMatrix (
+                TableName NVARCHAR(128) NOT NULL,
+                TableDisplayName NVARCHAR(255) NOT NULL,
+                Category NVARCHAR(100) NOT NULL,
+                SyncDirection NVARCHAR(30) NOT NULL DEFAULT ('push'),
+                LastLocalTimestamp DATETIME2 NULL,
+                LastSyncedTimestamp DATETIME2 NULL,
+                LastCentralTimestamp DATETIME2 NULL,
+                LocalRowsCount INT NOT NULL DEFAULT 0,
+                CentralBranchRowsCount INT NULL DEFAULT 0,
+                CentralTotalRowsCount INT NULL DEFAULT 0,
+                PendingChangesCount INT NOT NULL DEFAULT 0,
+                SyncStatus NVARCHAR(50) NOT NULL DEFAULT ('pending'),
+                LastSyncCheckAt DATETIME2 NOT NULL DEFAULT SYSUTCDATETIME(),
+                UpdatedAt DATETIME2 NOT NULL DEFAULT SYSUTCDATETIME(),
+                CONSTRAINT PK_SyncTrackingMatrix PRIMARY KEY CLUSTERED (TableName)
+            );
+        END
+    `);
+}
+
+/**
+ * استخراج مصفوفة المزامنة الدقيقة لجميع الجداول وتحديث جدول dbo.SyncTrackingMatrix في قاعدة البيانات
  */
 export async function getTablesSyncMatrix(): Promise<TablesSyncMatrixResponse> {
     const localPool = await getDbPool();
     const config = await getCentralConfig();
     const branchCode = config.currentBranchCode || '900';
 
-    // 1. استعلام محلي موحد فائق السرعة لجلب إحصائيات التوقيت والتعديلات المعلقة
+    await ensureSyncTrackingMatrixTable(localPool);
+
+    // 1. استعلام محلي موحد فائق السرعة
     const localTableEntries = Object.keys(TABLE_METADATA_MAP);
     const localUnionQueries = localTableEntries.map(table => `
         SELECT 
@@ -391,7 +418,7 @@ export async function getTablesSyncMatrix(): Promise<TablesSyncMatrixResponse> {
         });
     }
 
-    // 2. استعلام السيرفر المركزي لجلب إجمالي سطور الإدارة، سطور هذا الفرع، وآخر تاريخ تعديل
+    // 2. استعلام السيرفر المركزي
     let centralConnected = false;
     let centralPool: sql.ConnectionPool | null = null;
     const centralDataMap = new Map<string, {
@@ -402,8 +429,8 @@ export async function getTablesSyncMatrix(): Promise<TablesSyncMatrixResponse> {
 
     try {
         centralPool = await connectToCentral(config);
+        await ensureSyncTrackingMatrixTable(centralPool);
         
-        // جلب قائمة الجداول الموجودة فعلياً في السيرفر المركزي
         const tablesInCentralRes = await centralPool.request().query(`
             SELECT TABLE_NAME FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_TYPE = 'BASE TABLE'
         `);
@@ -439,7 +466,7 @@ export async function getTablesSyncMatrix(): Promise<TablesSyncMatrixResponse> {
         centralConnected = false;
     }
 
-    // 3. تركيب المصفوفة وتحديد حالات المزامنة الدقيقة
+    // 3. تركيب المصفوفة وتحديث جدول dbo.SyncTrackingMatrix في SQL
     let totalPendingPush = 0;
     let totalPendingPull = 0;
     let syncedTablesCount = 0;
@@ -457,22 +484,19 @@ export async function getTablesSyncMatrix(): Promise<TablesSyncMatrixResponse> {
 
         totalPendingPush += local.pendingPush;
 
-        // حساب ما إذا كانت الإدارة تحتوي على تحديثات أحدث من آخر سحب للفرع
         let pendingPullCount = 0;
         if (central && (meta.direction === 'pull' || meta.direction === 'bidirectional')) {
             if (central.lastCentralModified) {
                 if (!local.lastSyncedAt || new Date(central.lastCentralModified) > new Date(local.lastSyncedAt)) {
-                    // إذا كان تاريخ تعديل المركز أحدث من آخر مزامنة محلية
                     pendingPullCount = Math.max(0, central.centralTotalRows - local.localRows);
                     if (pendingPullCount === 0 && central.lastCentralModified !== local.lastLocalModified) {
-                        pendingPullCount = 1; // تعديل في السجلات القائمة
+                        pendingPullCount = 1;
                     }
                 }
             }
         }
         totalPendingPull += pendingPullCount;
 
-        // حساب الحالة التفاعلية
         let syncState: TableSyncMatrixItem['syncState'] = 'synced';
         let syncStateLabel = 'متطابق ومتزامن ✅';
 
@@ -519,6 +543,53 @@ export async function getTablesSyncMatrix(): Promise<TablesSyncMatrixResponse> {
         };
     });
 
+    // حفظ وتحديث بيانات كل جدول في dbo.SyncTrackingMatrix في قاعدة البيانات
+    try {
+        for (const t of tables) {
+            const maxLocal = t.lastLocalModified ? `'${t.lastLocalModified}'` : 'NULL';
+            const maxSynced = t.lastSyncedAt ? `'${t.lastSyncedAt}'` : 'NULL';
+            const maxCentral = t.lastCentralModified ? `'${t.lastCentralModified}'` : 'NULL';
+            const cBranch = t.centralBranchRows !== null ? t.centralBranchRows : 'NULL';
+            const cTotal = t.centralTotalRows !== null ? t.centralTotalRows : 'NULL';
+
+            await localPool.request().query(`
+                IF NOT EXISTS (SELECT 1 FROM dbo.SyncTrackingMatrix WHERE TableName = '${t.tableName}')
+                BEGIN
+                    INSERT INTO dbo.SyncTrackingMatrix (
+                        TableName, TableDisplayName, Category, SyncDirection,
+                        LastLocalTimestamp, LastSyncedTimestamp, LastCentralTimestamp,
+                        LocalRowsCount, CentralBranchRowsCount, CentralTotalRowsCount,
+                        PendingChangesCount, SyncStatus, LastSyncCheckAt, UpdatedAt
+                    ) VALUES (
+                        '${t.tableName}', N'${t.displayName}', N'${t.category}', '${t.direction}',
+                        ${maxLocal}, ${maxSynced}, ${maxCentral},
+                        ${t.localBranchRows}, ${cBranch}, ${cTotal},
+                        ${t.pendingPushCount}, '${t.syncState}', SYSUTCDATETIME(), SYSUTCDATETIME()
+                    );
+                END
+                ELSE
+                BEGIN
+                    UPDATE dbo.SyncTrackingMatrix
+                    SET TableDisplayName = N'${t.displayName}',
+                        Category = N'${t.category}',
+                        SyncDirection = '${t.direction}',
+                        LastLocalTimestamp = ${maxLocal},
+                        LastSyncedTimestamp = ${maxSynced},
+                        LastCentralTimestamp = ${maxCentral},
+                        LocalRowsCount = ${t.localBranchRows},
+                        CentralBranchRowsCount = ${cBranch},
+                        CentralTotalRowsCount = ${cTotal},
+                        PendingChangesCount = ${t.pendingPushCount},
+                        SyncStatus = '${t.syncState}',
+                        LastSyncCheckAt = SYSUTCDATETIME()
+                    WHERE TableName = '${t.tableName}';
+                END
+            `);
+        }
+    } catch (e: any) {
+        console.warn('SyncTrackingMatrix update warning:', e.message);
+    }
+
     return {
         centralConnected,
         centralServer: `${config.centralServerIp}:${config.centralSqlPort}`,
@@ -536,7 +607,8 @@ export async function getTablesSyncMatrix(): Promise<TablesSyncMatrixResponse> {
 }
 
 /**
- * تشغيل دورة المزامنة الذكية ثنائية الاتجاه المعتمدة على التوقيت الزمني (Bidirectional Timestamp Sync)
+ * تشغيل دورة المزامنة الذكية ثنائية الاتجاه:
+ * "إذا كان السطر موجوداً قم بتحديثه، وإذا لم يكن موجوداً قم بإضافته" (Upsert)
  */
 export async function runFullSync(options?: {
     mode?: 'all' | 'push' | 'pull';
@@ -560,13 +632,20 @@ export async function runFullSync(options?: {
         await saveCentralConfig({ lastSyncStatus: 'in_progress' });
         centralPool = await connectToCentral(config);
 
+        await ensureSyncTrackingMatrixTable(localPool);
+        await ensureSyncTrackingMatrixTable(centralPool);
+
+        // وضع CONTEXT_INFO لمنع مشغلات التعديل من إعادة تعليم السجلات كـ pending أثناء دورة المزامنة
+        await localPool.request().query("SET CONTEXT_INFO 0x53594E43;");
+        await centralPool.request().query("SET CONTEXT_INFO 0x53594E43;");
+
         const tableEntries = Object.entries(TABLE_METADATA_MAP).filter(([tableName]) => {
             if (options?.targetTable) return tableName === options.targetTable;
             return true;
         });
 
         // -------------------------------------------------------------
-        // المرحلة 1: رفع التعديلات والحركات من الفرع إلى السيرفر المركزي (Push)
+        // المرحلة 1: رفع التعديلات والحركات من الفرع للإدارة (Push: Insert or Update)
         // -------------------------------------------------------------
         if (mode === 'all' || mode === 'push') {
             const pushTables = tableEntries.filter(([_, meta]) => meta.direction === 'push' || meta.direction === 'bidirectional');
@@ -575,7 +654,7 @@ export async function runFullSync(options?: {
                 try {
                     const idCol = meta.idColumn;
 
-                    // فحص السجلات المعدلة أو التي لم تزامن بعد استناداً للتوقيت وحالة المزامنة
+                    // جلب السجلات غير المزامنة أو التي تم تعديلها بعد آخر مزامنة
                     const pendingRes = await localPool.request()
                         .input('BranchCode', sql.NVarChar(50), config.currentBranchCode)
                         .query(`
@@ -587,13 +666,12 @@ export async function runFullSync(options?: {
 
                     const rows = pendingRes.recordset;
                     if (rows.length > 0) {
-                        // استكشاف أعمدة الجدول في السيرفر المركزي
+                        // محاذاة الأعمدة بالسيرفر المركزي
                         const centralColsRes = await centralPool.request()
                             .input('Tbl', sql.NVarChar(128), tableName)
                             .query(`SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = @Tbl`);
                         const centralColSet = new Set(centralColsRes.recordset.map(r => r.COLUMN_NAME.toLowerCase()));
 
-                        // محاذاة أي أعمدة مفقودة في السيرفر المركزي تلقائياً
                         for (const col of Object.keys(rows[0])) {
                             if (!centralColSet.has(col.toLowerCase())) {
                                 try {
@@ -603,15 +681,18 @@ export async function runFullSync(options?: {
                             }
                         }
 
+                        let lastPushedTimestamp: Date | null = null;
+
                         for (const row of rows) {
                             const idVal = row[idCol];
                             if (idVal === undefined || idVal === null) continue;
 
-                            row.BranchCode = row.BranchCode || config.currentBranchCode;
-                            row.BranchName = row.BranchName || config.currentBranchName;
-                            row.SyncStatus = 'synced';
-                            row.LastSyncedAt = new Date();
+                            const rowUpdatedAt = row.UpdatedAt ? new Date(row.UpdatedAt) : new Date();
+                            if (!lastPushedTimestamp || rowUpdatedAt > lastPushedTimestamp) {
+                                lastPushedTimestamp = rowUpdatedAt;
+                            }
 
+                            // تصفية الأعمدة المتوافقة
                             const colNames = Object.keys(row).filter(c => 
                                 c !== 'SyncStatus' && c !== 'LastSyncedAt' && c !== 'BranchCode' && c !== 'BranchName' &&
                                 centralColSet.has(c.toLowerCase())
@@ -630,17 +711,26 @@ export async function runFullSync(options?: {
                                 centralReq.input(col, val);
                             }
 
-                            // حفظ الوثيقة أو الحركة في السيرفر المركزي (Upsert)
+                            // التنفيذ الذكي: إذا كان موجوداً قم بتحديثه، وإذا لم يكن موجوداً قم بإضافته
                             await centralReq.query(`
-                                IF NOT EXISTS (SELECT 1 FROM dbo.[${tableName}] WHERE [${idCol}] = @${idCol})
-                                    INSERT INTO dbo.[${tableName}] (${insertCols}) VALUES (${paramCols});
-                                ELSE
+                                IF EXISTS (SELECT 1 FROM dbo.[${tableName}] WHERE [${idCol}] = @${idCol})
+                                BEGIN
                                     UPDATE dbo.[${tableName}]
-                                    SET ${updateSet}, [BranchCode] = '${config.currentBranchCode}', [BranchName] = N'${config.currentBranchName}', [SyncStatus] = 'synced', [LastSyncedAt] = SYSUTCDATETIME()
+                                    SET ${updateSet}, 
+                                        [BranchCode] = '${config.currentBranchCode}', 
+                                        [BranchName] = N'${config.currentBranchName}', 
+                                        [SyncStatus] = 'synced', 
+                                        [LastSyncedAt] = SYSUTCDATETIME()
                                     WHERE [${idCol}] = @${idCol};
+                                END
+                                ELSE
+                                BEGIN
+                                    INSERT INTO dbo.[${tableName}] (${insertCols}) 
+                                    VALUES (${paramCols});
+                                END
                             `);
 
-                            // مزامنة البنود التابعة للوثيقة إن وجدت (Line items)
+                            // مزامنة البنود التابعة (Child line items)
                             if (meta.childTable && meta.foreignKey) {
                                 try {
                                     const childRowsRes = await localPool.request()
@@ -648,7 +738,7 @@ export async function runFullSync(options?: {
                                         .query(`SELECT * FROM dbo.[${meta.childTable}] WHERE [${meta.foreignKey}] = @ParentId`);
 
                                     if (childRowsRes.recordset.length > 0) {
-                                        // حذف البنود القديمة في المركز
+                                        // حذف البنود القديمة في المركز لمنع التكرار
                                         await centralPool.request()
                                             .input('ParentId', sql.NVarChar(128), idVal)
                                             .query(`DELETE FROM dbo.[${meta.childTable}] WHERE [${meta.foreignKey}] = @ParentId`);
@@ -673,7 +763,7 @@ export async function runFullSync(options?: {
                                 }
                             }
 
-                            // تعليم السجل المحلي بأنه متزامن وتحديث توقيت المزامنة
+                            // تعليم السجل المحلي بأنه متزامن وتحديث LastSyncedAt
                             await localPool.request()
                                 .input('IdVal', sql.NVarChar(128), idVal)
                                 .query(`
@@ -685,18 +775,21 @@ export async function runFullSync(options?: {
                             totalPushed++;
                         }
 
-                        // تسجيل نقطة المزامنة العالية في SyncWatermarks
-                        await localPool.request()
-                            .input('Tbl', sql.NVarChar(128), tableName)
-                            .query(`
-                                IF NOT EXISTS (SELECT 1 FROM dbo.SyncWatermarks WHERE TableName = @Tbl)
-                                    INSERT INTO dbo.SyncWatermarks (TableName, LastPushWatermark, LastSyncCheckAt, SyncDirection)
-                                    VALUES (@Tbl, SYSUTCDATETIME(), SYSUTCDATETIME(), 'push');
-                                ELSE
-                                    UPDATE dbo.SyncWatermarks 
-                                    SET LastPushWatermark = SYSUTCDATETIME(), LastSyncCheckAt = SYSUTCDATETIME()
-                                    WHERE TableName = @Tbl;
-                            `);
+                        // تحديث جدول تتبع المزامنة في قاعدة البيانات
+                        const maxLocalRes = await localPool.request().query(`SELECT MAX(UpdatedAt) as maxU, COUNT(*) as c FROM dbo.[${tableName}]`);
+                        const maxU = maxLocalRes.recordset[0]?.maxU ? `'${new Date(maxLocalRes.recordset[0].maxU).toISOString()}'` : 'NULL';
+                        const totalRows = maxLocalRes.recordset[0]?.c || 0;
+
+                        await localPool.request().query(`
+                            UPDATE dbo.SyncTrackingMatrix
+                            SET LastLocalTimestamp = ${maxU},
+                                LastSyncedTimestamp = SYSUTCDATETIME(),
+                                LocalRowsCount = ${totalRows},
+                                PendingChangesCount = 0,
+                                SyncStatus = 'synced',
+                                LastSyncCheckAt = SYSUTCDATETIME()
+                            WHERE TableName = '${tableName}';
+                        `);
                     }
                 } catch (pushErr: any) {
                     console.warn(`Sync push error on table ${tableName}:`, pushErr.message);
@@ -705,7 +798,7 @@ export async function runFullSync(options?: {
         }
 
         // -------------------------------------------------------------
-        // المرحلة 2: سحب التحديثات المركزية من الإدارة إلى الفرع (Pull)
+        // المرحلة 2: سحب التحديثات المركزية من الإدارة للفرع (Pull: Insert or Update)
         // -------------------------------------------------------------
         if (mode === 'all' || mode === 'pull') {
             const pullTables = tableEntries.filter(([_, meta]) => meta.direction === 'pull' || meta.direction === 'bidirectional');
@@ -714,17 +807,16 @@ export async function runFullSync(options?: {
                 try {
                     const idCol = meta.idColumn;
 
-                    // جلب آخر نقطة سحب مخزنة للجدول
-                    const wmRes = await localPool.request()
+                    // معرفة آخر توقيت تم سحبه لهذا الجدول
+                    const matrixRes = await localPool.request()
                         .input('Tbl', sql.NVarChar(128), tableName)
-                        .query(`SELECT LastPullWatermark FROM dbo.SyncWatermarks WHERE TableName = @Tbl`);
-                    const lastPullWatermark = wmRes.recordset[0]?.LastPullWatermark || null;
+                        .query(`SELECT LastSyncedTimestamp FROM dbo.SyncTrackingMatrix WHERE TableName = @Tbl`);
+                    const lastSyncTs = matrixRes.recordset[0]?.LastSyncedTimestamp || null;
 
-                    // جلب التحديثات الجديدة من السيرفر المركزي استناداً إلى UpdatedAt
                     let centralQuery = `SELECT * FROM dbo.[${tableName}]`;
                     const centralReq = centralPool.request();
-                    if (lastPullWatermark) {
-                        centralReq.input('Watermark', sql.DateTime2, lastPullWatermark);
+                    if (lastSyncTs) {
+                        centralReq.input('Watermark', sql.DateTime2, lastSyncTs);
                         centralQuery += ` WHERE UpdatedAt > @Watermark`;
                     }
                     centralQuery += ` ORDER BY UpdatedAt ASC`;
@@ -739,7 +831,7 @@ export async function runFullSync(options?: {
                             const idVal = row[idCol];
                             if (!idVal) continue;
 
-                            // تخطي السجلات التي قام هذا الفرع نفسه برفعها لمنع التكرار الدائري
+                            // تخطي السجلات التي رفعها هذا الفرع ولم تعدل بالإدارة
                             if (row.BranchCode === config.currentBranchCode && row.LastSyncedAt) {
                                 continue;
                             }
@@ -758,34 +850,31 @@ export async function runFullSync(options?: {
                                 localReq.input(c, row[c] === undefined ? null : row[c]);
                             }
 
+                            // تطبيق قاعدة المستخدم: إذا كان موجوداً قم بتحديثه، وإذا لم يكن موجوداً قم بإضافته
                             await localReq.query(`
-                                IF NOT EXISTS (SELECT 1 FROM dbo.[${tableName}] WHERE [${idCol}] = @${idCol})
-                                    INSERT INTO dbo.[${tableName}] (${insertCols}, SyncStatus, LastSyncedAt)
-                                    VALUES (${paramCols}, 'synced', SYSUTCDATETIME());
-                                ELSE
+                                IF EXISTS (SELECT 1 FROM dbo.[${tableName}] WHERE [${idCol}] = @${idCol})
+                                BEGIN
                                     UPDATE dbo.[${tableName}]
                                     SET ${updateSet}, SyncStatus = 'synced', LastSyncedAt = SYSUTCDATETIME()
                                     WHERE [${idCol}] = @${idCol};
+                                END
+                                ELSE
+                                BEGIN
+                                    INSERT INTO dbo.[${tableName}] (${insertCols}, SyncStatus, LastSyncedAt)
+                                    VALUES (${paramCols}, 'synced', SYSUTCDATETIME());
+                                END
                             `);
 
                             totalPulled++;
                         }
 
-                        // تحديث نقطة السحب في SyncWatermarks
-                        if (maxCentralUpdatedAt) {
-                            await localPool.request()
-                                .input('Tbl', sql.NVarChar(128), tableName)
-                                .input('NewWatermark', sql.DateTime2, maxCentralUpdatedAt)
-                                .query(`
-                                    IF NOT EXISTS (SELECT 1 FROM dbo.SyncWatermarks WHERE TableName = @Tbl)
-                                        INSERT INTO dbo.SyncWatermarks (TableName, LastPullWatermark, LastSyncCheckAt, SyncDirection)
-                                        VALUES (@Tbl, @NewWatermark, SYSUTCDATETIME(), 'pull');
-                                    ELSE
-                                        UPDATE dbo.SyncWatermarks 
-                                        SET LastPullWatermark = @NewWatermark, LastSyncCheckAt = SYSUTCDATETIME()
-                                        WHERE TableName = @Tbl;
-                                `);
-                        }
+                        // تحديث آخر مزامنة في جدول التتبع
+                        await localPool.request().query(`
+                            UPDATE dbo.SyncTrackingMatrix
+                            SET LastSyncedTimestamp = SYSUTCDATETIME(),
+                                LastSyncCheckAt = SYSUTCDATETIME()
+                            WHERE TableName = '${tableName}';
+                        `);
                     }
                 } catch (pullErr: any) {
                     console.warn(`Sync pull error on table ${tableName}:`, pullErr.message);
@@ -807,7 +896,7 @@ export async function runFullSync(options?: {
             success: true,
             pushedCount: totalPushed,
             pulledCount: totalPulled,
-            details: `تمت المزامنة بنجاح: تم رفع ${totalPushed} حركة من الفرع، وسحب ${totalPulled} تحديث من المركز.`
+            details: `تمت المزامنة بنجاح: تم رفع وتحديث ${totalPushed} حركة من الفرع، وسحب ${totalPulled} تحديث من الإدارة.`
         };
 
     } catch (err: any) {

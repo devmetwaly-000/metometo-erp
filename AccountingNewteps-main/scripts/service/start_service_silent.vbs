@@ -14,3 +14,4 @@ WshShell.Run "node """ & daemonScript & """", 0, False
 
 Set WshShell = Nothing
 Set fso = Nothing
+

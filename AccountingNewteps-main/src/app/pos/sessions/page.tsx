@@ -24,6 +24,7 @@ import { Combobox } from '@/components/ui/combobox';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
+import { getGeneralCashAccounts } from '@/lib/accounting-utils';
 
 interface PosTerminal {
     id: string;
@@ -148,7 +149,7 @@ const AssignCustodyDialog = ({ users, onConfirm, onClose, cashAccounts, accountB
                     <Select value={fromAccountId} onValueChange={setFromAccountId}>
                         <SelectTrigger id="from-account"><SelectValue placeholder="اختر الخزينة" /></SelectTrigger>
                         <SelectContent>
-                            {cashAccounts.map((acc:any) => <SelectItem key={acc.id} value={acc.id}>{`${acc.name} (الرصيد: ${(accountBalances.get(acc.id) || 0).toLocaleString()})`}</SelectItem>)}
+                            {getGeneralCashAccounts(cashAccounts).map((acc:any) => <SelectItem key={acc.id} value={acc.id}>{`${acc.name} (الرصيد: ${(accountBalances.get(acc.id) || 0).toLocaleString()})`}</SelectItem>)}
                         </SelectContent>
                     </Select>
                 </div>
@@ -165,7 +166,7 @@ const CloseCashierSessionDialog = ({ cashierSession, onConfirm, onClose }: { cas
     const [actualCash, setActualCash] = useState(cashierSession.expectedCash);
     const [toAccountId, setToAccountId] = useState('');
     const [notes, setNotes] = useState('');
-    const mainCashAccounts = cashAccounts.filter((acc: any) => !acc.salesRepId && !acc.userId);
+    const mainCashAccounts = useMemo(() => getGeneralCashAccounts(cashAccounts), [cashAccounts]);
 
     const difference = actualCash - cashierSession.expectedCash;
 
