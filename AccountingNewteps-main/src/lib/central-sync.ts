@@ -729,6 +729,7 @@ export async function getTablesSyncMatrix(): Promise<TablesSyncMatrixResponse> {
 export async function runFullSync(options?: {
     mode?: 'all' | 'push' | 'pull';
     targetTable?: string;
+    forceFull?: boolean;
 }): Promise<{
     success: boolean;
     pushedCount: number;
@@ -781,10 +782,10 @@ export async function runFullSync(options?: {
             if (targetDir === 'disabled') {
                 await centralPool.close();
                 return {
-                    success: true,
+                    success: false,
                     pushedCount: 0,
                     pulledCount: 0,
-                    details: `تم تخطي مزامنة جدول ${options.targetTable} لأن اتجاه المزامنة محدد كـ "معطل" في قاعدة البيانات.`
+                    error: `لا يمكن إعادة مزامنة جدول "${TABLE_METADATA_MAP[options.targetTable]?.name || options.targetTable}" لأن اتجاه المزامنة محدد كـ "معطل" (Disabled) في إعدادات النظام. قم بتغيير اتجاه المزامنة أولاً.`
                 };
             }
         }
@@ -809,20 +810,26 @@ export async function runFullSync(options?: {
                     const idCol = meta.idColumn;
                     const dbRow = dbMatrixMap.get(tableName);
                     const lastPushRv = dbRow?.LastPushRowVersion ? String(dbRow.LastPushRowVersion) : null;
+                    const isForced = !!options?.forceFull;
 
-                    // جلب السجلات المعدلة محلياً استناداً إلى الـ RowVersion المتصاعد
+                    // إذا كان فرض إعادة مزامنة شاملة، نجلب كافة سجلات هذا الجدول بالفرع للتأكد من نقلها
+                    const pushQuery = isForced
+                        ? `SELECT *, CAST([RowVersion] AS BIGINT) as _RowVersionBigInt 
+                           FROM dbo.[${tableName}]
+                           WHERE (BranchCode = @BranchCode OR BranchCode IS NULL)
+                           ORDER BY [RowVersion] ASC`
+                        : `SELECT TOP 300 *, CAST([RowVersion] AS BIGINT) as _RowVersionBigInt 
+                           FROM dbo.[${tableName}]
+                           WHERE (
+                               ${lastPushRv ? `CAST([RowVersion] AS BIGINT) > ${lastPushRv}` : '1=1'}
+                               OR SyncStatus = 'pending'
+                           )
+                           AND (BranchCode = @BranchCode OR BranchCode IS NULL)
+                           ORDER BY [RowVersion] ASC`;
+
                     const pendingRes = await localPool.request()
                         .input('BranchCode', sql.NVarChar(50), config.currentBranchCode)
-                        .query(`
-                            SELECT TOP 300 *, CAST([RowVersion] AS BIGINT) as _RowVersionBigInt 
-                            FROM dbo.[${tableName}]
-                            WHERE (
-                                ${lastPushRv ? `CAST([RowVersion] AS BIGINT) > ${lastPushRv}` : '1=1'}
-                                OR SyncStatus = 'pending'
-                            )
-                            AND (BranchCode = @BranchCode OR BranchCode IS NULL)
-                            ORDER BY [RowVersion] ASC
-                        `);
+                        .query(pushQuery);
 
                     const rows = pendingRes.recordset;
                     if (rows.length > 0) {
@@ -1072,17 +1079,24 @@ export async function runFullSync(options?: {
                     const dbRow = dbMatrixMap.get(tableName);
                     const lastPullRv = dbRow?.LastPullRowVersion ? String(dbRow.LastPullRowVersion) : null;
 
-                    // سحب الحركات التي رقم RowVersion الخاص بها أكبر من آخر سحب
+                    const isForced = !!options?.forceFull;
+
+                    // سحب الحركات من الإدارة (إذا كان فرض مزامنة كاملة نسحب كافة سجلات السيرفر المركزي)
                     const centralReq = centralPool.request()
                         .input('CurrentBranchCode', sql.NVarChar(50), config.currentBranchCode);
                     
-                    const centralRes = await centralReq.query(`
-                        SELECT TOP 300 *, CAST([RowVersion] AS BIGINT) as _RowVersionBigInt 
-                        FROM dbo.[${tableName}]
-                        WHERE (${lastPullRv ? `CAST([RowVersion] AS BIGINT) > ${lastPullRv}` : '1=1'})
-                          AND (BranchCode <> @CurrentBranchCode OR BranchCode IS NULL)
-                        ORDER BY [RowVersion] ASC
-                    `);
+                    const pullQuery = isForced
+                        ? `SELECT *, CAST([RowVersion] AS BIGINT) as _RowVersionBigInt 
+                           FROM dbo.[${tableName}]
+                           WHERE (BranchCode <> @CurrentBranchCode OR BranchCode IS NULL)
+                           ORDER BY [RowVersion] ASC`
+                        : `SELECT TOP 300 *, CAST([RowVersion] AS BIGINT) as _RowVersionBigInt 
+                           FROM dbo.[${tableName}]
+                           WHERE (${lastPullRv ? `CAST([RowVersion] AS BIGINT) > ${lastPullRv}` : '1=1'})
+                             AND (BranchCode <> @CurrentBranchCode OR BranchCode IS NULL)
+                           ORDER BY [RowVersion] ASC`;
+
+                    const centralRes = await centralReq.query(pullQuery);
                     const centralRows = centralRes.recordset;
 
                     if (centralRows.length > 0) {
@@ -1217,11 +1231,15 @@ export async function runFullSync(options?: {
         });
 
         await centralPool.close();
+        const detailsMsg = options?.forceFull && options?.targetTable
+            ? `تمت إعادة فحص ومزامنة كامل بيانات جدول "${TABLE_METADATA_MAP[options.targetTable]?.name || options.targetTable}" بنجاح: تم فحص وإرسال ${totalPushed} سجل للإدارة، وسحب ${totalPulled} سجل للفرع وفق اتجاه المزامنة المعتمد.`
+            : `تمت المزامنة بنجاح: تم رفع وتحديث ${totalPushed} حركة من الفرع، وسحب ${totalPulled} تحديث من الإدارة.`;
+
         return {
             success: true,
             pushedCount: totalPushed,
             pulledCount: totalPulled,
-            details: `تمت المزامنة بنجاح: تم رفع وتحديث ${totalPushed} حركة من الفرع، وسحب ${totalPulled} تحديث من الإدارة.`
+            details: detailsMsg
         };
 
     } catch (err: any) {

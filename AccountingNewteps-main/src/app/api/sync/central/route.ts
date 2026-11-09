@@ -104,7 +104,7 @@ export async function GET() {
 export async function POST(req: Request) {
     try {
         const body = await req.json();
-        const { action, config, initOptions, mode, targetTable } = body;
+        const { action, config, initOptions, mode, targetTable, forceFull } = body;
 
         // 1. تهيئة وإنشاء وتأسيس قاعدة البيانات
         if (action === 'init-database') {
@@ -140,14 +140,15 @@ export async function POST(req: Request) {
             return NextResponse.json({ success: true, config: updated, message: 'تم حفظ إعدادات السيرفر المركزي بنجاح' });
         }
 
-        // 4. تشغيل المزامنة الذكية (شاملة، رفع فقط، سحب فقط، أو لجدول محدد)
-        if (action === 'sync') {
+        // 4. تشغيل المزامنة الذكية أو إعادة المزامنة الشاملة للجدول بالكامل (Force Full Sync)
+        if (action === 'sync' || action === 'force-sync-table') {
             if (config && config.centralPassword && config.centralPassword.trim() !== '') {
                 await saveCentralConfig(config);
             }
             const syncResult = await runFullSync({
                 mode: mode || 'all',
-                targetTable
+                targetTable,
+                forceFull: !!forceFull || action === 'force-sync-table'
             });
             return NextResponse.json(syncResult);
         }

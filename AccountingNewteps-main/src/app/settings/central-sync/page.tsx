@@ -108,6 +108,10 @@ export default function CentralSyncSettingsPage() {
 
     // Role Switch Security Modal State
     const [isRoleDialogOpen, setIsRoleDialogOpen] = useState(false);
+
+    // Full Table Re-Sync Modal State
+    const [tableToForceSync, setTableToForceSync] = useState<TableSyncMatrixItem | null>(null);
+    const [isForceSyncing, setIsForceSyncing] = useState(false);
     const [targetRoleToSwitch, setTargetRoleToSwitch] = useState<'branch' | 'central'>('central');
     const [rolePassword, setRolePassword] = useState('');
     const [isSwitchingRole, setIsSwitchingRole] = useState(false);
@@ -311,8 +315,8 @@ export default function CentralSyncSettingsPage() {
         }
     };
 
-    // Run Smart Bidirectional Sync (All, Push-only, Pull-only, or Single Table)
-    const handleSyncNow = async (mode: 'all' | 'push' | 'pull' = 'all', targetTable?: string) => {
+    // Run Smart Bidirectional Sync (All, Push-only, Pull-only, Single Table, or Force Full Re-Sync)
+    const handleSyncNow = async (mode: 'all' | 'push' | 'pull' = 'all', targetTable?: string, forceFull: boolean = false) => {
         setIsSyncing(true);
         setSyncingMode(mode);
         if (targetTable) setSyncingTable(targetTable);
@@ -321,12 +325,17 @@ export default function CentralSyncSettingsPage() {
             const res = await fetch('/api/sync/central', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ action: 'sync', mode, targetTable })
+                body: JSON.stringify({ 
+                    action: forceFull ? 'force-sync-table' : 'sync', 
+                    mode, 
+                    targetTable,
+                    forceFull
+                })
             });
             const data = await res.json();
             if (data.success) {
                 toast({
-                    title: "تمت المزامنة بنجاح!",
+                    title: forceFull ? "تمت إعادة مزامنة كامل الجدول بنجاح! 🚀" : "تمت المزامنة بنجاح!",
                     description: data.details || `تم رفع ${data.pushedCount} حركة وسحب ${data.pulledCount} تحديث.`
                 });
                 await loadSettings(false);
@@ -348,6 +357,17 @@ export default function CentralSyncSettingsPage() {
             setIsSyncing(false);
             setSyncingMode(null);
             setSyncingTable(null);
+        }
+    };
+
+    // Force Full Table Re-Sync (ignoring watermarks, re-verifying every row on the target database)
+    const handleForceFullTableSync = async (table: TableSyncMatrixItem) => {
+        setIsForceSyncing(true);
+        try {
+            await handleSyncNow('all', table.tableName, true);
+        } finally {
+            setIsForceSyncing(false);
+            setTableToForceSync(null);
         }
     };
 
@@ -1077,7 +1097,7 @@ export default function CentralSyncSettingsPage() {
                                                 <TableHead className="text-center min-w-[100px] font-bold text-sky-600">سطور الفرع بالإدارة</TableHead>
                                                 <TableHead className="text-center min-w-[100px] font-bold text-slate-700 dark:text-slate-300">إجمالي الإدارة</TableHead>
                                                 <TableHead className="text-center min-w-[130px] font-bold">حالة المزامنة</TableHead>
-                                                <TableHead className="text-center w-24 font-bold">إجراء فوري</TableHead>
+                                                <TableHead className="text-center min-w-[190px] font-bold">إجراءات المزامنة</TableHead>
                                             </TableRow>
                                         </TableHeader>
                                         <TableBody>
@@ -1144,23 +1164,39 @@ export default function CentralSyncSettingsPage() {
                                                             {renderStatusBadge(t)}
                                                         </TableCell>
                                                         <TableCell className="text-center">
-                                                            <Button
-                                                                size="sm"
-                                                                variant="outline"
-                                                                className="h-7 px-2.5 text-[11px] hover:bg-primary hover:text-primary-foreground font-bold shadow-xs transition-colors"
-                                                                onClick={() => handleSyncNow('all', t.tableName)}
-                                                                disabled={isSyncing && syncingTable === t.tableName}
-                                                                title={`مزامنة جدول ${t.displayName} الآن`}
-                                                            >
-                                                                {isSyncing && syncingTable === t.tableName ? (
-                                                                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                                                                ) : (
-                                                                    <>
-                                                                        <RefreshCw className="h-3 w-3 ml-1" />
-                                                                        مزامنة
-                                                                    </>
-                                                                )}
-                                                            </Button>
+                                                            <div className="flex items-center justify-center gap-1.5">
+                                                                <Button
+                                                                    size="sm"
+                                                                    variant="outline"
+                                                                    className="h-7 px-2 text-[11px] hover:bg-primary hover:text-primary-foreground font-bold shadow-xs transition-colors"
+                                                                    onClick={() => handleSyncNow('all', t.tableName, false)}
+                                                                    disabled={t.direction === 'disabled' || (isSyncing && syncingTable === t.tableName)}
+                                                                    title={`مزامنة التعديلات المعلقة لجدول ${t.displayName}`}
+                                                                >
+                                                                    {isSyncing && syncingTable === t.tableName && !tableToForceSync ? (
+                                                                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                                                                    ) : (
+                                                                        <>
+                                                                            <RefreshCw className="h-3 w-3 ml-1" />
+                                                                            مزامنة
+                                                                        </>
+                                                                    )}
+                                                                </Button>
+                                                                <Button
+                                                                    size="sm"
+                                                                    variant="outline"
+                                                                    className={cn(
+                                                                        "h-7 px-2 text-[11px] font-bold border-teal-500/40 text-teal-700 dark:text-teal-300 bg-teal-500/5 hover:bg-teal-500/20 shadow-xs transition-colors",
+                                                                        t.direction === 'disabled' && "opacity-40 cursor-not-allowed"
+                                                                    )}
+                                                                    onClick={() => setTableToForceSync(t)}
+                                                                    disabled={t.direction === 'disabled' || (isSyncing && syncingTable === t.tableName)}
+                                                                    title={`إعادة فحص وإرسال كامل بيانات جدول ${t.displayName} (${t.localBranchRows} سجل)`}
+                                                                >
+                                                                    <RotateCcw className="h-3 w-3 ml-1 text-teal-600 dark:text-teal-400" />
+                                                                    مزامنة شاملة
+                                                                </Button>
+                                                            </div>
                                                         </TableCell>
                                                     </TableRow>
                                                 ))
@@ -1361,7 +1397,7 @@ export default function CentralSyncSettingsPage() {
                                             <TableHead className="w-[300px] text-right font-bold text-xs">نوع ومحتوى البيانات بداخل الجدول</TableHead>
                                             <TableHead className="w-[200px] text-center font-bold text-xs">تحديد اتجاه المزامنة</TableHead>
                                             <TableHead className="text-right font-bold text-xs">الأثر التشغيلي للمزامنة</TableHead>
-                                            <TableHead className="w-[100px] text-center font-bold text-xs">إجراء فوري</TableHead>
+                                            <TableHead className="min-w-[190px] text-center font-bold text-xs">إجراءات المزامنة</TableHead>
                                         </TableRow>
                                     </TableHeader>
                                     <TableBody>
@@ -1492,28 +1528,44 @@ export default function CentralSyncSettingsPage() {
                                                             </div>
                                                         </TableCell>
 
-                                                        {/* 6. Single Sync Action */}
+                                                        {/* 6. Single Sync Actions */}
                                                         <TableCell className="text-center">
-                                                            <Button
-                                                                size="sm"
-                                                                variant="outline"
-                                                                className={cn(
-                                                                    "h-7 px-2.5 text-[11px] font-bold shadow-xs transition-colors",
-                                                                    t.direction === 'disabled' && "opacity-40 cursor-not-allowed"
-                                                                )}
-                                                                onClick={() => handleSyncNow('all', t.tableName)}
-                                                                disabled={t.direction === 'disabled' || (isSyncing && syncingTable === t.tableName)}
-                                                                title={t.direction === 'disabled' ? "الجدول معطل من المزامنة" : `مزامنة جدول ${t.displayName} فوراً`}
-                                                            >
-                                                                {isSyncing && syncingTable === t.tableName ? (
-                                                                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                                                                ) : (
-                                                                    <>
-                                                                        <RefreshCw className="h-3 w-3 ml-1 text-teal-600" />
-                                                                        مزامنة
-                                                                    </>
-                                                                )}
-                                                            </Button>
+                                                            <div className="flex items-center justify-center gap-1.5">
+                                                                <Button
+                                                                    size="sm"
+                                                                    variant="outline"
+                                                                    className={cn(
+                                                                        "h-7 px-2 text-[11px] font-bold shadow-xs transition-colors",
+                                                                        t.direction === 'disabled' && "opacity-40 cursor-not-allowed"
+                                                                    )}
+                                                                    onClick={() => handleSyncNow('all', t.tableName, false)}
+                                                                    disabled={t.direction === 'disabled' || (isSyncing && syncingTable === t.tableName)}
+                                                                    title={t.direction === 'disabled' ? "الجدول معطل من المزامنة" : `مزامنة جدول ${t.displayName} فوراً`}
+                                                                >
+                                                                    {isSyncing && syncingTable === t.tableName && !tableToForceSync ? (
+                                                                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                                                                    ) : (
+                                                                        <>
+                                                                            <RefreshCw className="h-3 w-3 ml-1 text-teal-600" />
+                                                                            مزامنة
+                                                                        </>
+                                                                    )}
+                                                                </Button>
+                                                                <Button
+                                                                    size="sm"
+                                                                    variant="outline"
+                                                                    className={cn(
+                                                                        "h-7 px-2 text-[11px] font-bold border-teal-500/40 text-teal-700 dark:text-teal-300 bg-teal-500/5 hover:bg-teal-500/20 shadow-xs transition-colors",
+                                                                        t.direction === 'disabled' && "opacity-40 cursor-not-allowed"
+                                                                    )}
+                                                                    onClick={() => setTableToForceSync(t)}
+                                                                    disabled={t.direction === 'disabled' || (isSyncing && syncingTable === t.tableName)}
+                                                                    title={`إعادة فحص وإرسال كامل بيانات جدول ${t.displayName} (${t.localBranchRows} سجل)`}
+                                                                >
+                                                                    <RotateCcw className="h-3 w-3 ml-1 text-teal-600 dark:text-teal-400" />
+                                                                    مزامنة شاملة
+                                                                </Button>
+                                                            </div>
                                                         </TableCell>
                                                     </TableRow>
                                                 );
@@ -1728,7 +1780,7 @@ export default function CentralSyncSettingsPage() {
                                                 <TableHead className="text-center">بانتظار السحب (إدارة)</TableHead>
                                                 <TableHead className="text-center">آخر تعديل محلي</TableHead>
                                                 <TableHead className="text-center">حالة المزامنة</TableHead>
-                                                <TableHead className="text-center w-28">إجراء</TableHead>
+                                                <TableHead className="text-center min-w-[190px]">إجراءات المزامنة</TableHead>
                                             </TableRow>
                                         </TableHeader>
                                         <TableBody>
@@ -1763,19 +1815,35 @@ export default function CentralSyncSettingsPage() {
                                                         {renderStatusBadge(t)}
                                                     </TableCell>
                                                     <TableCell className="text-center">
-                                                        <Button
-                                                            size="sm"
-                                                            variant="default"
-                                                            className="h-7 px-3 text-[11px] font-bold bg-primary text-primary-foreground shadow-xs"
-                                                            onClick={() => handleSyncNow('all', t.tableName)}
-                                                            disabled={isSyncing && syncingTable === t.tableName}
-                                                        >
-                                                            {isSyncing && syncingTable === t.tableName ? (
-                                                                <Loader2 className="h-3 w-3 animate-spin" />
-                                                            ) : (
-                                                                'مزامنة فورية'
-                                                            )}
-                                                        </Button>
+                                                        <div className="flex items-center justify-center gap-1.5">
+                                                            <Button
+                                                                size="sm"
+                                                                variant="default"
+                                                                className="h-7 px-2.5 text-[11px] font-bold bg-primary text-primary-foreground shadow-xs"
+                                                                onClick={() => handleSyncNow('all', t.tableName, false)}
+                                                                disabled={t.direction === 'disabled' || (isSyncing && syncingTable === t.tableName)}
+                                                            >
+                                                                {isSyncing && syncingTable === t.tableName && !tableToForceSync ? (
+                                                                    <Loader2 className="h-3 w-3 animate-spin" />
+                                                                ) : (
+                                                                    'مزامنة فورية'
+                                                                )}
+                                                            </Button>
+                                                            <Button
+                                                                size="sm"
+                                                                variant="outline"
+                                                                className={cn(
+                                                                    "h-7 px-2 text-[11px] font-bold border-teal-500/40 text-teal-700 dark:text-teal-300 bg-teal-500/5 hover:bg-teal-500/20 shadow-xs transition-colors",
+                                                                    t.direction === 'disabled' && "opacity-40 cursor-not-allowed"
+                                                                )}
+                                                                onClick={() => setTableToForceSync(t)}
+                                                                disabled={t.direction === 'disabled' || (isSyncing && syncingTable === t.tableName)}
+                                                                title={`إعادة فحص وإرسال كامل بيانات جدول ${t.displayName}`}
+                                                            >
+                                                                <RotateCcw className="h-3 w-3 ml-1 text-teal-600 dark:text-teal-400" />
+                                                                مزامنة شاملة
+                                                            </Button>
+                                                        </div>
                                                     </TableCell>
                                                 </TableRow>
                                             ))}
@@ -2234,6 +2302,80 @@ export default function CentralSyncSettingsPage() {
                             </Button>
                         </DialogFooter>
                     </form>
+                </DialogContent>
+            </Dialog>
+
+            {/* Dialog: تأكيد إعادة المزامنة الشاملة للجدول بالكامل */}
+            <Dialog open={!!tableToForceSync} onOpenChange={(open) => { if (!open) setTableToForceSync(null); }}>
+                <DialogContent className="max-w-md">
+                    <DialogHeader>
+                        <DialogTitle className="flex items-center gap-2 text-base font-bold text-foreground">
+                            <RotateCcw className="h-5 w-5 text-teal-600" />
+                            إعادة مزامنة وفحص كامل بيانات الجدول
+                        </DialogTitle>
+                        <DialogDescription className="text-xs text-muted-foreground pt-1.5 leading-relaxed">
+                            هل تريد بالتأكيد فحص ومزامنة جدول <strong className="text-foreground">{tableToForceSync?.displayName} ({tableToForceSync?.tableName})</strong> بالكامل؟
+                        </DialogDescription>
+                    </DialogHeader>
+
+                    {tableToForceSync && (
+                        <div className="space-y-3 py-2 text-xs">
+                            <div className="p-3 rounded-lg border bg-muted/40 space-y-1.5 text-right">
+                                <div className="flex justify-between items-center text-muted-foreground">
+                                    <span>اتجاه المزامنة المعتمد:</span>
+                                    <span className="font-bold text-foreground">
+                                        {tableToForceSync.direction === 'push' ? 'رفع للإدارة فقط (Push)' :
+                                         tableToForceSync.direction === 'pull' ? 'سحب من الإدارة فقط (Pull)' :
+                                         tableToForceSync.direction === 'bidirectional' ? 'مزامنة ثنائية متبادلة (Bidirectional)' : 'معطل'}
+                                    </span>
+                                </div>
+                                <div className="flex justify-between items-center text-muted-foreground">
+                                    <span>عدد سجلات الفرع:</span>
+                                    <span className="font-bold text-foreground font-mono">{tableToForceSync.localBranchRows.toLocaleString()} سجل</span>
+                                </div>
+                                {tableToForceSync.centralTotalRows !== null && (
+                                    <div className="flex justify-between items-center text-muted-foreground">
+                                        <span>إجمالي سجلات الإدارة:</span>
+                                        <span className="font-bold text-foreground font-mono">{tableToForceSync.centralTotalRows.toLocaleString()} سجل</span>
+                                    </div>
+                                )}
+                            </div>
+
+                            <div className="p-2.5 rounded-lg border border-teal-500/30 bg-teal-500/5 text-[11px] text-teal-800 dark:text-teal-300 leading-relaxed">
+                                💡 <strong>الغرض من هذا الإجراء:</strong> سيتم فحص كافة سطور هذا الجدول والتأكد من إرسالها فعلياً، ونقل أي سجلات قد تكون حُذفت أو فُقدت في قاعدة البيانات الهدف فوراً وفق اتجاه المزامنة.
+                            </div>
+                        </div>
+                    )}
+
+                    <DialogFooter className="gap-2 sm:gap-0">
+                        <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => setTableToForceSync(null)}
+                            disabled={isForceSyncing}
+                            className="text-xs"
+                        >
+                            إلغاء
+                        </Button>
+                        <Button
+                            size="sm"
+                            onClick={() => tableToForceSync && handleForceFullTableSync(tableToForceSync)}
+                            disabled={isForceSyncing}
+                            className="text-xs font-bold bg-teal-600 hover:bg-teal-700 text-white gap-1.5 shadow-sm"
+                        >
+                            {isForceSyncing ? (
+                                <>
+                                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                                    جارٍ الفحص والمزامنة الشاملة...
+                                </>
+                            ) : (
+                                <>
+                                    <RotateCcw className="h-3.5 w-3.5" />
+                                    بدء المزامنة الشاملة للجدول
+                                </>
+                            )}
+                        </Button>
+                    </DialogFooter>
                 </DialogContent>
             </Dialog>
         </div>
