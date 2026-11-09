@@ -149,6 +149,18 @@ export const TABLE_METADATA_MAP: Record<string, TableSyncMeta> = {
 };
 
 /**
+ * خريطة المفاتيح الأجنبية للجداول الفرعية ذات عمود Identity
+ */
+export const CHILD_TABLE_FK_MAP: Record<string, string> = {
+    SalesInvoiceItems: 'InvoiceId',
+    SalesReturnItems: 'ReturnId',
+    PurchaseInvoiceItems: 'PurchaseInvoiceId',
+    PurchaseReturnItems: 'ReturnId',
+    StockInRecordItems: 'StockInId',
+    StockAdjustmentItems: 'AdjustmentId'
+};
+
+/**
  * بنية عنصر مصفوفة المزامنة لكل جدول
  */
 export interface TableSyncMatrixItem {
@@ -682,6 +694,7 @@ export async function runFullSync(options?: {
                         }
 
                         let lastPushedTimestamp: Date | null = null;
+                        const isChildTableFk = CHILD_TABLE_FK_MAP[tableName];
 
                         for (const row of rows) {
                             const idVal = row[idCol];
@@ -692,15 +705,15 @@ export async function runFullSync(options?: {
                                 lastPushedTimestamp = rowUpdatedAt;
                             }
 
-                            // تصفية الأعمدة المتوافقة
+                            // تصفية الأعمدة المتوافقة واستبعاد Id إذا كان الجدول فرعياً به Identity
                             const colNames = Object.keys(row).filter(c => 
+                                (isChildTableFk ? c !== 'Id' : true) &&
                                 c !== 'SyncStatus' && c !== 'LastSyncedAt' && c !== 'BranchCode' && c !== 'BranchName' &&
                                 centralColSet.has(c.toLowerCase())
                             );
 
                             const insertCols = [...colNames, 'BranchCode', 'BranchName', 'SyncStatus', 'LastSyncedAt'].map(c => `[${c}]`).join(', ');
                             const paramCols = [...colNames.map(c => `@${c}`), `'${config.currentBranchCode}'`, `N'${config.currentBranchName}'`, `'synced'`, 'SYSUTCDATETIME()'].join(', ');
-                            const updateSet = colNames.filter(c => c !== idCol).map(c => `[${c}] = @${c}`).join(', ');
 
                             const centralReq = centralPool.request();
                             for (const col of colNames) {
@@ -711,24 +724,55 @@ export async function runFullSync(options?: {
                                 centralReq.input(col, val);
                             }
 
-                            // التنفيذ الذكي: إذا كان موجوداً قم بتحديثه، وإذا لم يكن موجوداً قم بإضافته
-                            await centralReq.query(`
-                                IF EXISTS (SELECT 1 FROM dbo.[${tableName}] WHERE [${idCol}] = @${idCol})
-                                BEGIN
-                                    UPDATE dbo.[${tableName}]
-                                    SET ${updateSet}, 
-                                        [BranchCode] = '${config.currentBranchCode}', 
-                                        [BranchName] = N'${config.currentBranchName}', 
-                                        [SyncStatus] = 'synced', 
-                                        [LastSyncedAt] = SYSUTCDATETIME()
-                                    WHERE [${idCol}] = @${idCol};
-                                END
-                                ELSE
-                                BEGIN
-                                    INSERT INTO dbo.[${tableName}] (${insertCols}) 
-                                    VALUES (${paramCols});
-                                END
-                            `);
+                            if (isChildTableFk) {
+                                // معالجة الجداول الفرعية ذات عمود Identity
+                                const fk = isChildTableFk;
+                                const updateSet = colNames.filter(c => c !== fk && c !== 'ItemId').map(c => `[${c}] = @${c}`).join(', ');
+                                await centralReq.query(`
+                                    IF EXISTS (
+                                        SELECT 1 FROM dbo.[${tableName}] 
+                                        WHERE [${fk}] = @${fk} 
+                                          AND [ItemId] = @ItemId 
+                                          AND ([BranchCode] = '${config.currentBranchCode}' OR [BranchCode] IS NULL)
+                                    )
+                                    BEGIN
+                                        UPDATE dbo.[${tableName}]
+                                        SET ${updateSet}, 
+                                            [BranchCode] = '${config.currentBranchCode}', 
+                                            [BranchName] = N'${config.currentBranchName}', 
+                                            [SyncStatus] = 'synced', 
+                                            [LastSyncedAt] = SYSUTCDATETIME()
+                                        WHERE [${fk}] = @${fk} 
+                                          AND [ItemId] = @ItemId 
+                                          AND ([BranchCode] = '${config.currentBranchCode}' OR [BranchCode] IS NULL);
+                                    END
+                                    ELSE
+                                    BEGIN
+                                        INSERT INTO dbo.[${tableName}] (${insertCols}) 
+                                        VALUES (${paramCols});
+                                    END
+                                `);
+                            } else {
+                                // التنفيذ الذكي للجداول العادية: إذا كان موجوداً قم بتحديثه، وإذا لم يكن موجوداً قم بإضافته
+                                const updateSet = colNames.filter(c => c !== idCol).map(c => `[${c}] = @${c}`).join(', ');
+                                await centralReq.query(`
+                                    IF EXISTS (SELECT 1 FROM dbo.[${tableName}] WHERE [${idCol}] = @${idCol})
+                                    BEGIN
+                                        UPDATE dbo.[${tableName}]
+                                        SET ${updateSet}, 
+                                            [BranchCode] = '${config.currentBranchCode}', 
+                                            [BranchName] = N'${config.currentBranchName}', 
+                                            [SyncStatus] = 'synced', 
+                                            [LastSyncedAt] = SYSUTCDATETIME()
+                                        WHERE [${idCol}] = @${idCol};
+                                    END
+                                    ELSE
+                                    BEGIN
+                                        INSERT INTO dbo.[${tableName}] (${insertCols}) 
+                                        VALUES (${paramCols});
+                                    END
+                                `);
+                            }
 
                             // مزامنة البنود التابعة (Child line items)
                             if (meta.childTable && meta.foreignKey) {
@@ -738,25 +782,48 @@ export async function runFullSync(options?: {
                                         .query(`SELECT * FROM dbo.[${meta.childTable}] WHERE [${meta.foreignKey}] = @ParentId`);
 
                                     if (childRowsRes.recordset.length > 0) {
-                                        // حذف البنود القديمة في المركز لمنع التكرار
+                                        // جلب أعمدة الجدول الفرعي في السيرفر المركزي
+                                        const cColsRes = await centralPool.request()
+                                            .input('Tbl', sql.NVarChar(128), meta.childTable)
+                                            .query(`SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = @Tbl`);
+                                        const cCentralCols = new Set(cColsRes.recordset.map(r => r.COLUMN_NAME.toLowerCase()));
+
+                                        // حذف البنود القديمة في المركز لمنع التكرار لهذا المستند
                                         await centralPool.request()
                                             .input('ParentId', sql.NVarChar(128), idVal)
-                                            .query(`DELETE FROM dbo.[${meta.childTable}] WHERE [${meta.foreignKey}] = @ParentId`);
+                                            .input('BranchCode', sql.NVarChar(50), config.currentBranchCode)
+                                            .query(`DELETE FROM dbo.[${meta.childTable}] WHERE [${meta.foreignKey}] = @ParentId AND (BranchCode = @BranchCode OR BranchCode IS NULL)`);
 
                                         for (const cRow of childRowsRes.recordset) {
-                                            const cCols = Object.keys(cRow).filter(k => k !== 'Id' && k !== 'SyncStatus' && k !== 'LastSyncedAt');
-                                            const cInsert = cCols.map(c => `[${c}]`).join(', ');
-                                            const cParams = cCols.map(k => `@${k}`).join(', ');
+                                            const cCols = Object.keys(cRow).filter(k => 
+                                                k !== 'Id' && 
+                                                k !== 'SyncStatus' && 
+                                                k !== 'LastSyncedAt' && 
+                                                k !== 'BranchCode' && 
+                                                k !== 'BranchName' &&
+                                                cCentralCols.has(k.toLowerCase())
+                                            );
+                                            const cInsert = [...cCols, 'BranchCode', 'BranchName', 'SyncStatus', 'LastSyncedAt'].map(c => `[${c}]`).join(', ');
+                                            const cParams = [...cCols.map(k => `@${k}`), `'${config.currentBranchCode}'`, `N'${config.currentBranchName}'`, `'synced'`, 'SYSUTCDATETIME()'].join(', ');
 
                                             const cReq = centralPool.request();
                                             for (const k of cCols) {
                                                 cReq.input(k, cRow[k] === undefined ? null : cRow[k]);
                                             }
                                             await cReq.query(`
-                                                INSERT INTO dbo.[${meta.childTable}] (${cInsert}, [BranchCode], [BranchName], [LastSyncedAt])
-                                                VALUES (${cParams}, '${config.currentBranchCode}', N'${config.currentBranchName}', SYSUTCDATETIME());
+                                                INSERT INTO dbo.[${meta.childTable}] (${cInsert})
+                                                VALUES (${cParams});
                                             `);
                                         }
+
+                                        // تعليم البنود المحلية بأنها متزامنة وتحديث LastSyncedAt
+                                        await localPool.request()
+                                            .input('ParentId', sql.NVarChar(128), idVal)
+                                            .query(`
+                                                UPDATE dbo.[${meta.childTable}]
+                                                SET SyncStatus = 'synced', LastSyncedAt = SYSUTCDATETIME()
+                                                WHERE [${meta.foreignKey}] = @ParentId;
+                                            `);
                                     }
                                 } catch (cErr: any) {
                                     console.warn(`Child sync error on ${meta.childTable}:`, cErr.message);
@@ -765,7 +832,7 @@ export async function runFullSync(options?: {
 
                             // تعليم السجل المحلي بأنه متزامن وتحديث LastSyncedAt
                             await localPool.request()
-                                .input('IdVal', sql.NVarChar(128), idVal)
+                                .input('IdVal', isChildTableFk ? sql.Int : sql.NVarChar(128), idVal)
                                 .query(`
                                     UPDATE dbo.[${tableName}] 
                                     SET SyncStatus = 'synced', LastSyncedAt = SYSUTCDATETIME() 
@@ -790,6 +857,22 @@ export async function runFullSync(options?: {
                                 LastSyncCheckAt = SYSUTCDATETIME()
                             WHERE TableName = '${tableName}';
                         `);
+
+                        if (meta.childTable) {
+                            const cMaxRes = await localPool.request().query(`SELECT MAX(UpdatedAt) as maxU, COUNT(*) as c FROM dbo.[${meta.childTable}]`);
+                            const cMaxU = cMaxRes.recordset[0]?.maxU ? `'${new Date(cMaxRes.recordset[0].maxU).toISOString()}'` : 'NULL';
+                            const cTotalRows = cMaxRes.recordset[0]?.c || 0;
+                            await localPool.request().query(`
+                                UPDATE dbo.SyncTrackingMatrix
+                                SET LastLocalTimestamp = ${cMaxU},
+                                    LastSyncedTimestamp = SYSUTCDATETIME(),
+                                    LocalRowsCount = ${cTotalRows},
+                                    PendingChangesCount = 0,
+                                    SyncStatus = 'synced',
+                                    LastSyncCheckAt = SYSUTCDATETIME()
+                                WHERE TableName = '${meta.childTable}';
+                            `);
+                        }
                     }
                 } catch (pushErr: any) {
                     console.warn(`Sync push error on table ${tableName}:`, pushErr.message);
