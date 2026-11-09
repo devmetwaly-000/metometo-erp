@@ -251,8 +251,47 @@ export default function SalesInvoicePage() {
         setDueDate(futureDate.toISOString().split('T')[0]);
     }, []);
 
+    const handleWarehouseChange = (newWarehouseId: string) => {
+        setWarehouseId(newWarehouseId);
+        if (items.length > 0 && newWarehouseId && newWarehouseId !== 'all') {
+            const allowNegativeStock = !!(settings?.main?.financial?.allowNegativeStock ?? settings?.financial?.allowNegativeStock);
+            if (!allowNegativeStock) {
+                const deficitItems: string[] = [];
+                const itemTotals = new Map<string, { name: string; qty: number }>();
+                for (const itm of items) {
+                    const bQty = itm.qty * (itm.conversionFactor || 1);
+                    const curr = itemTotals.get(itm.itemId) || { name: itm.name, qty: 0 };
+                    itemTotals.set(itm.itemId, { name: itm.name, qty: curr.qty + bQty });
+                }
+                for (const [id, val] of itemTotals.entries()) {
+                    const stock = calculateStockForItemInWarehouse(id, newWarehouseId, allDataContext);
+                    if (val.qty > stock) {
+                        deficitItems.push(`"${val.name}" (المتاح: ${stock}، المطلوب: ${val.qty})`);
+                    }
+                }
+                if (deficitItems.length > 0) {
+                    toast({
+                        variant: 'destructive',
+                        title: 'تنبيه: عجز في رصيد المخزن الجديد',
+                        description: `الأصناف التالية لا يتوفر لها رصيد كافٍ في المخزن المختار: ${deficitItems.join('، ')}. يرجى تعديلها قبل الحفظ.`
+                    });
+                }
+            }
+        }
+    };
+
     const handleAddItem = () => {
         if (!newItem.id || newItem.qty <= 0 || newItem.price < 0) return;
+
+        if (!warehouseId || warehouseId === 'all') {
+            toast({
+                variant: 'destructive',
+                title: 'تنبيه: حدد المخزن أولاً',
+                description: 'يرجى اختيار الفرع / المخزن قبل إضافة أي صنف للتأكد من توافر الرصيد.'
+            });
+            return;
+        }
+
         const selectedItem = availableItemsForWarehouse.find((i: Item) => i.id === newItem.id);
         if (!selectedItem) return;
         
@@ -260,13 +299,21 @@ export default function SalesInvoicePage() {
         if (!selectedUnitInfo) return;
 
         const requiredBaseQty = newItem.qty * selectedUnitInfo.factor;
+        const allowNegativeStock = !!(settings?.main?.financial?.allowNegativeStock ?? settings?.financial?.allowNegativeStock);
 
-        const mainSettings = settings?.main;
-        if(warehouseId && requiredBaseQty > (selectedItem.stock || 0) && !mainSettings?.financial?.allowNegativeStock) {
+        // Sum what's already added to table for this item in base units
+        const alreadyInTableBaseQty = items
+            .filter(i => i.itemId === selectedItem.id)
+            .reduce((sum, i) => sum + (i.qty * (i.conversionFactor || 1)), 0);
+
+        const currentStock = calculateStockForItemInWarehouse(selectedItem.id, warehouseId, allDataContext);
+        const totalRequestedQty = alreadyInTableBaseQty + requiredBaseQty;
+
+        if (!allowNegativeStock && totalRequestedQty > currentStock) {
             toast({
                 variant: 'destructive',
-                title: 'كمية غير متوفرة',
-                description: `الرصيد المتاح من ${selectedItem.name} هو ${selectedItem.stock} فقط.`
+                title: 'رصيد المخزون غير كافٍ',
+                description: `لا يمكن بيع هذا الصنف بالسالب. الرصيد المتاح من "${selectedItem.name}" في هذا المخزن هو (${currentStock}) فقط، والكمية المطلوبة مع البنود الحالية (${totalRequestedQty}).`
             });
             return;
         }
@@ -357,7 +404,7 @@ export default function SalesInvoicePage() {
     }
         
     const handleSaveInvoice = async () => {
-        if (!customerId || !warehouseId || items.length === 0) {
+        if (!customerId || !warehouseId || warehouseId === 'all' || items.length === 0) {
             toast({ variant: 'destructive', title: 'بيانات ناقصة', description: 'يرجى اختيار العميل والمخزن وإضافة صنف واحد على الأقل.' });
             return;
         }
@@ -368,6 +415,29 @@ export default function SalesInvoicePage() {
         if (paidAmount > 0 && !paidToAccountId) {
             toast({ variant: "destructive", title: "بيانات غير مكتملة", description: "يرجى تحديد حساب الخزينة/البنك لاستلاف الدفعة." });
             return;
+        }
+
+        // Strict Negative Stock Guard
+        const allowNegativeStock = !!(settings?.main?.financial?.allowNegativeStock ?? settings?.financial?.allowNegativeStock);
+        if (!allowNegativeStock) {
+            const requestedQuantities = new Map<string, { name: string; qty: number }>();
+            for (const item of items) {
+                const baseQty = item.qty * (item.conversionFactor || 1);
+                const existing = requestedQuantities.get(item.itemId) || { name: item.name, qty: 0 };
+                requestedQuantities.set(item.itemId, { name: item.name, qty: existing.qty + baseQty });
+            }
+
+            for (const [itemId, req] of requestedQuantities.entries()) {
+                const currentStock = calculateStockForItemInWarehouse(itemId, warehouseId, allDataContext);
+                if (req.qty > currentStock) {
+                    toast({
+                        variant: 'destructive',
+                        title: 'حظر البيع بالسالب',
+                        description: `لا يمكن حفظ الفاتورة: الصنف "${req.name}" رصيده المتاح في المخزن المحدد (${currentStock}) أقل من الكمية المطلوبة بالفاتورة (${req.qty}). إعدادات النظام تمنع البيع بالسالب تماماً.`
+                    });
+                    return;
+                }
+            }
         }
 
         setIsSaving(true);
@@ -599,7 +669,7 @@ export default function SalesInvoicePage() {
                              <Combobox
                                 options={warehouseOptions}
                                 value={warehouseId}
-                                onValueChange={setWarehouseId}
+                                onValueChange={handleWarehouseChange}
                                 placeholder="اختر مخزنًا..."
                                 emptyMessage="لم يتم العثور على المخزن."
                                 disabled={!!(user?.warehouseIds && user.warehouseIds.length === 1 && user.warehouseIds[0] !== 'all')}

@@ -1671,6 +1671,24 @@ export default function PosPage() {
             }
         }
 
+        if (!allowNegativeStock && warehouseForSession) {
+            for (const cartItem of cart) {
+                const itemMaster = allItems.find((i: any) => i.id === cartItem.id);
+                const currentStock = itemMaster?.stock ?? calculatePotentialStock(cartItem.id);
+                const totalCartBaseQty = cart
+                    .filter(i => i.id === cartItem.id)
+                    .reduce((sum, i) => sum + (i.qty * (i.conversionFactor || 1)), 0);
+                if (totalCartBaseQty > currentStock) {
+                    toast({
+                        variant: 'destructive',
+                        title: 'رصيد المخزون غير كافٍ',
+                        description: `لا يمكن إتمام البيع: صنف "${cartItem.name}" رصيده المتاح (${currentStock}) غير كافٍ للكمية المطلوبة بالسلة (${totalCartBaseQty}). البيع بالسالب غير مسموح به.`
+                    });
+                    return;
+                }
+            }
+        }
+
         setIsSaving(true);
         try {
             const invoiceNumber = await generateInvoiceNumber(user?.id); 

@@ -472,6 +472,25 @@ export default function SalesRepInvoicePage() {
             return;
         }
 
+        const allowNegativeStock = !!(settings?.main?.financial?.allowNegativeStock ?? settings?.financial?.allowNegativeStock);
+        if (!allowNegativeStock) {
+            for (const item of items) {
+                const itemInCustody = itemsInRepCustody.find((i: any) => i.id === item.itemId);
+                const availableStock = itemInCustody?.stock || 0;
+                const totalItemBaseQty = items
+                    .filter(i => i.itemId === item.itemId)
+                    .reduce((sum, i) => sum + (i.qty * (i.conversionFactor || 1)), 0);
+                if (totalItemBaseQty > availableStock) {
+                    toast({
+                        variant: 'destructive',
+                        title: 'رصيد العهدة غير كافٍ',
+                        description: `لا يمكن حفظ الفاتورة: الصنف "${item.name}" رصيده المتاح بعهدتك (${availableStock}) أقل من الكمية المطلوبة (${totalItemBaseQty}). البيع بالسالب مغلق.`
+                    });
+                    return;
+                }
+            }
+        }
+
         setIsSaving(true);
         try {
             const invoiceNumber = `ف-ب-${await getNextId('salesInvoice')}`;
