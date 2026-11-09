@@ -11,6 +11,7 @@ import sql from 'mssql';
 import { getDbPool } from '@/lib/db';
 
 export interface CentralSyncConfig {
+    systemRole?: 'branch' | 'central';
     currentBranchId: string;
     currentBranchCode: string;
     currentBranchName: string;
@@ -29,6 +30,7 @@ export interface CentralSyncConfig {
 }
 
 const DEFAULT_CONFIG: CentralSyncConfig = {
+    systemRole: 'branch',
     currentBranchId: '-OmnkFba_GsEb0rfdzyA',
     currentBranchCode: '900',
     currentBranchName: 'الفرع الرأيسي',
@@ -214,14 +216,25 @@ export async function getCentralConfig(): Promise<CentralSyncConfig> {
             .input('Key', sql.NVarChar(100), 'central_sync')
             .query('SELECT SettingValue FROM dbo.AppSettings WHERE SettingKey = @Key');
 
+        const roleRes = await pool.request()
+            .input('RKey', sql.NVarChar(100), 'system_role')
+            .query('SELECT SettingValue FROM dbo.AppSettings WHERE SettingKey = @RKey');
+
+        const explicitRole = roleRes.recordset[0]?.SettingValue as ('branch' | 'central' | undefined);
+
         if (res.recordset.length > 0 && res.recordset[0].SettingValue) {
             try {
-                return { ...DEFAULT_CONFIG, ...JSON.parse(res.recordset[0].SettingValue) };
+                const parsed = JSON.parse(res.recordset[0].SettingValue);
+                return { 
+                    ...DEFAULT_CONFIG, 
+                    ...parsed,
+                    systemRole: explicitRole || parsed.systemRole || DEFAULT_CONFIG.systemRole
+                };
             } catch {
-                return DEFAULT_CONFIG;
+                return { ...DEFAULT_CONFIG, systemRole: explicitRole || DEFAULT_CONFIG.systemRole };
             }
         }
-        return DEFAULT_CONFIG;
+        return { ...DEFAULT_CONFIG, systemRole: explicitRole || DEFAULT_CONFIG.systemRole };
     } catch (e) {
         console.error('Error fetching central sync config:', e);
         return DEFAULT_CONFIG;

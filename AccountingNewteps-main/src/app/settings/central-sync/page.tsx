@@ -10,6 +10,7 @@ import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
 import { useData } from "@/contexts/data-provider";
 import { 
@@ -17,7 +18,8 @@ import {
     Database, ArrowUpRight, ArrowDownLeft, Clock, Zap, Loader2, Save,
     ShoppingCart, Truck, Banknote, CreditCard, Receipt, Boxes, Activity, Sparkles,
     ArrowLeftRight, Wallet, Users, UserCheck, Terminal, Search, CheckCircle,
-    HardDrive, Cpu, AlertCircle, FileText, CheckCheck, X, ListChecks, ShieldAlert
+    HardDrive, Cpu, AlertCircle, FileText, CheckCheck, X, ListChecks, ShieldAlert,
+    Lock, Key, Building2, Store, Shield
 } from "lucide-react";
 import { CentralSyncConfig, TableSyncMatrixItem, TablesSyncMatrixResponse } from '@/lib/central-sync';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -29,6 +31,7 @@ export default function CentralSyncSettingsPage() {
 
     // 1. Settings State
     const [config, setConfig] = useState<CentralSyncConfig>({
+        systemRole: 'branch',
         currentBranchId: '',
         currentBranchCode: '900',
         currentBranchName: 'الفرع الرأيسي',
@@ -93,6 +96,13 @@ export default function CentralSyncSettingsPage() {
     const [tableCategoryFilter, setTableCategoryFilter] = useState('all');
     const [tableDirectionFilter, setTableDirectionFilter] = useState<'all' | 'push' | 'pull' | 'bidirectional'>('all');
     const [tableStatusFilter, setTableStatusFilter] = useState<'all' | 'pending' | 'synced' | 'has_data'>('all');
+
+    // Role Switch Security Modal State
+    const [isRoleDialogOpen, setIsRoleDialogOpen] = useState(false);
+    const [targetRoleToSwitch, setTargetRoleToSwitch] = useState<'branch' | 'central'>('central');
+    const [rolePassword, setRolePassword] = useState('');
+    const [isSwitchingRole, setIsSwitchingRole] = useState(false);
+    const [roleSwitchError, setRoleSwitchError] = useState<string | null>(null);
 
     // Load Central Sync configuration and sync status
     const loadSettings = async (isInitial = false) => {
@@ -175,6 +185,54 @@ export default function CentralSyncSettingsPage() {
                 currentBranchCode: wh.code || prev.currentBranchCode,
                 currentBranchName: wh.name || prev.currentBranchName
             }));
+        }
+    };
+
+    // Open Role Switch Dialog with Password Check
+    const handleOpenRoleDialog = (role: 'branch' | 'central') => {
+        if (config.systemRole === role) return;
+        setTargetRoleToSwitch(role);
+        setRolePassword('');
+        setRoleSwitchError(null);
+        setIsRoleDialogOpen(true);
+    };
+
+    // Confirm Switch Role with Server-side Authentication & Database Save
+    const handleConfirmSwitchRole = async (e?: React.FormEvent) => {
+        if (e) e.preventDefault();
+        if (!rolePassword.trim()) {
+            setRoleSwitchError('يرجى إدخال كلمة مرور المسؤول للمتابعة.');
+            return;
+        }
+        setIsSwitchingRole(true);
+        setRoleSwitchError(null);
+        try {
+            const res = await fetch('/api/sync/central', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    action: 'switch-role',
+                    targetRole: targetRoleToSwitch,
+                    password: rolePassword.trim()
+                })
+            });
+            const data = await res.json();
+            if (data.success) {
+                setConfig(prev => ({ ...prev, systemRole: targetRoleToSwitch }));
+                setIsRoleDialogOpen(false);
+                toast({
+                    title: "تم تغيير دور النظام بنجاح!",
+                    description: data.message
+                });
+                await loadSettings(false);
+                await handleRefreshMatrix();
+            } else {
+                setRoleSwitchError(data.error || 'فشل التحقق من كلمة المرور.');
+            }
+        } catch (err: any) {
+            setRoleSwitchError(err.message || 'حدث خطأ أثناء الاتصال بالخادم.');
+        } finally {
+            setIsSwitchingRole(false);
         }
     };
 
@@ -504,22 +562,41 @@ export default function CentralSyncSettingsPage() {
 
             <main className="flex flex-1 flex-col gap-5 p-4 md:p-6 max-w-7xl mx-auto w-full">
                 
-                {/* 2. Top Unified Executive Dashboard Banner */}
+                {/* 2. Top Unified Executive Dashboard Banner with System Role Indicator */}
                 <div className="rounded-xl border bg-card p-4 shadow-sm relative overflow-hidden">
                     <div className="grid grid-cols-1 md:grid-cols-12 gap-4 items-center">
-                        {/* Branch Identity */}
+                        {/* System Role & Identity */}
                         <div className="md:col-span-4 space-y-1 md:border-l md:pl-4">
-                            <div className="flex items-center gap-2">
-                                <span className="font-mono text-xs font-bold px-2 py-0.5 rounded bg-primary/10 text-primary border border-primary/20">
-                                    فرع #{config.currentBranchCode}
-                                </span>
-                                <span className="text-xs text-muted-foreground font-medium">محطة فرعية نشطة</span>
+                            <div className="flex items-center gap-2 flex-wrap">
+                                {config.systemRole === 'central' ? (
+                                    <Badge className="bg-sky-600 hover:bg-sky-700 text-white font-bold px-2.5 py-0.5 text-xs gap-1.5 shadow-sm">
+                                        <Building2 className="h-3.5 w-3.5" />
+                                        إدارة مركزية (Central HQ)
+                                    </Badge>
+                                ) : (
+                                    <Badge className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold px-2.5 py-0.5 text-xs gap-1.5 shadow-sm">
+                                        <Store className="h-3.5 w-3.5" />
+                                        فرع محلي #{config.currentBranchCode}
+                                    </Badge>
+                                )}
+                                <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    onClick={() => handleOpenRoleDialog(config.systemRole === 'central' ? 'branch' : 'central')}
+                                    className="h-6 text-[11px] px-2 text-muted-foreground hover:text-foreground font-semibold gap-1 border border-border/60 hover:bg-muted"
+                                    title="تغيير دور النظام بباسورد الإدارة"
+                                >
+                                    <Lock className="h-3 w-3 text-amber-500" />
+                                    تبديل الدور 🔒
+                                </Button>
                             </div>
                             <h2 className="text-lg font-black text-foreground tracking-tight">
-                                {config.currentBranchName}
+                                {config.systemRole === 'central' ? 'المركز الرئيسي للإدارة' : config.currentBranchName}
                             </h2>
                             <p className="text-[11px] text-muted-foreground">
-                                مطابقة آلية فورية لجميع الجداول عبر مفاتيح الربط ومحددات الفروع.
+                                {config.systemRole === 'central' 
+                                    ? 'خادم مركزي مجمّع: يستقبل ويطابق حركات ومبيعات كافة الفروع.'
+                                    : 'محطة فرعية: تُسجل الفواتير محلياً وتُزامن الحركات مع سيرفر الإدارة.'}
                             </p>
                         </div>
 
@@ -528,7 +605,7 @@ export default function CentralSyncSettingsPage() {
                             <div className="flex items-center justify-between">
                                 <span className="text-xs text-muted-foreground flex items-center gap-1.5 font-semibold">
                                     <Server className="h-3.5 w-3.5 text-sky-600" />
-                                    سيرفر الإدارة المركزي
+                                    {config.systemRole === 'central' ? 'سيرفر الإدارة المحلي' : 'سيرفر الإدارة المركزي'}
                                 </span>
                                 {testResult ? (
                                     testResult.success ? (
@@ -614,7 +691,7 @@ export default function CentralSyncSettingsPage() {
                         </TabsTrigger>
                         <TabsTrigger value="config" className="gap-2 font-bold text-xs rounded-lg data-[state=active]:shadow-sm">
                             <Server className="h-4 w-4 text-sky-600" /> 
-                            إعدادات الربط وتأسيس القاعدة
+                            إعدادات الربط ونمط النظام
                         </TabsTrigger>
                     </TabsList>
 
@@ -1218,7 +1295,7 @@ export default function CentralSyncSettingsPage() {
                     </TabsContent>
 
                     {/* ========================================================= */}
-                    {/* TAB 3: CONNECTION & DATABASE PROVISIONING (إعدادات الربط وتأسيس القاعدة) */}
+                    {/* TAB 3: CONNECTION & DATABASE PROVISIONING (إعدادات الربط ونمط النظام) */}
                     {/* ========================================================= */}
                     <TabsContent value="config" className="space-y-5 mt-4">
                         
@@ -1230,11 +1307,97 @@ export default function CentralSyncSettingsPage() {
                                     إعدادات الربط السحابي وبيانات الخادم المركزي
                                 </CardTitle>
                                 <CardDescription>
-                                    تحديد عنوان السيرفر المركزي للإدارة وربط هوية هذا الجهاز بالفرع والمستودع المسجل.
+                                    تحديد دور النظام في قاعدة البيانات (إدارة أو فرع) وضبط بيانات السيرفر المركزي.
                                 </CardDescription>
                             </CardHeader>
                             <CardContent className="space-y-5">
                                 
+                                {/* Section 0: System Role Selection Protected by Password */}
+                                <div className="p-4 rounded-xl border-2 border-primary/20 bg-primary/5 space-y-3">
+                                    <div className="flex items-center justify-between border-b border-primary/20 pb-2">
+                                        <div className="flex items-center gap-2">
+                                            <ShieldCheck className="h-5 w-5 text-primary" />
+                                            <div>
+                                                <span className="font-black text-sm text-foreground">دور ونمط تشغيل هذا الجهاز (System Role Mode)</span>
+                                                <span className="text-[11px] text-muted-foreground block">إعداد أمني مُخزّن في قاعدة البيانات، يتطلب كلمة مرور المسؤول للتبديل بين الإدارة والفرع.</span>
+                                            </div>
+                                        </div>
+                                        <Badge variant="outline" className="text-xs font-mono font-bold px-2.5 py-0.5 bg-background border-primary/30">
+                                            الحالي: {config.systemRole === 'central' ? '🏢 إدارة مركزية' : '🏪 فرع محلي'}
+                                        </Badge>
+                                    </div>
+
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3 pt-1">
+                                        {/* Branch Option Card */}
+                                        <div 
+                                            onClick={() => handleOpenRoleDialog('branch')}
+                                            className={cn(
+                                                "p-3.5 rounded-xl border-2 cursor-pointer transition-all flex items-start gap-3 relative",
+                                                config.systemRole !== 'central' 
+                                                    ? "border-emerald-600 bg-emerald-500/10 shadow-xs" 
+                                                    : "border-border/70 hover:border-emerald-500/50 bg-card hover:bg-muted/20"
+                                            )}
+                                        >
+                                            <div className={cn(
+                                                "p-2.5 rounded-lg shrink-0",
+                                                config.systemRole !== 'central' ? "bg-emerald-600 text-white" : "bg-muted text-muted-foreground"
+                                            )}>
+                                                <Store className="h-5 w-5" />
+                                            </div>
+                                            <div className="space-y-1">
+                                                <div className="flex items-center gap-1.5">
+                                                    <span className="font-bold text-sm text-foreground">1. فرع محلي (Sub-Branch Mode)</span>
+                                                    {config.systemRole !== 'central' && (
+                                                        <Badge className="bg-emerald-600 text-white text-[9px] px-1.5 py-0 font-bold">نشط</Badge>
+                                                    )}
+                                                </div>
+                                                <p className="text-[11px] text-muted-foreground leading-relaxed">
+                                                    يعمل النظام ككاشير أو نقطة بيع أو مستودع فرعي، يُسجل حركاته بكود الفرع ويرفعها لسيرفر الإدارة.
+                                                </p>
+                                            </div>
+                                            {config.systemRole === 'central' && (
+                                                <div className="absolute top-3 left-3 text-muted-foreground" title="يتطلب باسورد المدير">
+                                                    <Lock className="h-4 w-4 text-amber-500" />
+                                                </div>
+                                            )}
+                                        </div>
+
+                                        {/* Central HQ Option Card */}
+                                        <div 
+                                            onClick={() => handleOpenRoleDialog('central')}
+                                            className={cn(
+                                                "p-3.5 rounded-xl border-2 cursor-pointer transition-all flex items-start gap-3 relative",
+                                                config.systemRole === 'central' 
+                                                    ? "border-sky-600 bg-sky-500/10 shadow-xs" 
+                                                    : "border-border/70 hover:border-sky-500/50 bg-card hover:bg-muted/20"
+                                            )}
+                                        >
+                                            <div className={cn(
+                                                "p-2.5 rounded-lg shrink-0",
+                                                config.systemRole === 'central' ? "bg-sky-600 text-white" : "bg-muted text-muted-foreground"
+                                            )}>
+                                                <Building2 className="h-5 w-5" />
+                                            </div>
+                                            <div className="space-y-1">
+                                                <div className="flex items-center gap-1.5">
+                                                    <span className="font-bold text-sm text-foreground">2. إدارة مركزية (Central HQ Mode)</span>
+                                                    {config.systemRole === 'central' && (
+                                                        <Badge className="bg-sky-600 text-white text-[9px] px-1.5 py-0 font-bold">نشط</Badge>
+                                                    )}
+                                                </div>
+                                                <p className="text-[11px] text-muted-foreground leading-relaxed">
+                                                    خادم الإدارة الرئيسي: يستقبل ويجمع مبيعات وحركات كافة الفروع، ولا يقوم برفع بياناته لأي خادم آخر.
+                                                </p>
+                                            </div>
+                                            {config.systemRole !== 'central' && (
+                                                <div className="absolute top-3 left-3 text-muted-foreground" title="يتطلب باسورد المدير">
+                                                    <Lock className="h-4 w-4 text-amber-500" />
+                                                </div>
+                                            )}
+                                        </div>
+                                    </div>
+                                </div>
+
                                 {/* Section 1: Local Branch Identity */}
                                 <div className="p-4 rounded-xl border bg-muted/20 space-y-3">
                                     <div className="flex items-center gap-2 border-b pb-2">
@@ -1429,6 +1592,85 @@ export default function CentralSyncSettingsPage() {
                     </TabsContent>
                 </Tabs>
             </main>
+
+            {/* Password-Protected Role Switch Confirmation Dialog */}
+            <Dialog open={isRoleDialogOpen} onOpenChange={setIsRoleDialogOpen}>
+                <DialogContent className="sm:max-w-md">
+                    <DialogHeader className="border-b pb-3">
+                        <DialogTitle className="flex items-center gap-2 text-base font-bold text-foreground">
+                            <ShieldCheck className="h-5 w-5 text-amber-500" />
+                            تأكيد تغيير دور النظام في قاعدة البيانات
+                        </DialogTitle>
+                        <DialogDescription className="text-xs">
+                            أنت على وشك تحويل دور هذا الجهاز إلى: <strong className="text-foreground">{targetRoleToSwitch === 'central' ? '🏢 إدارة مركزية (Central HQ)' : '🏪 فرع محلي (Sub-Branch)'}</strong>.
+                        </DialogDescription>
+                    </DialogHeader>
+
+                    <form onSubmit={handleConfirmSwitchRole} className="space-y-4 py-2">
+                        <div className="p-3 rounded-lg border bg-amber-500/10 border-amber-500/20 text-xs text-amber-800 dark:text-amber-300 space-y-1">
+                            <div className="font-bold flex items-center gap-1">
+                                <Lock className="h-3.5 w-3.5" />
+                                إجراء محمي بكلمة المرور
+                            </div>
+                            <p className="text-[11px]">
+                                يتم تخزين هذا الخيار في جدول إعدادات قاعدة البيانات (<span className="font-mono">dbo.AppSettings</span>)، وتغييره يؤثر على سلوك مزامنة الحركات.
+                            </p>
+                        </div>
+
+                        <div className="space-y-1.5">
+                            <Label className="text-xs font-bold">كلمة مرور المسؤول (Admin Password)</Label>
+                            <Input 
+                                type="password"
+                                placeholder="أدخل كلمة مرور المسؤول..."
+                                value={rolePassword}
+                                onChange={(e) => {
+                                    setRolePassword(e.target.value);
+                                    setRoleSwitchError(null);
+                                }}
+                                autoFocus
+                                className="h-9 text-xs"
+                            />
+                        </div>
+
+                        {roleSwitchError && (
+                            <div className="p-2.5 rounded-lg border bg-rose-500/10 border-rose-500/25 text-rose-600 dark:text-rose-400 text-xs font-semibold flex items-center gap-1.5 animate-in fade-in-50">
+                                <AlertCircle className="h-4 w-4 shrink-0" />
+                                <span>{roleSwitchError}</span>
+                            </div>
+                        )}
+
+                        <DialogFooter className="gap-2 sm:gap-0 pt-2 border-t">
+                            <Button 
+                                type="button" 
+                                variant="ghost" 
+                                size="sm" 
+                                onClick={() => setIsRoleDialogOpen(false)}
+                                disabled={isSwitchingRole}
+                            >
+                                إلغاء
+                            </Button>
+                            <Button 
+                                type="submit" 
+                                size="sm" 
+                                className="bg-primary hover:bg-primary/90 text-primary-foreground font-bold gap-1.5 text-xs shadow-sm"
+                                disabled={isSwitchingRole || !rolePassword.trim()}
+                            >
+                                {isSwitchingRole ? (
+                                    <>
+                                        <Loader2 className="h-3.5 w-3.5 animate-spin ml-1" />
+                                        جاري التحقق والتحديث...
+                                    </>
+                                ) : (
+                                    <>
+                                        <Key className="h-3.5 w-3.5 ml-1" />
+                                        تأكيد التحويل وحفظ الإعداد 🔒
+                                    </>
+                                )}
+                            </Button>
+                        </DialogFooter>
+                    </form>
+                </DialogContent>
+            </Dialog>
         </div>
     );
 }

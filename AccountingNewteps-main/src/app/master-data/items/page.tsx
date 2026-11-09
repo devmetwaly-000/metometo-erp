@@ -237,6 +237,34 @@ function BulkCategoryUpdateDialog({
     const [isAddingGroup, setIsAddingGroup] = useState(false);
     const [newGroupName, setNewGroupName] = useState('');
     const [isSavingGroup, setIsSavingGroup] = useState(false);
+    const [isSeeding, setIsSeeding] = useState(false);
+
+    const handleTriggerSeed = async () => {
+        setIsSeeding(true);
+        try {
+            const res = await fetch('/api/master-data/seed-categories', { method: 'POST' });
+            const json = await res.json();
+            if (json.success) {
+                toast({ title: 'تم التوليد بنجاح! 🚀', description: json.message });
+                const syncRes = await fetch('/api/db/sync', { cache: 'no-store' });
+                if (syncRes.ok) {
+                    const syncJson = await syncRes.json();
+                    if (syncJson.data) {
+                        setLocalSections(syncJson.data.itemSections || []);
+                        setLocalCategories(syncJson.data.itemCategories || []);
+                        setLocalGroups(syncJson.data.itemGroups || []);
+                        setLocalSubs1(syncJson.data.itemSubCategories1 || []);
+                    }
+                }
+            } else {
+                toast({ variant: 'destructive', title: 'فشل التوليد', description: json.error });
+            }
+        } catch (err: any) {
+            toast({ variant: 'destructive', title: 'خطأ', description: err.message });
+        } finally {
+            setIsSeeding(false);
+        }
+    };
 
     // الربط الذكي: عند اختيار مجموعة يتم تلقائياً ضبط الفئة والقسم التابعين لها
     useEffect(() => {
@@ -404,10 +432,24 @@ function BulkCategoryUpdateDialog({
         <Dialog open={isOpen} onOpenChange={onOpenChange}>
             <DialogContent className="max-w-2xl max-h-[92vh] overflow-y-auto">
                 <DialogHeader className="border-b pb-3">
-                    <DialogTitle className="flex items-center gap-2 text-lg font-bold text-foreground">
-                        <Layers className="h-5 w-5 text-primary" />
-                        الإجراء الجماعي: تعديل وتسكين تصنيفات الأصناف
-                    </DialogTitle>
+                    <div className="flex items-center justify-between">
+                        <DialogTitle className="flex items-center gap-2 text-lg font-bold text-foreground">
+                            <Layers className="h-5 w-5 text-primary" />
+                            الإجراء الجماعي: تعديل وتسكين تصنيفات الأصناف
+                        </DialogTitle>
+                        <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            onClick={handleTriggerSeed}
+                            disabled={isSeeding}
+                            className="h-7 text-xs font-bold gap-1 text-primary border-primary/30 hover:bg-primary/10 shadow-sm"
+                            title="توليد شجرة التصنيفات القياسية للمكملات والرياضة"
+                        >
+                            {isSeeding ? <Loader2 className="h-3 w-3 animate-spin" /> : <Save className="h-3 w-3 text-primary" />}
+                            ⚡ توليد التصنيفات المقترحة
+                        </Button>
+                    </div>
                     <DialogDescription className="text-xs">
                         تطبيق التصنيفات على <strong className="text-foreground">{items.length} صنفاً محدداً</strong> مع إمكانية إضافة أقسام وفئات جديدة فوراً دون مغادرة الشاشة.
                     </DialogDescription>
@@ -1217,11 +1259,37 @@ function ItemForm({ item, onSave, onClose, itemSections, itemCategories, itemGro
   const [isSecondaryUnitOpen, setIsSecondaryUnitOpen] = useState(false);
   const [editingUnit, setEditingUnit] = useState<Partial<SecondaryUnit> | null>(null);
 
-  const [isQuickAddSectionOpen, setIsQuickAddSectionOpen] = useState(false);
-  const [isQuickAddCategoryOpen, setIsQuickAddCategoryOpen] = useState(false);
-  const [isQuickAddGroupOpen, setIsQuickAddGroupOpen] = useState(false);
-  const [isQuickAddSubCategory1Open, setIsQuickAddSubCategory1Open] = useState(false);
-  const [isQuickAddSubCategory2Open, setIsQuickAddSubCategory2Open] = useState(false);
+  // Quick inline add states
+  const [isAddingSectionInline, setIsAddingSectionInline] = useState(false);
+  const [inlineSectionName, setInlineSectionName] = useState('');
+  const [isSavingSec, setIsSavingSec] = useState(false);
+
+  const [isAddingCatInline, setIsAddingCatInline] = useState(false);
+  const [inlineCatName, setInlineCatName] = useState('');
+  const [isSavingCat, setIsSavingCat] = useState(false);
+
+  const [isAddingGroupInline, setIsAddingGroupInline] = useState(false);
+  const [inlineGroupName, setInlineGroupName] = useState('');
+  const [isSavingGrp, setIsSavingGrp] = useState(false);
+
+  const [isAddingBrandInline, setIsAddingBrandInline] = useState(false);
+  const [inlineBrandName, setInlineBrandName] = useState('');
+  const [isSavingBrd, setIsSavingBrd] = useState(false);
+
+  const [isSeeding, setIsSeeding] = useState(false);
+
+  // Local synced lists for instant inline selection
+  const [localSecs, setLocalSecs] = useState<any[]>(itemSections || []);
+  const [localCats, setLocalCats] = useState<any[]>(itemCategories || []);
+  const [localGrps, setLocalGrps] = useState<any[]>(itemGroups || []);
+  const [localBrands, setLocalBrands] = useState<any[]>(itemSubCategories1 || []);
+  const [localModels, setLocalModels] = useState<any[]>(itemSubCategories2 || []);
+
+  useEffect(() => setLocalSecs(itemSections || []), [itemSections]);
+  useEffect(() => setLocalCats(itemCategories || []), [itemCategories]);
+  useEffect(() => setLocalGrps(itemGroups || []), [itemGroups]);
+  useEffect(() => setLocalBrands(itemSubCategories1 || []), [itemSubCategories1]);
+  useEffect(() => setLocalModels(itemSubCategories2 || []), [itemSubCategories2]);
 
   const { toast } = useToast();
   
@@ -1229,28 +1297,30 @@ function ItemForm({ item, onSave, onClose, itemSections, itemCategories, itemGro
         const { itemGroupId, categoryId, sectionId } = formData;
         
         if (itemGroupId && (!categoryId || !sectionId)) {
-            const group = itemGroups.find(g => g.id === itemGroupId);
-            if (group && group.parentCategoryId) {
-                const category = itemCategories.find(c => c.id === group.parentCategoryId);
+            const group = localGrps.find(g => (g.id || g.Id) === itemGroupId);
+            if (group && (group.parentCategoryId || group.ParentCategoryId)) {
+                const parentCatId = group.parentCategoryId || group.ParentCategoryId;
+                const category = localCats.find(c => (c.id || c.Id) === parentCatId);
                 if (category) {
-                    const section = itemSections.find(s => s.id === category.sectionId);
+                    const secId = category.sectionId || category.SectionId;
+                    const section = localSecs.find(s => (s.id || s.Id) === secId);
                     setFormData(prev => ({
                         ...prev,
-                        categoryId: category.id,
-                        sectionId: section ? section.id : prev.sectionId,
+                        categoryId: category.id || category.Id,
+                        sectionId: section ? (section.id || section.Id) : prev.sectionId,
                     }));
                 }
             }
         } else if (categoryId && !sectionId) {
-            const category = itemCategories.find(c => c.id === categoryId);
-            if (category && category.sectionId) {
+            const category = localCats.find(c => (c.id || c.Id) === categoryId);
+            if (category && (category.sectionId || category.SectionId)) {
                 setFormData(prev => ({
                     ...prev,
-                    sectionId: category.sectionId,
+                    sectionId: category.sectionId || category.SectionId,
                 }));
             }
         }
-    }, [formData.itemGroupId, formData.categoryId, formData.sectionId, itemSections, itemCategories, itemGroups]);
+    }, [formData.itemGroupId, formData.categoryId, formData.sectionId, localSecs, localCats, localGrps]);
 
     // Auto-calculate cost for manufactured items
     useEffect(() => {
@@ -1265,21 +1335,31 @@ function ItemForm({ item, onSave, onClose, itemSections, itemCategories, itemGro
         }
     }, [formData.components, formData.itemType, allItems, formData.cost]);
 
-
-  const sectionOptions = useMemo(() => itemSections.map(s => ({ value: s.id || s.Id, label: s.name || s.Name })), [itemSections]);
+  const sectionOptions = useMemo(() => localSecs.map(s => ({ value: s.id || s.Id, label: `${s.name || s.Name}${s.code || s.Code ? ` (${s.code || s.Code})` : ''}` })), [localSecs]);
+  
   const categoryOptions = useMemo(() => {
-    if (!formData.sectionId) return [];
-    const filtered = itemCategories.filter(c => (c.sectionId || c.SectionId) === formData.sectionId);
-    return filtered.map(c => ({ value: c.id || c.Id, label: c.name || c.Name }));
-  }, [itemCategories, formData.sectionId]);
+    let list = localCats;
+    if (formData.sectionId) {
+        list = localCats.filter(c => (c.sectionId || c.SectionId) === formData.sectionId);
+    }
+    return list.map(c => {
+        const sec = localSecs.find(s => (s.id || s.Id) === (c.sectionId || c.SectionId));
+        const secLabel = sec ? ` [${sec.name || sec.Name}]` : '';
+        return { value: c.id || c.Id, label: `${c.name || c.Name}${secLabel}` };
+    });
+  }, [localCats, localSecs, formData.sectionId]);
 
   const itemGroupOptions = useMemo(() => {
-    if (!formData.categoryId) return [];
-    const filtered = itemGroups.filter(g => (g.parentCategoryId || g.ParentCategoryId) === formData.categoryId);
-    return filtered.map((g: any) => ({ value: g.id || g.Id, label: g.name || g.Name }));
-  }, [formData.categoryId, itemGroups]);
-  const subCategory1Options = useMemo(() => itemSubCategories1.map(s => ({ value: s.id || s.Id, label: s.name || s.Name })), [itemSubCategories1]);
-  const subCategory2Options = useMemo(() => itemSubCategories2.map(s => ({ value: s.id || s.Id, label: s.name || s.Name })), [itemSubCategories2]);
+    let list = localGrps;
+    if (formData.categoryId) {
+        const filtered = localGrps.filter(g => (g.parentCategoryId || g.ParentCategoryId) === formData.categoryId);
+        if (filtered.length > 0) list = filtered;
+    }
+    return list.map((g: any) => ({ value: g.id || g.Id, label: g.name || g.Name }));
+  }, [formData.categoryId, localGrps]);
+
+  const subCategory1Options = useMemo(() => localBrands.map(s => ({ value: s.id || s.Id, label: s.name || s.Name })), [localBrands]);
+  const subCategory2Options = useMemo(() => localModels.map(s => ({ value: s.id || s.Id, label: s.name || s.Name })), [localModels]);
   
   const binOptions = useMemo(() => inventorySections.map(s => ({value: s.id, label: `${s.name} (${s.mainWarehouseName || 'N/A'})`})), [inventorySections]);
 
@@ -1296,7 +1376,6 @@ function ItemForm({ item, onSave, onClose, itemSections, itemCategories, itemGro
     const checkDigit = (remainder === 0) ? 0 : 10 - remainder;
     return String(checkDigit);
 };
-
 
   const handleSaveSecondaryUnit = async (unit: SecondaryUnit) => {
     let unitWithBarcode = { ...unit };
@@ -1337,91 +1416,155 @@ function ItemForm({ item, onSave, onClose, itemSections, itemCategories, itemGro
     onSave(formData);
     onClose();
   };
-  
-  const handleQuickAdd = async (level: number, name: string) => {
-    const dbPaths: Record<number, string> = { 1: "itemSections", 2: "itemCategories", 3: "itemGroups", 4: "itemSubCategories1", 5: "itemSubCategories2" };
-    const path = dbPaths[level];
-    if (!path) return;
 
-    const parentIdKeys: Record<number, string> = { 2: 'sectionId', 3: 'parentCategoryId' };
-    const parentPathValues: Record<number, string | undefined> = { 2: formData.sectionId, 3: formData.categoryId };
-    
-    const parentKey = parentIdKeys[level];
-    const parentId = parentPathValues[level];
+  // Helper: إضافة قسم جديد فوراً
+  const handleAddSectionInline = async () => {
+      if (!inlineSectionName.trim()) return;
+      setIsSavingSec(true);
+      try {
+          const codes = localSecs.map(i => parseInt(i.code || i.Code || '0', 10)).filter(n => !isNaN(n));
+          const currentMax = (codes.length > 0 ? Math.max(...codes) : 0) + 1;
+          let code = '01';
+          if (getNextId) {
+              const nextNum = await getNextId('itemSectionCode', currentMax);
+              if (nextNum) code = String(nextNum).padStart(2, '0');
+          }
+          const newId = await dbAction('itemSections', 'add', { name: inlineSectionName.trim(), code });
+          const newItem = { id: newId, Id: newId, name: inlineSectionName.trim(), Name: inlineSectionName.trim(), code, Code: code };
+          setLocalSecs(prev => [newItem, ...prev]);
+          setFormData(prev => ({ ...prev, sectionId: newId as string }));
+          setInlineSectionName('');
+          setIsAddingSectionInline(false);
+          toast({ title: 'تمت إضافة القسم بنجاح', description: `تم تعيين قسم "${newItem.name}".` });
+      } catch (err: any) {
+          toast({ variant: 'destructive', title: 'فشل إضافة القسم', description: err.message });
+      } finally {
+          setIsSavingSec(false);
+      }
+  };
 
-    const dataToAdd: any = { name };
-    if (parentKey && parentId) {
-        dataToAdd[parentKey] = parentId;
-    }
+  // Helper: إضافة فئة جديدة فوراً
+  const handleAddCatInline = async () => {
+      if (!inlineCatName.trim()) return;
+      setIsSavingCat(true);
+      try {
+          const targetSecId = formData.sectionId || (localSecs[0] ? (localSecs[0].id || localSecs[0].Id) : undefined);
+          const parentSec = localSecs.find(s => (s.id || s.Id) === targetSecId);
+          const parentCode = parentSec?.code || parentSec?.Code || '01';
+          const siblings = localCats.filter(c => (c.sectionId || c.SectionId) === targetSecId);
+          const currentMax = siblings.length + 1;
+          let code = `${parentCode}-${currentMax}`;
+          if (getNextId && targetSecId) {
+              const nextNum = await getNextId(`itemCategoryCode_${targetSecId}`, currentMax);
+              if (nextNum) code = `${parentCode}-${nextNum}`;
+          }
+          const payload: any = { name: inlineCatName.trim(), code };
+          if (targetSecId) payload.sectionId = targetSecId;
+          const newId = await dbAction('itemCategories', 'add', payload);
+          const newItem = { id: newId, Id: newId, ...payload, Name: inlineCatName.trim() };
+          setLocalCats(prev => [newItem, ...prev]);
+          setFormData(prev => ({ ...prev, categoryId: newId as string, sectionId: targetSecId || prev.sectionId }));
+          setInlineCatName('');
+          setIsAddingCatInline(false);
+          toast({ title: 'تمت إضافة الفئة بنجاح', description: `تم تعيين فئة "${newItem.name}".` });
+      } catch (err: any) {
+          toast({ variant: 'destructive', title: 'فشل إضافة الفئة', description: err.message });
+      } finally {
+          setIsSavingCat(false);
+      }
+  };
 
-    try {
-        let newCodeData: { code?: string } = {};
+  // Helper: إضافة مجموعة جديدة فوراً
+  const handleAddGroupInline = async () => {
+      if (!inlineGroupName.trim()) return;
+      setIsSavingGrp(true);
+      try {
+          const targetCatId = formData.categoryId || (localCats[0] ? (localCats[0].id || localCats[0].Id) : undefined);
+          const parentCat = localCats.find(c => (c.id || c.Id) === targetCatId);
+          const parentCode = parentCat?.code || parentCat?.Code || '01-1';
+          const siblings = localGrps.filter(g => (g.parentCategoryId || g.ParentCategoryId) === targetCatId);
+          const currentMax = siblings.length + 1;
+          let code = `${parentCode}-${currentMax}`;
+          if (getNextId && targetCatId) {
+              const nextNum = await getNextId(`itemGroupCode_${targetCatId}`, currentMax);
+              if (nextNum) code = `${parentCode}-${nextNum}`;
+          }
+          const payload: any = { name: inlineGroupName.trim(), code };
+          if (targetCatId) payload.parentCategoryId = targetCatId;
+          const newId = await dbAction('itemGroups', 'add', payload);
+          const newItem = { id: newId, Id: newId, ...payload, Name: inlineGroupName.trim() };
+          setLocalGrps(prev => [newItem, ...prev]);
+          setFormData(prev => ({ ...prev, itemGroupId: newId as string }));
+          setInlineGroupName('');
+          setIsAddingGroupInline(false);
+          toast({ title: 'تمت إضافة المجموعة بنجاح', description: `تم تعيين مجموعة "${newItem.name}".` });
+      } catch (err: any) {
+          toast({ variant: 'destructive', title: 'فشل إضافة المجموعة', description: err.message });
+      } finally {
+          setIsSavingGrp(false);
+      }
+  };
 
-        const calculateNextCodePart = (siblings: any[]) => {
-            if(siblings.length === 0) return 1;
-            const codes = siblings.map((i: any) => {
-                const parts = String(i.code || '0').split('-');
-                const lastPart = parts[parts.length - 1];
-                const num = parseInt(lastPart || '0', 10);
-                return isNaN(num) ? 0 : num;
-            });
-            return Math.max(...codes) + 1;
-        };
+  // Helper: إضافة ماركة فوراً
+  const handleAddBrandInline = async () => {
+      if (!inlineBrandName.trim()) return;
+      setIsSavingBrd(true);
+      try {
+          const newId = await dbAction('itemSubCategories1', 'add', { name: inlineBrandName.trim() });
+          const newItem = { id: newId, Id: newId, name: inlineBrandName.trim(), Name: inlineBrandName.trim() };
+          setLocalBrands(prev => [newItem, ...prev]);
+          setFormData(prev => ({ ...prev, subCategoryId1: newId as string }));
+          setInlineBrandName('');
+          setIsAddingBrandInline(false);
+          toast({ title: 'تمت إضافة الماركة بنجاح' });
+      } catch (err: any) {
+          toast({ variant: 'destructive', title: 'فشل إضافة الماركة', description: err.message });
+      } finally {
+          setIsSavingBrd(false);
+      }
+  };
 
-        if (level === 1) { 
-            const codes = itemSections.map(i => parseInt(i.code || '0', 10)).filter(n => !isNaN(n));
-            const currentMax = (codes.length > 0 ? Math.max(...codes) : 0) + 1;
-            
-            const nextNum = await getNextId('itemSectionCode', currentMax);
-            if (nextNum) newCodeData.code = String(nextNum).padStart(2, '0');
-        } else if (level === 2 && formData.sectionId) { 
-            const siblings = itemCategories.filter(c => c.sectionId === formData.sectionId);
-            const currentMax = calculateNextCodePart(siblings);
-            
-            const parent = itemSections.find(s => s.id === formData.sectionId);
-            const parentCode = parent?.code || '00';
-            
-            const nextNum = await getNextId(`itemCategoryCode_${formData.sectionId}`, currentMax);
-            if (nextNum) newCodeData.code = `${parentCode}-${nextNum}`;
-        } else if (level === 3 && formData.categoryId) { 
-            const siblings = itemGroups.filter(g => g.parentCategoryId === formData.categoryId);
-            const currentMax = calculateNextCodePart(siblings);
-            
-            const parent = itemCategories.find(c => c.id === formData.categoryId);
-            const parentCode = parent?.code || '00-0';
-            
-            const nextNum = await getNextId(`itemGroupCode_${formData.categoryId}`, currentMax);
-            if (nextNum) newCodeData.code = `${parentCode}-${nextNum}`;
-        }
-        
-        const finalData = { ...dataToAdd, ...newCodeData };
-        const newId = await dbAction(path, 'add', finalData);
-        
-        toast({ title: 'تمت الإضافة بنجاح', description: newCodeData.code ? `تم إنشاء الكود: ${newCodeData.code}` : undefined });
-        
-         if (level === 1) setFormData(prev => ({...prev, sectionId: newId as string}));
-         if (level === 2) setFormData(prev => ({...prev, categoryId: newId as string}));
-         if (level === 3) setFormData(prev => ({...prev, itemGroupId: newId as string}));
-         if (level === 4) setFormData(prev => ({...prev, subCategoryId1: newId as string}));
-         if (level === 5) setFormData(prev => ({...prev, subCategoryId2: newId as string}));
-    } catch (e) {
-        toast({ variant: 'destructive', title: 'فشل الحفظ'});
-    }
-};
-
+  // Helper: توليد التصنيفات القياسية بنقرة واحدة
+  const handleTriggerSeed = async () => {
+      setIsSeeding(true);
+      try {
+          const res = await fetch('/api/master-data/seed-categories', { method: 'POST' });
+          const json = await res.json();
+          if (json.success) {
+              toast({ title: 'تم التوليد بنجاح! 🚀', description: json.message });
+              // Refresh live data
+              const syncRes = await fetch('/api/db/sync', { cache: 'no-store' });
+              if (syncRes.ok) {
+                  const syncJson = await syncRes.json();
+                  if (syncJson.success && syncJson.data) {
+                      setLocalSecs(syncJson.data.itemSections || []);
+                      setLocalCats(syncJson.data.itemCategories || []);
+                      setLocalGrps(syncJson.data.itemGroups || []);
+                      setLocalBrands(syncJson.data.itemSubCategories1 || []);
+                  }
+              }
+          } else {
+              toast({ variant: 'destructive', title: 'فشل التوليد', description: json.error });
+          }
+      } catch (err: any) {
+          toast({ variant: 'destructive', title: 'خطأ', description: err.message });
+      } finally {
+          setIsSeeding(false);
+      }
+  };
 
   return (
-    <div className="space-y-4 py-2 pb-4 max-h-[70vh] overflow-y-auto pr-2">
+    <div className="space-y-4 py-2 pb-4 max-h-[75vh] overflow-y-auto pr-2">
       <div className="space-y-4">
         <div className="space-y-2">
-          <Label htmlFor="item-name">اسم الصنف</Label>
-          <Input id="item-name" value={formData.name} onChange={e => setFormData({ ...formData, name: e.target.value })} required />
+          <Label htmlFor="item-name" className="text-xs font-bold">اسم الصنف <span className="text-destructive">*</span></Label>
+          <Input id="item-name" value={formData.name} onChange={e => setFormData({ ...formData, name: e.target.value })} placeholder="مثال: كرياتين مونوهايدريت 300 جم" className="h-9 font-medium" required />
         </div>
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-          <div className="space-y-2">
-            <Label htmlFor="item-type">نوع الصنف</Label>
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+          <div className="space-y-1.5">
+            <Label htmlFor="item-type" className="text-xs font-medium">نوع الصنف</Label>
             <Select value={formData.itemType} onValueChange={(v: any) => setFormData({ ...formData, itemType: v })}>
-              <SelectTrigger id="item-type"><SelectValue/></SelectTrigger>
+              <SelectTrigger id="item-type" className="h-9 text-xs"><SelectValue/></SelectTrigger>
               <SelectContent>
                 <SelectItem value="standard">منتج عادي</SelectItem>
                 <SelectItem value="raw_material">مادة خام</SelectItem>
@@ -1429,14 +1572,14 @@ function ItemForm({ item, onSave, onClose, itemSections, itemCategories, itemGro
               </SelectContent>
             </Select>
           </div>
-          <div className="space-y-2">
-            <Label htmlFor="item-code">الباركود</Label>
-            <Input id="item-code" value={formData.code || ''} onChange={e => setFormData({ ...formData, code: e.target.value })} placeholder="اتركه فارغاً للتلقائي" />
+          <div className="space-y-1.5">
+            <Label htmlFor="item-code" className="text-xs font-medium">الباركود</Label>
+            <Input id="item-code" value={formData.code || ''} onChange={e => setFormData({ ...formData, code: e.target.value })} placeholder="تلقائي إذا ترك فارغاً" className="h-9 text-xs font-mono" />
           </div>
-          <div className="space-y-2">
-            <Label htmlFor="item-unit">الوحدة الأساسية</Label>
+          <div className="space-y-1.5">
+            <Label htmlFor="item-unit" className="text-xs font-medium">الوحدة الأساسية</Label>
             <Select value={formData.baseUnit} onValueChange={(v: any) => setFormData({ ...formData, baseUnit: v })}>
-              <SelectTrigger id="item-unit"><SelectValue/></SelectTrigger>
+              <SelectTrigger id="item-unit" className="h-9 text-xs"><SelectValue/></SelectTrigger>
               <SelectContent>
                 <SelectItem value="piece">قطعة</SelectItem>
                 <SelectItem value="kilo">كيلو</SelectItem>
@@ -1445,75 +1588,265 @@ function ItemForm({ item, onSave, onClose, itemSections, itemCategories, itemGro
               </SelectContent>
             </Select>
           </div>
-          <div className="space-y-2">
-            <Label htmlFor="item-rop">حد الطلب</Label>
-            <Input id="item-rop" type="number" value={formData.reorderPoint} onChange={e => setFormData({ ...formData, reorderPoint: Number(e.target.value) })} />
+          <div className="space-y-1.5">
+            <Label htmlFor="item-rop" className="text-xs font-medium">حد الطلب (الأمان)</Label>
+            <Input id="item-rop" type="number" value={formData.reorderPoint} onChange={e => setFormData({ ...formData, reorderPoint: Number(e.target.value) })} className="h-9 text-xs" />
           </div>
         </div>
-        <div className="grid grid-cols-2 gap-4">
-          <div className="space-y-2">
-            <Label htmlFor="item-cost">سعر التكلفة</Label>
+        <div className="grid grid-cols-2 gap-3">
+          <div className="space-y-1.5">
+            <Label htmlFor="item-cost" className="text-xs font-medium">سعر التكلفة (ج.م)</Label>
             <Input 
                 id="item-cost" 
                 type="number" 
                 value={formData.cost} 
                 onChange={e => setFormData({ ...formData, cost: Number(e.target.value) })} 
                 disabled={formData.itemType === 'manufactured'}
-                className={cn(formData.itemType === 'manufactured' && "bg-muted font-bold text-primary")}
+                className={cn("h-9 text-xs font-bold", formData.itemType === 'manufactured' && "bg-muted text-primary")}
             />
             {formData.itemType === 'manufactured' && <p className="text-[10px] text-muted-foreground">يتم احتسابه تلقائياً من المكونات.</p>}
           </div>
-          <div className="space-y-2">
-            <Label htmlFor="item-price">سعر البيع</Label>
-            <Input id="item-price" type="number" value={formData.price} onChange={e => setFormData({ ...formData, price: Number(e.target.value) })} />
+          <div className="space-y-1.5">
+            <Label htmlFor="item-price" className="text-xs font-medium">سعر البيع للجمهور (ج.م)</Label>
+            <Input id="item-price" type="number" value={formData.price} onChange={e => setFormData({ ...formData, price: Number(e.target.value) })} className="h-9 text-xs font-bold text-emerald-600" />
           </div>
         </div>
       </div>
-      <div className="space-y-2 pt-4">
-        <h4 className="font-medium text-sm">التصنيفات</h4>
+
+      {/* تصنيفات الأصناف المحدثة والمطورة بالكامل */}
+      <div className="space-y-3 pt-3">
+        <div className="flex items-center justify-between">
+            <h4 className="font-bold text-xs text-foreground flex items-center gap-1.5">
+                <FolderTree className="h-4 w-4 text-primary" />
+                شجرة التصنيفات والأقسام
+            </h4>
+            <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={handleTriggerSeed}
+                disabled={isSeeding}
+                className="h-7 text-[11px] font-bold gap-1 text-primary border-primary/30 hover:bg-primary/10 shadow-sm"
+                title="توليد شجرة التصنيفات المقترحة للمكملات والرياضة"
+            >
+                {isSeeding ? <Loader2 className="h-3 w-3 animate-spin" /> : <Save className="h-3 w-3 text-primary" />}
+                ⚡ توليد التصنيفات المقترحة
+            </Button>
+        </div>
         <Separator />
       </div>
-      <div className="space-y-4 p-4 border rounded-lg bg-muted/50">
-        <div className="space-y-2">
-            <Label>الفئة (م1)</Label>
-            <div className="flex gap-2">
-                <Combobox options={sectionOptions} value={formData.sectionId || ''} onValueChange={v => setFormData({ ...formData, sectionId: v, categoryId: '', itemGroupId: '' })} placeholder="اختر فئة..." emptyMessage="لا يوجد." className="flex-1"/>
-                <Button variant="ghost" size="icon" onClick={() => setIsQuickAddSectionOpen(true)}><PlusCircle className="h-5 w-5"/></Button>
+
+      <div className="space-y-3 p-3.5 border rounded-xl bg-card shadow-sm">
+        {/* 1. القسم الرئيسي */}
+        <div className="space-y-1.5">
+            <div className="flex items-center justify-between">
+                <Label className="text-xs font-bold text-foreground">
+                    القسم الرئيسي (Section) - مستوى 1
+                </Label>
+                <Button 
+                    type="button"
+                    variant="ghost" 
+                    size="sm" 
+                    onClick={() => setIsAddingSectionInline(!isAddingSectionInline)}
+                    className="h-6 text-[11px] gap-1 px-2 font-bold text-primary hover:bg-primary/10"
+                >
+                    <PlusCircle className="h-3 w-3" />
+                    {isAddingSectionInline ? 'إلغاء' : '+ إضافة قسم جديد'}
+                </Button>
             </div>
-        </div>
-         <div className="space-y-2">
-            <Label>القسم (م2)</Label>
-             <div className="flex gap-2">
-                <Combobox options={categoryOptions} value={formData.categoryId || ''} onValueChange={v => setFormData({ ...formData, categoryId: v, itemGroupId: '' })} placeholder="اختر قسماً..." emptyMessage="اختر فئة أولاً" disabled={!formData.sectionId} className="flex-1"/>
-                <Button variant="ghost" size="icon" onClick={() => setIsQuickAddCategoryOpen(true)} disabled={!formData.sectionId}><PlusCircle className="h-5 w-5"/></Button>
-            </div>
-        </div>
-         <div className="space-y-2">
-            <Label>المجموعة (م3)</Label>
-            <div className="flex gap-2">
-                <Combobox options={itemGroupOptions} value={formData.itemGroupId || ''} onValueChange={v => setFormData({ ...formData, itemGroupId: v })} placeholder="اختر مجموعة..." emptyMessage="اختر قسماً أولاً" disabled={!formData.categoryId} className="flex-1"/>
-                <Button variant="ghost" size="icon" onClick={() => setIsQuickAddGroupOpen(true)} disabled={!formData.categoryId}><PlusCircle className="h-5 w-5"/></Button>
-            </div>
-        </div>
-        <div className="grid grid-cols-2 gap-4 pt-4 border-t">
-            <div className="space-y-2">
-                <Label>مجموعة فرعية 1</Label>
-                <div className="flex gap-2">
-                    <Combobox options={subCategory1Options} value={formData.subCategoryId1 || ''} onValueChange={v => setFormData({ ...formData, subCategoryId1: v })} placeholder="اختر..." emptyMessage="لا يوجد." className="flex-1"/>
-                    <Button variant="ghost" size="icon" onClick={() => setIsQuickAddSubCategory1Open(true)}><PlusCircle className="h-5 w-5"/></Button>
+            {isAddingSectionInline && (
+                <div className="p-2 bg-primary/5 border border-primary/30 rounded-lg flex items-center gap-2 animate-in fade-in-50">
+                    <Input 
+                        placeholder="اسم القسم الجديد (مثال: مكملات غذائية)..."
+                        value={inlineSectionName}
+                        onChange={e => setInlineSectionName(e.target.value)}
+                        className="h-7 text-xs bg-background font-medium"
+                        onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); handleAddSectionInline(); } }}
+                        autoFocus
+                    />
+                    <Button 
+                        type="button" 
+                        size="sm" 
+                        className="h-7 text-xs px-2.5 font-bold gap-1 shrink-0"
+                        onClick={handleAddSectionInline}
+                        disabled={!inlineSectionName.trim() || isSavingSec}
+                    >
+                        {isSavingSec ? <Loader2 className="h-3 w-3 animate-spin" /> : <Check className="h-3 w-3" />}
+                        حفظ
+                    </Button>
                 </div>
+            )}
+            <Combobox 
+                options={sectionOptions} 
+                value={formData.sectionId || ''} 
+                onValueChange={v => setFormData({ ...formData, sectionId: v, categoryId: '', itemGroupId: '' })} 
+                placeholder="اختر القسم الرئيسي..." 
+                emptyMessage="لا توجد أقسام مسجلة." 
+                className="w-full text-xs"
+            />
+        </div>
+
+        {/* 2. الفئة / التصنيف */}
+        <div className="space-y-1.5 pt-2 border-t">
+            <div className="flex items-center justify-between">
+                <Label className="text-xs font-bold text-foreground">
+                    الفئة / التصنيف (Category) - مستوى 2
+                </Label>
+                <Button 
+                    type="button"
+                    variant="ghost" 
+                    size="sm" 
+                    onClick={() => setIsAddingCatInline(!isAddingCatInline)}
+                    className="h-6 text-[11px] gap-1 px-2 font-bold text-primary hover:bg-primary/10"
+                >
+                    <PlusCircle className="h-3 w-3" />
+                    {isAddingCatInline ? 'إلغاء' : '+ إضافة فئة جديدة'}
+                </Button>
             </div>
-            <div className="space-y-2">
-                <Label>مجموعة فرعية 2</Label>
-                 <div className="flex gap-2">
-                    <Combobox options={subCategory2Options} value={formData.subCategoryId2 || ''} onValueChange={v => setFormData({ ...formData, subCategoryId2: v })} placeholder="اختر..." emptyMessage="لا يوجد." className="flex-1"/>
-                    <Button variant="ghost" size="icon" onClick={() => setIsQuickAddSubCategory2Open(true)}><PlusCircle className="h-5 w-5"/></Button>
+            {isAddingCatInline && (
+                <div className="p-2 bg-primary/5 border border-primary/30 rounded-lg flex items-center gap-2 animate-in fade-in-50">
+                    <Input 
+                        placeholder="اسم الفئة الجديدة (مثال: كرياتين وطاقة)..."
+                        value={inlineCatName}
+                        onChange={e => setInlineCatName(e.target.value)}
+                        className="h-7 text-xs bg-background font-medium"
+                        onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); handleAddCatInline(); } }}
+                        autoFocus
+                    />
+                    <Button 
+                        type="button" 
+                        size="sm" 
+                        className="h-7 text-xs px-2.5 font-bold gap-1 shrink-0"
+                        onClick={handleAddCatInline}
+                        disabled={!inlineCatName.trim() || isSavingCat}
+                    >
+                        {isSavingCat ? <Loader2 className="h-3 w-3 animate-spin" /> : <Check className="h-3 w-3" />}
+                        حفظ
+                    </Button>
                 </div>
+            )}
+            <Combobox 
+                options={categoryOptions} 
+                value={formData.categoryId || ''} 
+                onValueChange={v => setFormData({ ...formData, categoryId: v, itemGroupId: '' })} 
+                placeholder="اختر الفئة..." 
+                emptyMessage="لا توجد فئات مطابقة." 
+                className="w-full text-xs"
+            />
+        </div>
+
+        {/* 3. المجموعة العامة */}
+        <div className="space-y-1.5 pt-2 border-t">
+            <div className="flex items-center justify-between">
+                <Label className="text-xs font-bold text-foreground">
+                    المجموعة العامة (Item Group) - مستوى 3
+                </Label>
+                <Button 
+                    type="button"
+                    variant="ghost" 
+                    size="sm" 
+                    onClick={() => setIsAddingGroupInline(!isAddingGroupInline)}
+                    className="h-6 text-[11px] gap-1 px-2 font-bold text-primary hover:bg-primary/10"
+                >
+                    <PlusCircle className="h-3 w-3" />
+                    {isAddingGroupInline ? 'إلغاء' : '+ إضافة مجموعة جديدة'}
+                </Button>
+            </div>
+            {isAddingGroupInline && (
+                <div className="p-2 bg-primary/5 border border-primary/30 rounded-lg flex items-center gap-2 animate-in fade-in-50">
+                    <Input 
+                        placeholder="اسم المجموعة الجديدة (مثال: كرياتين مونوهايدريت)..."
+                        value={inlineGroupName}
+                        onChange={e => setInlineGroupName(e.target.value)}
+                        className="h-7 text-xs bg-background font-medium"
+                        onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); handleAddGroupInline(); } }}
+                        autoFocus
+                    />
+                    <Button 
+                        type="button" 
+                        size="sm" 
+                        className="h-7 text-xs px-2.5 font-bold gap-1 shrink-0"
+                        onClick={handleAddGroupInline}
+                        disabled={!inlineGroupName.trim() || isSavingGrp}
+                    >
+                        {isSavingGrp ? <Loader2 className="h-3 w-3 animate-spin" /> : <Check className="h-3 w-3" />}
+                        حفظ
+                    </Button>
+                </div>
+            )}
+            <Combobox 
+                options={itemGroupOptions} 
+                value={formData.itemGroupId || ''} 
+                onValueChange={v => setFormData({ ...formData, itemGroupId: v })} 
+                placeholder="اختر المجموعة..." 
+                emptyMessage="لا توجد مجموعات." 
+                className="w-full text-xs"
+            />
+        </div>
+
+        {/* 4 & 5. الماركة والموديل */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2 border-t">
+            <div className="space-y-1.5">
+                <div className="flex items-center justify-between">
+                    <Label className="text-xs font-bold text-foreground">الماركة / براند (UDF1)</Label>
+                    <Button 
+                        type="button"
+                        variant="ghost" 
+                        size="sm" 
+                        onClick={() => setIsAddingBrandInline(!isAddingBrandInline)}
+                        className="h-5 text-[10px] gap-0.5 px-1.5 font-bold text-primary hover:bg-primary/10"
+                    >
+                        <PlusCircle className="h-2.5 w-2.5" />
+                        {isAddingBrandInline ? 'إلغاء' : '+ ماركة'}
+                    </Button>
+                </div>
+                {isAddingBrandInline && (
+                    <div className="p-1.5 bg-primary/5 border border-primary/30 rounded flex items-center gap-1.5 animate-in fade-in-50">
+                        <Input 
+                            placeholder="اسم الماركة..."
+                            value={inlineBrandName}
+                            onChange={e => setInlineBrandName(e.target.value)}
+                            className="h-6 text-[11px] bg-background font-medium"
+                            onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); handleAddBrandInline(); } }}
+                            autoFocus
+                        />
+                        <Button 
+                            type="button" 
+                            size="sm" 
+                            className="h-6 text-[11px] px-2 font-bold shrink-0"
+                            onClick={handleAddBrandInline}
+                            disabled={!inlineBrandName.trim() || isSavingBrd}
+                        >
+                            حفظ
+                        </Button>
+                    </div>
+                )}
+                <Combobox 
+                    options={subCategory1Options} 
+                    value={formData.subCategoryId1 || ''} 
+                    onValueChange={v => setFormData({ ...formData, subCategoryId1: v })} 
+                    placeholder="اختر الماركة..." 
+                    emptyMessage="لا توجد ماركات." 
+                    className="w-full text-xs"
+                />
+            </div>
+
+            <div className="space-y-1.5">
+                <Label className="text-xs font-bold text-foreground">الموديل / تصنيف فرعي 2 (UDF2)</Label>
+                <Combobox 
+                    options={subCategory2Options} 
+                    value={formData.subCategoryId2 || ''} 
+                    onValueChange={v => setFormData({ ...formData, subCategoryId2: v })} 
+                    placeholder="اختر الموديل..." 
+                    emptyMessage="لا يوجد." 
+                    className="w-full text-xs"
+                />
             </div>
         </div>
       </div>
-      <div className="space-y-2 pt-4">
-        <h4 className="font-medium text-sm">إعدادات متقدمة</h4>
+
+      <div className="space-y-2 pt-2">
+        <h4 className="font-bold text-xs text-foreground">إعدادات المخزن والوحدات الثانوية</h4>
         <Separator />
       </div>
       <div className="space-y-6 p-4 border rounded-lg bg-muted/50">
@@ -1559,11 +1892,6 @@ function ItemForm({ item, onSave, onClose, itemSections, itemCategories, itemGro
               <Combobox options={binOptions} value={formData.defaultBinId || ''} onValueChange={v => setFormData({ ...formData, defaultBinId: v })} placeholder="اختر قسمًا..." emptyMessage="لا توجد أقسام معرفة."/>
         </div>
       </div>
-        <QuickAddDialog open={isQuickAddSectionOpen} onOpenChange={setIsQuickAddSectionOpen} onConfirm={(name) => handleQuickAdd(1, name)} title="إضافة فئة جديدة" label="اسم فئة (م1)" />
-        <QuickAddDialog open={isQuickAddCategoryOpen} onOpenChange={setIsQuickAddCategoryOpen} onConfirm={(name) => handleQuickAdd(2, name)} title="إضافة قسم جديد" label="اسم قسم (م2)" />
-        <QuickAddDialog open={isQuickAddGroupOpen} onOpenChange={setIsQuickAddGroupOpen} onConfirm={(name) => handleQuickAdd(3, name)} title="إضافة مجموعة جديدة" label="اسم مجموعة (م3)" />
-        <QuickAddDialog open={isQuickAddSubCategory1Open} onOpenChange={setIsQuickAddSubCategory1Open} onConfirm={(name) => handleQuickAdd(4, name)} title="إضافة مجموعة فرعية 1" label="اسم المجموعة" />
-        <QuickAddDialog open={isQuickAddSubCategory2Open} onOpenChange={setIsQuickAddSubCategory2Open} onConfirm={(name) => handleQuickAdd(5, name)} title="إضافة مجموعة فرعية 2" label="اسم المجموعة" />
 
       <div className="flex justify-end pt-4">
         <Button onClick={handleSubmit}>حفظ الصنف</Button>

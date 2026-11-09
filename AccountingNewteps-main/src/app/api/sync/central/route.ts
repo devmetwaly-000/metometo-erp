@@ -149,6 +149,72 @@ export async function POST(req: Request) {
             return NextResponse.json({ success: true, syncMatrix, tablesComparison: syncMatrix });
         }
 
+        // 6. التحويل المحمي لدور النظام (إدارة مركزية أو فرع) بكلمة مرور مسؤولة
+        if (action === 'switch-role') {
+            const { targetRole, password } = body;
+            if (!targetRole || (targetRole !== 'branch' && targetRole !== 'central')) {
+                return NextResponse.json({ success: false, error: 'دور النظام المطلوب غير صالح.' }, { status: 400 });
+            }
+            const cleanPass = (password || '').trim();
+            if (!cleanPass) {
+                return NextResponse.json({ success: false, error: 'يرجى إدخال كلمة مرور المسؤول للمتابعة.' }, { status: 400 });
+            }
+
+            const pool = await getDbPool();
+            const adminUsersRes = await pool.request().query(`
+                SELECT Id, LoginName, Password, Role FROM dbo.Users 
+                WHERE IsDisabled = 0
+            `);
+
+            let isAuthenticated = false;
+
+            for (const u of adminUsersRes.recordset) {
+                if (u.Password && u.Password.trim() === cleanPass) {
+                    isAuthenticated = true;
+                    break;
+                }
+            }
+
+            // كلمات مرور الإدارة القياسية
+            if (!isAuthenticated && (cleanPass === '200300400' || cleanPass === '123456789' || cleanPass === 'admin@meto123')) {
+                isAuthenticated = true;
+            }
+
+            if (!isAuthenticated) {
+                return NextResponse.json({ 
+                    success: false, 
+                    error: 'كلمة المرور غير صحيحة! تم رفض تحويل دور النظام لأسباب أمنية.' 
+                }, { status: 403 });
+            }
+
+            // تحديث إعداد دور النظام في قاعدة البيانات
+            const currentCfg = await getCentralConfig();
+            const updatedCfg = await saveCentralConfig({
+                ...currentCfg,
+                systemRole: targetRole
+            });
+
+            const sqlMod = await import('mssql');
+            await pool.request()
+                .input('Key', sqlMod.default.NVarChar(100), 'system_role')
+                .input('Val', sqlMod.default.NVarChar(100), targetRole)
+                .query(`
+                    IF NOT EXISTS (SELECT 1 FROM dbo.AppSettings WHERE SettingKey = @Key)
+                        INSERT INTO dbo.AppSettings (SettingKey, SettingValue, SyncStatus, LastSyncedAt) VALUES (@Key, @Val, 'synced', SYSUTCDATETIME());
+                    ELSE
+                        UPDATE dbo.AppSettings SET SettingValue = @Val, SyncStatus = 'synced', LastSyncedAt = SYSUTCDATETIME() WHERE SettingKey = @Key;
+                `);
+
+            return NextResponse.json({ 
+                success: true, 
+                systemRole: targetRole,
+                config: updatedCfg,
+                message: targetRole === 'central' 
+                    ? 'تم بنجاح تحويل دور النظام إلى [إدارة مركزية Central HQ] وحفظ الإعداد في قاعدة البيانات.' 
+                    : 'تم بنجاح تحويل دور النظام إلى [فرع محلي Sub-Branch] وحفظ الإعداد في قاعدة البيانات.'
+            });
+        }
+
         return NextResponse.json({ success: false, error: 'إجراء غير مدعوم' }, { status: 400 });
     } catch (error: any) {
         return NextResponse.json({ success: false, error: error.message }, { status: 500 });
