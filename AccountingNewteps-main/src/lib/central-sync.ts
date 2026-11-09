@@ -241,9 +241,9 @@ export async function saveCentralConfig(config: Partial<CentralSyncConfig>): Pro
         .input('Val', sql.NVarChar(sql.MAX), JSON.stringify(updated))
         .query(`
             IF NOT EXISTS (SELECT 1 FROM dbo.AppSettings WHERE SettingKey = @Key)
-                INSERT INTO dbo.AppSettings (SettingKey, SettingValue) VALUES (@Key, @Val);
+                INSERT INTO dbo.AppSettings (SettingKey, SettingValue, SyncStatus, LastSyncedAt) VALUES (@Key, @Val, 'synced', SYSUTCDATETIME());
             ELSE
-                UPDATE dbo.AppSettings SET SettingValue = @Val WHERE SettingKey = @Key;
+                UPDATE dbo.AppSettings SET SettingValue = @Val, SyncStatus = 'synced', LastSyncedAt = SYSUTCDATETIME() WHERE SettingKey = @Key;
         `);
 
     return updated;
@@ -721,6 +721,9 @@ export async function runFullSync(options?: {
                                 if (tableName === 'Expenses' && col === 'ExpenseType' && !val) {
                                     val = 'عام';
                                 }
+                                if ((tableName === 'PurchaseReturns' || tableName === 'PurchaseInvoices') && col === 'SupplierName' && !val) {
+                                    val = 'مورد عام';
+                                }
                                 centralReq.input(col, val);
                             }
 
@@ -754,9 +757,14 @@ export async function runFullSync(options?: {
                                 `);
                             } else {
                                 // التنفيذ الذكي للجداول العادية: إذا كان موجوداً قم بتحديثه، وإذا لم يكن موجوداً قم بإضافته
+                                const isUsersTable = tableName === 'Users';
+                                const checkCondition = isUsersTable 
+                                    ? `([Id] = @Id OR [LoginName] = @LoginName)`
+                                    : `[${idCol}] = @${idCol}`;
+
                                 const updateSet = colNames.filter(c => c !== idCol).map(c => `[${c}] = @${c}`).join(', ');
                                 await centralReq.query(`
-                                    IF EXISTS (SELECT 1 FROM dbo.[${tableName}] WHERE [${idCol}] = @${idCol})
+                                    IF EXISTS (SELECT 1 FROM dbo.[${tableName}] WHERE ${checkCondition})
                                     BEGIN
                                         UPDATE dbo.[${tableName}]
                                         SET ${updateSet}, 
@@ -764,7 +772,7 @@ export async function runFullSync(options?: {
                                             [BranchName] = N'${config.currentBranchName}', 
                                             [SyncStatus] = 'synced', 
                                             [LastSyncedAt] = SYSUTCDATETIME()
-                                        WHERE [${idCol}] = @${idCol};
+                                        WHERE ${checkCondition};
                                     END
                                     ELSE
                                     BEGIN

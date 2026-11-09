@@ -14,10 +14,10 @@ import { useToast } from "@/hooks/use-toast";
 import { useData } from "@/contexts/data-provider";
 import { 
     Server, RefreshCw, CheckCircle2, AlertTriangle, ShieldCheck, 
-    Database, Network, ArrowUpRight, ArrowDownLeft, Clock, Zap, Loader2, Save,
-    ShoppingCart, Truck, Banknote, CreditCard, Receipt, Boxes, Monitor, Activity, Sparkles, Check,
-    Undo2, ArrowLeftRight, Wallet, Users, UserCheck, Terminal, Search, Layers, Filter, CheckCircle,
-    HardDrive, Cpu, AlertCircle, FileText, ChevronRight, Play, CheckCheck, X
+    Database, ArrowUpRight, ArrowDownLeft, Clock, Zap, Loader2, Save,
+    ShoppingCart, Truck, Banknote, CreditCard, Receipt, Boxes, Activity, Sparkles,
+    ArrowLeftRight, Wallet, Users, UserCheck, Terminal, Search, CheckCircle,
+    HardDrive, Cpu, AlertCircle, FileText, CheckCheck, X, ListChecks, ShieldAlert
 } from "lucide-react";
 import { CentralSyncConfig, TableSyncMatrixItem, TablesSyncMatrixResponse } from '@/lib/central-sync';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -83,8 +83,8 @@ export default function CentralSyncSettingsPage() {
     const [isInitializingDb, setIsInitializingDb] = useState(false);
     const [initDbResult, setInitDbResult] = useState<{ success: boolean; message: string; tablesCount?: number; error?: string } | null>(null);
 
-    // Active Tab: 'matrix' (المصفوفة والجداول) | 'config' (الإعدادات والتأسيس) | 'queue' (طابور الحركات والسجل)
-    const [activeTab, setActiveTab] = useState<'matrix' | 'config' | 'queue'>('matrix');
+    // Active Tab: 'matrix' | 'queue' | 'config'
+    const [activeTab, setActiveTab] = useState<'matrix' | 'queue' | 'config'>('matrix');
 
     // Matrix Filters State
     const [syncMatrix, setSyncMatrix] = useState<TablesSyncMatrixResponse | null>(null);
@@ -94,8 +94,9 @@ export default function CentralSyncSettingsPage() {
     const [tableDirectionFilter, setTableDirectionFilter] = useState<'all' | 'push' | 'pull' | 'bidirectional'>('all');
     const [tableStatusFilter, setTableStatusFilter] = useState<'all' | 'pending' | 'synced' | 'has_data'>('all');
 
-    // Load initial settings and matrix from API
-    const loadSettings = async (isInitial: boolean = false) => {
+    // Load Central Sync configuration and sync status
+    const loadSettings = async (isInitial = false) => {
+        if (isInitial) setIsLoading(true);
         try {
             const res = await fetch('/api/sync/central');
             const data = await res.json();
@@ -133,8 +134,8 @@ export default function CentralSyncSettingsPage() {
             if (data.success && data.syncMatrix) {
                 setSyncMatrix(data.syncMatrix);
                 toast({
-                    title: "تم فحص وتحديث مصفوفة المزامنة",
-                    description: `تم تحديث توقيتات وتعديلات ${data.syncMatrix.tables.length} جدولاً بالكامل.`
+                    title: "تم تحديث مصفوفة المزامنة",
+                    description: `تم فحص توقيتات وسجلات ${data.syncMatrix.tables.length} جدولاً بنجاح.`
                 });
             }
         } catch (err: any) {
@@ -157,7 +158,7 @@ export default function CentralSyncSettingsPage() {
         if (activeTab !== 'queue') return;
         const timer = setInterval(() => {
             loadSettings(false);
-        }, 20000);
+        }, 15000);
         return () => clearInterval(timer);
     }, [activeTab]);
 
@@ -334,82 +335,86 @@ export default function CentralSyncSettingsPage() {
 
     // Helper: format timestamp into Arabic readable format
     const formatTimestamp = (ts: string | null) => {
-        if (!ts) return <span className="text-muted-foreground text-[11px]">-</span>;
+        if (!ts) return <span className="text-muted-foreground/60 text-xs">-</span>;
         try {
             const d = new Date(ts);
             return (
-                <div className="flex flex-col text-[11px] leading-tight font-mono">
+                <div className="flex flex-col text-[11px] leading-tight font-mono text-center">
                     <span className="font-semibold text-foreground">{d.toLocaleDateString('ar-EG')}</span>
-                    <span className="text-muted-foreground text-[10px]">{d.toLocaleTimeString('ar-EG', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}</span>
+                    <span className="text-muted-foreground text-[10px]">{d.toLocaleTimeString('ar-EG', { hour: '2-digit', minute: '2-digit' })}</span>
                 </div>
             );
         } catch {
-            return <span className="text-muted-foreground text-[11px]">{ts}</span>;
+            return <span className="text-muted-foreground text-xs">{ts}</span>;
         }
     };
 
-    // Helper: render sync direction badge
+    // Helper: render sync direction badge (NO PURPLE - uses Amber, Sky, Teal)
     const renderDirectionBadge = (dir: 'push' | 'pull' | 'bidirectional') => {
         if (dir === 'push') {
             return (
-                <Badge variant="outline" className="text-[10px] font-bold text-amber-700 bg-amber-500/10 border-amber-500/30 gap-1">
+                <Badge variant="outline" className="text-[10px] font-semibold text-amber-700 dark:text-amber-300 bg-amber-500/10 border-amber-500/30 gap-1 px-2 py-0.5">
                     <ArrowUpRight className="h-3 w-3" /> رفع للإدارة
                 </Badge>
             );
         }
         if (dir === 'pull') {
             return (
-                <Badge variant="outline" className="text-[10px] font-bold text-blue-700 bg-blue-500/10 border-blue-500/30 gap-1">
+                <Badge variant="outline" className="text-[10px] font-semibold text-sky-700 dark:text-sky-300 bg-sky-500/10 border-sky-500/30 gap-1 px-2 py-0.5">
                     <ArrowDownLeft className="h-3 w-3" /> سحب للفرع
                 </Badge>
             );
         }
         return (
-            <Badge variant="outline" className="text-[10px] font-bold text-purple-700 bg-purple-500/10 border-purple-500/30 gap-1">
-                <ArrowLeftRight className="h-3 w-3" /> متبادل 🔁
+            <Badge variant="outline" className="text-[10px] font-semibold text-teal-700 dark:text-teal-300 bg-teal-500/10 border-teal-500/30 gap-1 px-2 py-0.5">
+                <ArrowLeftRight className="h-3 w-3" /> متبادل
             </Badge>
         );
     };
 
-    // Helper: render table sync status badge
+    // Helper: render table sync status badge (NO PURPLE - uses Emerald, Amber, Sky, Cyan)
     const renderStatusBadge = (t: TableSyncMatrixItem) => {
         switch (t.syncState) {
             case 'synced':
                 return (
-                    <Badge className="bg-emerald-600 hover:bg-emerald-700 text-white gap-1 text-[11px]">
-                        <CheckCircle2 className="h-3 w-3" /> متطابق ومحدث
-                    </Badge>
+                    <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-semibold bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/25">
+                        <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                        متطابق ومحدث
+                    </span>
                 );
             case 'pending_push':
                 return (
-                    <Badge className="bg-amber-600 hover:bg-amber-700 text-white gap-1 text-[11px]">
-                        <ArrowUpRight className="h-3 w-3" /> {t.pendingPushCount.toLocaleString()} بانتظار الرفع
-                    </Badge>
+                    <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-bold bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/30">
+                        <ArrowUpRight className="h-3 w-3" />
+                        {t.pendingPushCount.toLocaleString()} بانتظار الرفع
+                    </span>
                 );
             case 'pending_pull':
                 return (
-                    <Badge className="bg-blue-600 hover:bg-blue-700 text-white gap-1 text-[11px]">
-                        <ArrowDownLeft className="h-3 w-3" /> {t.pendingPullCount.toLocaleString()} تحديثات بالإدارة
-                    </Badge>
+                    <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-bold bg-sky-500/10 text-sky-600 dark:text-sky-400 border border-sky-500/30">
+                        <ArrowDownLeft className="h-3 w-3" />
+                        {t.pendingPullCount.toLocaleString()} سحب معلق
+                    </span>
                 );
             case 'pending_both':
                 return (
-                    <Badge className="bg-purple-600 hover:bg-purple-700 text-white gap-1 text-[11px]">
-                        <ArrowLeftRight className="h-3 w-3" /> رفع ({t.pendingPushCount}) وسحب ({t.pendingPullCount})
-                    </Badge>
+                    <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-bold bg-cyan-500/10 text-cyan-600 dark:text-cyan-400 border border-cyan-500/30">
+                        <ArrowLeftRight className="h-3 w-3" />
+                        رفع ({t.pendingPushCount}) وسحب ({t.pendingPullCount})
+                    </span>
                 );
             case 'empty':
                 return (
-                    <Badge variant="outline" className="text-muted-foreground text-[10px]">
-                        لا توجد حركات (0)
-                    </Badge>
+                    <span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] text-muted-foreground bg-muted/40 font-medium">
+                        لا حركات (0)
+                    </span>
                 );
             case 'unreachable':
             default:
                 return (
-                    <Badge variant="destructive" className="text-[10px]">
+                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-medium bg-rose-500/10 text-rose-600 border border-rose-500/20">
                         السيرفر غير متصل
-                    </Badge>
+                    </span>
                 );
         }
     };
@@ -446,11 +451,16 @@ export default function CentralSyncSettingsPage() {
         });
     }, [syncMatrix, tableSearch, tableCategoryFilter, tableDirectionFilter, tableStatusFilter]);
 
+    // Tables with pending sync operations (Used in the Queue tab)
+    const pendingTablesList = useMemo(() => {
+        return (syncMatrix?.tables || []).filter(t => t.pendingPushCount > 0 || t.pendingPullCount > 0);
+    }, [syncMatrix]);
+
     if (isLoading) {
         return (
             <div className="flex flex-col justify-center items-center py-32 gap-3">
                 <Loader2 className="h-10 w-10 animate-spin text-primary" />
-                <p className="text-sm text-muted-foreground animate-pulse">جاري تحميل لوحة المزامنة وإحصائيات الربط السحابي...</p>
+                <p className="text-sm text-muted-foreground animate-pulse font-medium">جاري فحص حالة المزامنة ومطابقة السجلات مع الإدارة...</p>
             </div>
         );
     }
@@ -465,69 +475,64 @@ export default function CentralSyncSettingsPage() {
                         size="sm" 
                         onClick={handleTestConnection} 
                         disabled={isTesting}
-                        className="gap-1.5 text-xs font-semibold"
+                        className="gap-1.5 text-xs font-semibold h-8"
                     >
                         {isTesting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Zap className="h-3.5 w-3.5 text-amber-500" />}
-                        فحص الاتصال الفوري
+                        فحص الاتصال
                     </Button>
                     <Button 
                         variant="outline" 
                         size="sm" 
                         onClick={handleRefreshMatrix} 
                         disabled={isRefreshingMatrix}
-                        className="gap-1.5 text-xs font-semibold"
+                        className="gap-1.5 text-xs font-semibold h-8"
                     >
-                        {isRefreshingMatrix ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5 text-blue-500" />}
-                        تحديث الفحص اللحظي
+                        {isRefreshingMatrix ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5 text-sky-500" />}
+                        تحديث الفحص
                     </Button>
                     <Button 
                         size="sm" 
-                        className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold gap-1.5 text-xs shadow-md"
+                        className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold gap-1.5 text-xs shadow-md h-8"
                         onClick={() => handleSyncNow('all')}
                         disabled={isSyncing}
                     >
                         {isSyncing && syncingMode === 'all' ? <Loader2 className="h-3.5 w-3.5 animate-spin ml-1" /> : <RefreshCw className="h-3.5 w-3.5 ml-1" />}
-                        مزامنة شاملة الآن 🔁
+                        مزامنة شاملة الآن
                     </Button>
                 </div>
             </PageHeader>
 
-            <main className="flex flex-1 flex-col gap-6 p-4 md:p-6 max-w-7xl mx-auto w-full">
+            <main className="flex flex-1 flex-col gap-5 p-4 md:p-6 max-w-7xl mx-auto w-full">
                 
-                {/* 2. Top Unified Command Ribbon (شريط القيادة والاتصال الحي الموحد) */}
-                <div className="rounded-2xl border bg-gradient-to-r from-card via-card/95 to-muted/30 p-5 shadow-sm relative overflow-hidden">
-                    <div className="absolute top-0 right-0 w-32 h-32 bg-primary/5 rounded-full blur-2xl -mr-10 -mt-10 pointer-events-none" />
-                    
-                    <div className="grid grid-cols-1 md:grid-cols-12 gap-5 items-center">
+                {/* 2. Top Unified Executive Dashboard Banner */}
+                <div className="rounded-xl border bg-card p-4 shadow-sm relative overflow-hidden">
+                    <div className="grid grid-cols-1 md:grid-cols-12 gap-4 items-center">
                         {/* Branch Identity */}
-                        <div className="md:col-span-4 space-y-1.5 border-b md:border-b-0 md:border-l md:pl-4 pb-3 md:pb-0">
+                        <div className="md:col-span-4 space-y-1 md:border-l md:pl-4">
                             <div className="flex items-center gap-2">
-                                <Badge className="bg-primary text-primary-foreground font-bold px-2.5 py-0.5 text-xs gap-1 shadow-sm">
-                                    <Database className="h-3.5 w-3.5" />
-                                    الفرع النشط
-                                </Badge>
-                                <span className="font-mono text-xs font-bold text-muted-foreground bg-muted px-2 py-0.5 rounded">
-                                    كود: {config.currentBranchCode}
+                                <span className="font-mono text-xs font-bold px-2 py-0.5 rounded bg-primary/10 text-primary border border-primary/20">
+                                    فرع #{config.currentBranchCode}
                                 </span>
+                                <span className="text-xs text-muted-foreground font-medium">محطة فرعية نشطة</span>
                             </div>
                             <h2 className="text-lg font-black text-foreground tracking-tight">
                                 {config.currentBranchName}
                             </h2>
-                            <p className="text-xs text-muted-foreground">
-                                المزامنة الذكية قائمة على الطابع الزمني <strong>(UpdatedAt)</strong> ومبدأ <strong>الـ UPSERT</strong> لضمان سلامة حركات الفروع.
+                            <p className="text-[11px] text-muted-foreground">
+                                مطابقة آلية فورية لجميع الجداول عبر مفاتيح الربط ومحددات الفروع.
                             </p>
                         </div>
 
                         {/* Central Server Live Status */}
-                        <div className="md:col-span-4 space-y-1.5 border-b md:border-b-0 md:border-l md:pl-4 pb-3 md:pb-0">
+                        <div className="md:col-span-4 space-y-1 md:border-l md:pl-4">
                             <div className="flex items-center justify-between">
                                 <span className="text-xs text-muted-foreground flex items-center gap-1.5 font-semibold">
-                                    <Server className="h-3.5 w-3.5 text-primary" />
-                                    السيرفر المركزي للإدارة
+                                    <Server className="h-3.5 w-3.5 text-sky-600" />
+                                    سيرفر الإدارة المركزي
                                 </span>
                                 {testResult ? (
                                     testResult.success ? (
-                                        <Badge className="bg-emerald-600 text-white text-[10px] gap-1 px-2">
+                                        <Badge className="bg-emerald-600 text-white text-[10px] gap-1 px-2 font-mono">
                                             <span className="w-1.5 h-1.5 rounded-full bg-white animate-ping" />
                                             متصل ({testResult.latencyMs}ms)
                                         </Badge>
@@ -538,7 +543,7 @@ export default function CentralSyncSettingsPage() {
                                         </Badge>
                                     )
                                 ) : (
-                                    <Badge variant="outline" className="text-[10px] font-mono">
+                                    <Badge variant="outline" className="text-[10px] font-mono text-muted-foreground">
                                         جاهز للفحص
                                     </Badge>
                                 )}
@@ -553,38 +558,38 @@ export default function CentralSyncSettingsPage() {
                         </div>
 
                         {/* Sync Activity & Pending Counter */}
-                        <div className="md:col-span-4 space-y-2">
+                        <div className="md:col-span-4 space-y-1.5">
                             <div className="flex items-center justify-between">
                                 <span className="text-xs text-muted-foreground flex items-center gap-1 font-semibold">
                                     <Clock className="h-3.5 w-3.5 text-amber-500" />
-                                    الحركات المعلقة بالفرع
+                                    العمليات المعلقة حالياً
                                 </span>
                                 <Badge 
                                     className={cn(
                                         "font-mono font-black text-xs px-2.5 py-0.5",
-                                        pendingBreakdown.total > 0 ? "bg-amber-600 hover:bg-amber-700 text-white" : "bg-muted text-muted-foreground"
+                                        pendingBreakdown.total > 0 ? "bg-amber-600 hover:bg-amber-700 text-white" : "bg-emerald-500/10 text-emerald-600 border border-emerald-500/20"
                                     )}
                                 >
-                                    {pendingBreakdown.total.toLocaleString()} حركة
+                                    {pendingBreakdown.total > 0 ? `${pendingBreakdown.total.toLocaleString()} حركة معلقة` : '0 - متطابق كلياً'}
                                 </Badge>
                             </div>
 
                             <div className="flex items-center justify-between text-xs pt-1 border-t">
                                 <span className="text-muted-foreground">آخر مزامنة ناجحة:</span>
                                 <span className="font-bold text-foreground">
-                                    {config.lastSyncTime ? new Date(config.lastSyncTime).toLocaleTimeString('ar-EG', { hour: '2-digit', minute: '2-digit' }) : 'لم تتم بعد'}
+                                    {config.lastSyncTime ? new Date(config.lastSyncTime).toLocaleTimeString('ar-EG', { hour: '2-digit', minute: '2-digit' }) : 'محدثة الآن'}
                                 </span>
                             </div>
 
-                            <div className="flex items-center justify-between text-[11px] text-muted-foreground">
+                            <div className="flex items-center justify-between text-[11px] text-muted-foreground font-mono">
                                 <span className="flex items-center gap-1 text-emerald-600 font-bold">
-                                    <ArrowUpRight className="h-3 w-3" /> رفع: {config.lastPushedCount || 0}
+                                    <ArrowUpRight className="h-3 w-3" /> مرفوع: {config.lastPushedCount || 0}
                                 </span>
-                                <span className="flex items-center gap-1 text-blue-600 font-bold">
-                                    <ArrowDownLeft className="h-3 w-3" /> تنزيل: {config.lastPulledCount || 0}
+                                <span className="flex items-center gap-1 text-sky-600 font-bold">
+                                    <ArrowDownLeft className="h-3 w-3" /> مسحوب: {config.lastPulledCount || 0}
                                 </span>
-                                <span className="text-muted-foreground">
-                                    المجدول: {config.autoSync ? `كل ${config.autoSyncIntervalMinutes} د` : 'متوقف'}
+                                <span className="text-muted-foreground font-sans">
+                                    المجدول: {config.autoSync ? `كل ${config.autoSyncIntervalMinutes} د` : 'يدوي'}
                                 </span>
                             </div>
                         </div>
@@ -593,35 +598,40 @@ export default function CentralSyncSettingsPage() {
 
                 {/* 3. Re-engineered Navigation Tabs */}
                 <Tabs value={activeTab} onValueChange={(val) => setActiveTab(val as any)} className="w-full">
-                    <TabsList className="grid w-full grid-cols-3 max-w-xl mx-auto h-11 bg-muted/70 p-1 rounded-xl shadow-inner">
+                    <TabsList className="grid w-full grid-cols-3 max-w-xl mx-auto h-11 bg-muted/60 p-1 rounded-xl shadow-inner border">
                         <TabsTrigger value="matrix" className="gap-2 font-bold text-xs rounded-lg data-[state=active]:shadow-sm">
-                            <Database className="h-4 w-4 text-emerald-500" /> 
+                            <Database className="h-4 w-4 text-emerald-600" /> 
                             مصفوفة الجداول ({syncMatrix?.tables.length || 69})
                         </TabsTrigger>
-                        <TabsTrigger value="config" className="gap-2 font-bold text-xs rounded-lg data-[state=active]:shadow-sm">
-                            <Server className="h-4 w-4 text-blue-500" /> 
-                            إعدادات الربط وتأسيس القاعدة
-                        </TabsTrigger>
                         <TabsTrigger value="queue" className="gap-2 font-bold text-xs rounded-lg data-[state=active]:shadow-sm">
-                            <Activity className="h-4 w-4 text-amber-500" /> 
-                            طابور الحركات وسجل المزامنة
+                            <Activity className="h-4 w-4 text-amber-600" /> 
+                            طابور الحركات المعلقة
+                            {pendingBreakdown.total > 0 && (
+                                <span className="mr-1 px-1.5 py-0.2 rounded-full text-[10px] bg-amber-600 text-white font-bold">
+                                    {pendingBreakdown.total}
+                                </span>
+                            )}
+                        </TabsTrigger>
+                        <TabsTrigger value="config" className="gap-2 font-bold text-xs rounded-lg data-[state=active]:shadow-sm">
+                            <Server className="h-4 w-4 text-sky-600" /> 
+                            إعدادات الربط وتأسيس القاعدة
                         </TabsTrigger>
                     </TabsList>
 
                     {/* ========================================================= */}
-                    {/* TAB 1: MASTER SYNC MATRIX (المصفوفة اللحظية لكافة الـ 69 جدولاً) */}
+                    {/* TAB 1: MASTER SYNC MATRIX (مصفوفة الجداول والتزامن) */}
                     {/* ========================================================= */}
-                    <TabsContent value="matrix" className="space-y-5 mt-5">
+                    <TabsContent value="matrix" className="space-y-4 mt-4">
                         
-                        {/* Quick Action Ribbon */}
-                        <div className="p-3.5 rounded-xl border bg-card/60 shadow-sm flex flex-col md:flex-row items-center justify-between gap-3">
+                        {/* Matrix Control Bar */}
+                        <div className="p-3 rounded-xl border bg-card shadow-sm flex flex-col md:flex-row items-center justify-between gap-3">
                             <div className="flex items-center gap-2 flex-wrap">
-                                <Badge variant="outline" className="text-xs gap-1 font-semibold">
-                                    <CheckCircle2 className="h-3.5 w-3.5 text-emerald-500" />
-                                    الجداول المتطابقة: <strong className="text-foreground mr-1">{syncMatrix?.syncedTablesCount || 0} من أصل {syncMatrix?.totalTablesCount || 69}</strong>
+                                <Badge variant="outline" className="text-xs gap-1.5 font-medium px-2.5 py-1">
+                                    <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600" />
+                                    المتطابق: <strong className="text-foreground">{syncMatrix?.syncedTablesCount || 0} من {syncMatrix?.totalTablesCount || 69} جدولاً</strong>
                                 </Badge>
                                 {(syncMatrix?.totalPendingPush || 0) > 0 && (
-                                    <Badge className="bg-amber-600 text-white text-xs font-bold gap-1 shadow-sm">
+                                    <Badge className="bg-amber-600 text-white text-xs font-bold gap-1 shadow-sm px-2.5 py-1">
                                         <ArrowUpRight className="h-3.5 w-3.5" />
                                         {syncMatrix?.totalPendingPush.toLocaleString()} حركة بالفرع بانتظار الرفع
                                     </Badge>
@@ -632,32 +642,32 @@ export default function CentralSyncSettingsPage() {
                             <div className="flex items-center gap-2 flex-wrap">
                                 <Button 
                                     size="sm" 
-                                    variant="secondary"
+                                    variant="outline"
                                     onClick={() => handleSyncNow('push')}
                                     disabled={isSyncing}
-                                    className="gap-1.5 font-bold text-amber-700 dark:text-amber-300 text-xs shadow-sm"
+                                    className="gap-1.5 font-bold text-amber-700 dark:text-amber-300 text-xs h-8 border-amber-500/30 hover:bg-amber-500/10"
                                 >
                                     {isSyncing && syncingMode === 'push' ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <ArrowUpRight className="h-3.5 w-3.5" />}
-                                    رفع حركات الفرع فقط ⬆️
+                                    رفع حركات الفرع ⬆️
                                 </Button>
                                 <Button 
                                     size="sm" 
-                                    variant="secondary"
+                                    variant="outline"
                                     onClick={() => handleSyncNow('pull')}
                                     disabled={isSyncing}
-                                    className="gap-1.5 font-bold text-blue-700 dark:text-blue-300 text-xs shadow-sm"
+                                    className="gap-1.5 font-bold text-sky-700 dark:text-sky-300 text-xs h-8 border-sky-500/30 hover:bg-sky-500/10"
                                 >
                                     {isSyncing && syncingMode === 'pull' ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <ArrowDownLeft className="h-3.5 w-3.5" />}
-                                    سحب تحديثات الإدارة فقط ⬇️
+                                    سحب من الإدارة ⬇️
                                 </Button>
                                 <Button 
                                     size="sm" 
-                                    className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold gap-1.5 text-xs shadow"
+                                    className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold gap-1.5 text-xs shadow-sm h-8"
                                     onClick={() => handleSyncNow('all')}
                                     disabled={isSyncing}
                                 >
                                     {isSyncing && syncingMode === 'all' ? <Loader2 className="h-3.5 w-3.5 animate-spin ml-1" /> : <RefreshCw className="h-3.5 w-3.5 ml-1" />}
-                                    مزامنة شاملة متزامنة 🔁
+                                    مزامنة شاملة
                                 </Button>
                             </div>
                         </div>
@@ -669,10 +679,10 @@ export default function CentralSyncSettingsPage() {
                                     <div>
                                         <CardTitle className="text-base flex items-center gap-2">
                                             <Database className="h-5 w-5 text-emerald-600" />
-                                            مصفوفة تتبع التعديلات والطوابع الزمنية (Live Sync Matrix)
+                                            مصفوفة المزامنة والطوابع الزمنية لكافة الجداول
                                         </CardTitle>
                                         <CardDescription>
-                                            جدول مركزي يوضح آخر تعديل بالفرع، آخر مزامنة مع الإدارة، وحجم العمليات المعلقة لكل جدول على حدة.
+                                            تتبع لحظي للطوابع الزمنية (UpdatedAt / LastSyncedAt) وحجم البيانات بالفرع والإدارة.
                                         </CardDescription>
                                     </div>
 
@@ -682,7 +692,7 @@ export default function CentralSyncSettingsPage() {
                                             size="sm" 
                                             variant={tableStatusFilter === 'all' ? 'default' : 'outline'}
                                             onClick={() => setTableStatusFilter('all')}
-                                            className="h-7 text-xs px-2.5"
+                                            className="h-7 text-xs px-2.5 font-medium"
                                         >
                                             الكل ({syncMatrix?.tables.length || 0})
                                         </Button>
@@ -690,7 +700,7 @@ export default function CentralSyncSettingsPage() {
                                             size="sm" 
                                             variant={tableStatusFilter === 'pending' ? 'default' : 'outline'}
                                             onClick={() => setTableStatusFilter('pending')}
-                                            className={cn("h-7 text-xs px-2.5", tableStatusFilter === 'pending' && "bg-amber-600 hover:bg-amber-700")}
+                                            className={cn("h-7 text-xs px-2.5 font-bold", tableStatusFilter === 'pending' && "bg-amber-600 hover:bg-amber-700 text-white")}
                                         >
                                             معلق فقط ({syncMatrix?.pendingTablesCount || 0})
                                         </Button>
@@ -698,7 +708,7 @@ export default function CentralSyncSettingsPage() {
                                             size="sm" 
                                             variant={tableStatusFilter === 'synced' ? 'default' : 'outline'}
                                             onClick={() => setTableStatusFilter('synced')}
-                                            className={cn("h-7 text-xs px-2.5", tableStatusFilter === 'synced' && "bg-emerald-600 hover:bg-emerald-700")}
+                                            className={cn("h-7 text-xs px-2.5 font-bold", tableStatusFilter === 'synced' && "bg-emerald-600 hover:bg-emerald-700 text-white")}
                                         >
                                             متطابق ({syncMatrix?.syncedTablesCount || 0})
                                         </Button>
@@ -706,11 +716,11 @@ export default function CentralSyncSettingsPage() {
                                 </div>
 
                                 {/* Advanced Search and Filter Bar */}
-                                <div className="grid grid-cols-1 sm:grid-cols-12 gap-3 pt-2 border-t">
-                                    <div className="sm:col-span-5 relative">
+                                <div className="grid grid-cols-1 sm:grid-cols-12 gap-2.5 pt-2 border-t">
+                                    <div className="sm:col-span-6 relative">
                                         <Search className="h-4 w-4 absolute right-3 top-2.5 text-muted-foreground" />
                                         <Input 
-                                            placeholder="ابحث بالاسم العربي، اسم الجدول، أو القسم..."
+                                            placeholder="ابحث بالاسم، اسم الجدول dbo.*، أو القسم..."
                                             value={tableSearch}
                                             onChange={(e) => setTableSearch(e.target.value)}
                                             className="pr-9 h-9 text-xs"
@@ -724,7 +734,7 @@ export default function CentralSyncSettingsPage() {
                                             </button>
                                         )}
                                     </div>
-                                    <div className="sm:col-span-4">
+                                    <div className="sm:col-span-3">
                                         <Select value={tableCategoryFilter} onValueChange={setTableCategoryFilter}>
                                             <SelectTrigger className="h-9 text-xs">
                                                 <SelectValue placeholder="تصفية حسب القسم" />
@@ -751,8 +761,8 @@ export default function CentralSyncSettingsPage() {
                                             </SelectTrigger>
                                             <SelectContent>
                                                 <SelectItem value="all">كافة الاتجاهات</SelectItem>
-                                                <SelectItem value="push">رفع للإدارة فقط ⬆️</SelectItem>
-                                                <SelectItem value="pull">سحب للفرع فقط ⬇️</SelectItem>
+                                                <SelectItem value="push">رفع للإدارة ⬆️</SelectItem>
+                                                <SelectItem value="pull">سحب للفرع ⬇️</SelectItem>
                                                 <SelectItem value="bidirectional">متبادل ثنائي 🔁</SelectItem>
                                             </SelectContent>
                                         </Select>
@@ -761,18 +771,18 @@ export default function CentralSyncSettingsPage() {
                             </CardHeader>
 
                             <CardContent className="p-0">
-                                <div className="border-t max-h-[600px] overflow-auto relative">
+                                <div className="border-t max-h-[620px] overflow-auto relative">
                                     <Table>
-                                        <TableHeader className="bg-muted/60 sticky top-0 z-20 shadow-sm text-xs">
+                                        <TableHeader className="bg-muted/70 sticky top-0 z-20 shadow-xs text-xs">
                                             <TableRow className="border-b">
                                                 <TableHead className="w-10 text-center font-bold">#</TableHead>
-                                                <TableHead className="min-w-[180px] font-bold">الجدول والقسم</TableHead>
+                                                <TableHead className="min-w-[190px] font-bold">اسم الجدول والقسم</TableHead>
                                                 <TableHead className="text-center min-w-[100px] font-bold">الاتجاه</TableHead>
-                                                <TableHead className="text-center min-w-[130px] font-bold">آخر تعديل بالفرع</TableHead>
-                                                <TableHead className="text-center min-w-[130px] font-bold">آخر مزامنة للإدارة</TableHead>
-                                                <TableHead className="text-center min-w-[95px] font-bold text-amber-700 bg-amber-500/5">معلق بالفرع</TableHead>
-                                                <TableHead className="text-center min-w-[100px] font-bold text-blue-700 bg-blue-500/5">سطور الفرع بالإدارة</TableHead>
-                                                <TableHead className="text-center min-w-[100px] font-bold text-purple-700 bg-purple-500/5">إجمالي الإدارة</TableHead>
+                                                <TableHead className="text-center min-w-[125px] font-bold">آخر تعديل بالفرع</TableHead>
+                                                <TableHead className="text-center min-w-[125px] font-bold">آخر مزامنة للإدارة</TableHead>
+                                                <TableHead className="text-center min-w-[90px] font-bold text-amber-600">معلق بالفرع</TableHead>
+                                                <TableHead className="text-center min-w-[100px] font-bold text-sky-600">سطور الفرع بالإدارة</TableHead>
+                                                <TableHead className="text-center min-w-[100px] font-bold text-slate-700 dark:text-slate-300">إجمالي الإدارة</TableHead>
                                                 <TableHead className="text-center min-w-[130px] font-bold">حالة المزامنة</TableHead>
                                                 <TableHead className="text-center w-24 font-bold">إجراء فوري</TableHead>
                                             </TableRow>
@@ -787,14 +797,14 @@ export default function CentralSyncSettingsPage() {
                                                 </TableRow>
                                             ) : (
                                                 filteredTables.map((t, idx) => (
-                                                    <TableRow key={t.tableName} className="hover:bg-muted/30 text-xs transition-colors">
+                                                    <TableRow key={t.tableName} className="hover:bg-muted/40 text-xs transition-colors border-b">
                                                         <TableCell className="text-center text-muted-foreground font-mono">{idx + 1}</TableCell>
                                                         <TableCell>
                                                             <div className="font-bold text-foreground text-sm flex items-center gap-1.5">
                                                                 <span>{t.displayName}</span>
                                                             </div>
                                                             <div className="text-[11px] text-muted-foreground font-mono flex items-center gap-1.5 mt-0.5">
-                                                                <Database className="h-3 w-3 text-muted-foreground/70" />
+                                                                <Database className="h-3 w-3 text-muted-foreground/60" />
                                                                 <span>dbo.{t.tableName}</span>
                                                                 <Badge variant="outline" className="text-[9px] px-1 py-0 font-normal">
                                                                     {t.category}
@@ -810,29 +820,29 @@ export default function CentralSyncSettingsPage() {
                                                         <TableCell className="text-center">
                                                             {formatTimestamp(t.lastSyncedAt)}
                                                         </TableCell>
-                                                        <TableCell className="text-center font-mono font-bold bg-amber-500/5">
+                                                        <TableCell className="text-center font-mono font-bold">
                                                             {t.pendingPushCount > 0 ? (
-                                                                <Badge className="bg-amber-600 hover:bg-amber-700 text-white font-mono font-bold text-xs px-2 shadow-sm">
+                                                                <span className="inline-block px-2 py-0.5 rounded font-mono font-bold text-xs bg-amber-500/15 text-amber-700 dark:text-amber-400 border border-amber-500/30">
                                                                     {t.pendingPushCount.toLocaleString()}
-                                                                </Badge>
+                                                                </span>
                                                             ) : (
-                                                                <span className="text-muted-foreground">0</span>
+                                                                <span className="text-muted-foreground/60 font-mono">0</span>
                                                             )}
                                                         </TableCell>
-                                                        <TableCell className="text-center font-mono font-bold bg-blue-500/5">
+                                                        <TableCell className="text-center font-mono font-semibold">
                                                             {t.centralBranchRows === null ? (
-                                                                <span className="text-[11px] text-muted-foreground">-</span>
+                                                                <span className="text-[11px] text-muted-foreground/50">-</span>
                                                             ) : (
-                                                                <span className={cn(t.centralBranchRows > 0 ? "text-blue-700 font-extrabold" : "text-muted-foreground")}>
+                                                                <span className={cn(t.centralBranchRows > 0 ? "text-sky-700 dark:text-sky-400 font-bold" : "text-muted-foreground/60")}>
                                                                     {t.centralBranchRows.toLocaleString()}
                                                                 </span>
                                                             )}
                                                         </TableCell>
-                                                        <TableCell className="text-center font-mono font-bold bg-purple-500/5">
+                                                        <TableCell className="text-center font-mono font-semibold">
                                                             {t.centralTotalRows === null ? (
-                                                                <span className="text-[11px] text-muted-foreground">-</span>
+                                                                <span className="text-[11px] text-muted-foreground/50">-</span>
                                                             ) : (
-                                                                <span className={cn(t.centralTotalRows > 0 ? "text-purple-700 font-extrabold" : "text-muted-foreground")}>
+                                                                <span className={cn(t.centralTotalRows > 0 ? "text-foreground font-bold" : "text-muted-foreground/60")}>
                                                                     {t.centralTotalRows.toLocaleString()}
                                                                 </span>
                                                             )}
@@ -870,361 +880,272 @@ export default function CentralSyncSettingsPage() {
                     </TabsContent>
 
                     {/* ========================================================= */}
-                    {/* TAB 2: CONNECTION & DATABASE PROVISIONING (إعدادات الربط وتأسيس القاعدة) */}
+                    {/* TAB 2: RE-ENGINEERED QUEUE & AUDIT LOGS (طابور الحركات المعلقة) */}
                     {/* ========================================================= */}
-                    <TabsContent value="config" className="space-y-6 mt-5">
+                    <TabsContent value="queue" className="space-y-5 mt-4">
                         
-                        {/* Settings & Configuration Card */}
+                        {/* Queue Hero Status */}
+                        <div className="p-4 rounded-xl border bg-card shadow-sm flex flex-col md:flex-row items-center justify-between gap-4">
+                            <div className="flex items-center gap-3">
+                                <div className={cn(
+                                    "p-3 rounded-xl border",
+                                    pendingBreakdown.total > 0 ? "bg-amber-500/10 border-amber-500/20 text-amber-600" : "bg-emerald-500/10 border-emerald-500/20 text-emerald-600"
+                                )}>
+                                    {pendingBreakdown.total > 0 ? <AlertCircle className="h-6 w-6" /> : <CheckCircle2 className="h-6 w-6" />}
+                                </div>
+                                <div>
+                                    <h3 className="font-bold text-base text-foreground">
+                                        {pendingBreakdown.total > 0 ? `يوجد ${pendingBreakdown.total.toLocaleString()} حركة بانتظار الرفع للإدارة` : 'طابور الحركات فارغ تماماً - جميع الحركات متزامنة'}
+                                    </h3>
+                                    <p className="text-xs text-muted-foreground mt-0.5">
+                                        {pendingBreakdown.total > 0 ? 'الحركات مسجلة محلياً في قاعدة البيانات الفرعية وتنتظر الإرسال للإدارة.' : 'كافة الفواتير والسندات والحركات المخزنية مطابقة ومسجلة في السيرفر المركزي.'}
+                                    </p>
+                                </div>
+                            </div>
+                            
+                            <div className="flex items-center gap-2">
+                                <Button 
+                                    size="sm" 
+                                    variant="outline" 
+                                    onClick={() => loadSettings(false)} 
+                                    className="gap-1.5 text-xs h-8"
+                                >
+                                    <RefreshCw className="h-3.5 w-3.5" /> تحديث العدادات
+                                </Button>
+                                <Button 
+                                    size="sm" 
+                                    className="bg-amber-600 hover:bg-amber-700 text-white font-bold gap-1.5 text-xs h-8 shadow-sm"
+                                    onClick={() => handleSyncNow('push')}
+                                    disabled={isSyncing || pendingBreakdown.total === 0}
+                                >
+                                    {isSyncing && syncingMode === 'push' ? <Loader2 className="h-3.5 w-3.5 animate-spin ml-1" /> : <ArrowUpRight className="h-3.5 w-3.5 ml-1" />}
+                                    رفع كافة المعلق الآن
+                                </Button>
+                            </div>
+                        </div>
+
+                        {/* Interactive Queue Breakdown Cards (NO PURPLE - Pure Clean Tones) */}
+                        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-3">
+                            <div className={cn(
+                                "p-3 rounded-xl border text-center space-y-1 transition-all",
+                                pendingBreakdown.sales > 0 ? "bg-amber-500/10 border-amber-500/30 shadow-xs" : "bg-card hover:bg-muted/30"
+                            )}>
+                                <ShoppingCart className="h-5 w-5 mx-auto text-sky-600" />
+                                <div className="text-xs text-muted-foreground font-medium">فواتير مبيعات</div>
+                                <div className={cn("text-xl font-black font-mono", pendingBreakdown.sales > 0 ? "text-amber-600" : "text-foreground")}>
+                                    {pendingBreakdown.sales}
+                                </div>
+                            </div>
+
+                            <div className={cn(
+                                "p-3 rounded-xl border text-center space-y-1 transition-all",
+                                pendingBreakdown.salesReturns > 0 ? "bg-amber-500/10 border-amber-500/30 shadow-xs" : "bg-card hover:bg-muted/30"
+                            )}>
+                                <Receipt className="h-5 w-5 mx-auto text-rose-500" />
+                                <div className="text-xs text-muted-foreground font-medium">مرتجع مبيعات</div>
+                                <div className={cn("text-xl font-black font-mono", pendingBreakdown.salesReturns > 0 ? "text-amber-600" : "text-foreground")}>
+                                    {pendingBreakdown.salesReturns}
+                                </div>
+                            </div>
+
+                            <div className={cn(
+                                "p-3 rounded-xl border text-center space-y-1 transition-all",
+                                pendingBreakdown.purchases > 0 ? "bg-amber-500/10 border-amber-500/30 shadow-xs" : "bg-card hover:bg-muted/30"
+                            )}>
+                                <Truck className="h-5 w-5 mx-auto text-amber-500" />
+                                <div className="text-xs text-muted-foreground font-medium">فواتير مشتريات</div>
+                                <div className={cn("text-xl font-black font-mono", pendingBreakdown.purchases > 0 ? "text-amber-600" : "text-foreground")}>
+                                    {pendingBreakdown.purchases}
+                                </div>
+                            </div>
+
+                            <div className={cn(
+                                "p-3 rounded-xl border text-center space-y-1 transition-all",
+                                pendingBreakdown.purchaseReturns > 0 ? "bg-amber-500/10 border-amber-500/30 shadow-xs" : "bg-card hover:bg-muted/30"
+                            )}>
+                                <Boxes className="h-5 w-5 mx-auto text-teal-600" />
+                                <div className="text-xs text-muted-foreground font-medium">مرتجع مشتريات</div>
+                                <div className={cn("text-xl font-black font-mono", pendingBreakdown.purchaseReturns > 0 ? "text-amber-600" : "text-foreground")}>
+                                    {pendingBreakdown.purchaseReturns}
+                                </div>
+                            </div>
+
+                            <div className={cn(
+                                "p-3 rounded-xl border text-center space-y-1 transition-all",
+                                pendingBreakdown.customerPayments > 0 ? "bg-amber-500/10 border-amber-500/30 shadow-xs" : "bg-card hover:bg-muted/30"
+                            )}>
+                                <Banknote className="h-5 w-5 mx-auto text-emerald-600" />
+                                <div className="text-xs text-muted-foreground font-medium">سندات قبض</div>
+                                <div className={cn("text-xl font-black font-mono", pendingBreakdown.customerPayments > 0 ? "text-amber-600" : "text-foreground")}>
+                                    {pendingBreakdown.customerPayments}
+                                </div>
+                            </div>
+
+                            <div className={cn(
+                                "p-3 rounded-xl border text-center space-y-1 transition-all",
+                                pendingBreakdown.supplierPayments > 0 ? "bg-amber-500/10 border-amber-500/30 shadow-xs" : "bg-card hover:bg-muted/30"
+                            )}>
+                                <CreditCard className="h-5 w-5 mx-auto text-indigo-600" />
+                                <div className="text-xs text-muted-foreground font-medium">سندات صرف</div>
+                                <div className={cn("text-xl font-black font-mono", pendingBreakdown.supplierPayments > 0 ? "text-amber-600" : "text-foreground")}>
+                                    {pendingBreakdown.supplierPayments}
+                                </div>
+                            </div>
+
+                            <div className={cn(
+                                "p-3 rounded-xl border text-center space-y-1 transition-all",
+                                pendingBreakdown.expenses > 0 ? "bg-amber-500/10 border-amber-500/30 shadow-xs" : "bg-card hover:bg-muted/30"
+                            )}>
+                                <Receipt className="h-5 w-5 mx-auto text-slate-600 dark:text-slate-400" />
+                                <div className="text-xs text-muted-foreground font-medium">مصروفات وإيراد</div>
+                                <div className={cn("text-xl font-black font-mono", pendingBreakdown.expenses > 0 ? "text-amber-600" : "text-foreground")}>
+                                    {pendingBreakdown.expenses}
+                                </div>
+                            </div>
+
+                            <div className={cn(
+                                "p-3 rounded-xl border text-center space-y-1 transition-all",
+                                pendingBreakdown.stock > 0 ? "bg-amber-500/10 border-amber-500/30 shadow-xs" : "bg-card hover:bg-muted/30"
+                            )}>
+                                <Boxes className="h-5 w-5 mx-auto text-cyan-600" />
+                                <div className="text-xs text-muted-foreground font-medium">حركات مخازن</div>
+                                <div className={cn("text-xl font-black font-mono", pendingBreakdown.stock > 0 ? "text-amber-600" : "text-foreground")}>
+                                    {pendingBreakdown.stock}
+                                </div>
+                            </div>
+
+                            <div className={cn(
+                                "p-3 rounded-xl border text-center space-y-1 transition-all",
+                                pendingBreakdown.transfers > 0 ? "bg-amber-500/10 border-amber-500/30 shadow-xs" : "bg-card hover:bg-muted/30"
+                            )}>
+                                <ArrowLeftRight className="h-5 w-5 mx-auto text-sky-600" />
+                                <div className="text-xs text-muted-foreground font-medium">تحويلات فروع</div>
+                                <div className={cn("text-xl font-black font-mono", pendingBreakdown.transfers > 0 ? "text-amber-600" : "text-foreground")}>
+                                    {pendingBreakdown.transfers}
+                                </div>
+                            </div>
+
+                            <div className={cn(
+                                "p-3 rounded-xl border text-center space-y-1 transition-all",
+                                pendingBreakdown.treasury > 0 ? "bg-amber-500/10 border-amber-500/30 shadow-xs" : "bg-card hover:bg-muted/30"
+                            )}>
+                                <Wallet className="h-5 w-5 mx-auto text-emerald-700" />
+                                <div className="text-xs text-muted-foreground font-medium">حركات خزينة</div>
+                                <div className={cn("text-xl font-black font-mono", pendingBreakdown.treasury > 0 ? "text-amber-600" : "text-foreground")}>
+                                    {pendingBreakdown.treasury}
+                                </div>
+                            </div>
+
+                            <div className={cn(
+                                "p-3 rounded-xl border text-center space-y-1 transition-all",
+                                pendingBreakdown.rep > 0 ? "bg-amber-500/10 border-amber-500/30 shadow-xs" : "bg-card hover:bg-muted/30"
+                            )}>
+                                <Users className="h-5 w-5 mx-auto text-amber-600" />
+                                <div className="text-xs text-muted-foreground font-medium">مندوبين وتوزيع</div>
+                                <div className={cn("text-xl font-black font-mono", pendingBreakdown.rep > 0 ? "text-amber-600" : "text-foreground")}>
+                                    {pendingBreakdown.rep}
+                                </div>
+                            </div>
+
+                            <div className={cn(
+                                "p-3 rounded-xl border text-center space-y-1 transition-all",
+                                (pendingBreakdown.hr + pendingBreakdown.pos) > 0 ? "bg-amber-500/10 border-amber-500/30 shadow-xs" : "bg-card hover:bg-muted/30"
+                            )}>
+                                <Terminal className="h-5 w-5 mx-auto text-teal-600" />
+                                <div className="text-xs text-muted-foreground font-medium">كاشير وHR</div>
+                                <div className={cn("text-xl font-black font-mono", (pendingBreakdown.hr + pendingBreakdown.pos) > 0 ? "text-amber-600" : "text-foreground")}>
+                                    {pendingBreakdown.hr + pendingBreakdown.pos}
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* Detailed Table for Pending Queues (Shows only tables that currently need sync) */}
                         <Card className="border shadow-sm">
-                            <CardHeader>
+                            <CardHeader className="pb-3">
                                 <CardTitle className="text-base flex items-center gap-2">
-                                    <Server className="h-5 w-5 text-primary" />
-                                    إعدادات الربط السحابي وبيانات الخادم المركزي
+                                    <ListChecks className="h-5 w-5 text-amber-600" />
+                                    قائمة الجداول التي بها حركات معلقة حالياً ({pendingTablesList.length})
                                 </CardTitle>
                                 <CardDescription>
-                                    تحديد عنوان السيرفر المركزي للإدارة وربط هوية هذا الجهاز بالفرع والمستودع المسجل.
+                                    تتيح لك هذه القائمة فحص ومزامنة الجداول المعلقة حصراً دون الحاجة للبحث في كامل الـ 69 جدولاً.
                                 </CardDescription>
                             </CardHeader>
-                            <CardContent className="space-y-6">
-                                
-                                {/* Section 1: Local Branch Identity */}
-                                <div className="p-4 rounded-xl border bg-muted/20 space-y-4">
-                                    <div className="flex items-center gap-2 border-b pb-2">
-                                        <Database className="h-4 w-4 text-primary" />
-                                        <span className="font-bold text-sm">1. هوية وبيانات الفرع المحلي (Local Branch Identity)</span>
+                            <CardContent className="p-0">
+                                {pendingTablesList.length === 0 ? (
+                                    <div className="py-12 text-center text-muted-foreground space-y-2">
+                                        <CheckCircle2 className="h-10 w-10 text-emerald-600 mx-auto" />
+                                        <p className="font-bold text-foreground">لا توجد أي حركات أو تعديلات معلقة بالفرع</p>
+                                        <p className="text-xs text-muted-foreground">كافة الجداول الـ 69 متزامنة ومطابقة تماماً مع الإدارة.</p>
                                     </div>
-                                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                                        <div className="space-y-1.5">
-                                            <Label className="text-xs font-bold">ربط بمستودع / فرع مسجل</Label>
-                                            <Select value={config.currentBranchId} onValueChange={handleWarehouseChange}>
-                                                <SelectTrigger className="h-9 text-xs">
-                                                    <SelectValue placeholder="اختر الفرع أو المستودع..." />
-                                                </SelectTrigger>
-                                                <SelectContent>
-                                                    {warehouses.map((w: any) => (
-                                                        <SelectItem key={w.id} value={w.id}>
-                                                            {w.name} (كود: {w.code || '-'})
-                                                        </SelectItem>
-                                                    ))}
-                                                </SelectContent>
-                                            </Select>
-                                        </div>
-                                        <div className="space-y-1.5">
-                                            <Label className="text-xs font-bold">كود الفرع (Branch Code)</Label>
-                                            <Input 
-                                                value={config.currentBranchCode} 
-                                                onChange={e => handleInputChange('currentBranchCode', e.target.value)} 
-                                                className="h-9 font-mono font-bold text-xs"
-                                            />
-                                        </div>
-                                        <div className="space-y-1.5">
-                                            <Label className="text-xs font-bold">اسم الفرع (Branch Name)</Label>
-                                            <Input 
-                                                value={config.currentBranchName} 
-                                                onChange={e => handleInputChange('currentBranchName', e.target.value)} 
-                                                className="h-9 font-bold text-xs"
-                                            />
-                                        </div>
-                                    </div>
-                                </div>
-
-                                {/* Section 2: Central SQL Server Settings */}
-                                <div className="p-4 rounded-xl border bg-muted/20 space-y-4">
-                                    <div className="flex items-center gap-2 border-b pb-2">
-                                        <Network className="h-4 w-4 text-primary" />
-                                        <span className="font-bold text-sm">2. إعدادات خادم SQL Server للإدارة المركزية</span>
-                                    </div>
-                                    <div className="grid grid-cols-1 md:grid-cols-12 gap-4">
-                                        <div className="md:col-span-8 space-y-1.5">
-                                            <Label className="text-xs font-bold">عنوان السيرفر (IP Server / Host)</Label>
-                                            <Input 
-                                                value={config.centralServerIp} 
-                                                onChange={e => handleInputChange('centralServerIp', e.target.value)} 
-                                                placeholder="مثال: 10.110.16.16 أو central.company.com أو localhost" 
-                                                className="h-9 font-mono text-xs"
-                                            />
-                                        </div>
-                                        <div className="md:col-span-4 space-y-1.5">
-                                            <Label className="text-xs font-bold">البورت (SQL Port)</Label>
-                                            <Input 
-                                                type="number" 
-                                                value={config.centralSqlPort} 
-                                                onChange={e => handleInputChange('centralSqlPort', Number(e.target.value))} 
-                                                className="h-9 font-mono text-xs"
-                                            />
-                                        </div>
-                                        <div className="md:col-span-4 space-y-1.5">
-                                            <Label className="text-xs font-bold">اسم قاعدة البيانات المركزية</Label>
-                                            <Input 
-                                                value={config.centralDatabase} 
-                                                onChange={e => handleInputChange('centralDatabase', e.target.value)} 
-                                                className="h-9 font-mono font-bold text-xs"
-                                            />
-                                        </div>
-                                        <div className="md:col-span-4 space-y-1.5">
-                                            <Label className="text-xs font-bold">اسم المستخدم (SQL Username)</Label>
-                                            <Input 
-                                                value={config.centralUsername} 
-                                                onChange={e => handleInputChange('centralUsername', e.target.value)} 
-                                                className="h-9 font-mono text-xs"
-                                            />
-                                        </div>
-                                        <div className="md:col-span-4 space-y-1.5">
-                                            <Label className="text-xs font-bold">كلمة المرور (SQL Password)</Label>
-                                            <Input 
-                                                type="password" 
-                                                value={config.centralPassword} 
-                                                onChange={e => handleInputChange('centralPassword', e.target.value)} 
-                                                placeholder="••••••••••••" 
-                                                className="h-9 font-mono text-xs"
-                                            />
-                                        </div>
-                                    </div>
-                                </div>
-
-                                {/* Section 3: Background Auto-Sync Schedule */}
-                                <div className="p-4 rounded-xl border bg-muted/20 flex flex-col md:flex-row md:items-center justify-between gap-4">
-                                    <div className="space-y-1">
-                                        <div className="font-bold text-sm flex items-center gap-2">
-                                            <Clock className="h-4 w-4 text-emerald-600" />
-                                            جدولة المزامنة التلقائية بالخلفية (Background Sync Service)
-                                        </div>
-                                        <p className="text-xs text-muted-foreground">
-                                            رفع العمليات الجديدة وسحب تحديثات الأصناف والأسعار تلقائياً دون تدخل بشري.
-                                        </p>
-                                    </div>
-                                    <div className="flex items-center gap-4">
-                                        <div className="flex items-center gap-2">
-                                            <Label className="text-xs">تكرار كل:</Label>
-                                            <Select 
-                                                value={String(config.autoSyncIntervalMinutes || 5)} 
-                                                onValueChange={v => handleInputChange('autoSyncIntervalMinutes', Number(v))}
-                                                disabled={!config.autoSync}
-                                            >
-                                                <SelectTrigger className="h-8 w-24 text-xs font-mono font-bold">
-                                                    <SelectValue />
-                                                </SelectTrigger>
-                                                <SelectContent>
-                                                    <SelectItem value="1">1 دقيقة</SelectItem>
-                                                    <SelectItem value="2">2 دقيقة</SelectItem>
-                                                    <SelectItem value="5">5 دقائق</SelectItem>
-                                                    <SelectItem value="10">10 دقائق</SelectItem>
-                                                    <SelectItem value="15">15 دقيقة</SelectItem>
-                                                    <SelectItem value="30">30 دقيقة</SelectItem>
-                                                </SelectContent>
-                                            </Select>
-                                        </div>
-                                        <div className="flex items-center gap-2 border-r pr-3">
-                                            <Switch 
-                                                checked={config.autoSync} 
-                                                onCheckedChange={c => handleInputChange('autoSync', c)} 
-                                            />
-                                            <span className="text-xs font-bold">{config.autoSync ? 'مفعل' : 'معطل'}</span>
-                                        </div>
-                                    </div>
-                                </div>
-                            </CardContent>
-
-                            <CardFooter className="bg-muted/30 border-t py-3 flex justify-between items-center">
-                                <Button 
-                                    variant="outline" 
-                                    size="sm" 
-                                    onClick={handleTestConnection} 
-                                    disabled={isTesting}
-                                    className="gap-1.5 text-xs"
-                                >
-                                    {isTesting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Zap className="h-3.5 w-3.5 text-amber-500" />}
-                                    اختبار الاتصال بالسيرفر المركزي
-                                </Button>
-                                <Button 
-                                    size="sm" 
-                                    onClick={handleSave} 
-                                    disabled={isSaving}
-                                    className="bg-primary hover:bg-primary/90 text-primary-foreground font-bold gap-1.5 text-xs shadow"
-                                >
-                                    {isSaving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5 ml-1" />}
-                                    حفظ الإعدادات المحدثة
-                                </Button>
-                            </CardFooter>
-                        </Card>
-
-                        {/* Database Provisioning & Architecture Card (One-click complete DB Setup) */}
-                        <Card className="border shadow-sm border-amber-500/30 bg-gradient-to-b from-card to-amber-500/5">
-                            <CardHeader>
-                                <div className="flex items-center justify-between">
-                                    <div className="space-y-1">
-                                        <CardTitle className="text-base flex items-center gap-2 text-amber-900 dark:text-amber-200">
-                                            <Sparkles className="h-5 w-5 text-amber-500" />
-                                            تأسيس وهندسة قاعدة البيانات المركزية (71 جدولاً بالكامل)
-                                        </CardTitle>
-                                        <CardDescription>
-                                            إنشاء وتأسيس قاعدة البيانات المركزية ومصفوفة الجداول بكامل الجداول الـ 71 والمشغلات والعروض التحليلية بضغطة زر واحدة استناداً للإعدادات المسجلة أعلاه.
-                                        </CardDescription>
-                                    </div>
-                                    <Badge variant="outline" className="border-amber-500/40 text-amber-700 dark:text-amber-300 font-bold text-xs gap-1">
-                                        <HardDrive className="h-3.5 w-3.5" /> 71 جدولاً شاملاً
-                                    </Badge>
-                                </div>
-                            </CardHeader>
-                            <CardContent className="space-y-4">
-                                <div className="p-3.5 rounded-xl border border-amber-500/20 bg-amber-500/10 text-xs text-amber-900 dark:text-amber-200 leading-relaxed">
-                                    <p className="font-semibold mb-1">ما الذي تقوم به هذه العملية؟</p>
-                                    <ul className="list-disc list-inside space-y-1 text-muted-foreground">
-                                        <li>إنشاء قاعدة البيانات <strong>[{config.centralDatabase}]</strong> على السيرفر المركزي إن لم تكن موجودة.</li>
-                                        <li>بناء وتحديث <strong>كافة الجداول الـ 71</strong> بالهيكل المعتمد والمشغلات التلقائية لحقن كود الفرع.</li>
-                                        <li>تثبيت أعمدة التتبع الزمني: <code>UpdatedAt</code>, <code>CreatedAt</code>, <code>BranchCode</code>, <code>SyncStatus</code>, <code>LastSyncedAt</code>.</li>
-                                        <li>تأسيس جدول مصفوفة المزامنة <strong>dbo.SyncTrackingMatrix</strong> لتتبع كل جدول لحظياً.</li>
-                                    </ul>
-                                </div>
-
-                                {initDbResult && (
-                                    <div className={cn(
-                                        "p-4 rounded-xl border flex items-start gap-3",
-                                        initDbResult.success ? "bg-emerald-500/10 border-emerald-500/40 text-emerald-900 dark:text-emerald-200" : "bg-destructive/10 border-destructive/40 text-destructive"
-                                    )}>
-                                        {initDbResult.success ? <CheckCircle2 className="h-5 w-5 shrink-0 text-emerald-600 mt-0.5" /> : <AlertTriangle className="h-5 w-5 shrink-0 text-destructive mt-0.5" />}
-                                        <div className="space-y-1 text-xs">
-                                            <div className="font-bold text-sm">{initDbResult.message}</div>
-                                            {initDbResult.tablesCount && <p className="font-semibold">إجمالي الجداول التي تم بناؤها وتأسيسها: {initDbResult.tablesCount} جدولاً بالكامل.</p>}
-                                            {initDbResult.error && <p className="font-mono text-destructive">{initDbResult.error}</p>}
-                                        </div>
-                                    </div>
+                                ) : (
+                                    <Table>
+                                        <TableHeader className="bg-muted/60 text-xs">
+                                            <TableRow>
+                                                <TableHead>اسم الجدول والقسم</TableHead>
+                                                <TableHead className="text-center">بانتظار الرفع (فرع)</TableHead>
+                                                <TableHead className="text-center">بانتظار السحب (إدارة)</TableHead>
+                                                <TableHead className="text-center">آخر تعديل محلي</TableHead>
+                                                <TableHead className="text-center">حالة المزامنة</TableHead>
+                                                <TableHead className="text-center w-28">إجراء</TableHead>
+                                            </TableRow>
+                                        </TableHeader>
+                                        <TableBody>
+                                            {pendingTablesList.map((t) => (
+                                                <TableRow key={t.tableName} className="text-xs hover:bg-muted/30">
+                                                    <TableCell>
+                                                        <div className="font-bold text-foreground">{t.displayName}</div>
+                                                        <div className="text-[11px] font-mono text-muted-foreground">dbo.{t.tableName} ({t.category})</div>
+                                                    </TableCell>
+                                                    <TableCell className="text-center font-mono font-bold">
+                                                        {t.pendingPushCount > 0 ? (
+                                                            <span className="px-2 py-0.5 rounded bg-amber-500/15 text-amber-700 dark:text-amber-400 font-mono font-bold">
+                                                                {t.pendingPushCount.toLocaleString()}
+                                                            </span>
+                                                        ) : (
+                                                            <span className="text-muted-foreground/60">0</span>
+                                                        )}
+                                                    </TableCell>
+                                                    <TableCell className="text-center font-mono font-bold">
+                                                        {t.pendingPullCount > 0 ? (
+                                                            <span className="px-2 py-0.5 rounded bg-sky-500/15 text-sky-700 dark:text-sky-400 font-mono font-bold">
+                                                                {t.pendingPullCount.toLocaleString()}
+                                                            </span>
+                                                        ) : (
+                                                            <span className="text-muted-foreground/60">0</span>
+                                                        )}
+                                                    </TableCell>
+                                                    <TableCell className="text-center">
+                                                        {formatTimestamp(t.lastLocalModified)}
+                                                    </TableCell>
+                                                    <TableCell className="text-center">
+                                                        {renderStatusBadge(t)}
+                                                    </TableCell>
+                                                    <TableCell className="text-center">
+                                                        <Button
+                                                            size="sm"
+                                                            variant="default"
+                                                            className="h-7 px-3 text-[11px] font-bold bg-primary text-primary-foreground shadow-xs"
+                                                            onClick={() => handleSyncNow(t.direction === 'pull' ? 'pull' : 'push', t.tableName)}
+                                                            disabled={isSyncing && syncingTable === t.tableName}
+                                                        >
+                                                            {isSyncing && syncingTable === t.tableName ? (
+                                                                <Loader2 className="h-3 w-3 animate-spin" />
+                                                            ) : (
+                                                                'مزامنة فورية'
+                                                            )}
+                                                        </Button>
+                                                    </TableCell>
+                                                </TableRow>
+                                            ))}
+                                        </TableBody>
+                                    </Table>
                                 )}
                             </CardContent>
-                            <CardFooter className="bg-muted/30 border-t py-3 flex justify-between items-center">
-                                <span className="text-xs text-muted-foreground">
-                                    الهدف: السيرفر <strong className="text-foreground">{config.centralServerIp}</strong> | القاعدة: <strong className="text-foreground">{config.centralDatabase}</strong>
-                                </span>
-                                <Button 
-                                    className="bg-amber-600 hover:bg-amber-700 text-white font-bold gap-2 text-xs shadow-md"
-                                    onClick={handleInitializeDatabase}
-                                    disabled={isInitializingDb || !config.centralDatabase.trim()}
-                                >
-                                    {isInitializingDb ? (
-                                        <>
-                                            <Loader2 className="h-4 w-4 animate-spin ml-1" />
-                                            جاري تأسيس وبناء الجداول...
-                                        </>
-                                    ) : (
-                                        <>
-                                            <Sparkles className="h-4 w-4 ml-1" />
-                                            تأسيس وبناء قاعدة البيانات الآن (71 جدولاً)
-                                        </>
-                                    )}
-                                </Button>
-                            </CardFooter>
-                        </Card>
-                    </TabsContent>
-
-                    {/* ========================================================= */}
-                    {/* TAB 3: QUEUE ANALYTICS & AUDIT LOGS (طابور الحركات وسجل المزامنة) */}
-                    {/* ========================================================= */}
-                    <TabsContent value="queue" className="space-y-6 mt-5">
-                        
-                        {/* Pending Queue Breakdown Grid */}
-                        <Card className="border shadow-sm">
-                            <CardHeader className="flex flex-row items-center justify-between pb-3">
-                                <div>
-                                    <CardTitle className="text-base flex items-center gap-2">
-                                        <Activity className="h-5 w-5 text-amber-500" />
-                                        توزيع الحركات المعلقة بالفرع حسب الأقسام
-                                    </CardTitle>
-                                    <CardDescription>
-                                        تتبع لحظي للوثائق والحركات التي تنتظر الرفع للسيرفر المركزي.
-                                    </CardDescription>
-                                </div>
-                                <Button size="sm" variant="outline" onClick={() => loadSettings(false)} className="gap-1.5 text-xs">
-                                    <RefreshCw className="h-3 w-3" /> تحديث العدادات
-                                </Button>
-                            </CardHeader>
-                            <CardContent>
-                                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-3">
-                                    <div className="p-3 bg-muted/30 hover:bg-muted/50 transition-colors rounded-xl border text-center space-y-1">
-                                        <ShoppingCart className="h-5 w-5 mx-auto text-blue-500" />
-                                        <div className="text-xs text-muted-foreground font-medium">فواتير مبيعات</div>
-                                        <div className="text-xl font-black text-foreground">{pendingBreakdown.sales}</div>
-                                    </div>
-
-                                    <div className="p-3 bg-muted/30 hover:bg-muted/50 transition-colors rounded-xl border text-center space-y-1">
-                                        <Truck className="h-5 w-5 mx-auto text-amber-500" />
-                                        <div className="text-xs text-muted-foreground font-medium">فواتير مشتريات</div>
-                                        <div className="text-xl font-black text-foreground">{pendingBreakdown.purchases}</div>
-                                    </div>
-
-                                    <div className="p-3 bg-muted/30 hover:bg-muted/50 transition-colors rounded-xl border text-center space-y-1">
-                                        <Banknote className="h-5 w-5 mx-auto text-emerald-500" />
-                                        <div className="text-xs text-muted-foreground font-medium">سندات قبض</div>
-                                        <div className="text-xl font-black text-foreground">{pendingBreakdown.customerPayments}</div>
-                                    </div>
-
-                                    <div className="p-3 bg-muted/30 hover:bg-muted/50 transition-colors rounded-xl border text-center space-y-1">
-                                        <CreditCard className="h-5 w-5 mx-auto text-purple-500" />
-                                        <div className="text-xs text-muted-foreground font-medium">سندات صرف</div>
-                                        <div className="text-xl font-black text-foreground">{pendingBreakdown.supplierPayments}</div>
-                                    </div>
-
-                                    <div className="p-3 bg-muted/30 hover:bg-muted/50 transition-colors rounded-xl border text-center space-y-1">
-                                        <Receipt className="h-5 w-5 mx-auto text-rose-500" />
-                                        <div className="text-xs text-muted-foreground font-medium">مصروفات وإيراد</div>
-                                        <div className="text-xl font-black text-foreground">{pendingBreakdown.expenses}</div>
-                                    </div>
-
-                                    <div className="p-3 bg-muted/30 hover:bg-muted/50 transition-colors rounded-xl border text-center space-y-1">
-                                        <Boxes className="h-5 w-5 mx-auto text-cyan-500" />
-                                        <div className="text-xs text-muted-foreground font-medium">حركات مخازن</div>
-                                        <div className="text-xl font-black text-foreground">{pendingBreakdown.stock}</div>
-                                    </div>
-
-                                    <div className="p-3 bg-muted/30 hover:bg-muted/50 transition-colors rounded-xl border text-center space-y-1">
-                                        <ArrowLeftRight className="h-5 w-5 mx-auto text-indigo-500" />
-                                        <div className="text-xs text-muted-foreground font-medium">تحويلات فروع</div>
-                                        <div className="text-xl font-black text-foreground">{pendingBreakdown.transfers}</div>
-                                    </div>
-
-                                    <div className="p-3 bg-muted/30 hover:bg-muted/50 transition-colors rounded-xl border text-center space-y-1">
-                                        <Wallet className="h-5 w-5 mx-auto text-emerald-600" />
-                                        <div className="text-xs text-muted-foreground font-medium">حركات خزينة</div>
-                                        <div className="text-xl font-black text-foreground">{pendingBreakdown.treasury}</div>
-                                    </div>
-
-                                    <div className="p-3 bg-muted/30 hover:bg-muted/50 transition-colors rounded-xl border text-center space-y-1">
-                                        <Users className="h-5 w-5 mx-auto text-amber-600" />
-                                        <div className="text-xs text-muted-foreground font-medium">مندوبين وتوزيع</div>
-                                        <div className="text-xl font-black text-foreground">{pendingBreakdown.rep}</div>
-                                    </div>
-
-                                    <div className="p-3 bg-muted/30 hover:bg-muted/50 transition-colors rounded-xl border text-center space-y-1">
-                                        <UserCheck className="h-5 w-5 mx-auto text-violet-500" />
-                                        <div className="text-xs text-muted-foreground font-medium">مرتبات وسلف HR</div>
-                                        <div className="text-xl font-black text-foreground">{pendingBreakdown.hr}</div>
-                                    </div>
-
-                                    <div className="p-3 bg-muted/30 hover:bg-muted/50 transition-colors rounded-xl border text-center space-y-1 col-span-2 sm:col-span-2">
-                                        <Terminal className="h-5 w-5 mx-auto text-pink-500" />
-                                        <div className="text-xs text-muted-foreground font-medium">جلسات كاشير POS</div>
-                                        <div className="text-xl font-black text-foreground">{pendingBreakdown.pos}</div>
-                                    </div>
-                                </div>
-                            </CardContent>
-                            <CardFooter className="bg-muted/20 border-t flex justify-between items-center py-3">
-                                <span className="text-xs text-muted-foreground">
-                                    إجمالي المعلق: <strong className="text-foreground">{pendingBreakdown.total.toLocaleString()} حركة</strong>
-                                </span>
-                                <Button 
-                                    size="sm" 
-                                    className="bg-primary hover:bg-primary/90 text-primary-foreground font-bold gap-2 text-xs"
-                                    onClick={() => handleSyncNow('push')}
-                                    disabled={isSyncing}
-                                >
-                                    {isSyncing ? <Loader2 className="h-4 w-4 animate-spin" /> : <ArrowUpRight className="h-4 w-4" />}
-                                    مزامنة ورفع المعلق الآن
-                                </Button>
-                            </CardFooter>
                         </Card>
 
                         {/* Recent Sync Activity Log */}
                         <Card className="border shadow-sm">
-                            <CardHeader>
+                            <CardHeader className="pb-3">
                                 <CardTitle className="text-base flex items-center gap-2">
                                     <Clock className="h-5 w-5 text-muted-foreground" />
                                     سجل عمليات المزامنة اللحظي (Sync Activity Log)
@@ -1234,7 +1155,7 @@ export default function CentralSyncSettingsPage() {
                             <CardContent className="p-0">
                                 <div className="border-t">
                                     <Table>
-                                        <TableHeader className="bg-muted/40 text-xs">
+                                        <TableHeader className="bg-muted/50 text-xs">
                                             <TableRow>
                                                 <TableHead>وقت العملية</TableHead>
                                                 <TableHead>الفرع</TableHead>
@@ -1260,17 +1181,23 @@ export default function CentralSyncSettingsPage() {
                                                         <TableCell className="font-medium">{log.branch}</TableCell>
                                                         <TableCell className="text-center">
                                                             {log.status === 'success' ? (
-                                                                <Badge className="bg-emerald-600 text-white text-[10px]">ناجحة ✅</Badge>
+                                                                <span className="px-2 py-0.5 rounded text-[10px] font-semibold bg-emerald-500/10 text-emerald-600 border border-emerald-500/20">
+                                                                    ناجحة ✅
+                                                                </span>
                                                             ) : log.status === 'failed' ? (
-                                                                <Badge variant="destructive" className="text-[10px]">فشلت ❌</Badge>
+                                                                <span className="px-2 py-0.5 rounded text-[10px] font-semibold bg-rose-500/10 text-rose-600 border border-rose-500/20">
+                                                                    فشلت ❌
+                                                                </span>
                                                             ) : (
-                                                                <Badge variant="outline" className="text-[10px]">جاهز</Badge>
+                                                                <span className="px-2 py-0.5 rounded text-[10px] font-semibold bg-muted text-muted-foreground">
+                                                                    جاهز
+                                                                </span>
                                                             )}
                                                         </TableCell>
                                                         <TableCell className="text-center font-mono font-bold text-emerald-600">
                                                             +{log.pushed || 0}
                                                         </TableCell>
-                                                        <TableCell className="text-center font-mono font-bold text-blue-600">
+                                                        <TableCell className="text-center font-mono font-bold text-sky-600">
                                                             +{log.pulled || 0}
                                                         </TableCell>
                                                         <TableCell className="text-muted-foreground text-xs truncate max-w-xs">
@@ -1287,6 +1214,217 @@ export default function CentralSyncSettingsPage() {
                                     </Table>
                                 </div>
                             </CardContent>
+                        </Card>
+                    </TabsContent>
+
+                    {/* ========================================================= */}
+                    {/* TAB 3: CONNECTION & DATABASE PROVISIONING (إعدادات الربط وتأسيس القاعدة) */}
+                    {/* ========================================================= */}
+                    <TabsContent value="config" className="space-y-5 mt-4">
+                        
+                        {/* Settings & Configuration Card */}
+                        <Card className="border shadow-sm">
+                            <CardHeader>
+                                <CardTitle className="text-base flex items-center gap-2">
+                                    <Server className="h-5 w-5 text-sky-600" />
+                                    إعدادات الربط السحابي وبيانات الخادم المركزي
+                                </CardTitle>
+                                <CardDescription>
+                                    تحديد عنوان السيرفر المركزي للإدارة وربط هوية هذا الجهاز بالفرع والمستودع المسجل.
+                                </CardDescription>
+                            </CardHeader>
+                            <CardContent className="space-y-5">
+                                
+                                {/* Section 1: Local Branch Identity */}
+                                <div className="p-4 rounded-xl border bg-muted/20 space-y-3">
+                                    <div className="flex items-center gap-2 border-b pb-2">
+                                        <Database className="h-4 w-4 text-primary" />
+                                        <span className="font-bold text-sm">1. هوية وبيانات الفرع المحلي (Local Branch Identity)</span>
+                                    </div>
+                                    <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                                        <div className="space-y-1.5">
+                                            <Label className="text-xs font-bold">ربط بمستودع / فرع مسجل</Label>
+                                            <Select value={config.currentBranchId} onValueChange={handleWarehouseChange}>
+                                                <SelectTrigger className="h-9 text-xs">
+                                                    <SelectValue placeholder="اختر الفرع أو المستودع" />
+                                                </SelectTrigger>
+                                                <SelectContent>
+                                                    {warehouses.map((w: any) => (
+                                                        <SelectItem key={w.id} value={w.id}>
+                                                            {w.name} ({w.code || 'بدون كود'})
+                                                        </SelectItem>
+                                                    ))}
+                                                </SelectContent>
+                                            </Select>
+                                        </div>
+
+                                        <div className="space-y-1.5">
+                                            <Label className="text-xs font-bold">كود الفرع (BranchCode)</Label>
+                                            <Input 
+                                                value={config.currentBranchCode} 
+                                                onChange={(e) => handleInputChange('currentBranchCode', e.target.value)}
+                                                className="h-9 text-xs font-mono font-bold"
+                                                placeholder="900"
+                                            />
+                                        </div>
+
+                                        <div className="space-y-1.5">
+                                            <Label className="text-xs font-bold">اسم الفرع (BranchName)</Label>
+                                            <Input 
+                                                value={config.currentBranchName} 
+                                                onChange={(e) => handleInputChange('currentBranchName', e.target.value)}
+                                                className="h-9 text-xs font-bold"
+                                                placeholder="الفرع الرئيسي"
+                                            />
+                                        </div>
+                                    </div>
+                                </div>
+
+                                {/* Section 2: Central SQL Server Credentials */}
+                                <div className="p-4 rounded-xl border bg-muted/20 space-y-3">
+                                    <div className="flex items-center gap-2 border-b pb-2">
+                                        <Server className="h-4 w-4 text-sky-600" />
+                                        <span className="font-bold text-sm">2. خادم قاعدة بيانات الإدارة (Central SQL Server)</span>
+                                    </div>
+                                    <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                                        <div className="space-y-1.5">
+                                            <Label className="text-xs font-bold">عنوان السيرفر (IP أو اسم الجهاز)</Label>
+                                            <Input 
+                                                value={config.centralServerIp} 
+                                                onChange={(e) => handleInputChange('centralServerIp', e.target.value)}
+                                                className="h-9 text-xs font-mono font-semibold"
+                                                placeholder="10.110.16.16"
+                                            />
+                                        </div>
+
+                                        <div className="space-y-1.5">
+                                            <Label className="text-xs font-bold">رقم المنفذ (Port)</Label>
+                                            <Input 
+                                                type="number"
+                                                value={config.centralSqlPort} 
+                                                onChange={(e) => handleInputChange('centralSqlPort', parseInt(e.target.value) || 1433)}
+                                                className="h-9 text-xs font-mono"
+                                                placeholder="1433"
+                                            />
+                                        </div>
+
+                                        <div className="space-y-1.5">
+                                            <Label className="text-xs font-bold">اسم قاعدة البيانات المركزية</Label>
+                                            <Input 
+                                                value={config.centralDatabase} 
+                                                onChange={(e) => handleInputChange('centralDatabase', e.target.value)}
+                                                className="h-9 text-xs font-mono font-bold text-foreground"
+                                                placeholder="MultiBranchPOS_Central_DB"
+                                            />
+                                        </div>
+
+                                        <div className="space-y-1.5">
+                                            <Label className="text-xs font-bold">اسم مستخدم SQL</Label>
+                                            <Input 
+                                                value={config.centralUsername} 
+                                                onChange={(e) => handleInputChange('centralUsername', e.target.value)}
+                                                className="h-9 text-xs font-mono"
+                                                placeholder="gmlogins"
+                                            />
+                                        </div>
+
+                                        <div className="space-y-1.5">
+                                            <Label className="text-xs font-bold">كلمة المرور</Label>
+                                            <Input 
+                                                type="password"
+                                                value={config.centralPassword} 
+                                                onChange={(e) => handleInputChange('centralPassword', e.target.value)}
+                                                className="h-9 text-xs font-mono"
+                                                placeholder="••••••••"
+                                            />
+                                        </div>
+
+                                        <div className="space-y-1.5">
+                                            <Label className="text-xs font-bold">المزامنة التلقائية الخلفية</Label>
+                                            <div className="flex items-center justify-between p-2 rounded-lg border bg-background h-9">
+                                                <span className="text-xs text-muted-foreground font-medium">تشغيل المزامنة الدورية</span>
+                                                <Switch 
+                                                    checked={config.autoSync} 
+                                                    onCheckedChange={(checked) => handleInputChange('autoSync', checked)} 
+                                                />
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </CardContent>
+                            <CardFooter className="bg-muted/20 border-t flex justify-between items-center py-3">
+                                <Button 
+                                    variant="outline" 
+                                    size="sm" 
+                                    onClick={handleTestConnection}
+                                    disabled={isTesting}
+                                    className="gap-1.5 text-xs font-semibold h-8"
+                                >
+                                    {isTesting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Zap className="h-3.5 w-3.5 text-amber-500" />}
+                                    فحص صحة الاتصال
+                                </Button>
+                                <Button 
+                                    size="sm" 
+                                    onClick={handleSave} 
+                                    disabled={isSaving}
+                                    className="bg-primary hover:bg-primary/90 text-primary-foreground font-bold gap-1.5 text-xs h-8 shadow-sm"
+                                >
+                                    {isSaving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5" />}
+                                    حفظ الإعدادات
+                                </Button>
+                            </CardFooter>
+                        </Card>
+
+                        {/* Database Initialization & Provisioning Card */}
+                        <Card className="border border-sky-500/20 bg-sky-500/5 shadow-sm">
+                            <CardHeader>
+                                <CardTitle className="text-base flex items-center gap-2">
+                                    <Sparkles className="h-5 w-5 text-sky-600" />
+                                    تأسيس وبناء قاعدة البيانات المركزية ومطابقة الجداول (71 جدولاً)
+                                </CardTitle>
+                                <CardDescription>
+                                    في حال كان السيرفر المركزي فارغاً أو قاعدة البيانات جديدة، يقوم هذا الزر بإنشاء كافة الجداول وتأسيس العلاقات ومفاتيح الربط آلياً.
+                                </CardDescription>
+                            </CardHeader>
+                            <CardContent className="space-y-3">
+                                {initDbResult && (
+                                    <div className={cn(
+                                        "p-3 rounded-lg border text-xs font-medium space-y-1",
+                                        initDbResult.success ? "bg-emerald-500/10 border-emerald-500/30 text-emerald-700 dark:text-emerald-400" : "bg-destructive/10 border-destructive/30 text-destructive"
+                                    )}>
+                                        <div className="font-bold flex items-center gap-1.5">
+                                            {initDbResult.success ? <CheckCircle2 className="h-4 w-4" /> : <AlertTriangle className="h-4 w-4" />}
+                                            {initDbResult.message}
+                                        </div>
+                                        {initDbResult.tablesCount && (
+                                            <div>عدد الجداول التي تم بناؤها بنجاح: {initDbResult.tablesCount} جدولاً.</div>
+                                        )}
+                                        {initDbResult.error && (
+                                            <div className="font-mono text-[11px]">{initDbResult.error}</div>
+                                        )}
+                                    </div>
+                                )}
+                            </CardContent>
+                            <CardFooter className="border-t pt-3 flex justify-end">
+                                <Button 
+                                    size="sm" 
+                                    className="bg-sky-600 hover:bg-sky-700 text-white font-bold gap-1.5 text-xs shadow-sm h-8"
+                                    onClick={handleInitializeDatabase}
+                                    disabled={isInitializingDb || !config.centralDatabase.trim()}
+                                >
+                                    {isInitializingDb ? (
+                                        <>
+                                            <Loader2 className="h-3.5 w-3.5 animate-spin ml-1" />
+                                            جاري تأسيس وبناء الجداول...
+                                        </>
+                                    ) : (
+                                        <>
+                                            <Sparkles className="h-3.5 w-3.5 ml-1" />
+                                            تأسيس وبناء قاعدة البيانات الآن (71 جدولاً)
+                                        </>
+                                    )}
+                                </Button>
+                            </CardFooter>
                         </Card>
                     </TabsContent>
                 </Tabs>
