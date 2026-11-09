@@ -832,7 +832,7 @@ export default function PosPage() {
                 title: 'شاشة الكاشير محظورة في الإدارة المركزية',
                 description: 'تم حظر فتح الكاشير في الإدارة المركزية، حيث يقتصر البيع وفتح الورديات على فروع البيع فقط.'
             });
-            router.replace('/dashboard');
+            router.push('/dashboard');
         }
     }, [isCentral, router, toast]);
     
