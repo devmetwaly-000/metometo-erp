@@ -52,9 +52,15 @@ export async function POST(req: Request) {
 
         const checkIsCentral = async (): Promise<boolean> => {
             try {
-                const res = await pool.request().query("SELECT SettingValue FROM dbo.AppSettings WHERE SettingKey = 'system_role'");
-                if (res.recordset.length > 0 && res.recordset[0].SettingValue === 'central') {
-                    return true;
+                const res = await pool.request().query("SELECT SettingKey, SettingValue FROM dbo.AppSettings WHERE SettingKey IN ('system_role', 'central_sync')");
+                for (const row of res.recordset) {
+                    if (row.SettingKey === 'system_role' && row.SettingValue === 'central') return true;
+                    if (row.SettingKey === 'central_sync' && row.SettingValue) {
+                        try {
+                            const parsed = JSON.parse(row.SettingValue);
+                            if (parsed?.systemRole === 'central') return true;
+                        } catch {}
+                    }
                 }
             } catch {}
             return false;
@@ -854,6 +860,30 @@ export async function POST(req: Request) {
                 return NextResponse.json({ success: true, id });
             }
 
+            if (path === 'posTerminals') {
+                if (await checkIsCentral()) {
+                    return NextResponse.json({ 
+                        success: false, 
+                        error: "محظور: لا يمكن إضافة أو تعريف أجهزة كاشير في الإدارة المركزية. نقاط البيع تُعرف وترتبط بفروع البيع الفعلية فقط." 
+                    }, { status: 403 });
+                }
+                await pool.request()
+                    .input('Id', sql.NVarChar(64), id)
+                    .input('Code', sql.NVarChar(50), payload.code ? String(payload.code) : null)
+                    .input('Name', sql.NVarChar(255), payload.name || 'نقطة بيع')
+                    .input('WarehouseId', sql.NVarChar(64), payload.warehouseId || null)
+                    .input('PosPrinterType', sql.NVarChar(50), payload.posPrinterType || 'system')
+                    .input('PosPrinterAddress', sql.NVarChar(255), payload.posPrinterAddress || null)
+                    .input('EnableKitchenPrinter', sql.Bit, payload.enableKitchenPrinter ? 1 : 0)
+                    .input('KitchenPrinterType', sql.NVarChar(50), payload.kitchenPrinterType || 'system')
+                    .input('KitchenPrinterAddress', sql.NVarChar(255), payload.kitchenPrinterAddress || null)
+                    .query(`
+                        INSERT INTO dbo.PosTerminals (Id, Code, Name, WarehouseId, PosPrinterType, PosPrinterAddress, EnableKitchenPrinter, KitchenPrinterType, KitchenPrinterAddress)
+                        VALUES (@Id, @Code, @Name, @WarehouseId, @PosPrinterType, @PosPrinterAddress, @EnableKitchenPrinter, @KitchenPrinterType, @KitchenPrinterAddress);
+                    `);
+                return NextResponse.json({ success: true, id });
+            }
+
             if (path === 'gratuityLogs') {
                 await pool.request()
                     .input('Id', sql.NVarChar(64), id)
@@ -1281,6 +1311,39 @@ export async function POST(req: Request) {
                 return NextResponse.json({ success: true });
             }
 
+            if (path === 'posTerminals' && updateId) {
+                if (await checkIsCentral()) {
+                    return NextResponse.json({ 
+                        success: false, 
+                        error: "محظور: لا يمكن تعديل أجهزة كاشير في الإدارة المركزية. نقاط البيع تُدار من فروع البيع الفعلية فقط." 
+                    }, { status: 403 });
+                }
+                await pool.request()
+                    .input('Id', sql.NVarChar(64), updateId)
+                    .input('Code', sql.NVarChar(50), data.code !== undefined ? String(data.code) : null)
+                    .input('Name', sql.NVarChar(255), data.name || null)
+                    .input('WarehouseId', sql.NVarChar(64), data.warehouseId || null)
+                    .input('PosPrinterType', sql.NVarChar(50), data.posPrinterType || null)
+                    .input('PosPrinterAddress', sql.NVarChar(255), data.posPrinterAddress || null)
+                    .input('EnableKitchenPrinter', sql.Bit, data.enableKitchenPrinter !== undefined ? (data.enableKitchenPrinter ? 1 : 0) : null)
+                    .input('KitchenPrinterType', sql.NVarChar(50), data.kitchenPrinterType || null)
+                    .input('KitchenPrinterAddress', sql.NVarChar(255), data.kitchenPrinterAddress || null)
+                    .query(`
+                        UPDATE dbo.PosTerminals
+                        SET 
+                            Code = COALESCE(@Code, Code),
+                            Name = COALESCE(@Name, Name),
+                            WarehouseId = COALESCE(@WarehouseId, WarehouseId),
+                            PosPrinterType = COALESCE(@PosPrinterType, PosPrinterType),
+                            PosPrinterAddress = COALESCE(@PosPrinterAddress, PosPrinterAddress),
+                            EnableKitchenPrinter = COALESCE(@EnableKitchenPrinter, EnableKitchenPrinter),
+                            KitchenPrinterType = COALESCE(@KitchenPrinterType, KitchenPrinterType),
+                            KitchenPrinterAddress = COALESCE(@KitchenPrinterAddress, KitchenPrinterAddress)
+                        WHERE Id = @Id;
+                    `);
+                return NextResponse.json({ success: true });
+            }
+
             if (path === 'users' && updateId) {
                 await pool.request()
                     .input('Id', sql.NVarChar(64), updateId)
@@ -1409,8 +1472,15 @@ export async function POST(req: Request) {
                     stockAdjustmentRecords: 'dbo.StockAdjustmentRecords',
                     stockIssuesToReps: 'dbo.StockIssuesToReps',
                     stockReturnsFromReps: 'dbo.StockReturnsFromReps',
-                    inventoryClosings: 'dbo.InventoryClosings'
+                    inventoryClosings: 'dbo.InventoryClosings',
+                    posTerminals: 'dbo.PosTerminals'
                 };
+                if (path === 'posTerminals' && await checkIsCentral()) {
+                    return NextResponse.json({ 
+                        success: false, 
+                        error: "محظور: لا يمكن حذف أجهزة نقاط البيع في الإدارة المركزية." 
+                    }, { status: 403 });
+                }
                 const tableName = tableMap[path];
                 if (tableName) {
                     await pool.request()

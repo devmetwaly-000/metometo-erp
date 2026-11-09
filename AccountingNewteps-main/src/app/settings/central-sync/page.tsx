@@ -24,6 +24,7 @@ import {
 import { CentralSyncConfig, TableSyncMatrixItem, TablesSyncMatrixResponse, SyncDirection } from '@/lib/central-sync';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
+import localforage from 'localforage';
 
 export default function CentralSyncSettingsPage() {
     const { toast } = useToast();
@@ -235,10 +236,14 @@ export default function CentralSyncSettingsPage() {
                 setIsRoleDialogOpen(false);
                 toast({
                     title: "تم تغيير دور النظام بنجاح!",
-                    description: data.message
+                    description: `${data.message} - جاري تحديث التطبيق وتفعيل قيود الدور الجديد فوراً...`
                 });
-                await loadSettings(false);
-                await handleRefreshMatrix();
+                try {
+                    await localforage.removeItem('multibranch-pos-sql-cache-v5');
+                } catch {}
+                setTimeout(() => {
+                    window.location.reload();
+                }, 800);
             } else {
                 setRoleSwitchError(data.error || 'فشل التحقق من كلمة المرور.');
             }

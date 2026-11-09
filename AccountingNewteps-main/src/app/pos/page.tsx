@@ -823,6 +823,18 @@ export default function PosPage() {
     const { toast } = useToast();
     const router = useRouter();
     const searchParams = useSearchParams();
+
+    // Enforce immediate redirect if Central HQ
+    useEffect(() => {
+        if (isCentral) {
+            toast({
+                variant: 'destructive',
+                title: 'شاشة الكاشير محظورة في الإدارة المركزية',
+                description: 'تم حظر فتح الكاشير في الإدارة المركزية، حيث يقتصر البيع وفتح الورديات على فروع البيع فقط.'
+            });
+            router.replace('/dashboard');
+        }
+    }, [isCentral, router, toast]);
     
     const posSettings = useMemo(() => settings?.main?.posSettings || {}, [settings]);
     const financialSettings = useMemo(() => settings?.main?.financial || {}, [settings]);

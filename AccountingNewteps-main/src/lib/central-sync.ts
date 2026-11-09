@@ -1042,8 +1042,8 @@ export async function runFullSync(options?: {
                                 WHERE TableName = '${meta.childTable}';
                             `);
                         }
-                    } else if (!lastPushRv) {
-                        // إذا كانت السجلات متزامنة بالفعل ولم يتم تسجيل RowVersion بعد
+                    } else {
+                        // في حال عدم وجود حركات جديدة للرفع أو تمت مزامنتها مسبقاً، نحدّث رقم الـ RowVersion ليطابق أقصى قيمة محلية
                         const curMaxRvRes = await localPool.request().query(`SELECT MAX(CAST([RowVersion] AS BIGINT)) as maxRv, COUNT(*) as c FROM dbo.[${tableName}]`);
                         const maxRv = curMaxRvRes.recordset[0]?.maxRv || 0;
                         const totalRows = curMaxRvRes.recordset[0]?.c || 0;
@@ -1203,7 +1203,8 @@ export async function runFullSync(options?: {
                                 LastSyncCheckAt = SYSUTCDATETIME()
                             WHERE TableName = '${tableName}';
                         `);
-                    } else if (!lastPullRv) {
+                    } else {
+                        // في حال عدم وجود حركات جديدة للسحب من الإدارة، نحدّث رقم الـ LastPullRowVersion ليطابق أقصى قيمة مركزية
                         const curMaxCentralRvRes = await centralPool.request().query(`SELECT MAX(CAST([RowVersion] AS BIGINT)) as maxRv FROM dbo.[${tableName}]`);
                         const maxRv = curMaxCentralRvRes.recordset[0]?.maxRv || 0;
                         await localPool.request().query(`

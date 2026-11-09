@@ -1092,13 +1092,19 @@ export default function PosSessionsPage() {
                                                 <p className="font-bold">{cs.expectedCash.toLocaleString()} ج.م</p>
                                             </div>
                                             <div className="col-span-2 md:col-span-1 flex justify-end">
-                                                <AddEntityDialog
-                                                    title="إقفال وردية الكاشير"
-                                                    description="تأكيد المبالغ وتوريدها إلى الخزينة الرئيسية."
-                                                    triggerButton={<Button variant="destructive"><PowerOff className="ml-2 h-4 w-4"/>إقفال وردية</Button>}
-                                                >
-                                                    <CloseCashierSessionDialog cashierSession={cs} onConfirm={(data) => handleCloseCashierSession(cs.cashierId, data)} onClose={()=>{}} />
-                                                </AddEntityDialog>
+                                                {!isCentral ? (
+                                                    <AddEntityDialog
+                                                        title="إقفال وردية الكاشير"
+                                                        description="تأكيد المبالغ وتوريدها إلى الخزينة الرئيسية."
+                                                        triggerButton={<Button variant="destructive"><PowerOff className="ml-2 h-4 w-4"/>إقفال وردية</Button>}
+                                                    >
+                                                        <CloseCashierSessionDialog cashierSession={cs} onConfirm={(data) => handleCloseCashierSession(cs.cashierId, data)} onClose={()=>{}} />
+                                                    </AddEntityDialog>
+                                                ) : (
+                                                    <Badge variant="outline" className="text-xs font-medium text-muted-foreground border-border/80">
+                                                        متابعة فرع
+                                                    </Badge>
+                                                )}
                                             </div>
                                         </div>
                                     </Card>
@@ -1106,51 +1112,67 @@ export default function PosSessionsPage() {
                                 {cashierSessionsData.length === 0 && <p className="text-center text-muted-foreground py-4">لا توجد ورديات مفتوحة حاليًا.</p>}
                             </CardContent>
                         </Card>
-                         <Card>
-                            <CardHeader><CardTitle>إدارة اليومية</CardTitle></CardHeader>
-                            <CardContent className="flex gap-4">
-                               {availableCashiers.length > 0 && !isCentral && (
-                                     <AddEntityDialog
-                                        title="تسليم عهدة وبدء وردية"
-                                        description="اختر الكاشير وأدخل رصيد بداية الوردية."
-                                        triggerButton={<Button><UserPlus className="ml-2 h-4 w-4" />تسليم عهدة جديدة</Button>}
-                                    >
-                                        <AssignCustodyDialog users={availableCashiers} onConfirm={handleAssignCustody} onClose={()=>{}} cashAccounts={cashAccounts} accountBalances={accountBalances} warehouses={warehouses} terminals={posTerminals} activeSessions={cashierSessionsData} />
-                                    </AddEntityDialog>
-                               )}
-                                <Button variant="secondary" onClick={handleCloseWorkDay} disabled={!canCloseWorkDay || isCentral}>
-                                    <PowerOff className="ml-2 h-4 w-4" />
-                                    إقفال يوم العمل بالكامل
-                                </Button>
-                            </CardContent>
-                             {!canCloseWorkDay && <CardFooter>
-                                <div className="text-xs text-destructive flex items-center gap-2">
-                                    <AlertTriangle className="h-4 w-4" />
-                                    <span>
-                                        لا يمكن إقفال يوم العمل. 
-                                        {!allSessionsClosed && " يجب إقفال جميع ورديات الكاشيرات أولاً."} 
-                                        {unreconciledDeliveryCount > 0 && ` يوجد ${unreconciledDeliveryCount} فاتورة دليفري معلقة لم يتم تحصيلها.`}
-                                    </span>
-                                </div>
-                             </CardFooter>}
-                        </Card>
+                        {!isCentral && (
+                            <Card>
+                                <CardHeader><CardTitle>إدارة اليومية</CardTitle></CardHeader>
+                                <CardContent className="flex gap-4">
+                                   {availableCashiers.length > 0 && (
+                                         <AddEntityDialog
+                                            title="تسليم عهدة وبدء وردية"
+                                            description="اختر الكاشير وأدخل رصيد بداية الوردية."
+                                            triggerButton={<Button><UserPlus className="ml-2 h-4 w-4" />تسليم عهدة جديدة</Button>}
+                                         >
+                                            <AssignCustodyDialog users={availableCashiers} onConfirm={handleAssignCustody} onClose={()=>{}} cashAccounts={cashAccounts} accountBalances={accountBalances} warehouses={warehouses} terminals={posTerminals} activeSessions={cashierSessionsData} />
+                                         </AddEntityDialog>
+                                   )}
+                                    <Button variant="secondary" onClick={handleCloseWorkDay} disabled={!canCloseWorkDay}>
+                                        <PowerOff className="ml-2 h-4 w-4" />
+                                        إقفال يوم العمل بالكامل
+                                    </Button>
+                                </CardContent>
+                                 {!canCloseWorkDay && <CardFooter>
+                                    <div className="text-xs text-destructive flex items-center gap-2">
+                                        <AlertTriangle className="h-4 w-4" />
+                                        <span>
+                                            لا يمكن إقفال يوم العمل. 
+                                            {!allSessionsClosed && " يجب إقفال جميع ورديات الكاشيرات أولاً."}
+                                            {unreconciledDeliveryCount > 0 && ` يوجد ${unreconciledDeliveryCount} فاتورة دليفري معلقة لم يتم تحصيلها.`}
+                                        </span>
+                                    </div>
+                                 </CardFooter>}
+                            </Card>
+                        )}
                     </div>
                 ) : (
-                    <Card className='text-center'>
+                    <Card className='text-center border-dashed'>
                         <CardHeader>
-                            <CardTitle className='flex items-center justify-center gap-2'><PowerOff className="text-destructive" />يوم العمل مغلق</CardTitle>
+                            <CardTitle className='flex items-center justify-center gap-2'>
+                                {isCentral ? (
+                                    <>
+                                        <Building2 className="h-6 w-6 text-sky-600" />
+                                        وضع المراجعة والتدقيق المركزي (Central HQ)
+                                    </>
+                                ) : (
+                                    <>
+                                        <PowerOff className="text-destructive" />
+                                        يوم العمل مغلق
+                                    </>
+                                )}
+                            </CardTitle>
                             <CardDescription>
                                 {isCentral 
-                                    ? "فتح أيام العمل وبدء الورديات محظور في الإدارة المركزية، ومخصص لفروع البيع فقط." 
+                                    ? "فتح أيام العمل وبدء الورديات محظور في الإدارة المركزية، ومخصص لفروع البيع فقط. تعرض هذه الشاشة ورديات الفروع المستلمة عبر المزامنة لأغراض التدقيق المالي." 
                                     : "لا توجد يومية عمل مفتوحة حاليًا. يجب فتح يومية جديدة لبدء عمليات نقاط البيع."}
                             </CardDescription>
                         </CardHeader>
-                        <CardContent>
-                            <Button size="lg" onClick={handleOpenWorkDay} disabled={isCentral} title={isCentral ? "محظور في الإدارة المركزية" : undefined}>
-                                <PlayCircle className="ml-2 h-4 w-4"/>
-                                {isCentral ? "فتح يوم العمل متاح من الفروع فقط" : "فتح يوم عمل جديد"}
-                            </Button>
-                        </CardContent>
+                        {!isCentral && (
+                            <CardContent>
+                                <Button size="lg" onClick={handleOpenWorkDay}>
+                                    <PlayCircle className="ml-2 h-4 w-4"/>
+                                    فتح يوم عمل جديد
+                                </Button>
+                            </CardContent>
+                        )}
                     </Card>
                 )}
                  {closedWorkDays.length > 0 && (

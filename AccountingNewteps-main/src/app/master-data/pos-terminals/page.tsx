@@ -19,7 +19,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { MoreHorizontal, PlusCircle, Edit, Trash2, Loader2, Printer } from "lucide-react";
+import { MoreHorizontal, PlusCircle, Edit, Trash2, Loader2, Printer, Building2 } from "lucide-react";
 import { useData } from "@/contexts/data-provider";
 import { useAuth } from "@/contexts/auth-context";
 import { AddEntityDialog } from "@/components/add-entity-dialog";
@@ -277,7 +277,7 @@ const TerminalForm = ({ terminal, onSave, onClose, warehouses, allTerminals, sys
 
 
 export default function PosTerminalsPage() {
-  const { posTerminals, warehouses, dbAction, loading } = useData();
+  const { posTerminals, warehouses, dbAction, loading, isCentral } = useData();
   const { user } = useAuth();
   const { toast } = useToast();
   
@@ -318,6 +318,10 @@ export default function PosTerminalsPage() {
   }, []);
 
   const handleSave = async (data: Partial<PosTerminal>) => {
+    if (isCentral) {
+      toast({ variant: "destructive", title: "عملية محظورة", description: "إضافة أو تعديل نقاط البيع محظور في الإدارة المركزية. نقاط البيع تُدار من فروع البيع الفعلية فقط." });
+      return;
+    }
     try {
       const payload = {
         name: data.name,
@@ -343,6 +347,10 @@ export default function PosTerminalsPage() {
   };
 
   const handleDelete = async (id: string) => {
+    if (isCentral) {
+      toast({ variant: "destructive", title: "عملية محظورة", description: "حذف نقاط البيع محظور في الإدارة المركزية." });
+      return;
+    }
     await dbAction("posTerminals", "remove", { id });
     toast({ title: 'تم الحذف بنجاح' });
   };
@@ -352,20 +360,35 @@ export default function PosTerminalsPage() {
   return (
     <>
       <PageHeader title="نقاط البيع (الكاشيرات)">
-        <AddEntityDialog
-          title="إضافة نقطة بيع جديدة"
-          description="عرّف أجهزة الكاشير الموجودة لديك واربط كل جهاز بمخزن محدد لصرف البضاعة منه."
-          triggerButton={
-            <Button size="sm" className="gap-1">
-              <PlusCircle className="h-4 w-4" />
-              إضافة نقطة بيع
-            </Button>
-          }
-        >
-          {({onClose}) => <TerminalForm onSave={handleSave} onClose={onClose} warehouses={authorizedWarehouses} allTerminals={posTerminals} systemPrinters={systemPrinters} />}
-        </AddEntityDialog>
+        {!isCentral && (
+          <AddEntityDialog
+            title="إضافة نقطة بيع جديدة"
+            description="عرّف أجهزة الكاشير الموجودة لديك واربط كل جهاز بمخزن محدد لصرف البضاعة منه."
+            triggerButton={
+              <Button size="sm" className="gap-1">
+                <PlusCircle className="h-4 w-4" />
+                إضافة نقطة بيع
+              </Button>
+            }
+          >
+            {({onClose}) => <TerminalForm onSave={handleSave} onClose={onClose} warehouses={authorizedWarehouses} allTerminals={posTerminals} systemPrinters={systemPrinters} />}
+          </AddEntityDialog>
+        )}
       </PageHeader>
       <main className="flex flex-1 flex-col gap-4 p-4 md:gap-8 md:p-6">
+        {isCentral && (
+          <Card className="border-sky-500/40 bg-sky-500/5 shadow-sm">
+            <CardContent className="p-4 flex items-center gap-3">
+              <Building2 className="h-6 w-6 text-sky-600 shrink-0" />
+              <div className="space-y-0.5 text-xs">
+                <p className="font-bold text-sm text-foreground">وضع المراجعة والتدقيق المركزي (Central HQ)</p>
+                <p className="text-muted-foreground">
+                  النظام يعمل حالياً بدور <strong>الإدارة المركزية</strong>. إضافة أو تعديل نقاط البيع (الكاشيرات) محظور هنا ومخصص لفروع البيع فقط. تُعرض هذه القائمة لأغراض المراجعة والتدقيق لنقاط البيع المعرفة بالفروع.
+                </p>
+              </div>
+            </CardContent>
+          </Card>
+        )}
         <Card>
           <CardHeader>
             <CardTitle>قائمة نقاط البيع</CardTitle>
@@ -394,44 +417,50 @@ export default function PosTerminalsPage() {
                         <TableCell className="font-medium">{terminal.name}</TableCell>
                         <TableCell>{getWarehouseName(terminal.warehouseId)}</TableCell>
                         <TableCell className="text-center">
-                           <AlertDialog>
-                              <DropdownMenu>
-                                  <DropdownMenuTrigger asChild>
-                                  <Button aria-haspopup="true" size="icon" variant="ghost">
-                                      <MoreHorizontal className="h-4 w-4" />
-                                  </Button>
-                                  </DropdownMenuTrigger>
-                                  <DropdownMenuContent align="end">
-                                      <DropdownMenuLabel>الإجراءات</DropdownMenuLabel>
-                                      <AddEntityDialog
-                                          title="تعديل نقطة البيع"
-                                          description="تعديل اسم نقطة البيع والمخزن المرتبط بها."
-                                          triggerButton={
-                                              <DropdownMenuItem onSelect={(e) => e.preventDefault()}>
-                                                  <Edit className="ml-2 h-4 w-4" /> تعديل
-                                              </DropdownMenuItem>
-                                          }
-                                      >
-                                          {({onClose}) => <TerminalForm terminal={terminal} onSave={handleSave} onClose={onClose} warehouses={authorizedWarehouses} allTerminals={posTerminals} systemPrinters={systemPrinters}/>}
-                                      </AddEntityDialog>
-                                      <AlertDialogTrigger asChild>
-                                          <DropdownMenuItem className="text-destructive" onSelect={(e) => e.preventDefault()}>
-                                              <Trash2 className="ml-2 h-4 w-4" /> حذف
-                                          </DropdownMenuItem>
-                                      </AlertDialogTrigger>
-                                  </DropdownMenuContent>
-                              </DropdownMenu>
-                               <AlertDialogContent>
-                                  <AlertDialogHeader>
-                                      <AlertDialogTitle>هل أنت متأكد تمامًا؟</AlertDialogTitle>
-                                      <AlertDialogDescription>سيؤدي هذا الإجراء إلى حذف نقطة البيع بشكل دائم.</AlertDialogDescription>
-                                  </AlertDialogHeader>
-                                  <AlertDialogFooter>
-                                      <AlertDialogCancel>إلغاء</AlertDialogCancel>
-                                      <AlertDialogAction onClick={() => handleDelete(terminal.id!)}>متابعة</AlertDialogAction>
-                                  </AlertDialogFooter>
-                              </AlertDialogContent>
-                          </AlertDialog>
+                          {isCentral ? (
+                            <span className="text-[11px] text-muted-foreground font-medium px-2 py-1 rounded bg-muted">
+                              مراجعة فقط
+                            </span>
+                          ) : (
+                            <AlertDialog>
+                               <DropdownMenu>
+                                   <DropdownMenuTrigger asChild>
+                                   <Button aria-haspopup="true" size="icon" variant="ghost">
+                                       <MoreHorizontal className="h-4 w-4" />
+                                   </Button>
+                                   </DropdownMenuTrigger>
+                                   <DropdownMenuContent align="end">
+                                       <DropdownMenuLabel>الإجراءات</DropdownMenuLabel>
+                                       <AddEntityDialog
+                                           title="تعديل نقطة البيع"
+                                           description="تعديل اسم نقطة البيع والمخزن المرتبط بها."
+                                           triggerButton={
+                                               <DropdownMenuItem onSelect={(e) => e.preventDefault()}>
+                                                   <Edit className="ml-2 h-4 w-4" /> تعديل
+                                               </DropdownMenuItem>
+                                           }
+                                       >
+                                           {({onClose}) => <TerminalForm terminal={terminal} onSave={handleSave} onClose={onClose} warehouses={authorizedWarehouses} allTerminals={posTerminals} systemPrinters={systemPrinters}/>}
+                                       </AddEntityDialog>
+                                       <AlertDialogTrigger asChild>
+                                           <DropdownMenuItem className="text-destructive" onSelect={(e) => e.preventDefault()}>
+                                               <Trash2 className="ml-2 h-4 w-4" /> حذف
+                                           </DropdownMenuItem>
+                                       </AlertDialogTrigger>
+                                   </DropdownMenuContent>
+                               </DropdownMenu>
+                                <AlertDialogContent>
+                                   <AlertDialogHeader>
+                                       <AlertDialogTitle>هل أنت متأكد تمامًا؟</AlertDialogTitle>
+                                       <AlertDialogDescription>سيؤدي هذا الإجراء إلى حذف نقطة البيع بشكل دائم.</AlertDialogDescription>
+                                   </AlertDialogHeader>
+                                   <AlertDialogFooter>
+                                       <AlertDialogCancel>إلغاء</AlertDialogCancel>
+                                       <AlertDialogAction onClick={() => handleDelete(terminal.id!)}>متابعة</AlertDialogAction>
+                                   </AlertDialogFooter>
+                               </AlertDialogContent>
+                            </AlertDialog>
+                          )}
                         </TableCell>
                       </TableRow>
                     )) : (

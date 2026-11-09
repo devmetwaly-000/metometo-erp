@@ -627,29 +627,33 @@ export function AppLayoutContent({ children }: { children: React.ReactNode }) {
 
   const memoizedNavStructure = useMemo(() => {
     if (!isCentral) return navStructure;
-    return navStructure.map((item: any) => {
-      if (item.title === dictionary.nav.pos || item.modules?.includes('pos')) {
-        return {
-          ...item,
-          children: item.children?.map((child: any) => {
-            if (child.href === '/pos') {
-              return {
-                ...child,
-                title: `${child.title} (فروع البيع فقط 🔒)`
-              };
-            }
+    return navStructure
+      .filter((item: any) => item.href !== '/tables' && item.href !== '/pos')
+      .map((item: any) => {
+        if (item.title === dictionary.nav.pos || item.modules?.includes('pos')) {
+          const filteredChildren = (item.children || []).filter((child: any) => {
+            // Completely hide live sales screen, POS terminals management, and POS returns in Central HQ
+            if (child.href === '/pos') return false;
+            if (child.href === '/master-data/pos-terminals') return false;
+            if (child.href === '/sales/returns/pos') return false;
+            return true;
+          }).map((child: any) => {
             if (child.href === '/pos/sessions') {
               return {
                 ...child,
-                title: `${child.title} (مراجعة وتدقيق)`
+                title: 'مراجعة وتدقيق ورديات الفروع'
               };
             }
             return child;
-          })
-        };
-      }
-      return item;
-    });
+          });
+
+          return {
+            ...item,
+            children: filteredChildren
+          };
+        }
+        return item;
+      });
   }, [isCentral]);
 
   const isHubLayout = desktopLayout === 'modern_hub';
