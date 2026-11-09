@@ -1921,6 +1921,9 @@ export default function ItemsPage() {
     const [editingItem, setEditingItem] = useState<any>(null);
     const [isEditOpen, setIsEditOpen] = useState(false);
     const [isDeleteAlertOpen, setIsDeleteAlertOpen] = useState(false);
+    const [itemToDelete, setItemToDelete] = useState<any>(null);
+    const [currentPage, setCurrentPage] = useState(1);
+    const [pageSize, setPageSize] = useState(50);
     const router = useRouter();
 
     const [filters, setFilters] = useState({
@@ -2173,13 +2176,25 @@ export default function ItemsPage() {
         
   }, [allItems, searchTerm, filters]);
   
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchTerm, filters]);
+
+  const totalPages = Math.max(1, Math.ceil(filteredItems.length / (pageSize === -1 ? (filteredItems.length || 1) : pageSize)));
+
+  const paginatedItems = useMemo(() => {
+    if (pageSize === -1) return filteredItems;
+    const start = (currentPage - 1) * pageSize;
+    return filteredItems.slice(start, start + pageSize);
+  }, [filteredItems, currentPage, pageSize]);
+
   const handleSelectAll = (checked: boolean) => {
-    setSelectedItems(checked ? filteredItems.map((item: any) => item.id) : []);
+    setSelectedItems(checked ? paginatedItems.map((item: any) => item.id) : []);
   };
   
   const handleSelectOne = (itemId: string, checked: boolean) => {
       setSelectedItems(prev => checked ? [...prev, itemId] : prev.filter(id => id !== itemId));
-  }
+  };
 
   return (
     <>
@@ -2298,104 +2313,192 @@ export default function ItemsPage() {
                 <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
               </div>
             ) : (
-              <div className="w-full overflow-auto border rounded-lg max-h-[calc(100vh-320px)] relative">
-                <Table>
-                  <TableHeader className="sticky top-0 z-20 bg-background/95 backdrop-blur-md shadow-sm border-b">
-                    <TableRow className="hover:bg-transparent">
-                      <TableHead className="w-12 bg-muted/95 font-bold sticky top-0 py-3 z-20"><Checkbox onCheckedChange={handleSelectAll} checked={selectedItems.length > 0 && selectedItems.length === filteredItems.length} /></TableHead>
-                      <TableHead className="bg-muted/95 font-bold sticky top-0 py-3 z-20">الباركود</TableHead>
-                      <TableHead className="bg-muted/95 font-bold sticky top-0 py-3 z-20">اسم الصنف</TableHead>
-                      <TableHead className="bg-muted/95 font-bold sticky top-0 py-3 z-20">الوحدة</TableHead>
-                      <TableHead className="hidden md:table-cell bg-muted/95 font-bold sticky top-0 py-3 z-20">التكلفة</TableHead>
-                      <TableHead className="hidden md:table-cell bg-muted/95 font-bold sticky top-0 py-3 z-20">السعر</TableHead>
-                      <TableHead className="text-center w-[100px] bg-muted/95 font-bold sticky top-0 py-3 z-20">الإجراءات</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {filteredItems.map((item: any) => {
-                      return (
-                        <TableRow key={item.id}>
-                        <TableCell><Checkbox onCheckedChange={(checked) => handleSelectOne(item.id, !!checked)} checked={selectedItems.includes(item.id)} /></TableCell>
-                        <TableCell className="font-mono text-xs">{item.code || "-"}</TableCell>
-                        <TableCell className="font-medium">{item.name}</TableCell>
-                        <TableCell>
-                          <div className="flex flex-col gap-1 items-start">
-                            <span className="font-semibold text-xs">
-                              {UNIT_LABELS[item.baseUnit] || item.baseUnit || 'قطعة'}
-                            </span>
-                            {item.secondaryUnits && item.secondaryUnits.length > 0 && (
-                              <div className="flex flex-wrap gap-1 mt-0.5">
-                                {item.secondaryUnits.map((u: any, idx: number) => (
-                                  <Badge key={idx} variant="outline" className="text-[10px] px-1 py-0 bg-muted/60 border-primary/30 text-primary font-normal">
-                                    {u.name} (x{u.conversionFactor})
-                                  </Badge>
-                                ))}
+              <div className="space-y-4">
+                <div className="w-full overflow-auto border rounded-lg max-h-[calc(100vh-360px)] relative">
+                  <Table>
+                    <TableHeader className="sticky top-0 z-20 bg-background/95 backdrop-blur-md shadow-sm border-b">
+                      <TableRow className="hover:bg-transparent">
+                        <TableHead className="w-12 bg-muted/95 font-bold sticky top-0 py-3 z-20">
+                          <Checkbox 
+                            onCheckedChange={handleSelectAll} 
+                            checked={paginatedItems.length > 0 && paginatedItems.every((item: any) => selectedItems.includes(item.id))} 
+                          />
+                        </TableHead>
+                        <TableHead className="bg-muted/95 font-bold sticky top-0 py-3 z-20">الباركود</TableHead>
+                        <TableHead className="bg-muted/95 font-bold sticky top-0 py-3 z-20">اسم الصنف</TableHead>
+                        <TableHead className="bg-muted/95 font-bold sticky top-0 py-3 z-20">الوحدة</TableHead>
+                        <TableHead className="hidden md:table-cell bg-muted/95 font-bold sticky top-0 py-3 z-20">التكلفة</TableHead>
+                        <TableHead className="hidden md:table-cell bg-muted/95 font-bold sticky top-0 py-3 z-20">السعر</TableHead>
+                        <TableHead className="text-center w-[100px] bg-muted/95 font-bold sticky top-0 py-3 z-20">الإجراءات</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {paginatedItems.length > 0 ? (
+                        paginatedItems.map((item: any) => (
+                          <TableRow key={item.id} className="hover:bg-muted/40 transition-colors">
+                            <TableCell>
+                              <Checkbox 
+                                onCheckedChange={(checked) => handleSelectOne(item.id, !!checked)} 
+                                checked={selectedItems.includes(item.id)} 
+                              />
+                            </TableCell>
+                            <TableCell className="font-mono text-xs">{item.code || "-"}</TableCell>
+                            <TableCell className="font-medium">{item.name}</TableCell>
+                            <TableCell>
+                              <div className="flex flex-col gap-1 items-start">
+                                <span className="font-semibold text-xs">
+                                  {UNIT_LABELS[item.baseUnit] || item.baseUnit || 'قطعة'}
+                                </span>
+                                {item.secondaryUnits && item.secondaryUnits.length > 0 && (
+                                  <div className="flex flex-wrap gap-1 mt-0.5">
+                                    {item.secondaryUnits.map((u: any, idx: number) => (
+                                      <Badge key={idx} variant="outline" className="text-[10px] px-1 py-0 bg-muted/60 border-primary/30 text-primary font-normal">
+                                        {u.name} (x{u.conversionFactor})
+                                      </Badge>
+                                    ))}
+                                  </div>
+                                )}
                               </div>
-                            )}
-                          </div>
-                        </TableCell>
-                        <TableCell className="hidden md:table-cell">{item.cost?.toLocaleString() || "-"}</TableCell>
-                        <TableCell className="hidden md:table-cell">{item.price?.toLocaleString() || "-"}</TableCell>
-                        <TableCell className="text-center">
-                          <AlertDialog>
-                            <DropdownMenu modal={false}>
-                              <DropdownMenuTrigger asChild>
-                                <Button aria-haspopup="true" size="icon" variant="ghost">
-                                  <MoreHorizontal className="h-4 w-4" />
-                                </Button>
-                              </DropdownMenuTrigger>
-                              <DropdownMenuContent align="end">
-                                <DropdownMenuLabel>الإجراءات</DropdownMenuLabel>
-                                {can("edit", moduleName) && (
-                                  <DropdownMenuItem
-                                    onClick={() => {
-                                      setEditingItem(item);
-                                      setTimeout(() => setIsEditOpen(true), 150);
-                                    }}
-                                  >
-                                    <Edit className="ml-2 h-4 w-4" /> تعديل
-                                  </DropdownMenuItem>
-                                )}
-                                 <BarcodePrintDialog item={item} barcodeDesigns={barcodeDesigns} trigger={
-                                    <DropdownMenuItem onSelect={(e) => e.preventDefault()}>
-                                        <QrCode className="ml-2 h-4 w-4" /> طباعة باركود
+                            </TableCell>
+                            <TableCell className="hidden md:table-cell">{item.cost?.toLocaleString() || "-"}</TableCell>
+                            <TableCell className="hidden md:table-cell">{item.price?.toLocaleString() || "-"}</TableCell>
+                            <TableCell className="text-center">
+                              <DropdownMenu modal={false}>
+                                <DropdownMenuTrigger asChild>
+                                  <Button aria-haspopup="true" size="icon" variant="ghost">
+                                    <MoreHorizontal className="h-4 w-4" />
+                                  </Button>
+                                </DropdownMenuTrigger>
+                                <DropdownMenuContent align="end">
+                                  <DropdownMenuLabel>الإجراءات</DropdownMenuLabel>
+                                  {can("edit", moduleName) && (
+                                    <DropdownMenuItem
+                                      onClick={() => {
+                                        setEditingItem(item);
+                                        setTimeout(() => setIsEditOpen(true), 150);
+                                      }}
+                                    >
+                                      <Edit className="ml-2 h-4 w-4" /> تعديل
                                     </DropdownMenuItem>
-                                } />
-                                <DropdownMenuItem onClick={() => router.push(`/reports/item-ledger?itemId=${item.id}`)}>
+                                  )}
+                                  <BarcodePrintDialog item={item} barcodeDesigns={barcodeDesigns} trigger={
+                                    <DropdownMenuItem onSelect={(e) => e.preventDefault()}>
+                                      <QrCode className="ml-2 h-4 w-4" /> طباعة باركود
+                                    </DropdownMenuItem>
+                                  } />
+                                  <DropdownMenuItem onClick={() => router.push(`/reports/item-ledger?itemId=${item.id}`)}>
                                     <History className="ml-2 h-4 w-4" /> كارت الصنف
-                                </DropdownMenuItem>
-                                {can("delete", moduleName) && (
+                                  </DropdownMenuItem>
+                                  {can("delete", moduleName) && (
                                     <>
-                                     <DropdownMenuSeparator />
-                                      <AlertDialogTrigger asChild>
-                                        <DropdownMenuItem
-                                          className="text-destructive"
-                                          onSelect={(e) => e.preventDefault()}
-                                        >
-                                          <Trash2 className="ml-2 h-4 w-4" /> حذف
-                                        </DropdownMenuItem>
-                                      </AlertDialogTrigger>
+                                      <DropdownMenuSeparator />
+                                      <DropdownMenuItem
+                                        className="text-destructive font-medium"
+                                        onClick={() => setItemToDelete(item)}
+                                      >
+                                        <Trash2 className="ml-2 h-4 w-4" /> حذف
+                                      </DropdownMenuItem>
                                     </>
-                                )}
-                              </DropdownMenuContent>
-                            </DropdownMenu>
-                            <AlertDialogContent>
-                                <AlertDialogHeader>
-                                    <AlertDialogTitle>هل أنت متأكد؟</AlertDialogTitle>
-                                    <AlertDialogDescription>سيتم نقل هذا الصنف إلى سلة المحذوفات ويمكن استرجاعه لاحقاً.</AlertDialogDescription>
-                                </AlertDialogHeader>
-                                <AlertDialogFooter>
-                                    <AlertDialogCancel>إلغاء</AlertDialogCancel>
-                                    <AlertDialogAction onClick={() => handleDelete(item.id!)}>متابعة</AlertDialogAction>
-                                </AlertDialogFooter>
-                            </AlertDialogContent>
-                          </AlertDialog>
-                        </TableCell>
+                                  )}
+                                </DropdownMenuContent>
+                              </DropdownMenu>
+                            </TableCell>
+                          </TableRow>
+                        ))
+                      ) : (
+                        <TableRow>
+                          <TableCell colSpan={7} className="text-center py-10 text-muted-foreground">
+                            لا توجد أصناف مطابقة للبحث أو الفلتر المحدد.
+                          </TableCell>
                         </TableRow>
-                      );
-                    })}
-                  </TableBody>
-                </Table>
+                      )}
+                    </TableBody>
+                  </Table>
+                </div>
+
+                {/* شريط ترقيم الصفحات والتحكم في حجم العرض السريع */}
+                <div className="flex flex-col sm:flex-row items-center justify-between gap-3 pt-2 px-1 text-sm text-muted-foreground">
+                  <div className="flex items-center gap-2">
+                    <span>عرض</span>
+                    <span className="font-semibold text-foreground">
+                      {filteredItems.length === 0 ? 0 : (currentPage - 1) * pageSize + 1}
+                    </span>
+                    <span>إلى</span>
+                    <span className="font-semibold text-foreground">
+                      {pageSize === -1 ? filteredItems.length : Math.min(currentPage * pageSize, filteredItems.length)}
+                    </span>
+                    <span>من أصل</span>
+                    <Badge variant="secondary" className="font-bold text-foreground">
+                      {filteredItems.length}
+                    </Badge>
+                    <span>صنف</span>
+                  </div>
+
+                  <div className="flex items-center gap-3">
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-xs">لكل صفحة:</span>
+                      <Select 
+                        value={String(pageSize)} 
+                        onValueChange={(v) => { 
+                          setPageSize(Number(v)); 
+                          setCurrentPage(1); 
+                        }}
+                      >
+                        <SelectTrigger className="h-8 w-20 text-xs">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="25">25</SelectItem>
+                          <SelectItem value="50">50</SelectItem>
+                          <SelectItem value="100">100</SelectItem>
+                          <SelectItem value="-1">الكل</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+
+                    <div className="flex items-center gap-1">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="h-8 px-2 text-xs"
+                        disabled={currentPage <= 1}
+                        onClick={() => setCurrentPage(1)}
+                      >
+                        الأولى
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="h-8 px-2 text-xs"
+                        disabled={currentPage <= 1}
+                        onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
+                      >
+                        السابق
+                      </Button>
+                      <span className="px-2 text-xs font-semibold text-foreground">
+                        {currentPage} / {totalPages}
+                      </span>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="h-8 px-2 text-xs"
+                        disabled={currentPage >= totalPages}
+                        onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
+                      >
+                        التالي
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="h-8 px-2 text-xs"
+                        disabled={currentPage >= totalPages}
+                        onClick={() => setCurrentPage(totalPages)}
+                      >
+                        الأخيرة
+                      </Button>
+                    </div>
+                  </div>
+                </div>
               </div>
             )}
           </CardContent>
@@ -2447,6 +2550,29 @@ export default function ItemsPage() {
               )}
           </DialogContent>
       </Dialog>
+
+      <AlertDialog open={!!itemToDelete} onOpenChange={(open) => !open && setItemToDelete(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>هل أنت متأكد من حذف هذا الصنف؟</AlertDialogTitle>
+            <AlertDialogDescription>
+              سيتم نقل الصنف &quot;{itemToDelete?.name}&quot; إلى سلة المحذوفات ويمكنك استرجاعه لاحقاً من الأرشيف.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>إلغاء</AlertDialogCancel>
+            <AlertDialogAction 
+              onClick={() => { 
+                if (itemToDelete?.id) handleDelete(itemToDelete.id); 
+                setItemToDelete(null); 
+              }}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              نعم، قم بالحذف
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </>
   );
 }

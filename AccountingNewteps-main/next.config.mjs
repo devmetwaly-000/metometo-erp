@@ -81,8 +81,26 @@ const withPWA = nextPWA({
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   eslint: { ignoreDuringBuilds: true },
+  reactStrictMode: false,
   experimental: {
-    optimizePackageImports: ['lucide-react', 'date-fns', 'recharts']
+    optimizePackageImports: [
+      'lucide-react',
+      'date-fns',
+      'recharts',
+      '@radix-ui/react-dialog',
+      '@radix-ui/react-dropdown-menu',
+      '@radix-ui/react-select',
+      '@radix-ui/react-tabs',
+      '@radix-ui/react-tooltip',
+      '@radix-ui/react-popover',
+      '@radix-ui/react-collapsible',
+      '@radix-ui/react-alert-dialog',
+      '@radix-ui/react-switch',
+      '@radix-ui/react-checkbox',
+      '@radix-ui/react-scroll-area',
+      '@radix-ui/react-slot',
+      'localforage'
+    ]
   },
   images: {
     remotePatterns: [

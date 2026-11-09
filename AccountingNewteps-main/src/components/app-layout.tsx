@@ -157,7 +157,6 @@ const NavLink = ({ href, children, icon, module }: { href: string; children: Rea
       <SidebarMenuButton asChild isActive={isActive}>
         <Link 
           href={href} 
-          prefetch={true} 
           onClick={() => setOpenMobile(false)}
         >
           {icon}
@@ -259,7 +258,6 @@ const NavSubLink = ({ href, children, module }: { href: string; children: React.
             <SidebarMenuSubButton asChild isActive={isActive}>
                 <Link 
                     href={href} 
-                    prefetch={true} 
                     onClick={() => setOpenMobile(false)}
                 >
                     {children}
