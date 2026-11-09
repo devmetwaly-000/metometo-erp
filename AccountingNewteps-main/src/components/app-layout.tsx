@@ -143,6 +143,7 @@ const Logo = () => {
 
 const NavLink = ({ href, children, icon, module }: { href: string; children: React.ReactNode; icon: React.ReactNode, module: string }) => {
   const pathname = usePathname();
+  const router = useRouter();
   const { setOpenMobile } = useSidebar();
   const { can } = usePermissions();
   const isActive = pathname === href;
@@ -154,7 +155,11 @@ const NavLink = ({ href, children, icon, module }: { href: string; children: Rea
   return (
     <SidebarMenuItem>
       <SidebarMenuButton asChild isActive={isActive}>
-        <Link href={href} onClick={() => setOpenMobile(false)}>
+        <Link 
+          href={href} 
+          prefetch={true} 
+          onClick={() => setOpenMobile(false)}
+        >
           {icon}
           <span>{children}</span>
         </Link>
@@ -240,6 +245,7 @@ const NavCollapsible = ({ title, icon, children, modules, searchTerm, defaultOpe
 
 const NavSubLink = ({ href, children, module }: { href: string; children: React.ReactNode, module: string }) => {
     const pathname = usePathname();
+    const router = useRouter();
     const { setOpenMobile } = useSidebar();
     const { can } = usePermissions();
     const isActive = pathname === href || pathname.startsWith(`${href}/`);
@@ -251,7 +257,13 @@ const NavSubLink = ({ href, children, module }: { href: string; children: React.
     return (
         <SidebarMenuSubItem>
             <SidebarMenuSubButton asChild isActive={isActive}>
-                <Link href={href} onClick={() => setOpenMobile(false)}>{children}</Link>
+                <Link 
+                    href={href} 
+                    prefetch={true} 
+                    onClick={() => setOpenMobile(false)}
+                >
+                    {children}
+                </Link>
             </SidebarMenuSubButton>
         </SidebarMenuSubItem>
     );
@@ -574,6 +586,17 @@ export function AppLayoutContent({ children }: { children: React.ReactNode }) {
     }
   }, [pathname, findTitleForHref]);
 
+  // التحميل المسبق الفوري لجميع علامات التبويب المفتوحة لمنع أي تأخير في التنقل
+  useEffect(() => {
+    if (openTabs.length > 0) {
+        openTabs.forEach(tab => {
+            try {
+                (router as any)?.prefetch?.(tab.href);
+            } catch {}
+        });
+    }
+  }, [openTabs, router]);
+
   useEffect(() => {
       if (user && users) {
           const currentUser = users.find((u: any) => u.id === user.id);
@@ -610,10 +633,17 @@ export function AppLayoutContent({ children }: { children: React.ReactNode }) {
   const handleCloseTab = (e: React.MouseEvent, href: string) => {
       e.stopPropagation();
       e.preventDefault();
-      setOpenTabs(prev => prev.filter(tab => tab.href !== href));
-      if (pathname === href) {
-          router.push('/');
-      }
+      setOpenTabs(prev => {
+          const remaining = prev.filter(tab => tab.href !== href);
+          if (pathname === href) {
+              if (remaining.length > 0) {
+                  router.push(remaining[remaining.length - 1].href);
+              } else {
+                  router.push('/');
+              }
+          }
+          return remaining;
+      });
   };
 
 
@@ -848,24 +878,27 @@ export function AppLayoutContent({ children }: { children: React.ReactNode }) {
             {openTabs.length > 0 && pathname !== '/pos' && (
                 <div className="h-12 bg-card/95 backdrop-blur-md border-t flex items-center px-4 gap-2 overflow-x-auto shrink-0 z-40 sticky bottom-0 shadow-[0_-2px_10px_rgba(0,0,0,0.12)] no-print">
                     {openTabs.map((tab) => (
-                        <div 
+                        <Link 
                             key={tab.href}
+                            href={tab.href}
+                            prefetch={true}
                             className={cn(
-                                "flex items-center gap-2 px-3 py-1.5 rounded-t-lg text-sm font-medium transition-all cursor-pointer whitespace-nowrap border-b-2 border-transparent",
+                                "flex items-center gap-2 px-3 py-1.5 rounded-t-lg text-sm font-medium transition-all cursor-pointer whitespace-nowrap border-b-2 border-transparent select-none",
                                 pathname === tab.href 
                                     ? "bg-background text-primary border-primary shadow-sm" 
                                     : "hover:bg-background/50 text-muted-foreground"
                             )}
-                            onClick={() => router.push(tab.href)}
                         >
                             <span>{tab.title}</span>
-                            <button 
+                            <span 
+                                role="button"
+                                tabIndex={0}
                                 onClick={(e) => handleCloseTab(e, tab.href)}
-                                className="hover:bg-muted p-0.5 rounded-full"
+                                className="hover:bg-muted p-0.5 rounded-full inline-flex items-center justify-center transition-colors"
                             >
                                 <X className="h-3 w-3" />
-                            </button>
-                        </div>
+                            </span>
+                        </Link>
                     ))}
                 </div>
             )}

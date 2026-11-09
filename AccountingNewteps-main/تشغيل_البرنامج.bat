@@ -31,6 +31,13 @@ echo   - اسم المستخدم: Admin
 echo   - كلمة المرور: 200300400
 echo ===================================================================
 echo.
-npm run dev
+if exist ".next\BUILD_ID" (
+    echo [✓] تشغيل المنظومة بنمط الإنتاج السريع (Production Mode - فائق السرعة)...
+    npm run start
+) else (
+    echo [تنبيه] بناء نسخة الإنتاج السريع لأول مرة...
+    call npm run build
+    npm run start
+)
 pause
 

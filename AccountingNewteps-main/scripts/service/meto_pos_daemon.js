@@ -54,13 +54,19 @@ function startNextServer() {
     // مسار npm أو npx أو node
     const isWindows = process.platform === 'win32';
     const npmCmd = isWindows ? 'npm.cmd' : 'npm';
+    const buildDir = path.join(APP_DIR, '.next');
+    const hasProductionBuild = fs.existsSync(buildDir) && fs.existsSync(path.join(buildDir, 'BUILD_ID'));
+    const runArg = hasProductionBuild ? 'start' : 'dev';
 
-    childProcess = spawn(npmCmd, ['run', 'dev'], {
+    writeLog(`جاري إطلاق خادم التطبيق بنمط ${hasProductionBuild ? 'الإنتاج السريع (Production)' : 'التطوير (Development)'}...`);
+
+    childProcess = spawn(npmCmd, ['run', runArg], {
         cwd: APP_DIR,
         shell: true,
         env: {
             ...process.env,
-            PORT: '9002'
+            PORT: '9002',
+            NODE_ENV: hasProductionBuild ? 'production' : 'development'
         },
         stdio: ['ignore', 'pipe', 'pipe']
     });

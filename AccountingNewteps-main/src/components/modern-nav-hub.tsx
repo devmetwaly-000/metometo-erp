@@ -70,6 +70,7 @@ export const ModernNavHub: React.FC<ModernNavHubProps> = ({ navStructure }) => {
                     <Link 
                         href={child.href!} 
                         key={child.href} 
+                        prefetch={true}
                         className="block p-4 rounded-lg bg-card hover:bg-muted transition-all duration-200 border-2 border-transparent hover:border-primary"
                     >
                         <h4 className="font-semibold text-md text-card-foreground">{child.title}</h4>
@@ -148,7 +149,7 @@ export const ModernNavHub: React.FC<ModernNavHubProps> = ({ navStructure }) => {
                         {navStructure.map(item => {
                              if (item.type === 'link') {
                                 return (
-                                    <Link href={item.href!} key={item.href} passHref>
+                                    <Link href={item.href!} key={item.href} passHref prefetch={true}>
                                         <div className="text-center group focus:outline-none focus:ring-2 focus:ring-primary rounded-xl h-full">
                                             <div 
                                                 className="p-6 h-full border-2 bg-card hover:border-primary hover:shadow-xl hover:-translate-y-1 transition-all duration-300 flex flex-col items-center justify-center gap-4 rounded-xl group-hover:bg-primary/5 dark:group-hover:bg-primary/10 group-hover:shadow-inner"

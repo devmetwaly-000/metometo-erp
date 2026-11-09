@@ -40,7 +40,7 @@ export function AppMenubar({ navStructure }: AppMenubarProps) {
         if (child.type === 'link') {
             if (!child.module || !can('view', child.module)) return null;
             return (
-                <Link href={child.href!} key={child.href} passHref>
+                <Link href={child.href!} key={child.href} passHref prefetch={true}>
                     <MenubarItem>{child.title}</MenubarItem>
                 </Link>
             );
@@ -71,7 +71,7 @@ export function AppMenubar({ navStructure }: AppMenubarProps) {
             if (item.type === 'link') {
                 if (!item.module || !can('view', item.module)) return null;
                 return (
-                    <Link href={item.href || '/'} key={item.href} passHref>
+                    <Link href={item.href || '/'} key={item.href} passHref prefetch={true}>
                         <MenubarMenu>
                             <MenubarTrigger>{item.title}</MenubarTrigger>
                         </MenubarMenu>
