@@ -48,12 +48,30 @@ export async function POST(req: Request) {
         const jsonString = (val: any) => (val !== undefined && val !== null ? JSON.stringify(val) : null);
         const parseDate = (d: any) => (d ? new Date(d) : new Date());
 
+        const checkIsCentral = async (): Promise<boolean> => {
+            try {
+                const res = await pool.request().query("SELECT SettingValue FROM dbo.AppSettings WHERE SettingKey = 'system_role'");
+                if (res.recordset.length > 0 && res.recordset[0].SettingValue === 'central') {
+                    return true;
+                }
+            } catch {}
+            return false;
+        };
+
         // =====================================================================
         // ACTION: ADD (Document Principle: Every action generates a source record)
         // =====================================================================
         if (action === 'add') {
             // Commercial: Sales Invoices & POS Sales
             if (path === 'salesInvoices' || path === 'posSales' || path.startsWith('posSales')) {
+                if (path === 'posSales' || path.startsWith('posSales') || payload.cashierId || payload.isPos) {
+                    if (await checkIsCentral()) {
+                        return NextResponse.json({ 
+                            success: false, 
+                            error: "محظور: لا يمكن تسجيل حركات بيع كاشير في الإدارة المركزية. حركات البيع تصدر حصراً من فروع البيع." 
+                        }, { status: 403 });
+                    }
+                }
                 const tx = new sql.Transaction(pool);
                 await tx.begin();
                 try {
@@ -121,6 +139,14 @@ export async function POST(req: Request) {
 
             // Commercial: Sales Returns & POS Returns
             if (path === 'salesReturns' || path === 'posReturns' || path.startsWith('posReturns')) {
+                if (path === 'posReturns' || path.startsWith('posReturns') || payload.cashierId || payload.isPos) {
+                    if (await checkIsCentral()) {
+                        return NextResponse.json({ 
+                            success: false, 
+                            error: "محظور: لا يمكن تسجيل مرتجعات كاشير في الإدارة المركزية. مرتجعات الكاشير تصدر حصراً من فروع البيع." 
+                        }, { status: 403 });
+                    }
+                }
                 const tx = new sql.Transaction(pool);
                 await tx.begin();
                 try {
@@ -802,6 +828,12 @@ export async function POST(req: Request) {
             }
 
             if (path === 'posSessions') {
+                if (await checkIsCentral()) {
+                    return NextResponse.json({ 
+                        success: false, 
+                        error: "محظور: لا يمكن فتح يوم عمل كاشير أو تسليم عهدة في الإدارة المركزية. الكاشير مخصص لفروع البيع فقط." 
+                    }, { status: 403 });
+                }
                 await pool.request()
                     .input('Id', sql.NVarChar(64), id)
                     .input('StartTime', sql.DateTime2, parseDate(payload.startTime))
@@ -1215,6 +1247,16 @@ export async function POST(req: Request) {
             }
 
             if (path === 'posSessions' && updateId) {
+                if (data.cashierSessions && typeof data.cashierSessions === 'object' && await checkIsCentral()) {
+                    const sessions = Object.values(data.cashierSessions) as any[];
+                    const hasNewlyOpened = sessions.some(s => s && !s.isClosed && !s.endTime);
+                    if (hasNewlyOpened) {
+                        return NextResponse.json({ 
+                            success: false, 
+                            error: "محظور: لا يمكن بدء أو فتح وردية كاشير في الإدارة المركزية. الكاشير مخصص لفروع البيع فقط." 
+                        }, { status: 403 });
+                    }
+                }
                 await pool.request()
                     .input('Id', sql.NVarChar(64), updateId)
                     .input('EndTime', sql.DateTime2, data.endTime ? parseDate(data.endTime) : (data.isClosed ? new Date() : null))

@@ -129,6 +129,8 @@ interface DataContextType {
     unreconciledDeliveryCount: number; 
     processSyncQueue: () => Promise<void>;
     allData: any;
+    systemRole: 'branch' | 'central';
+    isCentral: boolean;
     goOffline: () => void;
     goOnline: () => void;
 }
@@ -367,6 +369,12 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         await refreshDataFromSqlServer();
     }, [refreshDataFromSqlServer]);
 
+    const systemRole: 'branch' | 'central' = useMemo(() => {
+        const sRole = allData?.settings?.system_role || allData?.settings?.central_sync?.systemRole;
+        return sRole === 'central' ? 'central' : 'branch';
+    }, [allData?.settings]);
+    const isCentral = systemRole === 'central';
+
     const value: DataContextType = {
         allItems, items, customers, suppliers, warehouses, cashAccounts, partners, users, deliveryStaff, itemGroups, itemSections, itemCategories, itemSubCategories1, itemSubCategories2, inventoryZones, inventorySections, itemColors, itemSizes, barcodeDesigns, posTerminals, promotions, roles, settings, inventory, restaurantTables, paymentMethods, sellers, targets, licenses, snoozedRecommendations, syncHistory, customerVisits, loginHistory, gratuityLogs, gratuityDistributions,
         stockInRecords, stockOutRecords, stockTransferRecords, stockAdjustmentRecords, stockIssuesToReps, stockReturnsFromReps, inventoryClosings, requisitions,
@@ -381,6 +389,8 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         unreconciledDeliveryCount,
         processSyncQueue,
         allData,
+        systemRole,
+        isCentral,
         goOffline: () => setIsOnline(false),
         goOnline: () => setIsOnline(true)
     };

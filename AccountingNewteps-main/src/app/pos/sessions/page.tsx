@@ -13,7 +13,7 @@ import {
   CardFooter
 } from "@/components/ui/card";
 import { useData } from "@/contexts/data-provider";
-import { Loader2, PlayCircle, PowerOff, Coins, TrendingDown, TrendingUp, HandCoins, UserCheck, UserPlus, Warehouse, Laptop, Check, History, Undo2, AlertTriangle } from "lucide-react";
+import { Loader2, PlayCircle, PowerOff, Coins, TrendingDown, TrendingUp, HandCoins, UserCheck, UserPlus, Warehouse, Laptop, Check, History, Undo2, AlertTriangle, Building2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { AddEntityDialog } from '@/components/add-entity-dialog';
 import { Label } from '@/components/ui/label';
@@ -245,6 +245,7 @@ export default function PosSessionsPage() {
         posSessions: allPosSessions,
         unreconciledDeliveryCount,
         settings,
+        isCentral,
     } = useData();
     const { user } = useAuth();
     const { toast } = useToast();
@@ -338,6 +339,10 @@ export default function PosSessionsPage() {
 
 
     const handleOpenWorkDay = async () => {
+        if (isCentral) {
+            toast({ variant: 'destructive', title: 'عملية محظورة', description: 'لا يمكن فتح يوم عمل في الإدارة المركزية. الكاشير مخصص لفروع البيع فقط.' });
+            return;
+        }
         try {
             await dbAction('posSessions', 'add', {
                 startTime: new Date().toISOString(),
@@ -353,6 +358,10 @@ export default function PosSessionsPage() {
     }
 
     const handleAssignCustody = async (data: { cashierId: string, openingBalance: number, fromAccountId?: string, sessionWarehouseId?: string, posTerminalId: string }) => {
+        if (isCentral) {
+            toast({ variant: 'destructive', title: 'عملية محظورة', description: 'لا يمكن تسليم عهدة أو فتح وردية كاشير في الإدارة المركزية.' });
+            return;
+        }
         if (!openWorkDay) return;
         const { cashierId, openingBalance, fromAccountId, sessionWarehouseId, posTerminalId } = data;
         const cashier = users.find((u:any) => u.id === cashierId);
@@ -456,6 +465,19 @@ export default function PosSessionsPage() {
         <>
             <PageHeader title="إدارة يومية نقاط البيع" />
             <main className="flex flex-1 flex-col gap-4 p-4 md:gap-8 md:p-6">
+                {isCentral && (
+                    <Card className="border-sky-500/40 bg-sky-500/5 shadow-sm">
+                        <CardContent className="p-4 flex items-center gap-3">
+                            <Building2 className="h-6 w-6 text-sky-600 shrink-0" />
+                            <div className="space-y-0.5 text-xs">
+                                <p className="font-bold text-sm text-foreground">وضع المراجعة والتدقيق المركزي (Central Review Mode)</p>
+                                <p className="text-muted-foreground">
+                                    النظام يعمل حالياً بدور <strong>الإدارة المركزية (Central HQ)</strong>. فتح أيام العمل، بدء الورديات، وتسليم العهد النقدية محظور في الإدارة ومخصص لفروع البيع فقط. تعرض هذه الشاشة ورديات الفروع المستلمة عبر المزامنة لأغراض المراجعة والتدقيق المالي.
+                                </p>
+                            </div>
+                        </CardContent>
+                    </Card>
+                )}
                 {loading ? <div className="flex justify-center py-10"><Loader2 className="h-8 w-8 animate-spin" /></div>
                 : openWorkDay ? (
                     <div className="space-y-6">
@@ -511,7 +533,7 @@ export default function PosSessionsPage() {
                          <Card>
                             <CardHeader><CardTitle>إدارة اليومية</CardTitle></CardHeader>
                             <CardContent className="flex gap-4">
-                               {availableCashiers.length > 0 && (
+                               {availableCashiers.length > 0 && !isCentral && (
                                      <AddEntityDialog
                                         title="تسليم عهدة وبدء وردية"
                                         description="اختر الكاشير وأدخل رصيد بداية الوردية."
@@ -520,7 +542,7 @@ export default function PosSessionsPage() {
                                         <AssignCustodyDialog users={availableCashiers} onConfirm={handleAssignCustody} onClose={()=>{}} cashAccounts={cashAccounts} accountBalances={accountBalances} warehouses={warehouses} terminals={posTerminals} activeSessions={cashierSessionsData} />
                                     </AddEntityDialog>
                                )}
-                                <Button variant="secondary" onClick={handleCloseWorkDay} disabled={!canCloseWorkDay}>
+                                <Button variant="secondary" onClick={handleCloseWorkDay} disabled={!canCloseWorkDay || isCentral}>
                                     <PowerOff className="ml-2 h-4 w-4" />
                                     إقفال يوم العمل بالكامل
                                 </Button>
@@ -541,10 +563,17 @@ export default function PosSessionsPage() {
                     <Card className='text-center'>
                         <CardHeader>
                             <CardTitle className='flex items-center justify-center gap-2'><PowerOff className="text-destructive" />يوم العمل مغلق</CardTitle>
-                            <CardDescription>لا توجد يومية عمل مفتوحة حاليًا. يجب فتح يومية جديدة لبدء عمليات نقاط البيع.</CardDescription>
+                            <CardDescription>
+                                {isCentral 
+                                    ? "فتح أيام العمل وبدء الورديات محظور في الإدارة المركزية، ومخصص لفروع البيع فقط." 
+                                    : "لا توجد يومية عمل مفتوحة حاليًا. يجب فتح يومية جديدة لبدء عمليات نقاط البيع."}
+                            </CardDescription>
                         </CardHeader>
                         <CardContent>
-                            <Button size="lg" onClick={handleOpenWorkDay}><PlayCircle className="ml-2 h-4 w-4"/>فتح يوم عمل جديد</Button>
+                            <Button size="lg" onClick={handleOpenWorkDay} disabled={isCentral} title={isCentral ? "محظور في الإدارة المركزية" : undefined}>
+                                <PlayCircle className="ml-2 h-4 w-4"/>
+                                {isCentral ? "فتح يوم العمل متاح من الفروع فقط" : "فتح يوم عمل جديد"}
+                            </Button>
                         </CardContent>
                     </Card>
                 )}

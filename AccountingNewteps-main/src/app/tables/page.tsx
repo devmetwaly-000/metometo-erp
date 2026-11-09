@@ -99,7 +99,7 @@ const TableItemsDialog = ({ table, heldInvoice, onOpenChange }: { table: Restaur
 
 export default function TablesPage() {
   const router = useRouter();
-  const { restaurantTables, heldInvoices, settings, dbAction, loading, warehouses } = useData();
+  const { restaurantTables, heldInvoices, settings, dbAction, loading, warehouses, isCentral } = useData();
   const { user } = useAuth();
   const { toast } = useToast();
   
@@ -122,6 +122,10 @@ export default function TablesPage() {
   }, [settings, selectedWarehouseId]);
 
   const handleTableClick = (table: RestaurantTable) => {
+    if (isCentral) {
+      toast({ variant: 'destructive', title: 'عملية محظورة', description: 'لا يمكن فتح شاشة الكاشير أو تحصيل الطاولات في الإدارة المركزية. متاح لفروع البيع فقط.' });
+      return;
+    }
     router.push(`/pos?tableId=${table.id}`);
   };
 

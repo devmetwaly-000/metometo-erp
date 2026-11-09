@@ -519,7 +519,7 @@ const MobileSidebar = () => {
 export function AppLayoutContent({ children }: { children: React.ReactNode }) {
   const { user, signOut } = useAuth();
   const { toggleSidebar } = useSidebar();
-  const { settings, isOnline, dbAction, syncQueueCount, users } = useData();
+  const { settings, isOnline, dbAction, syncQueueCount, users, isCentral } = useData();
   const { can } = usePermissions();
   const [searchTerm, setSearchTerm] = useState('');
   const pathname = usePathname();
@@ -625,7 +625,32 @@ export function AppLayoutContent({ children }: { children: React.ReactNode }) {
   const fabPosition = generalSettings.mobileFabPosition || 'bottom-right';
   const desktopLayout = generalSettings.desktopLayout || 'sidebar';
 
-  const memoizedNavStructure = useMemo(() => navStructure, []);
+  const memoizedNavStructure = useMemo(() => {
+    if (!isCentral) return navStructure;
+    return navStructure.map((item: any) => {
+      if (item.title === dictionary.nav.pos || item.modules?.includes('pos')) {
+        return {
+          ...item,
+          children: item.children?.map((child: any) => {
+            if (child.href === '/pos') {
+              return {
+                ...child,
+                title: `${child.title} (فروع البيع فقط 🔒)`
+              };
+            }
+            if (child.href === '/pos/sessions') {
+              return {
+                ...child,
+                title: `${child.title} (مراجعة وتدقيق)`
+              };
+            }
+            return child;
+          })
+        };
+      }
+      return item;
+    });
+  }, [isCentral]);
 
   const isHubLayout = desktopLayout === 'modern_hub';
   const showHeader = pathname !== '/pos';

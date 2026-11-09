@@ -2,11 +2,11 @@
 
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Trash2, ShoppingCart, XCircle, Printer, Grip, Dot, Search, Ban, PanelLeft, Boxes, SquareCheck, ListRestart, FileClock, Eye, Loader2, Undo2, PlusCircle, UserPlus, LogOut, Percent, Truck, ArrowLeft, Banknote, Landmark, Wallet, Phone, CircleDollarSign, FileText, CreditCard, UserRound, User as UserIcon, PlayCircle, History, Coins } from "lucide-react";
+import { Trash2, ShoppingCart, XCircle, Printer, Grip, Dot, Search, Ban, PanelLeft, Boxes, SquareCheck, ListRestart, FileClock, Eye, Loader2, Undo2, PlusCircle, UserPlus, LogOut, Percent, Truck, ArrowLeft, Banknote, Landmark, Wallet, Phone, CircleDollarSign, FileText, CreditCard, UserRound, User as UserIcon, PlayCircle, History, Coins, Building2, LayoutDashboard } from "lucide-react";
 import { useData } from "@/contexts/data-provider";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from '@/contexts/auth-context';
@@ -803,7 +803,7 @@ export default function PosPage() {
     const { 
       items: allItems, customers, dbAction, itemCategories, itemGroups, itemSubCategories1, itemSubCategories2, posSessions, settings, warehouses: allWarehousesData,
       salesInvoices, inventory, getNextId, heldInvoices, posTerminals: allTerminals, posReturns, promotions, deliveryStaff, restaurantTables, paymentMethods, sellers, posSales,
-      customerPayments, salesReturns
+      customerPayments, salesReturns, isCentral
      } = allDataContext;
     const { user } = useAuth();
 
@@ -1985,6 +1985,56 @@ export default function PosPage() {
         return null;
     }, [selectedCustomerId, salesInvoices, posSales]);
 
+
+    if (isCentral) {
+        return (
+            <div className="flex h-screen w-full flex-col items-center justify-center bg-muted/40 p-4">
+                <Card className="w-full max-w-lg border-2 border-amber-500/40 shadow-xl">
+                    <CardHeader className="text-center pb-3">
+                        <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-2xl bg-amber-500/10 text-amber-600 mb-3 border border-amber-500/20">
+                            <Building2 className="h-8 w-8" />
+                        </div>
+                        <CardTitle className="text-xl font-black text-foreground">
+                            شاشة الكاشير غير مفعلة في الإدارة المركزية
+                        </CardTitle>
+                        <CardDescription className="text-sm">
+                            هذا النظام يعمل حالياً بدور "الإدارة المركزية (Central HQ)"
+                        </CardDescription>
+                    </CardHeader>
+                    <CardContent className="space-y-4">
+                        <Alert className="border-amber-500/30 bg-amber-500/5 text-amber-900 dark:text-amber-200">
+                            <Ban className="h-5 w-5 text-amber-600" />
+                            <AlertTitle className="font-bold mr-2">منع حركات البيع المباشرة في الإدارة</AlertTitle>
+                            <AlertDescription className="text-xs leading-relaxed mr-2 mt-1">
+                                حركات الكاشير ونقاط البيع المباشرة، فتح الورديات، وتسليم العهد النقدية مصممة ومخصصة للعمل داخل فروع البيع الفعلية فقط.
+                                الإدارة المركزية تستقبل حركات ومبيعات الفروع آلياً عبر المزامنة للمراجعة والتدقيق المالي فقط.
+                            </AlertDescription>
+                        </Alert>
+                        <div className="p-3 bg-muted/60 rounded-lg text-xs space-y-1.5 text-muted-foreground border">
+                            <div className="flex justify-between font-semibold text-foreground">
+                                <span>دور النظام الحالي:</span>
+                                <Badge className="bg-sky-600 hover:bg-sky-700 text-white font-bold text-[11px]">إدارة مركزية (Central HQ)</Badge>
+                            </div>
+                            <div className="flex justify-between">
+                                <span>نطاق عمليات البيع:</span>
+                                <span className="font-medium text-foreground">تُجرى من شاشات كاشيرات الفروع المحلية حصراً</span>
+                            </div>
+                        </div>
+                    </CardContent>
+                    <CardFooter className="flex flex-col gap-2 pt-2">
+                        <Button className="w-full" variant="default" onClick={() => router.push('/dashboard')}>
+                            <LayoutDashboard className="ml-2 h-4 w-4" />
+                            الرجوع للوحة التحكم الرئيسية
+                        </Button>
+                        <Button className="w-full" variant="outline" onClick={() => router.push('/settings/central-sync')}>
+                            <ArrowLeft className="ml-2 h-4 w-4" />
+                            الذهاب إلى شاشة إدارة المزامنة والربط
+                        </Button>
+                    </CardFooter>
+                </Card>
+            </div>
+        );
+    }
 
     if (!user?.isCashier) {
         return (
