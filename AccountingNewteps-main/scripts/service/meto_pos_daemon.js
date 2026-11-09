@@ -25,7 +25,7 @@ function writeLog(message) {
     const line = `[${timestamp}] ${message}\n`;
     try {
         fs.appendFileSync(LOG_FILE, line, 'utf8');
-    } catch {}
+    } catch { }
     console.log(line.trim());
 }
 
@@ -109,9 +109,9 @@ function startNextServer() {
 function handleShutdown() {
     isStopping = true;
     writeLog('استلام إشارة إيقاف الخدمة...');
-    
+
     if (fs.existsSync(PID_FILE)) {
-        try { fs.unlinkSync(PID_FILE); } catch {}
+        try { fs.unlinkSync(PID_FILE); } catch { }
     }
 
     if (childProcess) {

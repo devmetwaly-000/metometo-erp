@@ -266,7 +266,7 @@ function BulkCategoryUpdateDialog({
     // الفئات المتاحة استناداً إلى القسم المختار
     const availableCategories = useMemo(() => {
         if (sectionId && sectionId !== '__NO_CHANGE__' && sectionId !== '__CLEAR__') {
-            return localCategories.filter(c => c.sectionId === sectionId);
+            return localCategories.filter(c => ((c.sectionId || c.SectionId) === sectionId));
         }
         return localCategories;
     }, [localCategories, sectionId]);
@@ -274,7 +274,7 @@ function BulkCategoryUpdateDialog({
     // المجموعات المتاحة استناداً إلى الفئة المختارة
     const availableGroups = useMemo(() => {
         if (categoryId && categoryId !== '__NO_CHANGE__' && categoryId !== '__CLEAR__') {
-            return localGroups.filter(g => g.parentCategoryId === categoryId);
+            return localGroups.filter(g => ((g.parentCategoryId || g.ParentCategoryId) === categoryId));
         }
         return localGroups;
     }, [localGroups, categoryId]);
@@ -285,9 +285,9 @@ function BulkCategoryUpdateDialog({
         let noCategory = 0;
         let noGroup = 0;
         items.forEach(item => {
-            if (!item?.sectionId) noSection++;
-            if (!item?.categoryId) noCategory++;
-            if (!item?.itemGroupId) noGroup++;
+            if (!item?.sectionId && !item?.SectionId) noSection++;
+            if (!item?.categoryId && !item?.CategoryId) noCategory++;
+            if (!item?.itemGroupId && !item?.ItemGroupId) noGroup++;
         });
         return { noSection, noCategory, noGroup };
     }, [items]);
@@ -297,7 +297,7 @@ function BulkCategoryUpdateDialog({
         if (!newSectionName.trim()) return;
         setIsSavingSection(true);
         try {
-            const codes = localSections.map(i => parseInt(i.code || '0', 10)).filter(n => !isNaN(n));
+            const codes = localSections.map(i => parseInt(i.code || i.Code || '0', 10)).filter(n => !isNaN(n));
             const currentMax = (codes.length > 0 ? Math.max(...codes) : 0) + 1;
             let code = '01';
             if (getNextId) {
@@ -305,7 +305,7 @@ function BulkCategoryUpdateDialog({
                 if (nextNum) code = String(nextNum).padStart(2, '0');
             }
             const newId = await dbAction('itemSections', 'add', { name: newSectionName.trim(), code });
-            const newItem = { id: newId, name: newSectionName.trim(), code };
+            const newItem = { id: newId, Id: newId, name: newSectionName.trim(), Name: newSectionName.trim(), code, Code: code };
             setLocalSections(prev => [...prev, newItem]);
             setSectionId(newId);
             setNewSectionName('');
@@ -323,9 +323,9 @@ function BulkCategoryUpdateDialog({
         if (!newCategoryName.trim()) return;
         setIsSavingCategory(true);
         try {
-            const parentSection = localSections.find(s => s.id === sectionId);
-            const parentCode = parentSection?.code || '00';
-            const siblings = localCategories.filter(c => c.sectionId === sectionId);
+            const parentSection = localSections.find(s => (s.id || s.Id) === sectionId);
+            const parentCode = parentSection?.code || parentSection?.Code || '00';
+            const siblings = localCategories.filter(c => (c.sectionId || c.SectionId) === sectionId);
             const currentMax = siblings.length + 1;
             let code = `${parentCode}-${currentMax}`;
             if (getNextId && sectionId && sectionId !== '__NO_CHANGE__' && sectionId !== '__CLEAR__') {
@@ -337,7 +337,7 @@ function BulkCategoryUpdateDialog({
                 dataToAdd.sectionId = sectionId;
             }
             const newId = await dbAction('itemCategories', 'add', dataToAdd);
-            const newItem = { id: newId, ...dataToAdd };
+            const newItem = { id: newId, Id: newId, ...dataToAdd, Name: newCategoryName.trim(), sectionId, SectionId: sectionId };
             setLocalCategories(prev => [...prev, newItem]);
             setCategoryId(newId);
             setNewCategoryName('');
@@ -355,9 +355,9 @@ function BulkCategoryUpdateDialog({
         if (!newGroupName.trim()) return;
         setIsSavingGroup(true);
         try {
-            const parentCat = localCategories.find(c => c.id === categoryId);
-            const parentCode = parentCat?.code || '00-0';
-            const siblings = localGroups.filter(g => g.parentCategoryId === categoryId);
+            const parentCat = localCategories.find(c => (c.id || c.Id) === categoryId);
+            const parentCode = parentCat?.code || parentCat?.Code || '00-0';
+            const siblings = localGroups.filter(g => (g.parentCategoryId || g.ParentCategoryId) === categoryId);
             const currentMax = siblings.length + 1;
             let code = `${parentCode}-${currentMax}`;
             if (getNextId && categoryId && categoryId !== '__NO_CHANGE__' && categoryId !== '__CLEAR__') {
@@ -369,7 +369,7 @@ function BulkCategoryUpdateDialog({
                 dataToAdd.parentCategoryId = categoryId;
             }
             const newId = await dbAction('itemGroups', 'add', dataToAdd);
-            const newItem = { id: newId, ...dataToAdd };
+            const newItem = { id: newId, Id: newId, ...dataToAdd, Name: newGroupName.trim(), parentCategoryId: categoryId, ParentCategoryId: categoryId };
             setLocalGroups(prev => [...prev, newItem]);
             setItemGroupId(newId);
             setNewGroupName('');
@@ -552,11 +552,17 @@ function BulkCategoryUpdateDialog({
                                         <SelectItem value="__CLEAR__" className="text-destructive font-medium">
                                             -- تفريغ / إزالة القسم من الأصناف --
                                         </SelectItem>
-                                        {localSections.map((s: any) => (
-                                            <SelectItem key={s.id} value={s.id}>
-                                                {s.name} {s.code ? `(${s.code})` : ''}
-                                            </SelectItem>
-                                        ))}
+                                        {localSections.map((s: any) => {
+                                            const sId = s.id || s.Id;
+                                            const sName = s.name || s.Name;
+                                            const sCode = s.code || s.Code;
+                                            if (!sId) return null;
+                                            return (
+                                                <SelectItem key={sId} value={sId}>
+                                                    {sName} {sCode ? `(${sCode})` : ''}
+                                                </SelectItem>
+                                            );
+                                        })}
                                     </SelectContent>
                                 </Select>
                                 {sectionId !== '__NO_CHANGE__' && (
@@ -630,10 +636,15 @@ function BulkCategoryUpdateDialog({
                                             -- تفريغ / إزالة الفئة من الأصناف --
                                         </SelectItem>
                                         {availableCategories.map((c: any) => {
-                                            const secName = localSections.find((s: any) => s.id === c.sectionId)?.name;
+                                            const cId = c.id || c.Id;
+                                            const cName = c.name || c.Name;
+                                            const cSecId = c.sectionId || c.SectionId;
+                                            const sec = localSections.find((s: any) => (s.id || s.Id) === cSecId);
+                                            const secName = sec?.name || sec?.Name;
+                                            if (!cId) return null;
                                             return (
-                                                <SelectItem key={c.id} value={c.id}>
-                                                    {c.name} {secName ? `(${secName})` : ''}
+                                                <SelectItem key={cId} value={cId}>
+                                                    {cName} {secName ? `(${secName})` : ''}
                                                 </SelectItem>
                                             );
                                         })}
@@ -710,10 +721,15 @@ function BulkCategoryUpdateDialog({
                                             -- تفريغ / إزالة المجموعة من الأصناف --
                                         </SelectItem>
                                         {availableGroups.map((g: any) => {
-                                            const catName = localCategories.find((c: any) => c.id === g.parentCategoryId)?.name;
+                                            const gId = g.id || g.Id;
+                                            const gName = g.name || g.Name;
+                                            const gParentId = g.parentCategoryId || g.ParentCategoryId;
+                                            const cat = localCategories.find((c: any) => (c.id || c.Id) === gParentId);
+                                            const catName = cat?.name || cat?.Name;
+                                            if (!gId) return null;
                                             return (
-                                                <SelectItem key={g.id} value={g.id}>
-                                                    {g.name} {catName ? `(${catName})` : ''}
+                                                <SelectItem key={gId} value={gId}>
+                                                    {gName} {catName ? `(${catName})` : ''}
                                                 </SelectItem>
                                             );
                                         })}
@@ -745,9 +761,12 @@ function BulkCategoryUpdateDialog({
                                     <SelectContent>
                                         <SelectItem value="__NO_CHANGE__" className="text-muted-foreground italic">-- عدم التغيير --</SelectItem>
                                         <SelectItem value="__CLEAR__" className="text-destructive font-medium">-- تفريغ الحالي --</SelectItem>
-                                        {localSubs1.map((u: any) => (
-                                            <SelectItem key={u.id} value={u.id}>{u.name}</SelectItem>
-                                        ))}
+                                        {localSubs1.map((u: any) => {
+                                            const uId = u.id || u.Id;
+                                            const uName = u.name || u.Name;
+                                            if (!uId) return null;
+                                            return <SelectItem key={uId} value={uId}>{uName}</SelectItem>;
+                                        })}
                                     </SelectContent>
                                 </Select>
                             </div>
@@ -761,9 +780,12 @@ function BulkCategoryUpdateDialog({
                                     <SelectContent>
                                         <SelectItem value="__NO_CHANGE__" className="text-muted-foreground italic">-- عدم التغيير --</SelectItem>
                                         <SelectItem value="__CLEAR__" className="text-destructive font-medium">-- تفريغ الحالي --</SelectItem>
-                                        {localSubs2.map((u: any) => (
-                                            <SelectItem key={u.id} value={u.id}>{u.name}</SelectItem>
-                                        ))}
+                                        {localSubs2.map((u: any) => {
+                                            const uId = u.id || u.Id;
+                                            const uName = u.name || u.Name;
+                                            if (!uId) return null;
+                                            return <SelectItem key={uId} value={uId}>{uName}</SelectItem>;
+                                        })}
                                     </SelectContent>
                                 </Select>
                             </div>
@@ -815,18 +837,18 @@ const MatrixGeneratorDialog = ({ onSave, onOpenChange, itemSections, itemCategor
     const [selectedUDF1, setSelectedUDF1] = useState<string[]>([]);
     const [selectedUDF2, setSelectedUDF2] = useState<string[]>([]);
     
-    const sectionOptions = useMemo(() => itemSections.map(s => ({ value: s.id, label: s.name })), [itemSections]);
+    const sectionOptions = useMemo(() => itemSections.map(s => ({ value: s.id || s.Id, label: s.name || s.Name })), [itemSections]);
     const categoryOptions = useMemo(() => {
         if (!baseItem.sectionId) return [];
-        return itemCategories.filter(c => c.sectionId === baseItem.sectionId).map(c => ({ value: c.id, label: c.name }));
+        return itemCategories.filter(c => (c.sectionId || c.SectionId) === baseItem.sectionId).map(c => ({ value: c.id || c.Id, label: c.name || c.Name }));
     }, [itemCategories, baseItem.sectionId]);
     const groupOptions = useMemo(() => {
         if (!baseItem.categoryId) return [];
-        return itemGroups.filter(g => g.parentCategoryId === baseItem.categoryId).map(g => ({ value: g.id, label: g.name }));
+        return itemGroups.filter(g => (g.parentCategoryId || g.ParentCategoryId) === baseItem.categoryId).map(g => ({ value: g.id || g.Id, label: g.name || g.Name }));
     }, [itemGroups, baseItem.categoryId]);
     
-    const udf1Options = useMemo(() => itemSubCategories1.map(c => ({ value: c.id, label: c.name })), [itemSubCategories1]);
-    const udf2Options = useMemo(() => itemSubCategories2.map(s => ({ value: s.id, label: s.name })), [itemSubCategories2]);
+    const udf1Options = useMemo(() => itemSubCategories1.map(c => ({ value: c.id || c.Id, label: c.name || c.Name })), [itemSubCategories1]);
+    const udf2Options = useMemo(() => itemSubCategories2.map(s => ({ value: s.id || s.Id, label: s.name || s.Name })), [itemSubCategories2]);
 
     useEffect(() => {
         const { itemGroupId, categoryId, sectionId } = baseItem;
@@ -1244,20 +1266,20 @@ function ItemForm({ item, onSave, onClose, itemSections, itemCategories, itemGro
     }, [formData.components, formData.itemType, allItems, formData.cost]);
 
 
-  const sectionOptions = useMemo(() => itemSections.map(s => ({ value: s.id, label: s.name })), [itemSections]);
+  const sectionOptions = useMemo(() => itemSections.map(s => ({ value: s.id || s.Id, label: s.name || s.Name })), [itemSections]);
   const categoryOptions = useMemo(() => {
     if (!formData.sectionId) return [];
-    const filtered = itemCategories.filter(c => c.sectionId === formData.sectionId);
-    return filtered.map(c => ({ value: c.id, label: c.name }));
+    const filtered = itemCategories.filter(c => (c.sectionId || c.SectionId) === formData.sectionId);
+    return filtered.map(c => ({ value: c.id || c.Id, label: c.name || c.Name }));
   }, [itemCategories, formData.sectionId]);
 
   const itemGroupOptions = useMemo(() => {
     if (!formData.categoryId) return [];
-    const filtered = itemGroups.filter(g => g.parentCategoryId === formData.categoryId);
-    return filtered.map((g: any) => ({ value: g.id, label: g.name }));
+    const filtered = itemGroups.filter(g => (g.parentCategoryId || g.ParentCategoryId) === formData.categoryId);
+    return filtered.map((g: any) => ({ value: g.id || g.Id, label: g.name || g.Name }));
   }, [formData.categoryId, itemGroups]);
-  const subCategory1Options = useMemo(() => itemSubCategories1.map(s => ({ value: s.id, label: s.name })), [itemSubCategories1]);
-  const subCategory2Options = useMemo(() => itemSubCategories2.map(s => ({ value: s.id, label: s.name })), [itemSubCategories2]);
+  const subCategory1Options = useMemo(() => itemSubCategories1.map(s => ({ value: s.id || s.Id, label: s.name || s.Name })), [itemSubCategories1]);
+  const subCategory2Options = useMemo(() => itemSubCategories2.map(s => ({ value: s.id || s.Id, label: s.name || s.Name })), [itemSubCategories2]);
   
   const binOptions = useMemo(() => inventorySections.map(s => ({value: s.id, label: `${s.name} (${s.mainWarehouseName || 'N/A'})`})), [inventorySections]);
 
@@ -1688,11 +1710,11 @@ export default function ItemsPage() {
         setFilters(newFilters);
     };
 
-    const sectionOptions = useMemo(() => [{ value: 'all', label: 'كل الفئات' }, ...itemSections.map((s: any) => ({ value: s.id, label: s.name }))], [itemSections]);
-    const categoryOptions = useMemo(() => [{ value: 'all', label: 'كل الأقسام' }, ...itemCategories.filter((c: any) => filters.sectionId === 'all' || !filters.sectionId || c.sectionId === filters.sectionId).map((c: any) => ({ value: c.id, label: c.name }))], [itemCategories, filters.sectionId]);
-    const groupOptions = useMemo(() => [{ value: 'all', label: 'كل المجموعات' }, ...itemGroups.filter((g: any) => filters.categoryId === 'all' || !filters.categoryId || g.parentCategoryId === filters.categoryId).map((g: any) => ({ value: g.id, label: g.name }))], [itemGroups, filters.categoryId]);
-    const subCategory1Options = useMemo(() => [{ value: 'all', label: 'الكل' }, ...itemSubCategories1.map((s: any) => ({ value: s.id, label: s.name }))], [itemSubCategories1]);
-    const subCategory2Options = useMemo(() => [{ value: 'all', label: 'الكل' }, ...itemSubCategories2.map((s: any) => ({ value: s.id, label: s.name }))], [itemSubCategories2]);
+    const sectionOptions = useMemo(() => [{ value: 'all', label: 'كل الفئات' }, ...itemSections.map((s: any) => ({ value: s.id || s.Id, label: s.name || s.Name }))], [itemSections]);
+    const categoryOptions = useMemo(() => [{ value: 'all', label: 'كل الأقسام' }, ...itemCategories.filter((c: any) => filters.sectionId === 'all' || !filters.sectionId || (c.sectionId || c.SectionId) === filters.sectionId).map((c: any) => ({ value: c.id || c.Id, label: c.name || c.Name }))], [itemCategories, filters.sectionId]);
+    const groupOptions = useMemo(() => [{ value: 'all', label: 'كل المجموعات' }, ...itemGroups.filter((g: any) => filters.categoryId === 'all' || !filters.categoryId || (g.parentCategoryId || g.ParentCategoryId) === filters.categoryId).map((g: any) => ({ value: g.id || g.Id, label: g.name || g.Name }))], [itemGroups, filters.categoryId]);
+    const subCategory1Options = useMemo(() => [{ value: 'all', label: 'الكل' }, ...itemSubCategories1.map((s: any) => ({ value: s.id || s.Id, label: s.name || s.Name }))], [itemSubCategories1]);
+    const subCategory2Options = useMemo(() => [{ value: 'all', label: 'الكل' }, ...itemSubCategories2.map((s: any) => ({ value: s.id || s.Id, label: s.name || s.Name }))], [itemSubCategories2]);
 
     const moduleName = "inventory_items_list";
 

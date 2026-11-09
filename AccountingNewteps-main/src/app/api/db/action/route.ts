@@ -845,6 +845,50 @@ export async function POST(req: Request) {
                 return NextResponse.json({ success: true, id });
             }
 
+            if (path === 'itemSections') {
+                await pool.request()
+                    .input('Id', sql.NVarChar(64), id)
+                    .input('Code', sql.NVarChar(50), payload.code ? String(payload.code) : (payload.Code ? String(payload.Code) : null))
+                    .input('Name', sql.NVarChar(255), payload.name || payload.Name || 'Unnamed Section')
+                    .query(`
+                        IF NOT EXISTS (SELECT 1 FROM dbo.ItemSections WHERE Id = @Id)
+                            INSERT INTO dbo.ItemSections (Id, Code, Name) VALUES (@Id, @Code, @Name);
+                        ELSE
+                            UPDATE dbo.ItemSections SET Code = @Code, Name = @Name WHERE Id = @Id;
+                    `);
+                return NextResponse.json({ success: true, id });
+            }
+
+            if (path === 'itemCategories') {
+                await pool.request()
+                    .input('Id', sql.NVarChar(64), id)
+                    .input('Code', sql.NVarChar(50), payload.code ? String(payload.code) : (payload.Code ? String(payload.Code) : null))
+                    .input('Name', sql.NVarChar(255), payload.name || payload.Name || 'Unnamed Category')
+                    .input('SectionId', sql.NVarChar(64), payload.sectionId || payload.SectionId || null)
+                    .query(`
+                        IF NOT EXISTS (SELECT 1 FROM dbo.ItemCategories WHERE Id = @Id)
+                            INSERT INTO dbo.ItemCategories (Id, Code, Name, SectionId) VALUES (@Id, @Code, @Name, @SectionId);
+                        ELSE
+                            UPDATE dbo.ItemCategories SET Code = @Code, Name = @Name, SectionId = @SectionId WHERE Id = @Id;
+                    `);
+                return NextResponse.json({ success: true, id });
+            }
+
+            if (path === 'itemGroups') {
+                await pool.request()
+                    .input('Id', sql.NVarChar(64), id)
+                    .input('Code', sql.NVarChar(50), payload.code ? String(payload.code) : (payload.Code ? String(payload.Code) : null))
+                    .input('Name', sql.NVarChar(255), payload.name || payload.Name || 'Unnamed Group')
+                    .input('ParentCategoryId', sql.NVarChar(64), payload.parentCategoryId || payload.ParentCategoryId || null)
+                    .query(`
+                        IF NOT EXISTS (SELECT 1 FROM dbo.ItemGroups WHERE Id = @Id)
+                            INSERT INTO dbo.ItemGroups (Id, Code, Name, ParentCategoryId) VALUES (@Id, @Code, @Name, @ParentCategoryId);
+                        ELSE
+                            UPDATE dbo.ItemGroups SET Code = @Code, Name = @Name, ParentCategoryId = @ParentCategoryId WHERE Id = @Id;
+                    `);
+                return NextResponse.json({ success: true, id });
+            }
+
             if (path === 'itemSubCategories1') {
                 await pool.request()
                     .input('Id', sql.NVarChar(64), id)
@@ -1056,6 +1100,47 @@ export async function POST(req: Request) {
                 return NextResponse.json({ success: true });
             }
 
+            if (path === 'itemSections' && updateId) {
+                await pool.request()
+                    .input('Id', sql.NVarChar(64), updateId)
+                    .input('Name', sql.NVarChar(255), data.name || data.Name || null)
+                    .input('Code', sql.NVarChar(50), data.code || data.Code || null)
+                    .query(`
+                        UPDATE dbo.ItemSections 
+                        SET Name = COALESCE(@Name, Name), Code = COALESCE(@Code, Code) 
+                        WHERE Id = @Id;
+                    `);
+                return NextResponse.json({ success: true });
+            }
+
+            if (path === 'itemCategories' && updateId) {
+                await pool.request()
+                    .input('Id', sql.NVarChar(64), updateId)
+                    .input('Name', sql.NVarChar(255), data.name || data.Name || null)
+                    .input('Code', sql.NVarChar(50), data.code || data.Code || null)
+                    .input('SectionId', sql.NVarChar(64), data.sectionId || data.SectionId || null)
+                    .query(`
+                        UPDATE dbo.ItemCategories 
+                        SET Name = COALESCE(@Name, Name), Code = COALESCE(@Code, Code), SectionId = COALESCE(@SectionId, SectionId) 
+                        WHERE Id = @Id;
+                    `);
+                return NextResponse.json({ success: true });
+            }
+
+            if (path === 'itemGroups' && updateId) {
+                await pool.request()
+                    .input('Id', sql.NVarChar(64), updateId)
+                    .input('Name', sql.NVarChar(255), data.name || data.Name || null)
+                    .input('Code', sql.NVarChar(50), data.code || data.Code || null)
+                    .input('ParentCategoryId', sql.NVarChar(64), data.parentCategoryId || data.ParentCategoryId || null)
+                    .query(`
+                        UPDATE dbo.ItemGroups 
+                        SET Name = COALESCE(@Name, Name), Code = COALESCE(@Code, Code), ParentCategoryId = COALESCE(@ParentCategoryId, ParentCategoryId) 
+                        WHERE Id = @Id;
+                    `);
+                return NextResponse.json({ success: true });
+            }
+
             if (path === 'salesInvoices' && updateId) {
                 await pool.request()
                     .input('Id', sql.NVarChar(64), updateId)
@@ -1209,6 +1294,11 @@ export async function POST(req: Request) {
             if (removeId) {
                 const tableMap: Record<string, string> = {
                     items: 'dbo.Items',
+                    itemSections: 'dbo.ItemSections',
+                    itemCategories: 'dbo.ItemCategories',
+                    itemGroups: 'dbo.ItemGroups',
+                    itemSubCategories1: 'dbo.ItemSubCategories1',
+                    itemSubCategories2: 'dbo.ItemSubCategories2',
                     customers: 'dbo.Customers',
                     suppliers: 'dbo.Suppliers',
                     salesInvoices: 'dbo.SalesInvoices',
