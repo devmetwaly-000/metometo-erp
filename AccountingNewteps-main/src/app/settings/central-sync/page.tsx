@@ -321,7 +321,7 @@ export default function CentralSyncSettingsPage() {
             const res = await fetch('/api/sync/central', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ action: 'sync', config, mode, targetTable })
+                body: JSON.stringify({ action: 'sync', mode, targetTable })
             });
             const data = await res.json();
             if (data.success) {
@@ -1148,7 +1148,7 @@ export default function CentralSyncSettingsPage() {
                                                                 size="sm"
                                                                 variant="outline"
                                                                 className="h-7 px-2.5 text-[11px] hover:bg-primary hover:text-primary-foreground font-bold shadow-xs transition-colors"
-                                                                onClick={() => handleSyncNow(t.direction === 'pull' ? 'pull' : 'push', t.tableName)}
+                                                                onClick={() => handleSyncNow('all', t.tableName)}
                                                                 disabled={isSyncing && syncingTable === t.tableName}
                                                                 title={`مزامنة جدول ${t.displayName} الآن`}
                                                             >
@@ -1501,7 +1501,7 @@ export default function CentralSyncSettingsPage() {
                                                                     "h-7 px-2.5 text-[11px] font-bold shadow-xs transition-colors",
                                                                     t.direction === 'disabled' && "opacity-40 cursor-not-allowed"
                                                                 )}
-                                                                onClick={() => handleSyncNow(t.direction === 'pull' ? 'pull' : 'push', t.tableName)}
+                                                                onClick={() => handleSyncNow('all', t.tableName)}
                                                                 disabled={t.direction === 'disabled' || (isSyncing && syncingTable === t.tableName)}
                                                                 title={t.direction === 'disabled' ? "الجدول معطل من المزامنة" : `مزامنة جدول ${t.displayName} فوراً`}
                                                             >
@@ -1767,7 +1767,7 @@ export default function CentralSyncSettingsPage() {
                                                             size="sm"
                                                             variant="default"
                                                             className="h-7 px-3 text-[11px] font-bold bg-primary text-primary-foreground shadow-xs"
-                                                            onClick={() => handleSyncNow(t.direction === 'pull' ? 'pull' : 'push', t.tableName)}
+                                                            onClick={() => handleSyncNow('all', t.tableName)}
                                                             disabled={isSyncing && syncingTable === t.tableName}
                                                         >
                                                             {isSyncing && syncingTable === t.tableName ? (

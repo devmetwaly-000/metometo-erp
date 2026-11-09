@@ -229,9 +229,13 @@ export async function getCentralConfig(): Promise<CentralSyncConfig> {
         if (res.recordset.length > 0 && res.recordset[0].SettingValue) {
             try {
                 const parsed = JSON.parse(res.recordset[0].SettingValue);
+                const safePassword = (parsed.centralPassword && parsed.centralPassword.trim() !== '') 
+                    ? parsed.centralPassword.trim() 
+                    : DEFAULT_CONFIG.centralPassword;
                 return { 
                     ...DEFAULT_CONFIG, 
                     ...parsed,
+                    centralPassword: safePassword,
                     systemRole: explicitRole || parsed.systemRole || DEFAULT_CONFIG.systemRole
                 };
             } catch {
@@ -251,7 +255,14 @@ export async function getCentralConfig(): Promise<CentralSyncConfig> {
 export async function saveCentralConfig(config: Partial<CentralSyncConfig>): Promise<CentralSyncConfig> {
     const pool = await getDbPool();
     const current = await getCentralConfig();
-    const updated: CentralSyncConfig = { ...current, ...config };
+    const cleanPassword = (config.centralPassword !== undefined && config.centralPassword !== null && config.centralPassword.trim() !== '')
+        ? config.centralPassword.trim()
+        : current.centralPassword;
+    const updated: CentralSyncConfig = { 
+        ...current, 
+        ...config,
+        centralPassword: cleanPassword
+    };
 
     await pool.request()
         .input('Key', sql.NVarChar(100), 'central_sync')
@@ -525,20 +536,23 @@ export async function getTablesSyncMatrix(): Promise<TablesSyncMatrixResponse> {
         const effectiveDescription: string = dbRow?.DataDescription || meta.description || '';
         const effectiveScope: string = dbRow?.DataScope || meta.dataScope || '';
 
-        totalPendingPush += local.pendingPush;
+        let effectivePendingPush = 0;
+        if (effectiveDirection === 'push' || effectiveDirection === 'bidirectional') {
+            effectivePendingPush = local.pendingPush;
+        }
 
-        let pendingPullCount = 0;
-        if (central && (effectiveDirection === 'pull' || effectiveDirection === 'bidirectional')) {
-            if (central.lastCentralModified) {
-                if (!local.lastSyncedAt || new Date(central.lastCentralModified) > new Date(local.lastSyncedAt)) {
-                    pendingPullCount = Math.max(0, central.centralTotalRows - local.localRows);
-                    if (pendingPullCount === 0 && central.lastCentralModified !== local.lastLocalModified) {
-                        pendingPullCount = 1;
-                    }
+        let effectivePendingPull = 0;
+        if (effectiveDirection === 'pull' || effectiveDirection === 'bidirectional') {
+            if (central && central.lastCentralModified) {
+                const lastSynced = dbRow?.LastSyncedTimestamp ? new Date(dbRow.LastSyncedTimestamp) : (local.lastSyncedAt ? new Date(local.lastSyncedAt) : null);
+                if (!lastSynced || new Date(central.lastCentralModified) > lastSynced) {
+                    effectivePendingPull = Math.max(0, central.centralTotalRows - central.centralBranchRows);
                 }
             }
         }
-        totalPendingPull += pendingPullCount;
+
+        totalPendingPush += effectivePendingPush;
+        totalPendingPull += effectivePendingPull;
 
         let syncState: TableSyncMatrixItem['syncState'] = 'synced';
         let syncStateLabel = 'متطابق ومتزامن ✅';
@@ -554,17 +568,17 @@ export async function getTablesSyncMatrix(): Promise<TablesSyncMatrixResponse> {
             syncState = 'empty';
             syncStateLabel = 'لا توجد بيانات ⚪';
             syncedTablesCount++;
-        } else if (local.pendingPush > 0 && pendingPullCount > 0) {
+        } else if (effectivePendingPush > 0 && effectivePendingPull > 0) {
             syncState = 'pending_both';
             syncStateLabel = 'تعديلات وسحب معلق 🔁';
             pendingTablesCount++;
-        } else if (local.pendingPush > 0) {
+        } else if (effectivePendingPush > 0) {
             syncState = 'pending_push';
-            syncStateLabel = `بانتظار الرفع (${local.pendingPush}) ⬆️`;
+            syncStateLabel = `بانتظار الرفع (${effectivePendingPush}) ⬆️`;
             pendingTablesCount++;
-        } else if (pendingPullCount > 0) {
+        } else if (effectivePendingPull > 0) {
             syncState = 'pending_pull';
-            syncStateLabel = `تحديثات جاهزة للسحب (${pendingPullCount}) ⬇️`;
+            syncStateLabel = `تحديثات جاهزة للسحب (${effectivePendingPull}) ⬇️`;
             pendingTablesCount++;
         } else {
             syncState = 'synced';
@@ -583,10 +597,10 @@ export async function getTablesSyncMatrix(): Promise<TablesSyncMatrixResponse> {
             lastSyncedAt: local.lastSyncedAt,
             lastCentralModified: central?.lastCentralModified || null,
             localBranchRows: local.localRows,
-            pendingPushCount: local.pendingPush,
+            pendingPushCount: effectivePendingPush,
             centralBranchRows: central ? central.centralBranchRows : null,
             centralTotalRows: central ? central.centralTotalRows : null,
-            pendingPullCount,
+            pendingPullCount: effectivePendingPull,
             syncState,
             syncStateLabel
         };
@@ -720,10 +734,16 @@ export async function runFullSync(options?: {
             }
         }
 
+        const effectiveMode = options?.targetTable 
+            ? (getTableDirection(options.targetTable, TABLE_METADATA_MAP[options.targetTable]?.direction || 'push') === 'push' ? 'push' 
+               : getTableDirection(options.targetTable, TABLE_METADATA_MAP[options.targetTable]?.direction || 'push') === 'pull' ? 'pull' 
+               : 'all')
+            : mode;
+
         // -------------------------------------------------------------
         // المرحلة 1: رفع التعديلات والحركات من الفرع للإدارة (Push: Insert or Update)
         // -------------------------------------------------------------
-        if (mode === 'all' || mode === 'push') {
+        if (effectiveMode === 'all' || effectiveMode === 'push') {
             const pushTables = tableEntries.filter(([tName, meta]) => {
                 const dir = getTableDirection(tName, meta.direction);
                 return dir === 'push' || dir === 'bidirectional';
@@ -916,38 +936,38 @@ export async function runFullSync(options?: {
 
                             totalPushed++;
                         }
+                    }
 
-                        // تحديث جدول تتبع المزامنة في قاعدة البيانات
-                        const maxLocalRes = await localPool.request().query(`SELECT MAX(UpdatedAt) as maxU, COUNT(*) as c FROM dbo.[${tableName}]`);
-                        const maxU = maxLocalRes.recordset[0]?.maxU ? `'${new Date(maxLocalRes.recordset[0].maxU).toISOString()}'` : 'NULL';
-                        const totalRows = maxLocalRes.recordset[0]?.c || 0;
+                    // تحديث جدول تتبع المزامنة في قاعدة البيانات
+                    const maxLocalRes = await localPool.request().query(`SELECT MAX(UpdatedAt) as maxU, COUNT(*) as c FROM dbo.[${tableName}]`);
+                    const maxU = maxLocalRes.recordset[0]?.maxU ? `'${new Date(maxLocalRes.recordset[0].maxU).toISOString()}'` : 'NULL';
+                    const totalRows = maxLocalRes.recordset[0]?.c || 0;
 
+                    await localPool.request().query(`
+                        UPDATE dbo.SyncTrackingMatrix
+                        SET LastLocalTimestamp = ${maxU},
+                            LastSyncedTimestamp = SYSUTCDATETIME(),
+                            LocalRowsCount = ${totalRows},
+                            PendingChangesCount = 0,
+                            SyncStatus = 'synced',
+                            LastSyncCheckAt = SYSUTCDATETIME()
+                        WHERE TableName = '${tableName}';
+                    `);
+
+                    if (meta.childTable) {
+                        const cMaxRes = await localPool.request().query(`SELECT MAX(UpdatedAt) as maxU, COUNT(*) as c FROM dbo.[${meta.childTable}]`);
+                        const cMaxU = cMaxRes.recordset[0]?.maxU ? `'${new Date(cMaxRes.recordset[0].maxU).toISOString()}'` : 'NULL';
+                        const cTotalRows = cMaxRes.recordset[0]?.c || 0;
                         await localPool.request().query(`
                             UPDATE dbo.SyncTrackingMatrix
-                            SET LastLocalTimestamp = ${maxU},
+                            SET LastLocalTimestamp = ${cMaxU},
                                 LastSyncedTimestamp = SYSUTCDATETIME(),
-                                LocalRowsCount = ${totalRows},
+                                LocalRowsCount = ${cTotalRows},
                                 PendingChangesCount = 0,
                                 SyncStatus = 'synced',
                                 LastSyncCheckAt = SYSUTCDATETIME()
-                            WHERE TableName = '${tableName}';
+                            WHERE TableName = '${meta.childTable}';
                         `);
-
-                        if (meta.childTable) {
-                            const cMaxRes = await localPool.request().query(`SELECT MAX(UpdatedAt) as maxU, COUNT(*) as c FROM dbo.[${meta.childTable}]`);
-                            const cMaxU = cMaxRes.recordset[0]?.maxU ? `'${new Date(cMaxRes.recordset[0].maxU).toISOString()}'` : 'NULL';
-                            const cTotalRows = cMaxRes.recordset[0]?.c || 0;
-                            await localPool.request().query(`
-                                UPDATE dbo.SyncTrackingMatrix
-                                SET LastLocalTimestamp = ${cMaxU},
-                                    LastSyncedTimestamp = SYSUTCDATETIME(),
-                                    LocalRowsCount = ${cTotalRows},
-                                    PendingChangesCount = 0,
-                                    SyncStatus = 'synced',
-                                    LastSyncCheckAt = SYSUTCDATETIME()
-                                WHERE TableName = '${meta.childTable}';
-                            `);
-                        }
                     }
                 } catch (pushErr: any) {
                     console.warn(`Sync push error on table ${tableName}:`, pushErr.message);
@@ -958,7 +978,7 @@ export async function runFullSync(options?: {
         // -------------------------------------------------------------
         // المرحلة 2: سحب التحديثات المركزية من الإدارة للفرع (Pull: Insert or Update)
         // -------------------------------------------------------------
-        if (mode === 'all' || mode === 'pull') {
+        if (effectiveMode === 'all' || effectiveMode === 'pull') {
             const pullTables = tableEntries.filter(([tName, meta]) => {
                 const dir = getTableDirection(tName, meta.direction);
                 return dir === 'pull' || dir === 'bidirectional';
@@ -1028,15 +1048,15 @@ export async function runFullSync(options?: {
 
                             totalPulled++;
                         }
-
-                        // تحديث آخر مزامنة في جدول التتبع
-                        await localPool.request().query(`
-                            UPDATE dbo.SyncTrackingMatrix
-                            SET LastSyncedTimestamp = SYSUTCDATETIME(),
-                                LastSyncCheckAt = SYSUTCDATETIME()
-                            WHERE TableName = '${tableName}';
-                        `);
                     }
+
+                    // تحديث آخر مزامنة في جدول التتبع
+                    await localPool.request().query(`
+                        UPDATE dbo.SyncTrackingMatrix
+                        SET LastSyncedTimestamp = SYSUTCDATETIME(),
+                            LastSyncCheckAt = SYSUTCDATETIME()
+                        WHERE TableName = '${tableName}';
+                    `);
                 } catch (pullErr: any) {
                     console.warn(`Sync pull error on table ${tableName}:`, pullErr.message);
                 }

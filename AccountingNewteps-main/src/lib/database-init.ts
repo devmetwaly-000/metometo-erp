@@ -5,6 +5,7 @@
  */
 
 import sql from 'mssql';
+import { TABLE_METADATA_MAP } from './central-sync';
 
 export interface DbInitOptions {
     server: string;
@@ -1319,6 +1320,8 @@ export async function createAndInitializeDatabase(options: DbInitOptions): Promi
                 [TableDisplayName] NVARCHAR(255) NOT NULL,
                 [Category] NVARCHAR(100) NOT NULL,
                 [SyncDirection] NVARCHAR(30) NOT NULL DEFAULT ('push'),
+                [DataDescription] NVARCHAR(500) NULL,
+                [DataScope] NVARCHAR(100) NULL,
                 [LastLocalTimestamp] DATETIME2 NULL,
                 [LastSyncedTimestamp] DATETIME2 NULL,
                 [LastCentralTimestamp] DATETIME2 NULL,
@@ -1405,6 +1408,11 @@ export async function createAndInitializeDatabase(options: DbInitOptions): Promi
                 [Code] NVARCHAR(50) NULL,
                 [Name] NVARCHAR(255) NOT NULL,
                 [Address] NVARCHAR(500) NULL,
+                [WarehouseType] NVARCHAR(50) NOT NULL DEFAULT ('branch'),
+                [IsRepWarehouse] BIT NOT NULL DEFAULT (0),
+                [IsMain] BIT NOT NULL DEFAULT (0),
+                [IsClosed] BIT NOT NULL DEFAULT (0),
+                [RepId] NVARCHAR(64) NULL,
                 [CreatedAt] DATETIME2 NOT NULL DEFAULT (sysutcdatetime()),
                 [BranchCode] NVARCHAR(50) NULL,
                 [BranchName] NVARCHAR(255) NULL,
@@ -1599,6 +1607,103 @@ export async function createAndInitializeDatabase(options: DbInitOptions): Promi
                 console.error('Error creating view:', vwErr.message);
             }
         }
+
+        // 6. Seed SyncTrackingMatrix with all 69 tables and metadata
+        for (const [tableName, meta] of Object.entries(TABLE_METADATA_MAP)) {
+            try {
+                await targetPool.request()
+                    .input('Tbl', sql.NVarChar(128), tableName)
+                    .input('Name', sql.NVarChar(255), meta.name)
+                    .input('Cat', sql.NVarChar(100), meta.category)
+                    .input('Dir', sql.NVarChar(30), meta.direction)
+                    .input('Desc', sql.NVarChar(500), meta.description || '')
+                    .input('Scope', sql.NVarChar(100), meta.dataScope || '')
+                    .query(`
+                        IF NOT EXISTS (SELECT 1 FROM dbo.SyncTrackingMatrix WHERE TableName = @Tbl)
+                        BEGIN
+                            INSERT INTO dbo.SyncTrackingMatrix (TableName, TableDisplayName, Category, SyncDirection, DataDescription, DataScope, SyncStatus)
+                            VALUES (@Tbl, @Name, @Cat, @Dir, @Desc, @Scope, 'synced');
+                        END
+                        ELSE
+                        BEGIN
+                            UPDATE dbo.SyncTrackingMatrix 
+                            SET TableDisplayName = @Name, Category = @Cat, DataDescription = @Desc, DataScope = @Scope
+                            WHERE TableName = @Tbl;
+                        END
+                    `);
+            } catch (seedErr: any) {
+                console.warn(`SyncTrackingMatrix seed error for ${tableName}:`, seedErr.message);
+            }
+        }
+
+        // 7. Seed canonical Warehouses
+        const warehousesSeed = [
+            { id: '-OmnkFba_GsEb0rfdzyA', code: branchCode, name: branchName, type: 'branch', isRep: 0, isMain: 0 },
+            { id: '-P2S4PYETwslu4f4ym70', code: '5000', name: 'ألنهضة', type: 'warehouse', isRep: 0, isMain: 1 },
+            { id: '-OnwGtz2HzhPQCqm55No', code: 'REP-01', name: 'عهدة المندوب: محاسب', type: 'rep', isRep: 1, isMain: 0, repId: '-OnwGtvQ3IuU_85UL0l9' }
+        ];
+
+        for (const w of warehousesSeed) {
+            try {
+                await targetPool.request()
+                    .input('Id', sql.NVarChar(64), w.id)
+                    .input('Code', sql.NVarChar(50), w.code)
+                    .input('Name', sql.NVarChar(255), w.name)
+                    .input('Type', sql.NVarChar(50), w.type)
+                    .input('IsRep', sql.Bit, w.isRep)
+                    .input('IsMain', sql.Bit, w.isMain)
+                    .input('RepId', sql.NVarChar(64), w.repId || null)
+                    .input('BranchCode', sql.NVarChar(50), branchCode)
+                    .input('BranchName', sql.NVarChar(255), branchName)
+                    .query(`
+                        IF NOT EXISTS (SELECT 1 FROM dbo.Warehouses WHERE Id = @Id)
+                        BEGIN
+                            INSERT INTO dbo.Warehouses (Id, Code, Name, WarehouseType, IsRepWarehouse, IsMain, RepId, BranchCode, BranchName, SyncStatus)
+                            VALUES (@Id, @Code, @Name, @Type, @IsRep, @IsMain, @RepId, @BranchCode, @BranchName, 'synced');
+                        END
+                        ELSE
+                        BEGIN
+                            UPDATE dbo.Warehouses 
+                            SET Code = @Code, Name = @Name, WarehouseType = @Type, IsRepWarehouse = @IsRep, IsMain = @IsMain, RepId = @RepId
+                            WHERE Id = @Id;
+                        END
+                    `);
+            } catch (wErr: any) {
+                console.warn(`Warehouse seed error:`, wErr.message);
+            }
+        }
+
+        // 8. Seed default CashAccount
+        try {
+            await targetPool.request()
+                .input('Id', sql.NVarChar(64), '-OmnkFeLDTdEKiFIrlq7')
+                .input('Name', sql.NVarChar(255), `خزينة فرع: ${branchName}`)
+                .input('Type', sql.NVarChar(50), 'cash')
+                .input('WarehouseId', sql.NVarChar(64), '-OmnkFba_GsEb0rfdzyA')
+                .input('BranchCode', sql.NVarChar(50), branchCode)
+                .input('BranchName', sql.NVarChar(255), branchName)
+                .query(`
+                    IF NOT EXISTS (SELECT 1 FROM dbo.CashAccounts WHERE Id = @Id)
+                    BEGIN
+                        INSERT INTO dbo.CashAccounts (Id, Name, Type, OpeningBalance, WarehouseId, BranchCode, BranchName, SyncStatus)
+                        VALUES (@Id, @Name, @Type, 0, @WarehouseId, @BranchCode, @BranchName, 'synced');
+                    END
+                `);
+        } catch {}
+
+        // 9. Seed AppSettings system role
+        try {
+            const roleVal = options.isCentral ? 'central' : 'branch';
+            await targetPool.request()
+                .input('Key', sql.NVarChar(100), 'system_role')
+                .input('Val', sql.NVarChar(100), roleVal)
+                .query(`
+                    IF NOT EXISTS (SELECT 1 FROM dbo.AppSettings WHERE SettingKey = @Key)
+                        INSERT INTO dbo.AppSettings (SettingKey, SettingValue, SyncStatus, LastSyncedAt) VALUES (@Key, @Val, 'synced', SYSUTCDATETIME());
+                    ELSE
+                        UPDATE dbo.AppSettings SET SettingValue = @Val WHERE SettingKey = @Key;
+                `);
+        } catch {}
 
         // Count created tables
         const countRes = await targetPool.request().query(`

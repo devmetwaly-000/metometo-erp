@@ -106,16 +106,22 @@ export async function POST(req: Request) {
         const body = await req.json();
         const { action, config, initOptions, mode, targetTable } = body;
 
-        // 1. تهيئة وإنشاء قاعدة البيانات
+        // 1. تهيئة وإنشاء وتأسيس قاعدة البيانات
         if (action === 'init-database') {
-            const options = initOptions || {
-                server: config?.centralServerIp || '10.110.16.16',
-                port: Number(config?.centralSqlPort) || 1433,
-                database: config?.centralDatabase || 'MultiBranchPOS_Central_DB',
-                user: config?.centralUsername || 'gmlogins',
-                password: config?.centralPassword || 'retgomladb',
-                branchCode: config?.currentBranchCode || '900',
-                branchName: config?.currentBranchName || 'الفرع الرأيسي'
+            const currentCfg = await getCentralConfig();
+            const options = {
+                server: initOptions?.server || config?.centralServerIp || currentCfg.centralServerIp || '10.110.16.16',
+                port: Number(initOptions?.port || config?.centralSqlPort || currentCfg.centralSqlPort) || 1433,
+                database: initOptions?.database || config?.centralDatabase || currentCfg.centralDatabase || 'MultiBranchPOS_Central_DB',
+                user: initOptions?.user || config?.centralUsername || currentCfg.centralUsername || 'gmlogins',
+                password: (initOptions?.password && initOptions.password.trim() !== '')
+                    ? initOptions.password.trim()
+                    : (config?.centralPassword && config.centralPassword.trim() !== '')
+                        ? config.centralPassword.trim()
+                        : currentCfg.centralPassword,
+                branchCode: initOptions?.branchCode || config?.currentBranchCode || currentCfg.currentBranchCode || '900',
+                branchName: initOptions?.branchName || config?.currentBranchName || currentCfg.currentBranchName || 'الفرع الرأيسي',
+                isCentral: true
             };
 
             const initResult = await createAndInitializeDatabase(options);
@@ -136,7 +142,7 @@ export async function POST(req: Request) {
 
         // 4. تشغيل المزامنة الذكية (شاملة، رفع فقط، سحب فقط، أو لجدول محدد)
         if (action === 'sync') {
-            if (config) {
+            if (config && config.centralPassword && config.centralPassword.trim() !== '') {
                 await saveCentralConfig(config);
             }
             const syncResult = await runFullSync({
