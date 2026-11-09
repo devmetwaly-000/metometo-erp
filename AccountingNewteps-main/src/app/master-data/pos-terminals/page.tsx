@@ -290,10 +290,17 @@ export default function PosTerminalsPage() {
         !w.repId && 
         !w.isClosed && 
         w.warehouseType !== 'rep' && 
-        w.warehouseType !== 'warehouse'
+        w.warehouseType !== 'warehouse' &&
+        !w.name?.includes('عهدة') &&
+        !w.name?.includes('مندوب') &&
+        !w.name?.includes('لوجستي')
       )
       .filter((w: any, idx: number, arr: any[]) => 
-        idx === arr.findIndex((t: any) => t.id === w.id || (t.code && t.code === w.code) || t.name === w.name)
+        idx === arr.findIndex((t: any) => 
+          t.id === w.id || 
+          (t.code && w.code && String(t.code).trim() === String(w.code).trim()) || 
+          (t.name && w.name && t.name.trim().toLowerCase() === w.name.trim().toLowerCase())
+        )
       );
     const wIds = user?.warehouseIds || [];
     if (wIds.includes('all')) return salesBranches;

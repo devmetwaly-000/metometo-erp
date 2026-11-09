@@ -346,7 +346,8 @@ export async function GET() {
                     closedByName: ps.ClosedByName,
                     isClosed: !!ps.IsClosed,
                     posTerminalId: ps.PosTerminalId,
-                    cashierSessions: parseJson(ps.CashierSessionsJson, {})
+                    cashierSessions: parseJson(ps.CashierSessionsJson, {}),
+                    closingStatement: parseJson(ps.ClosingStatementJson, null)
                 })),
                 barcodeDesigns: barcodeDesignsRes.recordset.map(bd => ({ id: bd.Id, name: bd.Name, ...parseJson(bd.ConfigJson, {}) })),
                 posTerminals: posTerminalsRes.recordset.map(t => ({ ...t, id: t.Id, name: t.Name || t.name })),

@@ -26,10 +26,12 @@ export async function POST(req: Request) {
                     await reqTx.query('INSERT INTO dbo.Counters (Name, CurrentValue) VALUES (@Name, @Initial)');
                 } else {
                     const updateRes = await reqTx.query(`
+                        DECLARE @Out TABLE (Val BIGINT);
                         UPDATE dbo.Counters
                         SET CurrentValue = CurrentValue + 1
-                        OUTPUT INSERTED.CurrentValue
-                        WHERE Name = @Name
+                        OUTPUT INSERTED.CurrentValue INTO @Out
+                        WHERE Name = @Name;
+                        SELECT Val as CurrentValue FROM @Out;
                     `);
                     nextVal = Number(updateRes.recordset[0].CurrentValue);
                 }
@@ -1264,6 +1266,7 @@ export async function POST(req: Request) {
                     .input('ClosedByName', sql.NVarChar(255), data.closedByName || null)
                     .input('IsClosed', sql.Bit, data.isClosed !== undefined ? (data.isClosed ? 1 : 0) : null)
                     .input('CashierSessionsJson', sql.NVarChar(sql.MAX), data.cashierSessions ? jsonString(data.cashierSessions) : null)
+                    .input('ClosingStatementJson', sql.NVarChar(sql.MAX), data.closingStatementJson || (data.closingStatement ? jsonString(data.closingStatement) : null))
                     .query(`
                         UPDATE dbo.PosSessions
                         SET 
@@ -1271,7 +1274,8 @@ export async function POST(req: Request) {
                             ClosedBy = COALESCE(@ClosedBy, ClosedBy),
                             ClosedByName = COALESCE(@ClosedByName, ClosedByName),
                             IsClosed = COALESCE(@IsClosed, IsClosed),
-                            CashierSessionsJson = COALESCE(@CashierSessionsJson, CashierSessionsJson)
+                            CashierSessionsJson = COALESCE(@CashierSessionsJson, CashierSessionsJson),
+                            ClosingStatementJson = COALESCE(@ClosingStatementJson, ClosingStatementJson)
                         WHERE Id = @Id;
                     `);
                 return NextResponse.json({ success: true });

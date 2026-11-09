@@ -744,6 +744,7 @@ export async function createAndInitializeDatabase(options: DbInitOptions): Promi
                 [PosTerminalId] NVARCHAR(64) NULL,
                 [CreatedAt] DATETIME2 NOT NULL DEFAULT (sysutcdatetime()),
                 [CashierSessionsJson] NVARCHAR(MAX) NULL,
+                [ClosingStatementJson] NVARCHAR(MAX) NULL,
                 [BranchCode] NVARCHAR(50) NULL,
                 [BranchName] NVARCHAR(255) NULL,
                 [SyncStatus] NVARCHAR(20) NULL DEFAULT ('synced'),

@@ -170,8 +170,26 @@ export default function BranchesPage() {
   const [password, setPassword] = useState("");
 
   const branches = useMemo(() => {
-    // قائمة الفروع: تستبعد عهدة المناديب وتستبعد المخازن اللوجستية العامة
-    const b = warehouses.filter((w: any) => !w.isMain && !w.isRepWarehouse && !w.repId && w.warehouseType !== 'rep' && w.warehouseType !== 'warehouse');
+    // قائمة الفروع: تستبعد عهدة المناديب وتستبعد المخازن اللوجستية العامة مع منع التكرار
+    const b = warehouses
+      .filter((w: any) => 
+        !w.isMain && 
+        !w.isRepWarehouse && 
+        !w.repId && 
+        !w.isClosed && 
+        w.warehouseType !== 'rep' && 
+        w.warehouseType !== 'warehouse' &&
+        !w.name?.includes('عهدة') &&
+        !w.name?.includes('مندوب') &&
+        !w.name?.includes('لوجستي')
+      )
+      .filter((w: any, idx: number, arr: any[]) => 
+        idx === arr.findIndex((t: any) => 
+          t.id === w.id || 
+          (t.code && w.code && String(t.code).trim() === String(w.code).trim()) || 
+          (t.name && w.name && t.name.trim().toLowerCase() === w.name.trim().toLowerCase())
+        )
+      );
     if (user?.warehouseIds?.includes('all')) return b;
     return b.filter((w: any) => user?.warehouseIds?.includes(w.id));
   }, [warehouses, user]);

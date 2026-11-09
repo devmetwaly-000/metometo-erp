@@ -786,7 +786,7 @@ export default function CentralSyncSettingsPage() {
                 </div>
             </PageHeader>
 
-            <main className="flex flex-1 flex-col gap-5 p-4 md:p-6 w-full">
+            <main className="flex flex-1 flex-col gap-4 p-3 md:p-4 w-full">
                 
                 {/* 2. Top Unified Executive Dashboard Banner with System Role Indicator */}
                 <div className="rounded-xl border bg-card p-4 shadow-sm relative overflow-hidden">
@@ -901,7 +901,7 @@ export default function CentralSyncSettingsPage() {
 
                 {/* 3. Re-engineered Navigation Tabs */}
                 <Tabs value={activeTab} onValueChange={(val) => setActiveTab(val as any)} className="w-full">
-                    <TabsList className="grid w-full grid-cols-2 md:grid-cols-4 max-w-4xl mx-auto h-auto md:h-11 bg-muted/60 p-1 rounded-xl shadow-inner border gap-1">
+                    <TabsList className="grid w-full grid-cols-2 md:grid-cols-4 h-auto md:h-11 bg-muted/60 p-1 rounded-xl shadow-inner border gap-1">
                         <TabsTrigger value="matrix" className="gap-2 font-bold text-xs rounded-lg data-[state=active]:shadow-sm py-2 md:py-1.5">
                             <Database className="h-4 w-4 text-emerald-600" /> 
                             مصفوفة الجداول ({syncMatrix?.tables.length || 69})

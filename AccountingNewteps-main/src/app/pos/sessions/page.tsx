@@ -13,7 +13,11 @@ import {
   CardFooter
 } from "@/components/ui/card";
 import { useData } from "@/contexts/data-provider";
-import { Loader2, PlayCircle, PowerOff, Coins, TrendingDown, TrendingUp, HandCoins, UserCheck, UserPlus, Warehouse, Laptop, Check, History, Undo2, AlertTriangle, Building2 } from "lucide-react";
+import { 
+  Loader2, PlayCircle, PowerOff, Coins, TrendingDown, TrendingUp, HandCoins, 
+  UserCheck, UserPlus, Warehouse, Laptop, Check, History, Undo2, AlertTriangle, 
+  Building2, Printer, FileText, Calendar, Clock, CreditCard, Banknote, Wallet, ReceiptText, Users, CheckCircle2, Sparkles, ArrowRight
+} from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { AddEntityDialog } from '@/components/add-entity-dialog';
 import { Label } from '@/components/ui/label';
@@ -25,6 +29,14 @@ import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import { getGeneralCashAccounts } from '@/lib/accounting-utils';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 
 interface PosTerminal {
     id: string;
@@ -43,7 +55,8 @@ interface PosSession {
     closedByName?: string;
     cashierSessions: {
         [cashierId: string]: CashierSession;
-    }
+    };
+    closingStatement?: WorkDayClosingStatement;
 }
 interface CashierSession {
     cashierId: string;
@@ -62,7 +75,49 @@ interface CashierSession {
     invoiceCounter?: number;
     totalSalesByMethod?: Record<string, number>;
     totalReturnsByMethod?: Record<string, number>;
-    totalTips?: number; // New field
+    totalTips?: number;
+}
+
+export interface CashierStatementItem {
+    cashierId: string;
+    cashierName: string;
+    terminalName: string;
+    warehouseName: string;
+    startTime: string;
+    endTime?: string;
+    openingBalance: number;
+    salesByMethod: Record<string, number>;
+    totalSales: number;
+    returnsValue: number;
+    tips: number;
+    expectedCash: number;
+    actualCash: number;
+    difference: number;
+    remittedToAccountName?: string;
+}
+
+export interface WorkDayClosingStatement {
+    sessionId: string;
+    workDayDate: string;
+    startTime: string;
+    endTime: string;
+    closedByName: string;
+    openedByName: string;
+    branchName?: string;
+    nextWorkDay?: string;
+    cashiers: CashierStatementItem[];
+    paymentMethodsList: string[];
+    totals: {
+        totalOpeningBalance: number;
+        salesByMethod: Record<string, number>;
+        totalSales: number;
+        totalReturns: number;
+        totalTips: number;
+        totalExpectedCash: number;
+        totalActualCash: number;
+        totalDifference: number;
+        totalNetRevenue: number;
+    };
 }
 
 
@@ -233,6 +288,374 @@ const CloseCashierSessionDialog = ({ cashierSession, onConfirm, onClose }: { cas
     );
 }
 
+const printClosingStatement = (statement: WorkDayClosingStatement, companyName: string) => {
+    if (typeof window === 'undefined') return;
+    const printWindow = window.open('', '_blank');
+    if (!printWindow) return;
+
+    const methodsHeaders = statement.paymentMethodsList.map(m => 
+        `<th style="padding: 6px 8px; border: 1px solid #cbd5e1; background: #f8fafc; font-size: 11px;">${m}</th>`
+    ).join('');
+    
+    const cashierRows = statement.cashiers.map((c, i) => {
+        const methodCells = statement.paymentMethodsList.map(m => `
+            <td style="padding: 6px 8px; border: 1px solid #cbd5e1; text-align: center; font-size: 11px;">
+                ${(c.salesByMethod[m] || 0).toLocaleString()}
+            </td>
+        `).join('');
+
+        const diffStyle = c.difference === 0 ? 'color: #334155;' : c.difference > 0 ? 'color: #16a34a; font-weight: bold;' : 'color: #dc2626; font-weight: bold;';
+        const diffText = c.difference === 0 ? '0' : c.difference > 0 ? `+${c.difference.toLocaleString()}` : `${c.difference.toLocaleString()}`;
+
+        return `
+            <tr>
+                <td style="padding: 6px 8px; border: 1px solid #cbd5e1; text-align: center; font-size: 11px;">${i + 1}</td>
+                <td style="padding: 6px 8px; border: 1px solid #cbd5e1; font-weight: bold; font-size: 11px;">${c.cashierName}</td>
+                <td style="padding: 6px 8px; border: 1px solid #cbd5e1; font-size: 11px;">${c.terminalName}</td>
+                <td style="padding: 6px 8px; border: 1px solid #cbd5e1; text-align: center; font-size: 11px;">${c.openingBalance.toLocaleString()}</td>
+                ${methodCells}
+                <td style="padding: 6px 8px; border: 1px solid #cbd5e1; text-align: center; font-weight: bold; background: #f1f5f9; font-size: 11px;">${c.totalSales.toLocaleString()}</td>
+                <td style="padding: 6px 8px; border: 1px solid #cbd5e1; text-align: center; color: #dc2626; font-size: 11px;">${c.returnsValue.toLocaleString()}</td>
+                <td style="padding: 6px 8px; border: 1px solid #cbd5e1; text-align: center; font-size: 11px;">${c.expectedCash.toLocaleString()}</td>
+                <td style="padding: 6px 8px; border: 1px solid #cbd5e1; text-align: center; font-weight: bold; font-size: 11px;">${c.actualCash.toLocaleString()}</td>
+                <td style="padding: 6px 8px; border: 1px solid #cbd5e1; text-align: center; font-size: 11px; ${diffStyle}">${diffText}</td>
+            </tr>
+        `;
+    }).join('');
+
+    const totalsMethodCells = statement.paymentMethodsList.map(m => `
+        <th style="padding: 8px; border: 1px solid #94a3b8; text-align: center; font-size: 12px; background: #e2e8f0; font-weight: bold;">
+            ${(statement.totals.salesByMethod[m] || 0).toLocaleString()}
+        </th>
+    `).join('');
+
+    const totalsRow = `
+        <tr style="background: #e2e8f0; font-weight: bold;">
+            <th colspan="3" style="padding: 8px; border: 1px solid #94a3b8; text-align: center; font-size: 12px;">الإجمالي المجمع لكافة الكاشيرات</th>
+            <th style="padding: 8px; border: 1px solid #94a3b8; text-align: center; font-size: 12px;">${statement.totals.totalOpeningBalance.toLocaleString()}</th>
+            ${totalsMethodCells}
+            <th style="padding: 8px; border: 1px solid #94a3b8; text-align: center; font-size: 12px; background: #cbd5e1;">${statement.totals.totalSales.toLocaleString()}</th>
+            <th style="padding: 8px; border: 1px solid #94a3b8; text-align: center; font-size: 12px; color: #dc2626;">${statement.totals.totalReturns.toLocaleString()}</th>
+            <th style="padding: 8px; border: 1px solid #94a3b8; text-align: center; font-size: 12px;">${statement.totals.totalExpectedCash.toLocaleString()}</th>
+            <th style="padding: 8px; border: 1px solid #94a3b8; text-align: center; font-size: 12px;">${statement.totals.totalActualCash.toLocaleString()}</th>
+            <th style="padding: 8px; border: 1px solid #94a3b8; text-align: center; font-size: 12px;">${statement.totals.totalDifference.toLocaleString()}</th>
+        </tr>
+    `;
+
+    const summaryCards = statement.paymentMethodsList.map(m => {
+        const val = statement.totals.salesByMethod[m] || 0;
+        const pct = statement.totals.totalSales > 0 ? ((val / statement.totals.totalSales) * 100).toFixed(1) : '0';
+        return `
+            <div style="flex: 1; min-width: 120px; border: 1px solid #cbd5e1; border-radius: 6px; padding: 8px; background: #f8fafc; text-align: center;">
+                <div style="font-size: 11px; color: #64748b; font-weight: bold; margin-bottom: 2px;">مبيعات ${m}</div>
+                <div style="font-size: 15px; font-weight: bold; color: #0f172a;">${val.toLocaleString()} <span style="font-size: 10px;">ج.م</span></div>
+                <div style="font-size: 10px; color: #64748b; margin-top: 2px;">نسبة ${pct}% من المبيعات</div>
+            </div>
+        `;
+    }).join('');
+
+    const htmlContent = `
+        <!DOCTYPE html>
+        <html dir="rtl" lang="ar">
+        <head>
+            <meta charset="utf-8">
+            <title>بيان إقفال يوم العمل وتجميع طرق الدفع - ${statement.workDayDate}</title>
+            <style>
+                @page { size: A4 landscape; margin: 10mm; }
+                body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; margin: 0; padding: 10px; color: #0f172a; direction: rtl; }
+                table { width: 100%; border-collapse: collapse; margin-top: 10px; }
+                .meta-box { display: flex; justify-content: space-between; border-bottom: 2px solid #0f172a; padding-bottom: 10px; margin-bottom: 12px; }
+                .sig-box { display: flex; justify-content: space-between; margin-top: 35px; padding-top: 15px; }
+                .sig-item { text-align: center; width: 28%; border-top: 1px dashed #64748b; padding-top: 6px; font-size: 12px; }
+                @media print {
+                    .no-print { display: none !important; }
+                    body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+                }
+            </style>
+        </head>
+        <body>
+            <div class="meta-box">
+                <div>
+                    <h2 style="margin: 0 0 4px 0; font-size: 18px;">${companyName || 'منظومة نقاط البيع والحسابات'}</h2>
+                    <h3 style="margin: 0; font-size: 14px; color: #0284c7;">بيان إقفال يوم العمل وتجميع مبالغ طرق الدفع للمبيعات</h3>
+                    <div style="font-size: 11px; color: #64748b; margin-top: 3px;">الفرع: ${statement.branchName || 'الفرع الرئيسي'}</div>
+                </div>
+                <div style="text-align: left; font-size: 11px; line-height: 1.6;">
+                    <div><strong>تاريخ يوم العمل:</strong> ${statement.workDayDate}</div>
+                    <div><strong>توقيت الإقفال:</strong> ${new Date(statement.endTime).toLocaleString('ar-EG')}</div>
+                    <div><strong>أقفل بواسطة:</strong> ${statement.closedByName}</div>
+                    ${statement.nextWorkDay ? `<div style="color: #15803d; font-weight: bold;">تم فتح اليوم التالي: ${statement.nextWorkDay}</div>` : ''}
+                </div>
+            </div>
+
+            <div style="display: flex; gap: 8px; margin-bottom: 12px; flex-wrap: wrap;">
+                <div style="flex: 1; min-width: 120px; border: 1px solid #cbd5e1; border-radius: 6px; padding: 8px; background: #f0fdf4; text-align: center;">
+                    <div style="font-size: 11px; color: #166534; font-weight: bold; margin-bottom: 2px;">إجمالي المبيعات العامة</div>
+                    <div style="font-size: 16px; font-weight: bold; color: #15803d;">${statement.totals.totalSales.toLocaleString()} <span style="font-size: 10px;">ج.م</span></div>
+                    <div style="font-size: 10px; color: #166534; margin-top: 2px;">صافي الإيراد: ${statement.totals.totalNetRevenue.toLocaleString()} ج.م</div>
+                </div>
+                ${summaryCards}
+                <div style="flex: 1; min-width: 120px; border: 1px solid #cbd5e1; border-radius: 6px; padding: 8px; background: #eff6ff; text-align: center;">
+                    <div style="font-size: 11px; color: #1e40af; font-weight: bold; margin-bottom: 2px;">النقدية الموردة بالخزينة</div>
+                    <div style="font-size: 16px; font-weight: bold; color: #1d4ed8;">${statement.totals.totalActualCash.toLocaleString()} <span style="font-size: 10px;">ج.م</span></div>
+                    <div style="font-size: 10px; color: #1e40af; margin-top: 2px;">عدد الكاشيرات: ${statement.cashiers.length}</div>
+                </div>
+            </div>
+
+            <h4 style="margin: 10px 0 4px 0; font-size: 12px;">بيان تفصيلي لكل كاشير منفصل وفقاً لطرق الدفع المسددة:</h4>
+            <table>
+                <thead>
+                    <tr style="background: #f1f5f9;">
+                        <th style="padding: 6px 8px; border: 1px solid #cbd5e1; width: 25px; font-size: 11px;">#</th>
+                        <th style="padding: 6px 8px; border: 1px solid #cbd5e1; font-size: 11px;">اسم الكاشير</th>
+                        <th style="padding: 6px 8px; border: 1px solid #cbd5e1; font-size: 11px;">نقطة البيع</th>
+                        <th style="padding: 6px 8px; border: 1px solid #cbd5e1; font-size: 11px;">عهدة البداية</th>
+                        ${methodsHeaders}
+                        <th style="padding: 6px 8px; border: 1px solid #cbd5e1; font-size: 11px; background: #e2e8f0;">إجمالي المبيعات</th>
+                        <th style="padding: 6px 8px; border: 1px solid #cbd5e1; font-size: 11px;">المرتجعات</th>
+                        <th style="padding: 6px 8px; border: 1px solid #cbd5e1; font-size: 11px;">المتوقع</th>
+                        <th style="padding: 6px 8px; border: 1px solid #cbd5e1; font-size: 11px;">المورد</th>
+                        <th style="padding: 6px 8px; border: 1px solid #cbd5e1; font-size: 11px;">الفارق</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    ${cashierRows}
+                    ${totalsRow}
+                </tbody>
+            </table>
+
+            <div class="sig-box">
+                <div class="sig-item">
+                    <strong>توقيع مسؤولي الكاشيرات</strong>
+                    <div style="margin-top: 20px; color: #94a3b8;">..........................................</div>
+                </div>
+                <div class="sig-item">
+                    <strong>توقيع مشرف الفرع والوردية</strong>
+                    <div style="margin-top: 20px; color: #94a3b8;">..........................................</div>
+                </div>
+                <div class="sig-item">
+                    <strong>اعتماد الإدارة المالية والحسابات</strong>
+                    <div style="margin-top: 20px; color: #94a3b8;">..........................................</div>
+                </div>
+            </div>
+
+            <script>
+                window.onload = function() {
+                    window.print();
+                };
+            </script>
+        </body>
+        </html>
+    `;
+
+    printWindow.document.open();
+    printWindow.document.write(htmlContent);
+    printWindow.document.close();
+};
+
+const WorkDayClosingStatementDialog = ({
+    statement,
+    open,
+    onOpenChange,
+    companyName
+}: {
+    statement: WorkDayClosingStatement | null;
+    open: boolean;
+    onOpenChange: (open: boolean) => void;
+    companyName: string;
+}) => {
+    if (!statement) return null;
+
+    return (
+        <Dialog open={open} onOpenChange={onOpenChange}>
+            <DialogContent className="sm:max-w-4xl max-h-[92vh] overflow-y-auto">
+                <DialogHeader className="border-b pb-3">
+                    <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                            <div className="p-2 rounded-lg bg-emerald-500/10 text-emerald-600 border border-emerald-500/20">
+                                <FileText className="h-5 w-5" />
+                            </div>
+                            <div>
+                                <DialogTitle className="text-base font-bold text-foreground">
+                                    بيان إقفال يوم العمل وتجميع طرق الدفع للمبيعات
+                                </DialogTitle>
+                                <DialogDescription className="text-xs">
+                                    تاريخ يوم العمل: {statement.workDayDate} | أقفل في: {new Date(statement.endTime).toLocaleTimeString('ar-EG')} بواسطة {statement.closedByName}
+                                </DialogDescription>
+                            </div>
+                        </div>
+                    </div>
+                </DialogHeader>
+
+                <div className="space-y-4 py-2">
+                    {/* Next Day Auto-Open Notice Banner */}
+                    {statement.nextWorkDay && (
+                        <div className="flex items-center gap-2.5 p-3 rounded-lg border border-emerald-500/30 bg-emerald-500/10 text-emerald-950 dark:text-emerald-200 text-xs">
+                            <CheckCircle2 className="h-4 w-4 text-emerald-600 shrink-0" />
+                            <span>
+                                <strong>تم إقفال يوم العمل بنجاح!</strong> تم فتح يوم العمل التالي تلقائياً بتاريخ <strong>({statement.nextWorkDay})</strong> لكافة الكاشيرات لبدء الورديات الجديدة مباشرة دون انقطاع.
+                            </span>
+                        </div>
+                    )}
+
+                    {/* Aggregate Summary Cards per Payment Method */}
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
+                        <div className="p-3 rounded-lg border bg-emerald-500/5 border-emerald-500/20 text-center">
+                            <div className="text-[11px] font-semibold text-emerald-700 dark:text-emerald-300">إجمالي المبيعات العامة</div>
+                            <div className="text-lg font-black text-emerald-700 dark:text-emerald-300 mt-1">
+                                {statement.totals.totalSales.toLocaleString()} <span className="text-[10px] font-normal">ج.م</span>
+                            </div>
+                            <div className="text-[10px] text-muted-foreground mt-0.5">
+                                صافي: {statement.totals.totalNetRevenue.toLocaleString()} ج.م
+                            </div>
+                        </div>
+
+                        {statement.paymentMethodsList.map(method => {
+                            const val = statement.totals.salesByMethod[method] || 0;
+                            const pct = statement.totals.totalSales > 0 ? ((val / statement.totals.totalSales) * 100).toFixed(1) : '0';
+                            return (
+                                <div key={method} className="p-3 rounded-lg border bg-muted/40 text-center">
+                                    <div className="text-[11px] font-semibold text-muted-foreground">{method}</div>
+                                    <div className="text-lg font-black text-foreground mt-1">
+                                        {val.toLocaleString()} <span className="text-[10px] font-normal">ج.م</span>
+                                    </div>
+                                    <div className="text-[10px] text-muted-foreground mt-0.5 font-mono">
+                                        نسبة {pct}%
+                                    </div>
+                                </div>
+                            );
+                        })}
+
+                        <div className="p-3 rounded-lg border bg-sky-500/5 border-sky-500/20 text-center">
+                            <div className="text-[11px] font-semibold text-sky-700 dark:text-sky-300">النقدية الموردة بالخزينة</div>
+                            <div className="text-lg font-black text-sky-700 dark:text-sky-300 mt-1">
+                                {statement.totals.totalActualCash.toLocaleString()} <span className="text-[10px] font-normal">ج.م</span>
+                            </div>
+                            <div className="text-[10px] text-muted-foreground mt-0.5">
+                                عدد الكاشيرات: {statement.cashiers.length}
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* Detailed Per-Cashier Matrix Table */}
+                    <div className="border rounded-lg overflow-hidden">
+                        <div className="bg-muted/60 px-3 py-2 border-b text-xs font-bold flex items-center justify-between">
+                            <span>تفصيل المبالغ المسددة لكل كاشير منفصل وفقاً لطرق الدفع:</span>
+                            <span className="text-muted-foreground font-normal">
+                                {statement.cashiers.length} كاشير شاركوا في هذا اليوم
+                            </span>
+                        </div>
+                        <div className="overflow-x-auto">
+                            <Table className="text-xs">
+                                <TableHeader className="bg-muted/40">
+                                    <TableRow>
+                                        <TableHead className="w-8 text-center">#</TableHead>
+                                        <TableHead>الكاشير</TableHead>
+                                        <TableHead>نقطة البيع</TableHead>
+                                        <TableHead className="text-center">عهدة البداية</TableHead>
+                                        {statement.paymentMethodsList.map(method => (
+                                            <TableHead key={method} className="text-center">{method}</TableHead>
+                                        ))}
+                                        <TableHead className="text-center font-bold bg-muted/80">إجمالي المبيعات</TableHead>
+                                        <TableHead className="text-center">المرتجعات</TableHead>
+                                        <TableHead className="text-center">المتوقع</TableHead>
+                                        <TableHead className="text-center">المورد</TableHead>
+                                        <TableHead className="text-center">الفارق</TableHead>
+                                    </TableRow>
+                                </TableHeader>
+                                <TableBody>
+                                    {statement.cashiers.map((c, index) => (
+                                        <TableRow key={c.cashierId || index} className="hover:bg-muted/20">
+                                            <TableCell className="text-center text-muted-foreground font-mono">{index + 1}</TableCell>
+                                            <TableCell className="font-bold text-foreground">{c.cashierName}</TableCell>
+                                            <TableCell className="text-muted-foreground">{c.terminalName}</TableCell>
+                                            <TableCell className="text-center">{c.openingBalance.toLocaleString()}</TableCell>
+                                            {statement.paymentMethodsList.map(method => (
+                                                <TableCell key={method} className="text-center font-medium">
+                                                    {(c.salesByMethod[method] || 0).toLocaleString()}
+                                                </TableCell>
+                                            ))}
+                                            <TableCell className="text-center font-bold bg-muted/30">
+                                                {c.totalSales.toLocaleString()}
+                                            </TableCell>
+                                            <TableCell className="text-center text-destructive">
+                                                {c.returnsValue > 0 ? c.returnsValue.toLocaleString() : '0'}
+                                            </TableCell>
+                                            <TableCell className="text-center">{c.expectedCash.toLocaleString()}</TableCell>
+                                            <TableCell className="text-center font-bold text-foreground">{c.actualCash.toLocaleString()}</TableCell>
+                                            <TableCell className="text-center">
+                                                <Badge 
+                                                    variant={c.difference === 0 ? 'secondary' : c.difference > 0 ? 'default' : 'destructive'}
+                                                    className="font-mono text-[11px]"
+                                                >
+                                                    {c.difference === 0 ? '0' : c.difference > 0 ? `+${c.difference.toLocaleString()}` : c.difference.toLocaleString()}
+                                                </Badge>
+                                            </TableCell>
+                                        </TableRow>
+                                    ))}
+
+                                    {/* Aggregated Totals Row */}
+                                    <TableRow className="bg-muted/80 font-bold border-t-2 border-foreground/20 text-xs">
+                                        <TableCell colSpan={3} className="text-center font-black">
+                                            الإجمالي المجمع لكافة الكاشيرات
+                                        </TableCell>
+                                        <TableCell className="text-center font-black">
+                                            {statement.totals.totalOpeningBalance.toLocaleString()}
+                                        </TableCell>
+                                        {statement.paymentMethodsList.map(method => (
+                                            <TableCell key={method} className="text-center font-black text-foreground">
+                                                {(statement.totals.salesByMethod[method] || 0).toLocaleString()}
+                                            </TableCell>
+                                        ))}
+                                        <TableCell className="text-center font-black bg-muted text-foreground">
+                                            {statement.totals.totalSales.toLocaleString()}
+                                        </TableCell>
+                                        <TableCell className="text-center font-black text-destructive">
+                                            {statement.totals.totalReturns.toLocaleString()}
+                                        </TableCell>
+                                        <TableCell className="text-center font-black">
+                                            {statement.totals.totalExpectedCash.toLocaleString()}
+                                        </TableCell>
+                                        <TableCell className="text-center font-black text-foreground">
+                                            {statement.totals.totalActualCash.toLocaleString()}
+                                        </TableCell>
+                                        <TableCell className="text-center font-black">
+                                            <Badge 
+                                                variant={statement.totals.totalDifference === 0 ? 'secondary' : statement.totals.totalDifference > 0 ? 'default' : 'destructive'}
+                                                className="font-mono"
+                                            >
+                                                {statement.totals.totalDifference === 0 ? '0' : statement.totals.totalDifference > 0 ? `+${statement.totals.totalDifference.toLocaleString()}` : statement.totals.totalDifference.toLocaleString()}
+                                            </Badge>
+                                        </TableCell>
+                                    </TableRow>
+                                </TableBody>
+                            </Table>
+                        </div>
+                    </div>
+                </div>
+
+                <DialogFooter className="flex flex-row items-center justify-between gap-2 border-t pt-3 sm:justify-between">
+                    <Button 
+                        variant="outline" 
+                        size="sm" 
+                        onClick={() => printClosingStatement(statement, companyName)}
+                        className="gap-1.5 font-bold border-primary/40 text-primary hover:bg-primary/10"
+                    >
+                        <Printer className="h-4 w-4" />
+                        طباعة بيان الإقفال (A4 / تقرير رسمي)
+                    </Button>
+                    <Button 
+                        size="sm" 
+                        onClick={() => onOpenChange(false)}
+                    >
+                        إغلاق
+                    </Button>
+                </DialogFooter>
+            </DialogContent>
+        </Dialog>
+    );
+};
+
 export default function PosSessionsPage() {
     const { 
         cashAccounts, 
@@ -249,6 +672,10 @@ export default function PosSessionsPage() {
     } = useData();
     const { user } = useAuth();
     const { toast } = useToast();
+    
+    // State for Work Day Closing Statement (بيان إقفال يوم العمل وتجميع طرق الدفع)
+    const [statementModalData, setStatementModalData] = useState<WorkDayClosingStatement | null>(null);
+    const [isStatementModalOpen, setIsStatementModalOpen] = useState(false);
     
     const { openWorkDay, closedWorkDays, cashierSessionsData, allSessionsClosed, canCloseWorkDay } = useMemo(() => {
         if (!allPosSessions) {
@@ -442,17 +869,166 @@ export default function PosSessionsPage() {
         toast({ title: "تم إقفال الوردية", description: `تم إقفال وردية الكاشير ${sessionToClose.cashierName} بنجاح.` });
     };
 
+    const buildClosingStatement = (session: any, nextDayDate?: string): WorkDayClosingStatement => {
+        const cashiersList: CashierStatementItem[] = [];
+        const dynamicPaymentMethods = new Set<string>();
+
+        // Ensure default common payment methods exist in set
+        dynamicPaymentMethods.add('نقدي');
+        if (paymentMethods && Array.isArray(paymentMethods)) {
+            paymentMethods.forEach((pm: any) => {
+                if (pm.name) dynamicPaymentMethods.add(pm.name);
+            });
+        }
+
+        const cashierEntries = Object.values(session?.cashierSessions || {}) as any[];
+        
+        for (const cs of cashierEntries) {
+            const sessionStart = new Date(cs.startTime);
+            const sessionSales = (posSales || []).filter((sale: any) => sale.cashierId === cs.cashierId && new Date(sale.date) >= sessionStart);
+            const sessionReturns = (posReturns || []).filter((ret: any) => ret.cashierId === cs.cashierId && new Date(ret.date) >= sessionStart);
+            const sessionTips = (gratuityLogs || []).filter((log: any) => log.cashierId === cs.cashierId && new Date(log.date) >= sessionStart);
+
+            const salesByMethod: Record<string, number> = {};
+            
+            // Check recorded salesByMethod in session
+            if (cs.totalSalesByMethod && typeof cs.totalSalesByMethod === 'object') {
+                for (const [m, a] of Object.entries(cs.totalSalesByMethod)) {
+                    salesByMethod[m] = Number(a) || 0;
+                    dynamicPaymentMethods.add(m);
+                }
+            }
+
+            // Cross-verify with sessionSales payments
+            sessionSales.forEach((sale: any) => {
+                if (sale.payments && sale.payments.length > 0) {
+                    sale.payments.forEach((p: any) => {
+                        salesByMethod[p.method] = (salesByMethod[p.method] || 0) + Number(p.amount || 0);
+                        dynamicPaymentMethods.add(p.method);
+                    });
+                }
+            });
+
+            const totalSales = Object.values(salesByMethod).reduce((sum, v) => sum + v, 0);
+            const returnsValue = sessionReturns.reduce((sum: number, ret: any) => sum + Number(ret.total || 0), 0);
+            const tips = sessionTips.reduce((sum: number, log: any) => sum + Number(log.amount || 0), 0) || Number(cs.totalTips || 0);
+            const terminal = (posTerminals || []).find((t: any) => t.id === cs.posTerminalId);
+            const warehouse = (warehouses || []).find((w: any) => w.id === cs.sessionWarehouseId);
+            const remittedAccount = (cashAccounts || []).find((acc: any) => acc.id === cs.remittedToAccountId);
+
+            cashiersList.push({
+                cashierId: cs.cashierId,
+                cashierName: cs.cashierName || 'كاشير',
+                terminalName: terminal?.name || terminal?.code || cs.terminalName || 'جهاز كاشير',
+                warehouseName: warehouse?.name || cs.warehouseName || 'الفرع',
+                startTime: cs.startTime,
+                endTime: cs.endTime,
+                openingBalance: Number(cs.openingBalance || 0),
+                salesByMethod,
+                totalSales,
+                returnsValue,
+                tips,
+                expectedCash: Number(cs.expectedCash || 0),
+                actualCash: Number(cs.actualCash || 0),
+                difference: Number(cs.difference || 0),
+                remittedToAccountName: remittedAccount?.name || '-'
+            });
+        }
+
+        const methodsArray = Array.from(dynamicPaymentMethods);
+        
+        // Aggregate totals for each payment method across all cashiers
+        const totalsSalesByMethod: Record<string, number> = {};
+        for (const m of methodsArray) {
+            totalsSalesByMethod[m] = cashiersList.reduce((sum, c) => sum + (c.salesByMethod[m] || 0), 0);
+        }
+
+        const totalOpeningBalance = cashiersList.reduce((sum, c) => sum + c.openingBalance, 0);
+        const totalSales = cashiersList.reduce((sum, c) => sum + c.totalSales, 0);
+        const totalReturns = cashiersList.reduce((sum, c) => sum + c.returnsValue, 0);
+        const totalTips = cashiersList.reduce((sum, c) => sum + c.tips, 0);
+        const totalExpectedCash = cashiersList.reduce((sum, c) => sum + c.expectedCash, 0);
+        const totalActualCash = cashiersList.reduce((sum, c) => sum + c.actualCash, 0);
+        const totalDifference = cashiersList.reduce((sum, c) => sum + c.difference, 0);
+        const totalNetRevenue = totalSales - totalReturns;
+
+        return {
+            sessionId: session?.id || String(Date.now()),
+            workDayDate: settings?.main?.posSettings?.workDay || new Date().toISOString().split('T')[0],
+            startTime: session?.startTime || new Date().toISOString(),
+            endTime: new Date().toISOString(),
+            closedByName: user?.name || 'المدير',
+            openedByName: session?.openedByName || 'غير محدد',
+            branchName: settings?.main?.general?.companyName || 'الفرع الرئيسي',
+            nextWorkDay: nextDayDate,
+            cashiers: cashiersList,
+            paymentMethodsList: methodsArray,
+            totals: {
+                totalOpeningBalance,
+                salesByMethod: totalsSalesByMethod,
+                totalSales,
+                totalReturns,
+                totalTips,
+                totalExpectedCash,
+                totalActualCash,
+                totalDifference,
+                totalNetRevenue
+            }
+        };
+    };
+
     const handleCloseWorkDay = async () => {
         if (!openWorkDay) return;
-        await dbAction('posSessions', 'update', { id: openWorkDay.id, data: { isClosed: true, endTime: new Date().toISOString(), closedBy: user?.id, closedByName: user?.name } });
-        
+
         const currentWorkDay = new Date(settings?.main?.posSettings?.workDay || new Date());
         currentWorkDay.setDate(currentWorkDay.getDate() + 1);
         const nextWorkDay = currentWorkDay.toISOString().split('T')[0];
-        await dbAction('settings', 'update', { id: 'main', data: { posSettings: { ...settings.main.posSettings, workDay: nextWorkDay } } });
+
+        // 1. Build financial closing statement data with all cashiers & payment methods
+        const statementData = buildClosingStatement(openWorkDay, nextWorkDay);
+
+        // 2. Close current work day session and save statement JSON
+        const closeTime = new Date().toISOString();
+        await dbAction('posSessions', 'update', { 
+            id: openWorkDay.id, 
+            data: { 
+                isClosed: true, 
+                endTime: closeTime, 
+                closedBy: user?.id, 
+                closedByName: user?.name,
+                closingStatement: statementData,
+                closingStatementJson: JSON.stringify(statementData)
+            } 
+        });
         
-        toast({ title: 'تم إقفال يوم العمل', description: 'تم إقفال اليوم بنجاح. يوم العمل الجديد هو ' + nextWorkDay });
-    }
+        // 3. Advance system work day in settings
+        await dbAction('settings', 'update', { 
+            id: 'main', 
+            data: { 
+                posSettings: { ...settings?.main?.posSettings, workDay: nextWorkDay } 
+            } 
+        });
+
+        // 4. Automatically open next work day session if not Central HQ
+        if (!isCentral) {
+            await dbAction('posSessions', 'add', {
+                startTime: closeTime,
+                isClosed: false,
+                openedBy: user?.id,
+                openedByName: user?.name || 'النظام (تلقائي)',
+                cashierSessions: {}
+            });
+        }
+
+        // 5. Present closing statement dialog immediately to user
+        setStatementModalData(statementData);
+        setIsStatementModalOpen(true);
+        
+        toast({ 
+            title: 'تم إقفال يوم العمل بنجاح', 
+            description: `تم إقفال اليوم المالي وتوريد العهد، وتم فتح يوم العمل التالي (${nextWorkDay}) تلقائياً.` 
+        });
+    };
 
     const availableCashiers = useMemo(() => {
         if (!openWorkDay || !users) return [];
@@ -594,6 +1170,28 @@ export default function PosSessionsPage() {
                                             </div>
                                         </AccordionTrigger>
                                         <AccordionContent>
+                                            <div className="flex items-center justify-between p-3 bg-muted/40 rounded-lg mb-4 border">
+                                                <div className="space-y-0.5">
+                                                    <span className="font-bold text-xs text-foreground flex items-center gap-1.5">
+                                                        <FileText className="h-4 w-4 text-primary" />
+                                                        بيان إقفال اليوم المالي وتجميع طرق الدفع
+                                                    </span>
+                                                    <p className="text-[11px] text-muted-foreground">عرض وتدقيق مبيعات كل كاشير ومجموع الإيرادات حسب طريقة الدفع (A4 / تقرير رسمي)</p>
+                                                </div>
+                                                <Button 
+                                                    size="sm" 
+                                                    variant="outline" 
+                                                    className="gap-1.5 font-bold border-primary/40 text-primary hover:bg-primary/10 h-8 text-xs"
+                                                    onClick={() => {
+                                                        const statement = session.closingStatement || buildClosingStatement(session);
+                                                        setStatementModalData(statement);
+                                                        setIsStatementModalOpen(true);
+                                                    }}
+                                                >
+                                                    <ReceiptText className="h-4 w-4" />
+                                                    عرض بيان طرق الدفع والإقفال
+                                                </Button>
+                                            </div>
                                              {session.cashierSessions && Object.values(session.cashierSessions).filter(cs => cs.isClosed).length > 0 ? (
                                                 Object.values(session.cashierSessions).filter(cs => cs.isClosed).map(cs => {
                                                     const totalSessionSales = Object.values(cs.totalSalesByMethod || {}).reduce((sum, amount) => sum + amount, 0);
@@ -641,6 +1239,14 @@ export default function PosSessionsPage() {
                     </Card>
                 )}
             </main>
+
+            {/* Financial Closing Statement Modal */}
+            <WorkDayClosingStatementDialog 
+                statement={statementModalData} 
+                open={isStatementModalOpen} 
+                onOpenChange={setIsStatementModalOpen} 
+                companyName={settings?.main?.general?.companyName || 'Meto'} 
+            />
         </>
     );
 }
