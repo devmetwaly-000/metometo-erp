@@ -1562,22 +1562,75 @@ export default function ItemsPage() {
             </CardDescription>
           </CardHeader>
           <CardContent>
+            {/* الشريط العلوي للإجراءات الجماعية عند تحديد الأصناف */}
+            {selectedItems.length > 0 && (
+                <div className="p-3 bg-muted/90 border border-primary/40 rounded-xl flex items-center justify-between gap-3 mb-4 sticky top-0 z-30 backdrop-blur-md shadow-md animate-in fade-in-50">
+                    <div className="flex items-center gap-2.5">
+                        <Badge className="bg-primary text-primary-foreground font-bold px-3 py-1 text-sm shadow-sm gap-1.5">
+                            <Layers className="h-4 w-4" />
+                            تم تحديد {selectedItems.length} صنف
+                        </Badge>
+                        <span className="text-xs text-muted-foreground hidden md:inline font-medium">
+                            يمكنك تطبيق إجراء جماعي على الأصناف المحددة مباشرة
+                        </span>
+                    </div>
+                    <div className="flex items-center gap-2 flex-wrap">
+                        <Button 
+                            variant="default" 
+                            size="sm" 
+                            className="bg-primary hover:bg-primary/90 text-primary-foreground font-bold gap-1.5 shadow"
+                            onClick={() => setIsBulkCategoryOpen(true)}
+                        >
+                            <Layers className="h-4 w-4 ml-1" />
+                            تعديل الأقسام والفئات (إجراء جماعي)
+                        </Button>
+                        <Dialog open={isPriceUpdateOpen} onOpenChange={setIsPriceUpdateOpen}>
+                            <DialogTrigger asChild>
+                                <Button variant="outline" size="sm" className="font-bold gap-1.5 shadow-sm bg-background">
+                                    <TrendingUp className="h-4 w-4 ml-1 text-emerald-600" />
+                                    تعديل الأسعار
+                                </Button>
+                            </DialogTrigger>
+                            <PriceUpdateDialog items={selectedItems.map(id => allItems.find((i:any) => i.id === id))} onSave={handleUpdatePrices} onOpenChange={setIsPriceUpdateOpen} />
+                        </Dialog>
+                        <AlertDialog>
+                            <AlertDialogTrigger asChild>
+                                <Button variant="destructive" size="sm" className="font-bold gap-1.5 shadow-sm">
+                                    <Trash2 className="h-4 w-4 ml-1" />
+                                    حذف المحدد
+                                </Button>
+                            </AlertDialogTrigger>
+                            <AlertDialogContent>
+                                <AlertDialogHeader>
+                                    <AlertDialogTitle>هل أنت متأكد من حذف الأصناف المحددة؟</AlertDialogTitle>
+                                    <AlertDialogDescription>سيتم نقل {selectedItems.length} صنف إلى سلة المحذوفات ويمكن استرجاعها لاحقاً.</AlertDialogDescription>
+                                </AlertDialogHeader>
+                                <AlertDialogFooter>
+                                    <AlertDialogCancel>إلغاء</AlertDialogCancel>
+                                    <AlertDialogAction onClick={handleDeleteSelected}>نعم، قم بالحذف</AlertDialogAction>
+                                </AlertDialogFooter>
+                            </AlertDialogContent>
+                        </AlertDialog>
+                    </div>
+                </div>
+            )}
+
             {dataLoading ? (
               <div className="flex justify-center items-center py-10">
                 <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
               </div>
             ) : (
-              <div className="w-full overflow-auto border rounded-lg">
+              <div className="w-full overflow-auto border rounded-lg max-h-[calc(100vh-320px)] relative">
                 <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead className="w-12"><Checkbox onCheckedChange={handleSelectAll} checked={selectedItems.length > 0 && selectedItems.length === filteredItems.length} /></TableHead>
-                      <TableHead>الباركود</TableHead>
-                      <TableHead>اسم الصنف</TableHead>
-                      <TableHead>الوحدة</TableHead>
-                      <TableHead className="hidden md:table-cell">التكلفة</TableHead>
-                      <TableHead className="hidden md:table-cell">السعر</TableHead>
-                      <TableHead className="text-center w-[100px]">الإجراءات</TableHead>
+                  <TableHeader className="sticky top-0 z-20 bg-background/95 backdrop-blur-md shadow-sm border-b">
+                    <TableRow className="hover:bg-transparent">
+                      <TableHead className="w-12 bg-muted/95 font-bold sticky top-0 py-3 z-20"><Checkbox onCheckedChange={handleSelectAll} checked={selectedItems.length > 0 && selectedItems.length === filteredItems.length} /></TableHead>
+                      <TableHead className="bg-muted/95 font-bold sticky top-0 py-3 z-20">الباركود</TableHead>
+                      <TableHead className="bg-muted/95 font-bold sticky top-0 py-3 z-20">اسم الصنف</TableHead>
+                      <TableHead className="bg-muted/95 font-bold sticky top-0 py-3 z-20">الوحدة</TableHead>
+                      <TableHead className="hidden md:table-cell bg-muted/95 font-bold sticky top-0 py-3 z-20">التكلفة</TableHead>
+                      <TableHead className="hidden md:table-cell bg-muted/95 font-bold sticky top-0 py-3 z-20">السعر</TableHead>
+                      <TableHead className="text-center w-[100px] bg-muted/95 font-bold sticky top-0 py-3 z-20">الإجراءات</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -1669,7 +1722,7 @@ export default function ItemsPage() {
             )}
           </CardContent>
            {selectedItems.length > 0 && (
-                <CardFooter className="p-2 border-t justify-between sticky bottom-0 bg-background/95">
+                <CardFooter className="p-2.5 border-t justify-between sticky bottom-0 bg-background/95 backdrop-blur-md z-30 shadow-md">
                     <span className="text-sm font-semibold">تم تحديد {selectedItems.length} صنف</span>
                     <div className="flex gap-2 items-center flex-wrap">
                         <Button 
@@ -1683,13 +1736,19 @@ export default function ItemsPage() {
                         </Button>
                         <Dialog open={isPriceUpdateOpen} onOpenChange={setIsPriceUpdateOpen}>
                             <DialogTrigger asChild>
-                                <Button variant="outline" size="sm"><TrendingUp className="ml-2 h-4 w-4"/> تعديل الأسعار</Button>
+                                <Button variant="outline" size="sm" className="font-bold gap-1.5 shadow-sm bg-background">
+                                    <TrendingUp className="h-4 w-4 ml-1 text-emerald-600" />
+                                    تعديل الأسعار
+                                </Button>
                             </DialogTrigger>
                              <PriceUpdateDialog items={selectedItems.map(id => allItems.find((i:any) => i.id === id))} onSave={handleUpdatePrices} onOpenChange={setIsPriceUpdateOpen} />
                         </Dialog>
                          <AlertDialog>
                             <AlertDialogTrigger asChild>
-                                <Button variant="destructive" size="sm"><Trash2 className="ml-2 h-4 w-4"/> حذف المحدد</Button>
+                                <Button variant="destructive" size="sm" className="font-bold gap-1.5 shadow-sm">
+                                    <Trash2 className="h-4 w-4 ml-1" />
+                                    حذف المحدد
+                                </Button>
                             </AlertDialogTrigger>
                              <AlertDialogContent>
                                 <AlertDialogHeader><AlertDialogTitle>هل أنت متأكد؟</AlertDialogTitle><AlertDialogDescription>سيتم نقل الأصناف المحددة إلى سلة المحذوفات.</AlertDialogDescription></AlertDialogHeader>

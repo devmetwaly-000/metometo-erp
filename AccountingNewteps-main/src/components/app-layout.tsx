@@ -718,7 +718,7 @@ export function AppLayoutContent({ children }: { children: React.ReactNode }) {
 
       <MobileSidebar />
 
-      <SidebarInset>
+      <SidebarInset className="h-screen max-h-screen overflow-hidden flex flex-col">
          <div className="md:hidden fixed z-50">
             <SidebarTrigger className={cn(
                 "rounded-full w-14 h-14 shadow-lg bg-primary text-primary-foreground hover:bg-primary/90",
@@ -734,7 +734,7 @@ export function AppLayoutContent({ children }: { children: React.ReactNode }) {
         </div>
         
         {showHeader && (
-            <header className="flex h-14 items-center justify-between gap-4 border-b bg-background px-4 sticky top-0 z-30">
+            <header className="flex h-14 items-center justify-between gap-4 border-b bg-background px-4 shrink-0 sticky top-0 z-30">
                 <div className="flex items-center gap-2">
                     {desktopLayout === 'sidebar' && (
                         <Button 
@@ -839,14 +839,14 @@ export function AppLayoutContent({ children }: { children: React.ReactNode }) {
             </header>
         )}
         
-        <div className="flex-1 flex flex-col overflow-hidden relative">
-            <div className="flex-1 overflow-auto">
+        <div className="flex-1 flex flex-col overflow-hidden relative min-h-0">
+            <div className="flex-1 overflow-y-auto min-h-0">
                 {children}
             </div>
 
             {/* Taskbar / Open Tabs Bar */}
             {openTabs.length > 0 && pathname !== '/pos' && (
-                <div className="h-12 bg-muted/80 backdrop-blur-sm border-t flex items-center px-4 gap-2 overflow-x-auto shrink-0 no-print">
+                <div className="h-12 bg-card/95 backdrop-blur-md border-t flex items-center px-4 gap-2 overflow-x-auto shrink-0 z-40 sticky bottom-0 shadow-[0_-2px_10px_rgba(0,0,0,0.12)] no-print">
                     {openTabs.map((tab) => (
                         <div 
                             key={tab.href}
