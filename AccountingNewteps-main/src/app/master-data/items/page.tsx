@@ -39,7 +39,7 @@ import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
 import { BarcodePrintDialog } from "@/components/barcode-print-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { PlusCircle, Trash2, Loader2, QrCode, TrendingUp, Search, Component, Save, History, Edit, MoreHorizontal, X, Clock, Calculator } from "lucide-react";
+import { PlusCircle, Trash2, Loader2, QrCode, TrendingUp, Search, Component, Save, History, Edit, MoreHorizontal, X, Clock, Calculator, Layers, CheckCheck, FolderTree } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { Combobox } from "@/components/ui/combobox";
 import { useAuth } from "@/contexts/auth-context";
@@ -166,6 +166,309 @@ function PriceUpdateDialog({ items, onSave, onOpenChange }: { items: (Item | und
             </DialogFooter>
         </DialogContent>
     )
+}
+
+function BulkCategoryUpdateDialog({
+    items,
+    itemSections,
+    itemCategories,
+    itemGroups,
+    itemSubCategories1,
+    itemSubCategories2,
+    isOpen,
+    onOpenChange,
+    onSave,
+    isSaving
+}: {
+    items: any[];
+    itemSections: any[];
+    itemCategories: any[];
+    itemGroups: any[];
+    itemSubCategories1: any[];
+    itemSubCategories2: any[];
+    isOpen: boolean;
+    onOpenChange: (open: boolean) => void;
+    onSave: (options: {
+        mode: 'all' | 'only_empty';
+        sectionId?: string;
+        categoryId?: string;
+        itemGroupId?: string;
+        subCategoryId1?: string;
+        subCategoryId2?: string;
+    }) => Promise<void>;
+    isSaving: boolean;
+}) {
+    const [mode, setMode] = useState<'all' | 'only_empty'>('all');
+    const [sectionId, setSectionId] = useState<string>('__NO_CHANGE__');
+    const [categoryId, setCategoryId] = useState<string>('__NO_CHANGE__');
+    const [itemGroupId, setItemGroupId] = useState<string>('__NO_CHANGE__');
+    const [subCategoryId1, setSubCategoryId1] = useState<string>('__NO_CHANGE__');
+    const [subCategoryId2, setSubCategoryId2] = useState<string>('__NO_CHANGE__');
+
+    // الربط الذكي: عند اختيار مجموعة يتم تلقائياً ضبط الفئة والقسم التابعين لها
+    useEffect(() => {
+        if (itemGroupId && itemGroupId !== '__NO_CHANGE__' && itemGroupId !== '__CLEAR__') {
+            const group = itemGroups.find(g => g.id === itemGroupId);
+            if (group && group.parentCategoryId) {
+                const cat = itemCategories.find(c => c.id === group.parentCategoryId);
+                if (cat) {
+                    setCategoryId(cat.id);
+                    if (cat.sectionId) {
+                        setSectionId(cat.sectionId);
+                    }
+                }
+            }
+        }
+    }, [itemGroupId, itemGroups, itemCategories]);
+
+    useEffect(() => {
+        if (categoryId && categoryId !== '__NO_CHANGE__' && categoryId !== '__CLEAR__') {
+            const cat = itemCategories.find(c => c.id === categoryId);
+            if (cat && cat.sectionId) {
+                setSectionId(cat.sectionId);
+            }
+        }
+    }, [categoryId, itemCategories]);
+
+    // الفئات المتاحة استناداً إلى القسم المختار إن وُجد
+    const availableCategories = useMemo(() => {
+        if (sectionId && sectionId !== '__NO_CHANGE__' && sectionId !== '__CLEAR__') {
+            return itemCategories.filter(c => c.sectionId === sectionId);
+        }
+        return itemCategories;
+    }, [itemCategories, sectionId]);
+
+    // المجموعات المتاحة استناداً إلى الفئة المختارة إن وُجدت
+    const availableGroups = useMemo(() => {
+        if (categoryId && categoryId !== '__NO_CHANGE__' && categoryId !== '__CLEAR__') {
+            return itemGroups.filter(g => g.parentCategoryId === categoryId);
+        }
+        return itemGroups;
+    }, [itemGroups, categoryId]);
+
+    // إحصاء الأصناف الشاغرة (التي ليس لها قسم أو فئة أو مجموعة)
+    const emptyStats = useMemo(() => {
+        let noSection = 0;
+        let noCategory = 0;
+        let noGroup = 0;
+        items.forEach(item => {
+            if (!item?.sectionId) noSection++;
+            if (!item?.categoryId) noCategory++;
+            if (!item?.itemGroupId) noGroup++;
+        });
+        return { noSection, noCategory, noGroup };
+    }, [items]);
+
+    const hasAnyChange = sectionId !== '__NO_CHANGE__' || 
+                         categoryId !== '__NO_CHANGE__' || 
+                         itemGroupId !== '__NO_CHANGE__' || 
+                         subCategoryId1 !== '__NO_CHANGE__' || 
+                         subCategoryId2 !== '__NO_CHANGE__';
+
+    const handleConfirm = async () => {
+        if (!hasAnyChange) return;
+        await onSave({
+            mode,
+            sectionId,
+            categoryId,
+            itemGroupId,
+            subCategoryId1,
+            subCategoryId2
+        });
+    };
+
+    return (
+        <Dialog open={isOpen} onOpenChange={onOpenChange}>
+            <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+                <DialogHeader>
+                    <DialogTitle className="flex items-center gap-2 text-lg font-bold">
+                        <Layers className="h-5 w-5 text-primary" />
+                        الإجراء الجماعي على الأصناف المحددة (نقل وتعيين الأقسام والفئات)
+                    </DialogTitle>
+                    <DialogDescription>
+                        تطبيق تغييرات التصنيف على <strong className="text-foreground">{items.length} صنفاً محدداً</strong> دفعة واحدة.
+                    </DialogDescription>
+                </DialogHeader>
+
+                <div className="space-y-5 py-2">
+                    {/* نطاق التطبيق */}
+                    <div className="space-y-2 bg-muted/30 p-3 rounded-xl border">
+                        <Label className="text-xs font-bold text-foreground">نطاق تطبيق الإجراء الجماعي:</Label>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-1">
+                            <div 
+                                onClick={() => setMode('all')}
+                                className={cn(
+                                    "p-3 rounded-lg border-2 cursor-pointer transition-all flex flex-col gap-1",
+                                    mode === 'all' ? "border-primary bg-primary/5 text-primary font-bold shadow-sm" : "border-border hover:bg-muted/50"
+                                )}
+                            >
+                                <span className="text-xs">1. تحويل ونقل الكل (إجباري)</span>
+                                <span className="text-[11px] text-muted-foreground font-normal">
+                                    تغيير وتعيين الأقسام لجميع الـ {items.length} صنف محدد حتى لو كان لها تصنيف سابق.
+                                </span>
+                            </div>
+
+                            <div 
+                                onClick={() => setMode('only_empty')}
+                                className={cn(
+                                    "p-3 rounded-lg border-2 cursor-pointer transition-all flex flex-col gap-1",
+                                    mode === 'only_empty' ? "border-primary bg-primary/5 text-primary font-bold shadow-sm" : "border-border hover:bg-muted/50"
+                                )}
+                            >
+                                <span className="text-xs">2. تسكين الشواغر فقط (إذا لم يكن لها)</span>
+                                <span className="text-[11px] text-muted-foreground font-normal">
+                                    تطبيق التصنيف فقط على الأصناف غير المصنفة (بلا قسم أو فئة أو مجموعة).
+                                </span>
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* الحقول المطلوب تغييرها */}
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                        {/* 1. القسم الرئيسي */}
+                        <div className="space-y-1.5">
+                            <Label className="text-xs font-bold flex items-center justify-between">
+                                <span>القسم الرئيسي (Section)</span>
+                                {emptyStats.noSection > 0 && (
+                                    <Badge variant="outline" className="text-[10px] text-amber-600 font-normal">
+                                        {emptyStats.noSection} صنف بلا قسم
+                                    </Badge>
+                                )}
+                            </Label>
+                            <Select value={sectionId} onValueChange={setSectionId}>
+                                <SelectTrigger className="h-9 text-xs">
+                                    <SelectValue placeholder="اختر القسم..." />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value="__NO_CHANGE__" className="text-muted-foreground italic">-- عدم التغيير (يبقى كما هو) --</SelectItem>
+                                    <SelectItem value="__CLEAR__" className="text-destructive font-medium">-- تفريغ / إزالة القسم الحالي --</SelectItem>
+                                    {itemSections.map((s: any) => (
+                                        <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>
+                                    ))}
+                                </SelectContent>
+                            </Select>
+                        </div>
+
+                        {/* 2. الفئة / التصنيف */}
+                        <div className="space-y-1.5">
+                            <Label className="text-xs font-bold flex items-center justify-between">
+                                <span>الفئة / التصنيف (Category)</span>
+                                {emptyStats.noCategory > 0 && (
+                                    <Badge variant="outline" className="text-[10px] text-amber-600 font-normal">
+                                        {emptyStats.noCategory} صنف بلا فئة
+                                    </Badge>
+                                )}
+                            </Label>
+                            <Select value={categoryId} onValueChange={setCategoryId}>
+                                <SelectTrigger className="h-9 text-xs">
+                                    <SelectValue placeholder="اختر الفئة..." />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value="__NO_CHANGE__" className="text-muted-foreground italic">-- عدم التغيير (يبقى كما هو) --</SelectItem>
+                                    <SelectItem value="__CLEAR__" className="text-destructive font-medium">-- تفريغ / إزالة الفئة الحالية --</SelectItem>
+                                    {availableCategories.map((c: any) => {
+                                        const secName = itemSections.find((s: any) => s.id === c.sectionId)?.name;
+                                        return (
+                                            <SelectItem key={c.id} value={c.id}>
+                                                {c.name} {secName ? `(${secName})` : ''}
+                                            </SelectItem>
+                                        );
+                                    })}
+                                </SelectContent>
+                            </Select>
+                        </div>
+
+                        {/* 3. المجموعة العامة */}
+                        <div className="space-y-1.5">
+                            <Label className="text-xs font-bold flex items-center justify-between">
+                                <span>المجموعة العامة (Item Group)</span>
+                                {emptyStats.noGroup > 0 && (
+                                    <Badge variant="outline" className="text-[10px] text-amber-600 font-normal">
+                                        {emptyStats.noGroup} صنف بلا مجموعة
+                                    </Badge>
+                                )}
+                            </Label>
+                            <Select value={itemGroupId} onValueChange={setItemGroupId}>
+                                <SelectTrigger className="h-9 text-xs">
+                                    <SelectValue placeholder="اختر المجموعة..." />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value="__NO_CHANGE__" className="text-muted-foreground italic">-- عدم التغيير (يبقى كما هو) --</SelectItem>
+                                    <SelectItem value="__CLEAR__" className="text-destructive font-medium">-- تفريغ / إزالة المجموعة الحالية --</SelectItem>
+                                    {availableGroups.map((g: any) => {
+                                        const catName = itemCategories.find((c: any) => c.id === g.parentCategoryId)?.name;
+                                        return (
+                                            <SelectItem key={g.id} value={g.id}>
+                                                {g.name} {catName ? `(${catName})` : ''}
+                                            </SelectItem>
+                                        );
+                                    })}
+                                </SelectContent>
+                            </Select>
+                        </div>
+
+                        {/* 4. تصنيف فرعي 1 / ماركة */}
+                        <div className="space-y-1.5">
+                            <Label className="text-xs font-bold">تصنيف فرعي 1 (ماركة / UDF1)</Label>
+                            <Select value={subCategoryId1} onValueChange={setSubCategoryId1}>
+                                <SelectTrigger className="h-9 text-xs">
+                                    <SelectValue placeholder="اختر تصنيف فرعي 1..." />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value="__NO_CHANGE__" className="text-muted-foreground italic">-- عدم التغيير (يبقى كما هو) --</SelectItem>
+                                    <SelectItem value="__CLEAR__" className="text-destructive font-medium">-- تفريغ / إزالة الحالي --</SelectItem>
+                                    {itemSubCategories1.map((u: any) => (
+                                        <SelectItem key={u.id} value={u.id}>{u.name}</SelectItem>
+                                    ))}
+                                </SelectContent>
+                            </Select>
+                        </div>
+
+                        {/* 5. تصنيف فرعي 2 / موديل */}
+                        <div className="space-y-1.5 sm:col-span-2">
+                            <Label className="text-xs font-bold">تصنيف فرعي 2 (موديل / UDF2)</Label>
+                            <Select value={subCategoryId2} onValueChange={setSubCategoryId2}>
+                                <SelectTrigger className="h-9 text-xs">
+                                    <SelectValue placeholder="اختر تصنيف فرعي 2..." />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value="__NO_CHANGE__" className="text-muted-foreground italic">-- عدم التغيير (يبقى كما هو) --</SelectItem>
+                                    <SelectItem value="__CLEAR__" className="text-destructive font-medium">-- تفريغ / إزالة الحالي --</SelectItem>
+                                    {itemSubCategories2.map((u: any) => (
+                                        <SelectItem key={u.id} value={u.id}>{u.name}</SelectItem>
+                                    ))}
+                                </SelectContent>
+                            </Select>
+                        </div>
+                    </div>
+                </div>
+
+                <DialogFooter className="gap-2 sm:gap-0 border-t pt-3">
+                    <Button variant="ghost" size="sm" onClick={() => onOpenChange(false)} disabled={isSaving}>
+                        إلغاء
+                    </Button>
+                    <Button 
+                        size="sm" 
+                        onClick={handleConfirm} 
+                        disabled={!hasAnyChange || isSaving}
+                        className="bg-primary hover:bg-primary/90 text-primary-foreground font-bold gap-1.5"
+                    >
+                        {isSaving ? (
+                            <>
+                                <Loader2 className="h-4 w-4 animate-spin ml-1" />
+                                جاري تطبيق التعديل الجماعي...
+                            </>
+                        ) : (
+                            <>
+                                <CheckCheck className="h-4 w-4 ml-1" />
+                                تطبيق الإجراء على {items.length} صنف
+                            </>
+                        )}
+                    </Button>
+                </DialogFooter>
+            </DialogContent>
+        </Dialog>
+    );
 }
 
 const MatrixGeneratorDialog = ({ onSave, onOpenChange, itemSections, itemCategories, itemGroups, itemSubCategories1, itemSubCategories2, settings, getNextId }: {
@@ -934,6 +1237,8 @@ export default function ItemsPage() {
     const [searchTerm, setSearchTerm] = useState("");
     const [selectedItems, setSelectedItems] = useState<string[]>([]);
     const [isPriceUpdateOpen, setIsPriceUpdateOpen] = useState(false);
+    const [isBulkCategoryOpen, setIsBulkCategoryOpen] = useState(false);
+    const [isBulkUpdating, setIsBulkUpdating] = useState(false);
     const [isMatrixOpen, setIsMatrixOpen] = useState(false);
     const [editingItem, setEditingItem] = useState<any>(null);
     const [isEditOpen, setIsEditOpen] = useState(false);
@@ -979,6 +1284,67 @@ export default function ItemsPage() {
             setSelectedItems([]);
         } catch (error) {
              toast({ variant: "destructive", title: "خطأ", description: "فشل تحديث الأسعار." });
+        }
+    };
+
+    const handleBulkCategoryUpdate = async (options: {
+        mode: 'all' | 'only_empty';
+        sectionId?: string;
+        categoryId?: string;
+        itemGroupId?: string;
+        subCategoryId1?: string;
+        subCategoryId2?: string;
+    }) => {
+        if (selectedItems.length === 0) return;
+        setIsBulkUpdating(true);
+        let updatedCount = 0;
+
+        try {
+            for (const itemId of selectedItems) {
+                const item = allItems.find((i: any) => i.id === itemId);
+                if (!item) continue;
+
+                const dataToUpdate: any = {};
+
+                const applyField = (field: string, val?: string) => {
+                    if (!val || val === '__NO_CHANGE__') return;
+                    if (options.mode === 'only_empty') {
+                        // تسكين الشواغر فقط: نعدل فقط إن كان الحقل فارغاً
+                        if (!item[field]) {
+                            dataToUpdate[field] = val === '__CLEAR__' ? null : val;
+                        }
+                    } else {
+                        // تحويل ونقل إجباري لكافة الأصناف المحددة
+                        dataToUpdate[field] = val === '__CLEAR__' ? null : val;
+                    }
+                };
+
+                applyField('sectionId', options.sectionId);
+                applyField('categoryId', options.categoryId);
+                applyField('itemGroupId', options.itemGroupId);
+                applyField('subCategoryId1', options.subCategoryId1);
+                applyField('subCategoryId2', options.subCategoryId2);
+
+                if (Object.keys(dataToUpdate).length > 0) {
+                    await dbAction('items', 'update', { id: itemId, data: dataToUpdate });
+                    updatedCount++;
+                }
+            }
+
+            toast({
+                title: "اكتمل التعديل الجماعي بنجاح",
+                description: `تم تحديث التصنيفات لـ ${updatedCount} من أصل ${selectedItems.length} صنف محدد.`
+            });
+            setIsBulkCategoryOpen(false);
+            setSelectedItems([]);
+        } catch (error: any) {
+            toast({
+                variant: "destructive",
+                title: "خطأ أثناء التعديل الجماعي",
+                description: error.message || "فشلت عملية التعديل الجماعي للأصناف."
+            });
+        } finally {
+            setIsBulkUpdating(false);
         }
     };
 
@@ -1165,37 +1531,6 @@ export default function ItemsPage() {
         </div>
       </PageHeader>
 
-      <Dialog open={isEditOpen} onOpenChange={(open) => {
-          setIsEditOpen(open);
-          if (!open) setEditingItem(null);
-      }}>
-          <DialogContent className="sm:max-w-4xl max-h-[90vh] overflow-y-auto">
-              <DialogHeader>
-                  <DialogTitle>تعديل صنف</DialogTitle>
-                  <DialogDescription>قم بتحديث تفاصيل الصنف هنا.</DialogDescription>
-              </DialogHeader>
-              {editingItem && (
-                  <ItemForm 
-                      item={editingItem} 
-                      onSave={handleSave} 
-                      onClose={() => setIsEditOpen(false)} 
-                      itemSections={itemSections} 
-                      itemCategories={itemCategories} 
-                      itemGroups={itemGroups} 
-                      itemSubCategories1={itemSubCategories1} 
-                      itemSubCategories2={itemSubCategories2} 
-                      allItems={allItems} 
-                      itemColors={itemColors} 
-                      itemSizes={itemSizes} 
-                      settings={settings} 
-                      inventorySections={inventorySections} 
-                      dbAction={dbAction} 
-                      getNextId={getNextId} 
-                  />
-              )}
-          </DialogContent>
-      </Dialog>
-
       <main className="flex flex-1 flex-col gap-4 p-4 md:gap-8 md:p-6">
         <Card>
             <CardHeader>
@@ -1336,7 +1671,16 @@ export default function ItemsPage() {
            {selectedItems.length > 0 && (
                 <CardFooter className="p-2 border-t justify-between sticky bottom-0 bg-background/95">
                     <span className="text-sm font-semibold">تم تحديد {selectedItems.length} صنف</span>
-                    <div className="flex gap-2">
+                    <div className="flex gap-2 items-center flex-wrap">
+                        <Button 
+                            variant="default" 
+                            size="sm" 
+                            className="bg-primary hover:bg-primary/90 text-primary-foreground font-bold gap-1.5 shadow"
+                            onClick={() => setIsBulkCategoryOpen(true)}
+                        >
+                            <Layers className="h-4 w-4 ml-1" />
+                            تعديل الأقسام والفئات (إجراء جماعي)
+                        </Button>
                         <Dialog open={isPriceUpdateOpen} onOpenChange={setIsPriceUpdateOpen}>
                             <DialogTrigger asChild>
                                 <Button variant="outline" size="sm"><TrendingUp className="ml-2 h-4 w-4"/> تعديل الأسعار</Button>
@@ -1360,6 +1704,19 @@ export default function ItemsPage() {
             )}
         </Card>
       </main>
+
+      <BulkCategoryUpdateDialog
+          items={selectedItems.map(id => allItems.find((i: any) => i.id === id)).filter(Boolean)}
+          itemSections={itemSections}
+          itemCategories={itemCategories}
+          itemGroups={itemGroups}
+          itemSubCategories1={itemSubCategories1}
+          itemSubCategories2={itemSubCategories2}
+          isOpen={isBulkCategoryOpen}
+          onOpenChange={setIsBulkCategoryOpen}
+          onSave={handleBulkCategoryUpdate}
+          isSaving={isBulkUpdating}
+      />
 
       <Dialog open={isEditOpen} onOpenChange={(open) => {
           setIsEditOpen(open);

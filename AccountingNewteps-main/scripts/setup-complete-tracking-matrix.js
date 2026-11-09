@@ -16,6 +16,14 @@ const centralConfig = {
     options: { encrypt: false, trustServerCertificate: true }
 };
 
+const localCentralConfig = {
+    user: 'meto_pos',
+    password: 'MetoPosPass123!',
+    server: 'localhost',
+    database: 'MultiBranchPOS_Central_DB',
+    options: { encrypt: false, trustServerCertificate: true }
+};
+
 const TABLES_METADATA = [
     // 1. فواتير وعمليات
     { table: 'SalesInvoices', name: 'فواتير المبيعات', category: 'فواتير وعمليات', direction: 'push', idCol: 'Id' },
@@ -251,16 +259,26 @@ async function run() {
     await setupDatabaseTracking(local, 'Local: MultiBranchPOS_DB', false);
     await local.close();
 
-    // 2. المركزي
+    // 2. المركزي المحلي (Localhost Central)
+    try {
+        const localCentral = await sql.connect(localCentralConfig);
+        await setupDatabaseTracking(localCentral, 'Localhost Central: MultiBranchPOS_Central_DB', true);
+        await localCentral.close();
+    } catch (e) {
+        console.warn('Localhost Central setup warning:', e.message);
+    }
+
+    // 3. المركزي البعيد (Remote Central: 10.110.16.16)
     try {
         const central = await sql.connect(centralConfig);
-        await setupDatabaseTracking(central, 'Central: MultiBranchPOS_Central_DB', true);
+        await setupDatabaseTracking(central, 'Remote Central: MultiBranchPOS_Central_DB', true);
         await central.close();
     } catch (e) {
-        console.warn('Central setup warning:', e.message);
+        console.warn('Remote Central setup warning:', e.message);
     }
 
     console.log('\n=== اكتملت العملية بنجاح تام! ===');
 }
 
 run().catch(console.error);
+
