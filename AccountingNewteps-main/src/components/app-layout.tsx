@@ -228,11 +228,11 @@ const NavCollapsible = ({ title, icon, children, modules, searchTerm, defaultOpe
 
     return (
         <Collapsible defaultOpen={defaultOpen || isAnyChildActive(children) || (searchTerm !== '' && filteredChildren.length > 0)}>
-            <SidebarMenuItem className="my-0.5">
+            <SidebarMenuItem className="my-1">
                 <CollapsibleTrigger asChild>
-                     <SidebarMenuButton className="h-auto min-h-10 py-2 px-3 text-sm leading-relaxed w-full">
+                     <SidebarMenuButton className="h-auto min-h-10 py-2.5 px-3 text-sm leading-relaxed w-full">
                         {icon}
-                        <span className="flex-1 text-right leading-relaxed break-words whitespace-normal">{title}</span>
+                        <span className="flex-1 text-right leading-relaxed break-words whitespace-normal font-medium">{title}</span>
                         <ChevronDown className="mr-auto h-4 w-4 shrink-0 transition-transform duration-200 group-data-[state=open]:rotate-180" />
                     </SidebarMenuButton>
                 </CollapsibleTrigger>
@@ -256,15 +256,15 @@ const NavSubLink = ({ href, children, module }: { href: string; children: React.
     }
 
     return (
-        <SidebarMenuSubItem className="my-0.5">
-            <SidebarMenuSubButton asChild isActive={isActive} className="h-auto min-h-9 py-2 px-2.5 text-xs md:text-sm leading-relaxed w-full">
+        <SidebarMenuSubItem className="my-1">
+            <SidebarMenuSubButton asChild isActive={isActive} className="h-auto min-h-10 py-2 px-3 text-sm leading-relaxed w-full">
                 <Link 
                     href={href} 
                     prefetch={true}
                     onClick={() => setOpenMobile(false)}
                     className="flex items-center gap-2 w-full text-right"
                 >
-                    <span className="flex-1 text-right leading-relaxed break-words whitespace-normal">{children}</span>
+                    <span className="flex-1 text-right leading-relaxed break-words whitespace-normal text-sm">{children}</span>
                 </Link>
             </SidebarMenuSubButton>
         </SidebarMenuSubItem>
@@ -300,9 +300,10 @@ export const navStructure = [
         { type: 'link', href: '/inventory/barcode-designer', module: 'inventory_barcodeDesigner', title: dictionary.nav.barcodeDesigner },
         { type: 'link', href: '/inventory/barcode-print', module: 'inventory_barcodePrint', title: dictionary.nav.barcodeBulkPrint },
     ]},
-    { type: 'collapsible', title: dictionary.nav.warehouses, icon: <Warehouse />, modules: ['inventory_warehouses', 'inventory_goodsInTransit', 'inventory_requisitions_recommendations', 'inventory_stockOut', 'inventory_transfer', 'inventory_adjustment', 'inventory_movements', 'inventory_requisitions'], children: [
+    { type: 'collapsible', title: dictionary.nav.warehouses, icon: <Warehouse />, modules: ['inventory_warehouses', 'inventory_goodsInTransit', 'inventory_requisitions_recommendations', 'inventory_stockOut', 'inventory_transfer', 'inventory_adjustment', 'inventory_movements', 'inventory_requisitions', 'reports_recipe'], children: [
         { type: 'link', href: '/master-data/branches', module: 'inventory_warehouses', title: dictionary.nav.branches },
         { type: 'link', href: '/master-data/delegate-warehouses', module: 'inventory_warehouses', title: "مخازن المناديب" },
+        { type: 'link', href: '/manufacturing/orders', module: 'reports_recipe', title: 'أوامر التصنيع والتشغيل' },
         { type: 'link', href: '/inventory/goods-in-transit', module: 'inventory_goodsInTransit', title: dictionary.nav.goodsInTransit },
         { type: 'link', href: '/inventory/requisitions/recommendations', icon: <Lightbulb />, module: 'inventory_requisitions_recommendations', title: dictionary.nav.requisitionRecommendations },
         { type: 'link', href: '/inventory/requisitions', module: 'inventory_requisitions', title: dictionary.nav.requisitions },
@@ -339,6 +340,7 @@ export const navStructure = [
     { type: 'collapsible', title: dictionary.nav.accountingAndFinance, icon: <BookCopy />, modules: ['accounting_journal', 'accounting_expenses', 'accounting_exceptionalIncome', 'accounting_treasury', 'accounting_profitDistribution', 'accounting_assets', 'accounting_vat', 'accounting_gratuity'], children: [
         { type: 'link', href: '/accounting/chart-of-accounts', module: 'accounting_journal', title: 'دليل الحسابات (شجرة الحسابات)' },
         { type: 'link', href: '/accounting/journal', module: 'accounting_journal', title: dictionary.nav.journal },
+        { type: 'link', href: '/accounting/posting', module: 'accounting_journal', title: 'ترحيل القيود المركزية' },
         { type: 'link', href: '/accounting/assets', module: 'accounting_assets', title: dictionary.nav.fixedAssets },
         { type: 'link', href: '/accounting/vat', module: 'accounting_vat', title: dictionary.nav.vatReport },
         { type: 'link', href: '/accounting/expenses', module: 'accounting_expenses', title: dictionary.nav.expensesAdmin },
@@ -368,6 +370,7 @@ export const navStructure = [
       { type: 'link', href: '/sales/delivery-reconciliation', module: 'sales_deliveryReconciliation', title: dictionary.nav.deliveryReconciliation },
     ]},
     { type: 'collapsible', title: dictionary.nav.hr, icon: <UserRound />, modules: ['hr_advances', 'hr_adjustments', 'hr_payroll'], children: [
+        { type: 'link', href: '/hr/employees', module: 'hr_payroll', title: 'دليل الموظفين وشؤون العاملين' },
         { type: 'link', href: '/hr/advances', module: 'hr_advances', title: dictionary.nav.employeeAdvances },
         { type: 'link', href: '/hr/adjustments', module: 'hr_adjustments', title: dictionary.nav.employeeAdjustments },
         { type: 'link', href: '/hr/payroll', module: 'hr_payroll', title: dictionary.nav.payroll },
@@ -425,6 +428,7 @@ export const navStructure = [
     { type: 'collapsible', title: dictionary.nav.settings, icon: <Settings />, modules: ['settings_users', 'settings_roles', 'settings_general', 'settings_backup', 'settings_periodClosing', 'settings_cashAccounts', 'settings_printers', 'settings_receiptDesigner', 'settings_restaurantTables', 'settings_theme', 'settings_eInvoice', 'settings_licenses', 'settings_sync'], children: [
       { type: 'link', href: '/users', module: 'settings_users', title: dictionary.nav.users },
       { type: 'link', href: '/roles', module: 'settings_roles', title: dictionary.nav.rolesAndPermissions },
+      { type: 'link', href: '/settings/audit-trail', module: 'settings_general', title: 'سجل التدقيق الرقابي' },
       { type: 'link', href: '/master-data/cash-accounts', module: 'settings_cashAccounts', title: dictionary.nav.cashAndBanks },
       { type: 'link', href: '/master-data/restaurant-tables', module: 'settings_restaurantTables', title: dictionary.nav.tablesAdmin },
       { type: 'link', href: '/settings', module: 'settings_general', title: dictionary.nav.generalSettings },

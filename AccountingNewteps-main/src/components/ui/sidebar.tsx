@@ -22,8 +22,8 @@ import {
 
 const SIDEBAR_COOKIE_NAME = "sidebar_state"
 const SIDEBAR_COOKIE_MAX_AGE = 60 * 60 * 24 * 7
-const SIDEBAR_WIDTH = "22rem"
-const SIDEBAR_WIDTH_MOBILE = "22rem"
+const SIDEBAR_WIDTH = "23rem"
+const SIDEBAR_WIDTH_MOBILE = "23rem"
 const SIDEBAR_WIDTH_ICON = "3rem"
 const SIDEBAR_KEYBOARD_SHORTCUT = "b"
 
@@ -705,7 +705,7 @@ const SidebarMenuSubButton = React.forwardRef<
       data-size={size}
       data-active={isActive}
       className={cn(
-        "flex h-auto min-h-9 min-w-0 -translate-x-px items-center gap-2 rounded-md px-2.5 py-2 text-sidebar-foreground outline-none ring-sidebar-ring hover:bg-sidebar-accent hover:text-sidebar-accent-foreground focus-visible:ring-2 active:bg-sidebar-accent active:text-sidebar-accent-foreground disabled:pointer-events-none disabled:opacity-50 aria-disabled:pointer-events-none aria-disabled:opacity-50 [&>svg]:size-4 [&>svg]:shrink-0 [&>svg]:text-sidebar-accent-foreground text-right w-full leading-relaxed whitespace-normal break-words",
+        "flex h-auto min-h-10 min-w-0 -translate-x-px items-center gap-2 rounded-md px-3 py-2 text-sidebar-foreground outline-none ring-sidebar-ring hover:bg-sidebar-accent hover:text-sidebar-accent-foreground focus-visible:ring-2 active:bg-sidebar-accent active:text-sidebar-accent-foreground disabled:pointer-events-none disabled:opacity-50 aria-disabled:pointer-events-none aria-disabled:opacity-50 [&>svg]:size-4 [&>svg]:shrink-0 [&>svg]:text-sidebar-accent-foreground text-right w-full leading-relaxed whitespace-normal break-words",
         "data-[active=true]:bg-sidebar-accent data-[active=true]:text-sidebar-accent-foreground font-medium",
         size === "sm" && "text-xs",
         size === "md" && "text-sm",

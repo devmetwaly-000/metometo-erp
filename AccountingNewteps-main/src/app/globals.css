@@ -197,3 +197,38 @@ nextjs-portal {
   height: 0 !important;
   pointer-events: none;
 }
+
+/* Sidebar items readability & line-height fix for Arabic text */
+[data-sidebar="menu-button"],
+[data-sidebar="menu-sub-button"] {
+  height: auto !important;
+  min-height: 2.5rem !important;
+  line-height: 1.65 !important;
+  white-space: normal !important;
+  word-break: break-word !important;
+  overflow-wrap: break-word !important;
+  padding-top: 0.5rem !important;
+  padding-bottom: 0.5rem !important;
+  display: flex !important;
+  align-items: center !important;
+}
+
+[data-sidebar="menu-sub-button"] span,
+[data-sidebar="menu-button"] span {
+  line-height: 1.65 !important;
+  white-space: normal !important;
+  word-break: break-word !important;
+}
+
+[data-sidebar="menu-sub-item"] {
+  margin-top: 0.25rem !important;
+  margin-bottom: 0.25rem !important;
+  height: auto !important;
+}
+
+[data-sidebar="menu-sub"] {
+  gap: 0.35rem !important;
+  padding-top: 0.25rem !important;
+  padding-bottom: 0.25rem !important;
+}
+

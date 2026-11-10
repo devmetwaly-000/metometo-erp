@@ -87,7 +87,12 @@ const DEFAULT_SETTINGS: EInvoiceSettings = {
 export default function EInvoiceSettingsPage() {
     const { toast } = useToast();
     const { can } = usePermissions();
-    const { settings: allData, dbAction, loading: dataLoading, warehouses } = useData();
+    const { settings: allData, dbAction, loading: dataLoading, warehouses, salesInvoices } = useData();
+
+    // Simulation State
+    const [simSelectedInvoiceId, setSimSelectedInvoiceId] = useState<string>('');
+    const [simulating, setSimulating] = useState(false);
+    const [simResult, setSimResult] = useState<any>(null);
     
     const [defaultSettings, setDefaultSettings] = useState<EInvoiceSettings>(DEFAULT_SETTINGS);
     const [branchOverrides, setBranchOverrides] = useState<Record<string, Partial<EInvoiceSettings>>>({});
@@ -224,6 +229,55 @@ export default function EInvoiceSettingsPage() {
         }
     };
 
+    const handleSimulateSubmit = async () => {
+        setSimulating(true);
+        setSimResult(null);
+        try {
+            let invoiceToSubmit = (salesInvoices || []).find((inv: any) => inv.id === simSelectedInvoiceId);
+            if (!invoiceToSubmit) {
+                invoiceToSubmit = {
+                    id: `sim_inv_${Date.now()}`,
+                    invoiceNumber: `INV-ETA-${Date.now().toString().slice(-5)}`,
+                    date: new Date().toISOString(),
+                    customerName: 'شركة النور للتجارة والتوزيع (عميل B2B تجريبي)',
+                    customerTaxId: '100-200-300',
+                    items: [
+                        { name: 'منتج تجريبي معتمد (Sample Goods A)', quantity: 10, price: 150, discount: 0, taxRate: 14 },
+                        { name: 'خدمات نقل وتوريد لوجيستي (Logistics)', quantity: 1, price: 300, discount: 0, taxRate: 14 }
+                    ],
+                    subtotal: 1800,
+                    taxTotal: 252,
+                    total: 2052
+                };
+            }
+
+            const res = await fetch('/api/e-invoice/simulate-submit', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    invoice: invoiceToSubmit,
+                    settings: defaultSettings,
+                    mode: 'simulate_no_token'
+                })
+            });
+
+            const data = await res.json();
+            if (data.success) {
+                setSimResult(data);
+                toast({
+                    title: 'نجحت محاكاة رفع الفاتورة',
+                    description: `تم توليد UUID: ${data.uuid.substring(0, 12)}... واجتياز التوقيع والتحقق بنجاح.`
+                });
+            } else {
+                toast({ title: 'خطأ في المحاكاة', description: data.message, variant: 'destructive' });
+            }
+        } catch (err: any) {
+            toast({ title: 'خطأ', description: err.message, variant: 'destructive' });
+        } finally {
+            setSimulating(false);
+        }
+    };
+
     const warehouseOptions = useMemo(() => warehouses.map((w: any) => ({ value: w.id, label: w.name })), [warehouses]);
     const currentBranchSettings = useMemo(() => {
         if (!selectedBranchId) return defaultSettings;
@@ -265,7 +319,7 @@ export default function EInvoiceSettingsPage() {
 
                 {/* Main Tabs */}
                 <Tabs defaultValue="b2b_invoice" className="w-full">
-                    <TabsList className="grid w-full grid-cols-4">
+                    <TabsList className="grid w-full grid-cols-2 md:grid-cols-5">
                         <TabsTrigger value="b2b_invoice" className="gap-2">
                             <Building2 className="h-4 w-4" />
                             الفاتورة الإلكترونية (B2B)
@@ -277,6 +331,10 @@ export default function EInvoiceSettingsPage() {
                         <TabsTrigger value="branch_overrides" className="gap-2">
                             <ShieldCheck className="h-4 w-4" />
                             تخصيص الفروع
+                        </TabsTrigger>
+                        <TabsTrigger value="simulate_submission" className="gap-2 text-primary font-bold">
+                            <Cpu className="h-4 w-4" />
+                            تجربة الرفع بدون توكن
                         </TabsTrigger>
                         <TabsTrigger value="architecture_guide" className="gap-2">
                             <HelpCircle className="h-4 w-4" />
@@ -578,6 +636,124 @@ export default function EInvoiceSettingsPage() {
                                 ) : (
                                     <div className="text-center py-12 text-muted-foreground border rounded-lg bg-muted/10">
                                         يرجى اختيار فرع من القائمة أعلاه لتخصيص بيانات اعتماده وكود الفرع الضريبي.
+                                    </div>
+                                )}
+                            </CardContent>
+                        </Card>
+                    </TabsContent>
+
+                    {/* Tab: ETA Sandbox & No-Token Simulation */}
+                    <TabsContent value="simulate_submission" className="space-y-6 pt-4">
+                        <Card>
+                            <CardHeader>
+                                <div className="flex items-center justify-between">
+                                    <div className="space-y-1">
+                                        <CardTitle className="flex items-center gap-2 text-primary">
+                                            <Cpu className="h-5 w-5" />
+                                            تجربة واختبار رفع الفواتير الإلكترونية (ETA Sandbox - بدون توكن USB)
+                                        </CardTitle>
+                                        <CardDescription>
+                                            اختبر دورة التشفير وبناء مستند ETA v1.0، حساب بصمة الـ SHA-256، محاكاة التوقيع الرقمي (CAdES-BES)، وتوليد رمز الاستجابة السريع (TLV QR Code) دون الحاجة لفلاشة توكن فعلية
+                                        </CardDescription>
+                                    </div>
+                                    <Badge className="bg-emerald-600 text-white font-mono px-3 py-1">
+                                        محاكي ETA v1.0 نشط
+                                    </Badge>
+                                </div>
+                            </CardHeader>
+                            <CardContent className="space-y-6">
+                                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 p-4 bg-muted/40 rounded-lg items-end">
+                                    <div className="space-y-1.5 md:col-span-2">
+                                        <Label className="text-xs font-semibold">اختر فاتورة مبيعات للتجربة (أو اتركها لإنشاء فاتورة B2B نموذجية تلقائياً)</Label>
+                                        <Select value={simSelectedInvoiceId} onValueChange={setSimSelectedInvoiceId}>
+                                            <SelectTrigger>
+                                                <SelectValue placeholder="فاتورة B2B نموذجية تلقائية (Recommended)" />
+                                            </SelectTrigger>
+                                            <SelectContent>
+                                                <SelectItem value="demo">فاتورة B2B نموذجية معتمدة (Sample Invoice)</SelectItem>
+                                                {(salesInvoices || []).slice(0, 20).map((inv: any) => (
+                                                    <SelectItem key={inv.id} value={inv.id}>
+                                                        {inv.invoiceNumber || inv.id} - {inv.customerName || 'عميل نقدي'} ({Number(inv.total || 0).toLocaleString('ar-EG')} ج.م)
+                                                    </SelectItem>
+                                                ))}
+                                            </SelectContent>
+                                        </Select>
+                                    </div>
+
+                                    <div>
+                                        <Button 
+                                            onClick={handleSimulateSubmit} 
+                                            disabled={simulating}
+                                            className="w-full bg-primary text-primary-foreground gap-2 font-bold"
+                                        >
+                                            {simulating ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
+                                            رفع واختبار الفاتورة لحظياً
+                                        </Button>
+                                    </div>
+                                </div>
+
+                                {/* Simulation Result */}
+                                {simResult && (
+                                    <div className="space-y-4 border rounded-xl p-5 bg-card">
+                                        <div className="flex items-center justify-between border-b pb-3">
+                                            <div className="flex items-center gap-2">
+                                                <CheckCircle2 className="h-6 w-6 text-emerald-600" />
+                                                <div>
+                                                    <h4 className="font-bold text-base text-foreground">تم اعتماد المستند بنجاح في بيئة المحاكاة</h4>
+                                                    <p className="text-xs text-muted-foreground font-mono">Submission ID: {simResult.submissionId}</p>
+                                                </div>
+                                            </div>
+                                            <Badge className="bg-emerald-500/10 text-emerald-600 border-emerald-500/30 text-xs py-1">
+                                                الحالة: Valid (مقبولة ضريبياً)
+                                            </Badge>
+                                        </div>
+
+                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs font-mono">
+                                            <div className="space-y-1 p-3 bg-muted/30 rounded-lg">
+                                                <span className="text-muted-foreground block text-[11px] font-sans">المعرف الفريد للمستند (ETA UUID):</span>
+                                                <span className="font-bold text-primary break-all select-all">{simResult.uuid}</span>
+                                            </div>
+                                            <div className="space-y-1 p-3 bg-muted/30 rounded-lg">
+                                                <span className="text-muted-foreground block text-[11px] font-sans">البصمة الرقمية للمحتوى (SHA-256 Hash):</span>
+                                                <span className="break-all select-all text-foreground">{simResult.hash}</span>
+                                            </div>
+                                            <div className="space-y-1 p-3 bg-muted/30 rounded-lg md:col-span-2">
+                                                <span className="text-muted-foreground block text-[11px] font-sans">محاكاة التوقيع الإلكتروني الرقمي (CAdES-BES Signature):</span>
+                                                <span className="break-all select-all text-muted-foreground text-[10px]">{simResult.simulatedSignature}</span>
+                                            </div>
+                                        </div>
+
+                                        {/* QR Code and JSON preview */}
+                                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pt-2">
+                                            <div className="border rounded-lg p-3 bg-muted/20 flex flex-col items-center justify-center text-center space-y-2">
+                                                <QrCode className="h-8 w-8 text-primary" />
+                                                <span className="text-xs font-bold font-sans">رمز الاستجابة السريع (TLV QR)</span>
+                                                <p className="text-[10px] text-muted-foreground font-sans">متوافق مع هيئة الضرائب والزكاة</p>
+                                                <div className="p-2 bg-white rounded border text-black font-mono text-[9px] break-all max-h-24 overflow-y-auto">
+                                                    {simResult.qrCodeBase64}
+                                                </div>
+                                            </div>
+
+                                            <div className="md:col-span-2 space-y-1.5">
+                                                <div className="flex justify-between items-center">
+                                                    <Label className="text-xs font-semibold">بنية مستند الفاتورة الإلكترونية المعتمدة (ETA v1.0 JSON Payload):</Label>
+                                                    <Button 
+                                                        variant="ghost" 
+                                                        size="sm" 
+                                                        className="h-6 text-[10px]"
+                                                        onClick={() => {
+                                                            navigator.clipboard.writeText(JSON.stringify(simResult.etaDocument, null, 2));
+                                                            toast({ title: 'تم النسخ', description: 'تم نسخ مستند الـ JSON إلى الحافظة.' });
+                                                        }}
+                                                    >
+                                                        نسخ الـ JSON
+                                                    </Button>
+                                                </div>
+                                                <pre className="p-3 bg-slate-950 text-emerald-400 rounded-lg text-[11px] font-mono max-h-56 overflow-y-auto direction-ltr text-left">
+                                                    {JSON.stringify(simResult.etaDocument, null, 2)}
+                                                </pre>
+                                            </div>
+                                        </div>
                                     </div>
                                 )}
                             </CardContent>
