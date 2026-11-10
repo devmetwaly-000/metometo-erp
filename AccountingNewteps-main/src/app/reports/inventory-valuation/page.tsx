@@ -488,3 +488,4 @@ export default function InventoryValuationReportPage() {
     </div>
   );
 }
+

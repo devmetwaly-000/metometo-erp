@@ -157,6 +157,7 @@ const NavLink = ({ href, children, icon, module }: { href: string; children: Rea
       <SidebarMenuButton asChild isActive={isActive}>
         <Link 
           href={href} 
+          prefetch={true}
           onClick={() => setOpenMobile(false)}
         >
           {icon}
@@ -258,6 +259,7 @@ const NavSubLink = ({ href, children, module }: { href: string; children: React.
             <SidebarMenuSubButton asChild isActive={isActive}>
                 <Link 
                     href={href} 
+                    prefetch={true}
                     onClick={() => setOpenMobile(false)}
                 >
                     {children}
@@ -609,6 +611,83 @@ export function AppLayoutContent({ children }: { children: React.ReactNode }) {
         });
     }
   }, [openTabs, router]);
+
+  // محرك التحميل المسبق الشامل لكافة صفحات وفرونت إند النظام (Progressive Frontend Preload Engine)
+  // يقوم بتحميل ملفات الفرونت إند والـ Chunks في الخلفية لتكون الصفحات لحظية الفتح عند أول نقرة
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+
+    // 1. المسارات التشغيلية اليومية ذات الأولوية الفورية (تحميل فوري عند إقلاع الواجهة)
+    const highPriorityRoutes = [
+      '/pos',
+      '/pos/sessions',
+      '/sales/invoices/list',
+      '/sales/invoices',
+      '/master-data/items',
+      '/master-data/customers',
+      '/purchases/invoices/list',
+      '/purchases/invoices',
+      '/inventory/stock-status',
+      '/inventory/stock-transfers',
+      '/accounting/expenses',
+      '/reports',
+      '/reports/sales-reports',
+      '/reports/purchases-report',
+      '/reports/inventory-valuation',
+    ];
+
+    highPriorityRoutes.forEach(route => {
+      try {
+        (router as any)?.prefetch?.(route);
+      } catch {}
+    });
+
+    // 2. استخراج جميع المسارات المصرح بها للمستخدم من القائمة
+    const extractRoutes = (items: readonly any[]): string[] => {
+      let routes: string[] = [];
+      for (const item of items) {
+        if (item.module && !can('view', item.module)) continue;
+        if (item.href && typeof item.href === 'string' && item.href.startsWith('/')) {
+          routes.push(item.href);
+        }
+        if (item.children) {
+          routes = routes.concat(extractRoutes(item.children));
+        }
+      }
+      return routes;
+    };
+
+    const allRoutes = extractRoutes(navStructure);
+    const remainingRoutes = Array.from(new Set(allRoutes.filter(r => !highPriorityRoutes.includes(r))));
+
+    // 3. طابور مجدول في الخلفية لتسخين بقية الشاشات (Progressive Background Warmup) بدون إبطاء واجهة المستخدم
+    let idx = 0;
+    let timerId: any = null;
+
+    const prefetchNext = () => {
+      if (idx < remainingRoutes.length) {
+        const nextRoute = remainingRoutes[idx];
+        try {
+          (router as any)?.prefetch?.(nextRoute);
+        } catch {}
+        idx++;
+        timerId = setTimeout(prefetchNext, 80);
+      }
+    };
+
+    const startTimer = setTimeout(() => {
+      if ('requestIdleCallback' in window) {
+        (window as any).requestIdleCallback(() => prefetchNext());
+      } else {
+        prefetchNext();
+      }
+    }, 1000);
+
+    return () => {
+      clearTimeout(startTimer);
+      if (timerId) clearTimeout(timerId);
+    };
+  }, [router, can]);
 
   useEffect(() => {
       if (user && users) {

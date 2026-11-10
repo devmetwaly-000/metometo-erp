@@ -48,4 +48,5 @@ next-env.d.ts
 firebase-debug.log
 database-debug.log
 firestore-debug.log
+/logs/
 storage-debug.log

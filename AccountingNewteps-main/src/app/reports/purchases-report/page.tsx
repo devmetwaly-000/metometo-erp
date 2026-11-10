@@ -788,3 +788,4 @@ export default function PurchasesReportPage() {
     </div>
   );
 }
+
