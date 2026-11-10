@@ -154,14 +154,15 @@ const NavLink = ({ href, children, icon, module }: { href: string; children: Rea
 
   return (
     <SidebarMenuItem>
-      <SidebarMenuButton asChild isActive={isActive}>
+      <SidebarMenuButton asChild isActive={isActive} className="h-auto min-h-9 py-1.5 text-sm leading-snug">
         <Link 
           href={href} 
           prefetch={true}
           onClick={() => setOpenMobile(false)}
+          className="flex items-center gap-2.5 w-full text-right"
         >
           {icon}
-          <span>{children}</span>
+          <span className="flex-1 text-right leading-normal break-words">{children}</span>
         </Link>
       </SidebarMenuButton>
     </SidebarMenuItem>
@@ -229,9 +230,9 @@ const NavCollapsible = ({ title, icon, children, modules, searchTerm, defaultOpe
         <Collapsible defaultOpen={defaultOpen || isAnyChildActive(children) || (searchTerm !== '' && filteredChildren.length > 0)}>
             <SidebarMenuItem>
                 <CollapsibleTrigger asChild>
-                     <SidebarMenuButton>
+                     <SidebarMenuButton className="h-auto min-h-9 py-1.5 text-sm leading-snug w-full">
                         {icon}
-                        <span>{title}</span>
+                        <span className="flex-1 text-right leading-normal break-words">{title}</span>
                         <ChevronDown className="mr-auto h-4 w-4 shrink-0 transition-transform duration-200 group-data-[state=open]:rotate-180" />
                     </SidebarMenuButton>
                 </CollapsibleTrigger>
@@ -256,13 +257,14 @@ const NavSubLink = ({ href, children, module }: { href: string; children: React.
 
     return (
         <SidebarMenuSubItem>
-            <SidebarMenuSubButton asChild isActive={isActive}>
+            <SidebarMenuSubButton asChild isActive={isActive} className="h-auto min-h-8 py-1.5 text-xs md:text-sm leading-snug">
                 <Link 
                     href={href} 
                     prefetch={true}
                     onClick={() => setOpenMobile(false)}
+                    className="flex items-center gap-2 w-full text-right"
                 >
-                    {children}
+                    <span className="flex-1 text-right leading-normal break-words">{children}</span>
                 </Link>
             </SidebarMenuSubButton>
         </SidebarMenuSubItem>
