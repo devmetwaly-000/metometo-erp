@@ -258,7 +258,14 @@ const UserForm = ({
             <Combobox
               options={roleOptions}
               value={formData.role || ""}
-              onValueChange={(value) => setFormData({ ...formData, role: value })}
+              onValueChange={(value) => {
+                const isRepRole = value === 'مندوب' || value.includes('مندوب');
+                setFormData(prev => ({
+                  ...prev,
+                  role: value,
+                  isSalesRep: isRepRole ? true : prev.isSalesRep
+                }));
+              }}
               placeholder="اختر وظيفة..."
               emptyMessage="لم يتم العثور على وظيفة."
             />
@@ -421,8 +428,9 @@ export default function UsersPage() {
   const handleSave = async (userData: User) => {
     try {
         const userToUpdate = userData.id ? users.find((u: any) => u.id === userData.id) : null;
-        const isCurrentlyRep = userToUpdate?.isSalesRep || false;
-        const willBeRep = userData.isSalesRep || false;
+        const isCurrentlyRep = !!(userToUpdate?.isSalesRep || userToUpdate?.role === 'مندوب' || (typeof userToUpdate?.role === 'string' && userToUpdate?.role.includes('مندوب')));
+        const willBeRep = !!(userData.isSalesRep || userData.role === 'مندوب' || (typeof userData.role === 'string' && userData.role.includes('مندوب')));
+        userData.isSalesRep = willBeRep;
 
         const activeLicenses = (licenses || []).filter((l: any) => 
             l.status !== 'expired' && (!l.endDate || new Date(l.endDate) > new Date())
@@ -477,10 +485,21 @@ export default function UsersPage() {
             if (!can("edit", moduleName)) return toast({ variant: "destructive", title: "غير مصرح به" });
 
             const { id, ...dataToUpdate } = userData;
+            dataToUpdate.isSalesRep = willBeRep;
             
-            if (willBeRep && !isCurrentlyRep) {
+            const existingRepWarehouse = allWarehouses.find((w: any) => w.repId === id);
+
+            if (willBeRep && !existingRepWarehouse) {
+                const repCount = allWarehouses.filter((w: any) => w.isRepWarehouse || w.warehouseType === 'rep').length;
+                const nextCode = `REP-${String(repCount + 1).padStart(2, '0')}`;
                 const warehouseName = `عهدة المندوب: ${dataToUpdate.name}`;
-                const newWarehouseId = await dbAction('warehouses', 'add', { name: warehouseName, isRepWarehouse: true, repId: id });
+                const newWarehouseId = await dbAction('warehouses', 'add', { 
+                    name: warehouseName, 
+                    code: nextCode, 
+                    warehouseType: 'rep', 
+                    isRepWarehouse: true, 
+                    repId: id 
+                });
                 await dbAction('cashAccounts', 'add', { name: `عهدة: ${dataToUpdate.name}`, type: 'cash', openingBalance: 0, userId: id });
                 const currentIds = dataToUpdate.warehouseIds || [];
                 dataToUpdate.warehouseIds = newWarehouseId ? [...currentIds, newWarehouseId as string] : currentIds;
@@ -515,6 +534,7 @@ export default function UsersPage() {
             const creatorLicenseKey = user?.themeSettings?.licenseKey;
             let userRecord: any = { 
                 ...userData, 
+                isSalesRep: willBeRep,
                 uid: `db_${Date.now()}`,
                 themeSettings: userData.themeSettings || { 
                     theme: 'dark', 
@@ -526,8 +546,16 @@ export default function UsersPage() {
             const newUserId = await dbAction("users", "add", userRecord) as string;
             
             if (willBeRep && newUserId) {
+                 const repCount = allWarehouses.filter((w: any) => w.isRepWarehouse || w.warehouseType === 'rep').length;
+                 const nextCode = `REP-${String(repCount + 1).padStart(2, '0')}`;
                  const warehouseName = `عهدة المندوب: ${userData.name}`;
-                 const newWarehouseId = await dbAction('warehouses', 'add', { name: warehouseName, isRepWarehouse: true, repId: newUserId }) as string;
+                 const newWarehouseId = await dbAction('warehouses', 'add', { 
+                     name: warehouseName, 
+                     code: nextCode, 
+                     warehouseType: 'rep', 
+                     isRepWarehouse: true, 
+                     repId: newUserId 
+                 }) as string;
                  await dbAction('cashAccounts', 'add', { name: `عهدة: ${userData.name}`, type: 'cash', openingBalance: 0, userId: newUserId });
                  const currentSelected = userData.warehouseIds || [];
                  const newIds = [...currentSelected, newWarehouseId];
@@ -548,7 +576,7 @@ export default function UsersPage() {
 
     try {
       if (targetUser.isSalesRep) {
-        const repWarehouse = warehouses.find((w: any) => w.repId === targetUser.id);
+        const repWarehouse = allWarehouses.find((w: any) => w.repId === targetUser.id);
         if (repWarehouse) await dbAction('warehouses', 'remove', { id: repWarehouse.id });
         const repCashAccount = cashAccountsData.find((acc: any) => acc.userId === targetUser.id);
         if (repCashAccount) await dbAction('cashAccounts', 'remove', { id: repCashAccount.id });

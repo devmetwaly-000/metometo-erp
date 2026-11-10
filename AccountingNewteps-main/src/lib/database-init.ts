@@ -1931,6 +1931,88 @@ export async function createAndInitializeDatabase(options: DbInitOptions): Promi
             console.warn('Users seed error:', uErr.message);
         }
 
+        // 10b. Ensure all sales reps have a dedicated rep warehouse and cash custody account
+        try {
+            const repsRes = await targetPool.request().query(`
+                SELECT Id, Name, WarehouseIds FROM dbo.Users 
+                WHERE IsSalesRep = 1 OR Role = 'مندوب' OR Role LIKE '%مندوب%'
+            `);
+            for (const r of repsRes.recordset) {
+                const whCheck = await targetPool.request()
+                    .input('RepId', sql.NVarChar(64), r.Id)
+                    .query(`SELECT Id FROM dbo.Warehouses WHERE RepId = @RepId`);
+                
+                let repWhId = whCheck.recordset[0]?.Id;
+                if (!repWhId) {
+                    const countRes = await targetPool.request().query(`SELECT COUNT(*) as cnt FROM dbo.Warehouses WHERE IsRepWarehouse = 1 OR WarehouseType = 'rep'`);
+                    const nextNum = (countRes.recordset[0]?.cnt || 0) + 1;
+                    const nextCode = `REP-${String(nextNum).padStart(2, '0')}`;
+                    repWhId = `rep_wh_${r.Id}`;
+                    const repWhName = `عهدة المندوب: ${r.Name}`;
+
+                    await targetPool.request()
+                        .input('Id', sql.NVarChar(64), repWhId)
+                        .input('Code', sql.NVarChar(50), nextCode)
+                        .input('Name', sql.NVarChar(255), repWhName)
+                        .input('WarehouseType', sql.NVarChar(50), 'rep')
+                        .input('IsRepWarehouse', sql.Bit, 1)
+                        .input('IsMain', sql.Bit, 0)
+                        .input('IsClosed', sql.Bit, 0)
+                        .input('RepId', sql.NVarChar(64), r.Id)
+                        .input('BranchCode', sql.NVarChar(50), nextCode)
+                        .input('BranchName', sql.NVarChar(255), repWhName)
+                        .query(`
+                            IF NOT EXISTS (SELECT 1 FROM dbo.Warehouses WHERE Id = @Id OR RepId = @RepId)
+                            BEGIN
+                                INSERT INTO dbo.Warehouses (Id, Code, Name, WarehouseType, IsRepWarehouse, IsMain, IsClosed, RepId, BranchCode, BranchName, SyncStatus)
+                                VALUES (@Id, @Code, @Name, @WarehouseType, @IsRepWarehouse, @IsMain, @IsClosed, @RepId, @BranchCode, @BranchName, 'synced');
+                            END
+                        `);
+                }
+
+                // Ensure rep custody cash account
+                const cashCheck = await targetPool.request()
+                    .input('UserId', sql.NVarChar(64), r.Id)
+                    .query(`SELECT Id FROM dbo.CashAccounts WHERE UserId = @UserId`);
+                if (cashCheck.recordset.length === 0) {
+                    const cashId = `rep_cash_${r.Id}`;
+                    const cashName = `عهدة: ${r.Name}`;
+                    await targetPool.request()
+                        .input('Id', sql.NVarChar(64), cashId)
+                        .input('Name', sql.NVarChar(255), cashName)
+                        .input('Type', sql.NVarChar(50), 'cash')
+                        .input('OpeningBalance', sql.Decimal(18, 4), 0)
+                        .input('UserId', sql.NVarChar(64), r.Id)
+                        .input('WarehouseId', sql.NVarChar(64), repWhId)
+                        .query(`
+                            IF NOT EXISTS (SELECT 1 FROM dbo.CashAccounts WHERE Id = @Id OR UserId = @UserId)
+                            BEGIN
+                                INSERT INTO dbo.CashAccounts (Id, Name, Type, OpeningBalance, UserId, WarehouseId)
+                                VALUES (@Id, @Name, @Type, @OpeningBalance, @UserId, @WarehouseId);
+                            END
+                        `);
+                }
+
+                // Ensure linked in User.WarehouseIds
+                let wids: string[] = [];
+                try {
+                    wids = JSON.parse(r.WarehouseIds || '[]');
+                } catch {
+                    wids = [];
+                }
+                if (!Array.isArray(wids)) wids = [];
+                if (!wids.includes(repWhId)) {
+                    wids.push(repWhId);
+                    await targetPool.request()
+                        .input('Id', sql.NVarChar(64), r.Id)
+                        .input('WarehouseIds', sql.NVarChar(sql.MAX), JSON.stringify(wids))
+                        .query(`UPDATE dbo.Users SET WarehouseIds = @WarehouseIds WHERE Id = @Id`);
+                }
+            }
+        } catch (repSyncErr: any) {
+            console.warn('Rep warehouses sync warning:', repSyncErr.message);
+        }
+
         // 11. Seed default Active License
         try {
             await targetPool.request()

@@ -1,6 +1,88 @@
 import { NextResponse } from 'next/server';
 import { getDbPool, sql } from '@/lib/db';
 
+async function ensureRepWarehouseAndAccount(pool: sql.ConnectionPool, userId: string, userName: string, currentWarehouseIds?: any) {
+    if (!userId) return;
+    try {
+        const whCheck = await pool.request()
+            .input('RepId', sql.NVarChar(64), userId)
+            .query(`SELECT Id, Name, Code FROM dbo.Warehouses WHERE RepId = @RepId`);
+        
+        let repWarehouseId = whCheck.recordset[0]?.Id;
+        if (!repWarehouseId) {
+            const countRes = await pool.request().query(`SELECT COUNT(*) as cnt FROM dbo.Warehouses WHERE IsRepWarehouse = 1 OR WarehouseType = 'rep'`);
+            const repNum = (countRes.recordset[0]?.cnt || 0) + 1;
+            const repCode = `REP-${String(repNum).padStart(2, '0')}`;
+            repWarehouseId = `rep_wh_${userId}`;
+            const repWarehouseName = `عهدة المندوب: ${userName || 'مندوب'}`;
+
+            await pool.request()
+                .input('Id', sql.NVarChar(64), repWarehouseId)
+                .input('Code', sql.NVarChar(50), repCode)
+                .input('Name', sql.NVarChar(255), repWarehouseName)
+                .input('WarehouseType', sql.NVarChar(50), 'rep')
+                .input('IsRepWarehouse', sql.Bit, 1)
+                .input('IsMain', sql.Bit, 0)
+                .input('IsClosed', sql.Bit, 0)
+                .input('RepId', sql.NVarChar(64), userId)
+                .query(`
+                    IF NOT EXISTS (SELECT 1 FROM dbo.Warehouses WHERE Id = @Id OR RepId = @RepId)
+                    BEGIN
+                        INSERT INTO dbo.Warehouses (Id, Code, Name, WarehouseType, IsRepWarehouse, IsMain, IsClosed, RepId, BranchCode, BranchName, SyncStatus)
+                        VALUES (@Id, @Code, @Name, @WarehouseType, @IsRepWarehouse, @IsMain, @IsClosed, @RepId, @Code, @Name, 'synced');
+                    END
+                `);
+        }
+
+        const cashCheck = await pool.request()
+            .input('UserId', sql.NVarChar(64), userId)
+            .query(`SELECT Id FROM dbo.CashAccounts WHERE UserId = @UserId`);
+        
+        if (cashCheck.recordset.length === 0) {
+            const repCashId = `rep_cash_${userId}`;
+            const repCashName = `عهدة: ${userName || 'مندوب'}`;
+            await pool.request()
+                .input('Id', sql.NVarChar(64), repCashId)
+                .input('Name', sql.NVarChar(255), repCashName)
+                .input('Type', sql.NVarChar(50), 'cash')
+                .input('OpeningBalance', sql.Decimal(18, 4), 0)
+                .input('UserId', sql.NVarChar(64), userId)
+                .input('WarehouseId', sql.NVarChar(64), repWarehouseId)
+                .query(`
+                    IF NOT EXISTS (SELECT 1 FROM dbo.CashAccounts WHERE Id = @Id OR UserId = @UserId)
+                    BEGIN
+                        INSERT INTO dbo.CashAccounts (Id, Name, Type, OpeningBalance, UserId, WarehouseId)
+                        VALUES (@Id, @Name, @Type, @OpeningBalance, @UserId, @WarehouseId);
+                    END
+                `);
+        }
+
+        const userRes = await pool.request()
+            .input('Id', sql.NVarChar(64), userId)
+            .query(`SELECT WarehouseIds FROM dbo.Users WHERE Id = @Id`);
+        
+        if (userRes.recordset.length > 0) {
+            let existingWids: string[] = [];
+            try {
+                const raw = userRes.recordset[0].WarehouseIds;
+                existingWids = Array.isArray(raw) ? raw : (typeof raw === 'string' ? JSON.parse(raw) : []);
+            } catch {
+                existingWids = [];
+            }
+            if (!Array.isArray(existingWids)) existingWids = [];
+            if (!existingWids.includes(repWarehouseId)) {
+                existingWids.push(repWarehouseId);
+                await pool.request()
+                    .input('Id', sql.NVarChar(64), userId)
+                    .input('WarehouseIds', sql.NVarChar(sql.MAX), JSON.stringify(existingWids))
+                    .query(`UPDATE dbo.Users SET WarehouseIds = @WarehouseIds WHERE Id = @Id`);
+            }
+        }
+    } catch (e: any) {
+        console.error('ensureRepWarehouseAndAccount error:', e.message);
+    }
+}
+
 export async function POST(req: Request) {
     try {
         const body = await req.json();
@@ -802,6 +884,7 @@ export async function POST(req: Request) {
             }
 
             if (path === 'users') {
+                const isRepUser = !!(payload.isSalesRep || payload.role === 'مندوب' || (typeof payload.role === 'string' && payload.role.includes('مندوب')));
                 await pool.request()
                     .input('Id', sql.NVarChar(64), id)
                     .input('LoginName', sql.NVarChar(100), payload.loginName)
@@ -812,7 +895,7 @@ export async function POST(req: Request) {
                     .input('WarehouseIds', sql.NVarChar(sql.MAX), jsonString(payload.warehouseIds))
                     .input('IsCashier', sql.Bit, payload.isCashier ? 1 : 0)
                     .input('IsDelivery', sql.Bit, payload.isDelivery ? 1 : 0)
-                    .input('IsSalesRep', sql.Bit, payload.isSalesRep ? 1 : 0)
+                    .input('IsSalesRep', sql.Bit, isRepUser ? 1 : 0)
                     .input('CanOpenOwnShift', sql.Bit, payload.canOpenOwnShift !== false ? 1 : 0)
                     .input('CanDeleteFromCart', sql.Bit, payload.canDeleteFromCart !== false ? 1 : 0)
                     .input('CanProcessReturn', sql.Bit, payload.canProcessReturn !== false ? 1 : 0)
@@ -832,6 +915,11 @@ export async function POST(req: Request) {
                             @CanProcessReturn, @CanCancelInvoice, @CanBypassScannerForReturn, @IsDisabled, @ThemeSettings
                         );
                     `);
+
+                if (isRepUser) {
+                    await ensureRepWarehouseAndAccount(pool, id, payload.name, payload.warehouseIds);
+                }
+
                 return NextResponse.json({ success: true, id });
             }
 
@@ -1345,6 +1433,7 @@ export async function POST(req: Request) {
             }
 
             if (path === 'users' && updateId) {
+                const isRepUser = data.isSalesRep === true || data.role === 'مندوب' || (typeof data.role === 'string' && data.role.includes('مندوب'));
                 await pool.request()
                     .input('Id', sql.NVarChar(64), updateId)
                     .input('Name', sql.NVarChar(255), data.name || null)
@@ -1354,7 +1443,7 @@ export async function POST(req: Request) {
                     .input('Phone', sql.NVarChar(50), data.phone || null)
                     .input('IsCashier', sql.Bit, data.isCashier !== undefined ? (data.isCashier ? 1 : 0) : null)
                     .input('IsDelivery', sql.Bit, data.isDelivery !== undefined ? (data.isDelivery ? 1 : 0) : null)
-                    .input('IsSalesRep', sql.Bit, data.isSalesRep !== undefined ? (data.isSalesRep ? 1 : 0) : null)
+                    .input('IsSalesRep', sql.Bit, isRepUser ? 1 : (data.isSalesRep !== undefined ? (data.isSalesRep ? 1 : 0) : null))
                     .input('CanOpenOwnShift', sql.Bit, data.canOpenOwnShift !== undefined ? (data.canOpenOwnShift ? 1 : 0) : null)
                     .input('CanDeleteFromCart', sql.Bit, data.canDeleteFromCart !== undefined ? (data.canDeleteFromCart ? 1 : 0) : null)
                     .input('CanProcessReturn', sql.Bit, data.canProcessReturn !== undefined ? (data.canProcessReturn ? 1 : 0) : null)
@@ -1384,6 +1473,13 @@ export async function POST(req: Request) {
                             ThemeSettings = COALESCE(@ThemeSettings, ThemeSettings)
                         WHERE Id = @Id;
                     `);
+
+                if (isRepUser) {
+                    const uRes = await pool.request().input('Id', sql.NVarChar(64), updateId).query(`SELECT Name, WarehouseIds FROM dbo.Users WHERE Id = @Id`);
+                    const repName = data.name || uRes.recordset[0]?.Name || 'مندوب';
+                    await ensureRepWarehouseAndAccount(pool, updateId, repName, data.warehouseIds);
+                }
+
                 return NextResponse.json({ success: true });
             }
 
@@ -1516,6 +1612,10 @@ export async function POST(req: Request) {
                         success: false, 
                         error: "محظور: لا يمكن حذف أجهزة نقاط البيع في الإدارة المركزية." 
                     }, { status: 403 });
+                }
+                if (path === 'users' && removeId) {
+                    await pool.request().input('RepId', sql.NVarChar(64), String(removeId)).query(`DELETE FROM dbo.Warehouses WHERE RepId = @RepId;`);
+                    await pool.request().input('UserId', sql.NVarChar(64), String(removeId)).query(`DELETE FROM dbo.CashAccounts WHERE UserId = @UserId;`);
                 }
                 const tableName = tableMap[path];
                 if (tableName) {
