@@ -450,7 +450,7 @@ const MobileSidebar = () => {
              <SheetContent 
                 side="right" 
                 className="w-[var(--sidebar-width-mobile)] bg-sidebar p-0 text-sidebar-foreground flex flex-col" 
-                style={{ '--sidebar-width-mobile': '280px' } as React.CSSProperties}
+                style={{ '--sidebar-width-mobile': '315px' } as React.CSSProperties}
                 onOpenAutoFocus={(event) => event.preventDefault()}
             >
                  <SheetHeader className="p-4 border-b">
