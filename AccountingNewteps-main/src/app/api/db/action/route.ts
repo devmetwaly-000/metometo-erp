@@ -595,9 +595,10 @@ export async function POST(req: Request) {
                     .input('Status', sql.NVarChar(50), payload.status || 'approved')
                     .input('Notes', sql.NVarChar(sql.MAX), payload.notes || null)
                     .input('ItemsJson', sql.NVarChar(sql.MAX), jsonString(payload.items))
+                    .input('AllocationsJson', sql.NVarChar(sql.MAX), payload.allocations ? jsonString(payload.allocations) : null)
                     .query(`
-                        INSERT INTO dbo.StockInRecords (Id, ReceiptNumber, BatchNumber, Date, WarehouseId, PurchaseInvoiceId, Reason, Status, Notes, ItemsJson)
-                        VALUES (@Id, @ReceiptNumber, @BatchNumber, @Date, @WarehouseId, @PurchaseInvoiceId, @Reason, @Status, @Notes, @ItemsJson);
+                        INSERT INTO dbo.StockInRecords (Id, ReceiptNumber, BatchNumber, Date, WarehouseId, PurchaseInvoiceId, Reason, Status, Notes, ItemsJson, AllocationsJson)
+                        VALUES (@Id, @ReceiptNumber, @BatchNumber, @Date, @WarehouseId, @PurchaseInvoiceId, @Reason, @Status, @Notes, @ItemsJson, @AllocationsJson);
                     `);
                 return NextResponse.json({ success: true, id });
             }
@@ -1529,12 +1530,14 @@ export async function POST(req: Request) {
                     .input('Status', sql.NVarChar(50), data.status || null)
                     .input('Notes', sql.NVarChar(sql.MAX), data.notes || null)
                     .input('ItemsJson', sql.NVarChar(sql.MAX), data.items ? jsonString(data.items) : null)
+                    .input('AllocationsJson', sql.NVarChar(sql.MAX), data.allocations ? jsonString(data.allocations) : null)
                     .query(`
                         UPDATE dbo.StockInRecords
                         SET 
                             Status = COALESCE(@Status, Status),
                             Notes = COALESCE(@Notes, Notes),
                             ItemsJson = COALESCE(@ItemsJson, ItemsJson),
+                            AllocationsJson = COALESCE(@AllocationsJson, AllocationsJson),
                             UpdatedAt = sysutcdatetime()
                         WHERE Id = @Id;
                     `);

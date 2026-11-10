@@ -261,6 +261,7 @@ export default function StockInPage() {
         stockInRecords,
         warehouses, 
         inventorySections,
+        inventoryZones,
         items,
         dbAction, 
         loading 
@@ -290,8 +291,10 @@ export default function StockInPage() {
     const isMainWarehouse = useCallback((warehouseId?: string) => {
         if (!warehouseId) return false;
         const wh = warehouses.find((w: any) => w.id === warehouseId);
-        return Boolean(wh?.isMain);
-    }, [warehouses]);
+        const hasSections = (inventorySections || []).some((s: any) => s.mainWarehouseId === warehouseId);
+        const inZones = (inventoryZones || []).some((z: any) => z.id === warehouseId);
+        return Boolean(wh?.isMain || hasSections || inZones);
+    }, [warehouses, inventorySections, inventoryZones]);
 
     const records = useMemo(() => {
         if (loading) return [];
@@ -300,7 +303,7 @@ export default function StockInPage() {
 
         return stockInRecords
             .filter((rec: any) => {
-                 // ONLY include records where receiving warehouse is a MAIN warehouse
+                 // ONLY include records where receiving warehouse is a MAIN or logistics warehouse with sections
                  if (!isMainWarehouse(rec.warehouseId)) return false;
 
                  if (stockInId) {
@@ -322,17 +325,30 @@ export default function StockInPage() {
             .sort((a:any,b:any) => new Date(b.date).getTime() - new Date(a.date).getTime());
     }, [searchParams, stockInRecords, filters, loading, isMainWarehouse]);
 
-    const pendingRecords = useMemo(() => records.filter(r => r.status === 'pending_putaway'), [records]);
-    const completedRecords = useMemo(() => records.filter(r => r.status === 'completed' || r.status === 'approved'), [records]);
+    const pendingRecords = useMemo(() => {
+        return records.filter((r: any) => {
+            if (r.status === 'pending_putaway') return true;
+            const isAllocated = Array.isArray(r.allocations) && r.allocations.length > 0;
+            return !isAllocated && r.status !== 'cancelled';
+        });
+    }, [records]);
+
+    const completedRecords = useMemo(() => {
+        return records.filter((r: any) => {
+            const isAllocated = Array.isArray(r.allocations) && r.allocations.length > 0;
+            return (r.status === 'completed' || r.status === 'approved') && isAllocated;
+        });
+    }, [records]);
 
     const warehouseOptions = useMemo(() => {
+        const mainWhs = warehouses.filter((w: any) => isMainWarehouse(w.id));
         const options = [
-            {value: 'all', label: 'كل المخازن الرئيسية'},
-            ...warehouses.filter((w:any) => w.isMain).map((w: any) => ({value: w.id, label: w.name}))
+            {value: 'all', label: 'كل المخازن الرئيسية واللوجستية'},
+            ...mainWhs.map((w: any) => ({value: w.id, label: w.name}))
         ];
         if (user?.warehouseIds?.includes('all')) return options;
         return options.filter(w => w.value !== 'all' && user?.warehouseIds?.includes(w.value));
-    }, [warehouses, user]);
+    }, [warehouses, isMainWarehouse, user]);
 
 
     const handlePutAway = async (recordId: string, allocations: Record<string, PutAwayItem>) => {
@@ -496,7 +512,7 @@ export default function StockInPage() {
                                                         <Badge variant="secondary">{record.items.length}</Badge>
                                                     </TableCell>
                                                     <TableCell className="text-center">
-                                                        <div className="flex justify-center gap-2">
+                                                        <div className="flex justify-center items-center gap-1.5">
                                                             <Button variant="ghost" size="icon" onClick={() => {
                                                                 setTimeout(() => router.push(`/inventory/stock-in/${record.id}`), 150);
                                                             }} title="عرض التفاصيل">
@@ -506,6 +522,13 @@ export default function StockInPage() {
                                                                 setTimeout(() => router.push(`/inventory/stock-in/${record.id}`), 150);
                                                             }} title="طباعة">
                                                                 <Printer className="h-4 w-4" />
+                                                            </Button>
+                                                            <Button variant="outline" size="sm" className="h-7 text-xs gap-1 border-amber-300 text-amber-700 dark:text-amber-400" onClick={async () => {
+                                                                await dbAction('stockInRecords', 'update', { id: record.id, data: { status: 'pending_putaway' } });
+                                                                toast({ title: 'تم فتح الإذن للتسكين', description: 'تم نقله إلى أذونات بانتظار التسكين لتعديل توزيع الأقسام والحاويات.' });
+                                                            }} title="إعادة توزيع الأقسام">
+                                                                <Boxes className="h-3.5 w-3.5" />
+                                                                تسكين
                                                             </Button>
                                                         </div>
                                                     </TableCell>

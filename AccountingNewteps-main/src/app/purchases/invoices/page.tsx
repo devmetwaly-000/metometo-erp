@@ -154,6 +154,7 @@ export default function PurchaseInvoicePage() {
     suppliers, 
     warehouses, 
     inventoryZones, 
+    inventorySections, 
     cashAccounts, 
     purchaseOrders,
     purchaseInvoices,
@@ -431,7 +432,19 @@ export default function PurchaseInvoicePage() {
 
         setIsSaving(true);
         saveInvoiceAsync(updatePrices);
-        toast({ title: 'جاري الحفظ...', description: `سيتم حفظ فاتورة الشراء في الخلفية.` });
+        const isLogisticsWarehouse = Boolean(
+            warehouses.find((w: any) => w.id === warehouseId)?.isMain ||
+            inventorySections.some((s: any) => s.mainWarehouseId === warehouseId) ||
+            inventoryZones.some((z: any) => z.id === warehouseId)
+        );
+        if (isLogisticsWarehouse) {
+            toast({ 
+                title: 'تم إنشاء فاتورة الشراء وإذن التسكين', 
+                description: 'تم توجيه البضاعة للمخزن اللوجستي بانتظار التسكين وتوزيع الأصناف على الأقسام.' 
+            });
+        } else {
+            toast({ title: 'جاري الحفظ...', description: `سيتم حفظ فاتورة الشراء في الخلفية.` });
+        }
         router.push('/purchases/invoices/list');
   }
 
@@ -511,14 +524,23 @@ export default function PurchaseInvoicePage() {
             }
         }
         
-        if (purchaseWorkflow === 'direct') {
+        const isLogisticsWarehouse = Boolean(
+            warehouses.find((w: any) => w.id === warehouseId)?.isMain ||
+            inventorySections.some((s: any) => s.mainWarehouseId === warehouseId) ||
+            inventoryZones.some((z: any) => z.id === warehouseId)
+        );
+
+        if (purchaseWorkflow === 'direct' || isLogisticsWarehouse) {
             await dbAction('stockInRecords', 'add', {
-                warehouseId: warehouseId, date: finalInvoiceDate.toISOString(),
+                warehouseId: warehouseId, 
+                date: finalInvoiceDate.toISOString(),
                 items: invoiceItems.map(item => ({ itemId: item.id, name: item.name, qty: item.qty, cost: item.cost, expiryDate: item.expiryDate })),
-                reason: 'purchase', notes: `استلام مباشر من فاتورة شراء رقم ${invoiceData.invoiceNumber}`,
+                reason: 'purchase', 
+                notes: `استلام ${isLogisticsWarehouse ? 'لوجستي بانتظار التسكين' : 'مباشر'} من فاتورة شراء رقم ${invoiceData.invoiceNumber}`,
                 receiptNumber: `إذ-د-${await getNextId('stockIn')}`,
-                purchaseInvoiceId: newInvoiceId, batchNumber: batchNumberToSave,
-                status: 'completed', 
+                purchaseInvoiceId: newInvoiceId, 
+                batchNumber: batchNumberToSave,
+                status: isLogisticsWarehouse ? 'pending_putaway' : 'completed', 
             });
         }
         
