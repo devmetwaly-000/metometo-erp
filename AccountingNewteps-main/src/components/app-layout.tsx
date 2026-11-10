@@ -638,10 +638,22 @@ export function AppLayoutContent({ children }: { children: React.ReactNode }) {
       '/reports/inventory-valuation',
     ];
 
-    highPriorityRoutes.forEach(route => {
+    // دالة تسخين المسار: تطلب الـ Prefetch من Next.js وترسل طلب خلفي خفيف لتجميع الواجهة وحفظها في الكاش فوراً
+    const warmupRoute = (path: string) => {
+      if (!path || !path.startsWith('/') || path.startsWith('/api')) return;
       try {
-        (router as any)?.prefetch?.(route);
+        (router as any)?.prefetch?.(path);
       } catch {}
+      try {
+        fetch(path, {
+          headers: { 'RSC': '1', 'Next-Router-Prefetch': '1' },
+          priority: 'low'
+        } as any).catch(() => {});
+      } catch {}
+    };
+
+    highPriorityRoutes.forEach(route => {
+      warmupRoute(route);
     });
 
     // 2. استخراج جميع المسارات المصرح بها للمستخدم من القائمة
@@ -669,11 +681,9 @@ export function AppLayoutContent({ children }: { children: React.ReactNode }) {
     const prefetchNext = () => {
       if (idx < remainingRoutes.length) {
         const nextRoute = remainingRoutes[idx];
-        try {
-          (router as any)?.prefetch?.(nextRoute);
-        } catch {}
+        warmupRoute(nextRoute);
         idx++;
-        timerId = setTimeout(prefetchNext, 80);
+        timerId = setTimeout(prefetchNext, 120);
       }
     };
 

@@ -10,6 +10,7 @@ const { spawn } = require('child_process');
 const path = require('path');
 const fs = require('fs');
 const http = require('http');
+const { startWarmup } = require('./server_warmup');
 
 const APP_DIR = path.resolve(__dirname, '..', '..');
 const LOGS_DIR = path.join(APP_DIR, 'logs');
@@ -104,6 +105,33 @@ function startNextServer() {
     childProcess.on('error', err => {
         writeLog(`خطأ في العملية: ${err.message}`);
     });
+
+    // جدولة تسخين كافة الشاشات فور إتاحة البورت
+    scheduleServerWarmup(9002);
+}
+
+function scheduleServerWarmup(port = 9002) {
+    let attempts = 0;
+    const interval = setInterval(async () => {
+        attempts++;
+        if (isStopping) {
+            clearInterval(interval);
+            return;
+        }
+        const ready = await isPortInUse(port);
+        if (ready) {
+            clearInterval(interval);
+            writeLog('الخادم متصل وجاهز. جاري تجميع وتسخين كافة شاشات الفرونت إند في الخلفية...');
+            try {
+                await startWarmup(port);
+                writeLog('✓ اكتمل تسخين وتجهيز كافة شاشات النظام مسبقاً بنجاح.');
+            } catch (e) {
+                writeLog(`تنبيه أثناء تسخين الشاشات: ${e.message}`);
+            }
+        } else if (attempts > 60) {
+            clearInterval(interval);
+        }
+    }, 2500);
 }
 
 function handleShutdown() {
