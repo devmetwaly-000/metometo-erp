@@ -153,8 +153,8 @@ const NavLink = ({ href, children, icon, module }: { href: string; children: Rea
   }
 
   return (
-    <SidebarMenuItem>
-      <SidebarMenuButton asChild isActive={isActive} className="h-auto min-h-9 py-1.5 text-sm leading-snug">
+    <SidebarMenuItem className="my-0.5">
+      <SidebarMenuButton asChild isActive={isActive} className="h-auto min-h-10 py-2 px-3 text-sm leading-relaxed">
         <Link 
           href={href} 
           prefetch={true}
@@ -162,7 +162,7 @@ const NavLink = ({ href, children, icon, module }: { href: string; children: Rea
           className="flex items-center gap-2.5 w-full text-right"
         >
           {icon}
-          <span className="flex-1 text-right leading-normal break-words">{children}</span>
+          <span className="flex-1 text-right leading-relaxed break-words whitespace-normal">{children}</span>
         </Link>
       </SidebarMenuButton>
     </SidebarMenuItem>
@@ -228,11 +228,11 @@ const NavCollapsible = ({ title, icon, children, modules, searchTerm, defaultOpe
 
     return (
         <Collapsible defaultOpen={defaultOpen || isAnyChildActive(children) || (searchTerm !== '' && filteredChildren.length > 0)}>
-            <SidebarMenuItem>
+            <SidebarMenuItem className="my-0.5">
                 <CollapsibleTrigger asChild>
-                     <SidebarMenuButton className="h-auto min-h-9 py-1.5 text-sm leading-snug w-full">
+                     <SidebarMenuButton className="h-auto min-h-10 py-2 px-3 text-sm leading-relaxed w-full">
                         {icon}
-                        <span className="flex-1 text-right leading-normal break-words">{title}</span>
+                        <span className="flex-1 text-right leading-relaxed break-words whitespace-normal">{title}</span>
                         <ChevronDown className="mr-auto h-4 w-4 shrink-0 transition-transform duration-200 group-data-[state=open]:rotate-180" />
                     </SidebarMenuButton>
                 </CollapsibleTrigger>
@@ -256,15 +256,15 @@ const NavSubLink = ({ href, children, module }: { href: string; children: React.
     }
 
     return (
-        <SidebarMenuSubItem>
-            <SidebarMenuSubButton asChild isActive={isActive} className="h-auto min-h-8 py-1.5 text-xs md:text-sm leading-snug">
+        <SidebarMenuSubItem className="my-0.5">
+            <SidebarMenuSubButton asChild isActive={isActive} className="h-auto min-h-9 py-2 px-2.5 text-xs md:text-sm leading-relaxed w-full">
                 <Link 
                     href={href} 
                     prefetch={true}
                     onClick={() => setOpenMobile(false)}
                     className="flex items-center gap-2 w-full text-right"
                 >
-                    <span className="flex-1 text-right leading-normal break-words">{children}</span>
+                    <span className="flex-1 text-right leading-relaxed break-words whitespace-normal">{children}</span>
                 </Link>
             </SidebarMenuSubButton>
         </SidebarMenuSubItem>
@@ -450,7 +450,7 @@ const MobileSidebar = () => {
              <SheetContent 
                 side="right" 
                 className="w-[var(--sidebar-width-mobile)] bg-sidebar p-0 text-sidebar-foreground flex flex-col" 
-                style={{ '--sidebar-width-mobile': '315px' } as React.CSSProperties}
+                style={{ '--sidebar-width-mobile': '350px' } as React.CSSProperties}
                 onOpenAutoFocus={(event) => event.preventDefault()}
             >
                  <SheetHeader className="p-4 border-b">
