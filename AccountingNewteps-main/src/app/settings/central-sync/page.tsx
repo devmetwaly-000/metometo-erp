@@ -19,7 +19,8 @@ import {
     ShoppingCart, Truck, Banknote, CreditCard, Receipt, Boxes, Activity, Sparkles,
     ArrowLeftRight, Wallet, Users, UserCheck, Terminal, Search, CheckCircle,
     HardDrive, Cpu, AlertCircle, FileText, CheckCheck, X, ListChecks, ShieldAlert,
-    Lock, Key, Building2, Store, Shield, SlidersHorizontal, RotateCcw, PauseCircle, PlayCircle, Filter, ArrowUp, ArrowDown
+    Lock, Key, Building2, Store, Shield, SlidersHorizontal, RotateCcw, PauseCircle, PlayCircle, Filter, ArrowUp, ArrowDown,
+    Eye, EyeOff
 } from "lucide-react";
 import { CentralSyncConfig, TableSyncMatrixItem, TablesSyncMatrixResponse, SyncDirection } from '@/lib/central-sync';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -117,6 +118,64 @@ export default function CentralSyncSettingsPage() {
     const [rolePassword, setRolePassword] = useState('');
     const [isSwitchingRole, setIsSwitchingRole] = useState(false);
     const [roleSwitchError, setRoleSwitchError] = useState<string | null>(null);
+
+    // Password Protection Gate State
+    const [isUnlocked, setIsUnlocked] = useState(false);
+    const [accessPassword, setAccessPassword] = useState('');
+    const [isCheckingPassword, setIsCheckingPassword] = useState(false);
+    const [authError, setAuthError] = useState<string | null>(null);
+    const [showPassword, setShowPassword] = useState(false);
+
+    useEffect(() => {
+        if (typeof window !== 'undefined') {
+            const stored = sessionStorage.getItem('central_sync_authenticated');
+            if (stored === 'true') {
+                setIsUnlocked(true);
+            }
+        }
+    }, []);
+
+    const handleVerifyAccessPassword = async (e?: React.FormEvent) => {
+        if (e) e.preventDefault();
+        if (!accessPassword.trim()) {
+            setAuthError('يرجى إدخال كلمة المرور للمتابعة');
+            return;
+        }
+        setIsCheckingPassword(true);
+        setAuthError(null);
+        try {
+            const res = await fetch('/api/sync/central', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ action: 'verify-password', password: accessPassword.trim() })
+            });
+            const data = await res.json();
+            if (data.success) {
+                setIsUnlocked(true);
+                sessionStorage.setItem('central_sync_authenticated', 'true');
+                toast({
+                    title: 'تم التحقق بنجاح',
+                    description: 'مرحباً بك في شاشة إعدادات المزامنة والسيرفر المركزي.'
+                });
+            } else {
+                setAuthError(data.error || 'كلمة المرور غير صحيحة!');
+            }
+        } catch (err: any) {
+            setAuthError(err.message || 'خطأ في الاتصال بالخادم');
+        } finally {
+            setIsCheckingPassword(false);
+        }
+    };
+
+    const handleLockScreen = () => {
+        setIsUnlocked(false);
+        setAccessPassword('');
+        sessionStorage.removeItem('central_sync_authenticated');
+        toast({
+            title: 'تم قفل الشاشة',
+            description: 'تم قفل شاشة إعدادات المزامنة بنجاح.'
+        });
+    };
 
     // Load Central Sync configuration and sync status
     const loadSettings = async (isInitial = false) => {
@@ -745,6 +804,84 @@ export default function CentralSyncSettingsPage() {
         return { total: list.length, push, pull, bidirectional, disabled };
     }, [syncMatrix]);
 
+    if (!isUnlocked) {
+        return (
+            <div className="flex flex-col w-full min-h-[75vh] items-center justify-center p-4">
+                <Card className="w-full max-w-md border border-border shadow-xl bg-card text-card-foreground">
+                    <CardHeader className="text-center pb-4">
+                        <div className="mx-auto w-14 h-14 rounded-full bg-amber-500/10 flex items-center justify-center mb-3 text-amber-600 dark:text-amber-400">
+                            <Lock className="w-7 h-7" />
+                        </div>
+                        <CardTitle className="text-xl font-bold flex items-center justify-center gap-2">
+                            <span>منطقة إعدادات المزامنة محمية</span>
+                        </CardTitle>
+                        <CardDescription className="text-xs text-muted-foreground mt-1 leading-relaxed">
+                            إعدادات السيرفر المركزي ومصفوفة الربط ومزامنة البيانات حساسة وتؤثر على تداول الفواتير والحركات. يرجى إدخال كلمة مرور الإدارة للمتابعة.
+                        </CardDescription>
+                    </CardHeader>
+                    <CardContent>
+                        <form onSubmit={handleVerifyAccessPassword} className="space-y-4">
+                            <div className="space-y-2">
+                                <Label className="text-xs font-semibold">كلمة مرور الإدارة / النظام</Label>
+                                <div className="relative">
+                                    <Input
+                                        type={showPassword ? "text" : "password"}
+                                        placeholder="أدخل كلمة المرور..."
+                                        value={accessPassword}
+                                        onChange={(e) => {
+                                            setAccessPassword(e.target.value);
+                                            if (authError) setAuthError(null);
+                                        }}
+                                        autoFocus
+                                        className="h-10 text-center font-mono tracking-widest text-base pl-10"
+                                    />
+                                    <button
+                                        type="button"
+                                        onClick={() => setShowPassword(!showPassword)}
+                                        className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground text-xs p-1"
+                                        tabIndex={-1}
+                                    >
+                                        {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                                    </button>
+                                </div>
+                                {authError && (
+                                    <div className="flex items-center gap-1.5 text-xs text-rose-500 font-medium bg-rose-500/10 p-2.5 rounded-md border border-rose-500/20">
+                                        <AlertCircle className="h-4 w-4 flex-shrink-0" />
+                                        <span>{authError}</span>
+                                    </div>
+                                )}
+                            </div>
+
+                            <Button 
+                                type="submit" 
+                                className="w-full h-10 font-bold gap-2 text-sm"
+                                disabled={isCheckingPassword || !accessPassword.trim()}
+                            >
+                                {isCheckingPassword ? (
+                                    <>
+                                        <Loader2 className="h-4 w-4 animate-spin" />
+                                        <span>جارٍ التحقق...</span>
+                                    </>
+                                ) : (
+                                    <>
+                                        <ShieldCheck className="h-4 w-4" />
+                                        <span>تأكيد والدخول للإعدادات</span>
+                                    </>
+                                )}
+                            </Button>
+                        </form>
+                    </CardContent>
+                    <CardFooter className="flex justify-center border-t py-3 text-[11px] text-muted-foreground bg-muted/20">
+                        <span className="flex items-center gap-1">
+                            <Shield className="h-3 w-3 text-muted-foreground" />
+                            حماية وتشفير صلاحيات الفروع المركزية
+                        </span>
+                    </CardFooter>
+                </Card>
+            </div>
+        );
+    }
+
     if (isLoading) {
         return (
             <div className="flex flex-col justify-center items-center py-32 gap-3">
@@ -759,6 +896,16 @@ export default function CentralSyncSettingsPage() {
             {/* 1. Header with Title and Global Action Buttons */}
             <PageHeader title="المزامنة المركزية وإدارة الربط السحابي">
                 <div className="flex items-center gap-2 flex-wrap">
+                    <Button 
+                        variant="outline" 
+                        size="sm" 
+                        onClick={handleLockScreen} 
+                        className="gap-1.5 text-xs font-semibold h-8 text-rose-600 hover:text-rose-700 hover:bg-rose-50 dark:hover:bg-rose-950/20 border-rose-200 dark:border-rose-800"
+                        title="قفل شاشة إعدادات المزامنة"
+                    >
+                        <Lock className="h-3.5 w-3.5" />
+                        قفل الشاشة
+                    </Button>
                     <Button 
                         variant="outline" 
                         size="sm" 

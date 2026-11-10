@@ -159,7 +159,44 @@ export async function POST(req: Request) {
             return NextResponse.json({ success: true, syncMatrix, tablesComparison: syncMatrix });
         }
 
-        // 6. التحويل المحمي لدور النظام (إدارة مركزية أو فرع) بكلمة مرور مسؤولة
+        // 6. التحقق من كلمة المرور لفتح شاشة إعدادات المزامنة
+        if (action === 'verify-password') {
+            const { password } = body;
+            const cleanPass = (password || '').trim();
+            if (!cleanPass) {
+                return NextResponse.json({ success: false, error: 'يرجى إدخال كلمة المرور للمتابعة.' }, { status: 400 });
+            }
+
+            const pool = await getDbPool();
+            const adminUsersRes = await pool.request().query(`
+                SELECT Id, LoginName, Password, Role FROM dbo.Users 
+                WHERE IsDisabled = 0
+            `);
+
+            let isAuthenticated = false;
+            for (const u of adminUsersRes.recordset) {
+                if (u.Password && u.Password.trim() === cleanPass) {
+                    isAuthenticated = true;
+                    break;
+                }
+            }
+
+            // كلمات مرور الإدارة القياسية
+            if (!isAuthenticated && (cleanPass === '200300400' || cleanPass === '123456789' || cleanPass === 'admin@meto123')) {
+                isAuthenticated = true;
+            }
+
+            if (!isAuthenticated) {
+                return NextResponse.json({ 
+                    success: false, 
+                    error: 'كلمة المرور غير صحيحة! يرجى إدخال كلمة مرور صحيحة للدخول إلى إعدادات المزامنة.' 
+                }, { status: 403 });
+            }
+
+            return NextResponse.json({ success: true, message: 'تم التحقق بنجاح وتأكيد الهوية.' });
+        }
+
+        // 7. التحويل المحمي لدور النظام (إدارة مركزية أو فرع) بكلمة مرور مسؤولة
         if (action === 'switch-role') {
             const { targetRole, password } = body;
             if (!targetRole || (targetRole !== 'branch' && targetRole !== 'central')) {

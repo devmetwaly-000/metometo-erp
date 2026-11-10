@@ -214,11 +214,37 @@ export interface TablesSyncMatrixResponse {
     tables: TableSyncMatrixItem[];
 }
 
+let serverAutoSyncTimer: NodeJS.Timeout | null = null;
+let isSyncInProgress = false;
+
+export function initServerAutoSync() {
+    if (serverAutoSyncTimer) return;
+    // فحص دوري كل دقيقة للتحقق من حلول موعد المزامنة التلقائية
+    serverAutoSyncTimer = setInterval(async () => {
+        try {
+            const config = await getCentralConfig();
+            if (!config.autoSync || config.systemRole === 'central') return;
+
+            const intervalMinutes = Math.max(1, Number(config.autoSyncIntervalMinutes) || 5);
+            const intervalMs = intervalMinutes * 60 * 1000;
+            const lastSync = config.lastSyncTime ? new Date(config.lastSyncTime).getTime() : 0;
+
+            if (Date.now() - lastSync >= intervalMs && !isSyncInProgress) {
+                console.log(`[AutoSync-Server] Triggering scheduled auto-sync (interval: ${intervalMinutes} min)...`);
+                await runFullSync({ mode: 'all' });
+            }
+        } catch (err: any) {
+            console.warn('[AutoSync-Server] Scheduled sync check failed:', err.message);
+        }
+    }, 60000);
+}
+
 /**
  * جلب إعدادات السيرفر المركزي من قاعدة البيانات المحلية
  */
 export async function getCentralConfig(): Promise<CentralSyncConfig> {
     try {
+        initServerAutoSync();
         const pool = await getDbPool();
         const res = await pool.request()
             .input('Key', sql.NVarChar(100), 'central_sync')
@@ -469,7 +495,8 @@ export async function getTablesSyncMatrix(): Promise<TablesSyncMatrixResponse> {
             MAX(CAST(t.[RowVersion] AS BIGINT)) as currentLocalRowVersion,
             SUM(CASE 
                 WHEN (m.LastPushRowVersion IS NULL OR CAST(t.[RowVersion] AS BIGINT) > m.LastPushRowVersion)
-                     AND (t.BranchCode = '${branchCode}' OR t.BranchCode IS NULL)
+                     OR t.SyncStatus = 'pending'
+                     OR t.LastSyncedAt IS NULL
                 THEN 1 ELSE 0 
             END) as pendingPush,
             MAX(t.UpdatedAt) as lastLocalModified,
@@ -737,6 +764,16 @@ export async function runFullSync(options?: {
     error?: string;
     details?: string;
 }> {
+    if (isSyncInProgress) {
+        return {
+            success: true,
+            pushedCount: 0,
+            pulledCount: 0,
+            details: 'المزامنة قيد التنفيذ حالياً بالفعل'
+        };
+    }
+    isSyncInProgress = true;
+
     const localPool = await getDbPool();
     const config = await getCentralConfig();
     const mode = options?.mode || 'all';
@@ -816,19 +853,17 @@ export async function runFullSync(options?: {
                     const pushQuery = isForced
                         ? `SELECT *, CAST([RowVersion] AS BIGINT) as _RowVersionBigInt 
                            FROM dbo.[${tableName}]
-                           WHERE (BranchCode = @BranchCode OR BranchCode IS NULL)
                            ORDER BY [RowVersion] ASC`
-                        : `SELECT TOP 300 *, CAST([RowVersion] AS BIGINT) as _RowVersionBigInt 
+                        : `SELECT TOP 500 *, CAST([RowVersion] AS BIGINT) as _RowVersionBigInt 
                            FROM dbo.[${tableName}]
                            WHERE (
                                ${lastPushRv ? `CAST([RowVersion] AS BIGINT) > ${lastPushRv}` : '1=1'}
                                OR SyncStatus = 'pending'
+                               OR LastSyncedAt IS NULL
                            )
-                           AND (BranchCode = @BranchCode OR BranchCode IS NULL)
                            ORDER BY [RowVersion] ASC`;
 
                     const pendingRes = await localPool.request()
-                        .input('BranchCode', sql.NVarChar(50), config.currentBranchCode)
                         .query(pushQuery);
 
                     const rows = pendingRes.recordset;
@@ -1005,24 +1040,32 @@ export async function runFullSync(options?: {
                             totalPushed++;
                         }
 
-                        // تحديث علامة LastPushRowVersion في جدول المزامنة استناداً إلى أقصى RowVersion محلي حالي
+                        // تحديث علامة LastPushRowVersion في جدول المزامنة
                         const maxLocalRes = await localPool.request().query(`
                             SELECT MAX(CAST([RowVersion] AS BIGINT)) as maxRv, MAX(UpdatedAt) as maxU, COUNT(*) as c 
                             FROM dbo.[${tableName}]
                         `);
                         const maxRv = maxLocalRes.recordset[0]?.maxRv || maxPushedRv.toString();
+                        const targetPushRv = rows.length < 500 ? maxRv : maxPushedRv.toString();
                         const maxU = maxLocalRes.recordset[0]?.maxU ? `'${new Date(maxLocalRes.recordset[0].maxU).toISOString()}'` : 'NULL';
                         const totalRows = maxLocalRes.recordset[0]?.c || 0;
 
+                        const pendingCheck = await localPool.request().query(`
+                            SELECT COUNT(*) as pendingCount 
+                            FROM dbo.[${tableName}] 
+                            WHERE SyncStatus = 'pending' OR LastSyncedAt IS NULL
+                        `);
+                        const pendingRemaining = pendingCheck.recordset[0]?.pendingCount || 0;
+
                         await localPool.request().query(`
                             UPDATE dbo.SyncTrackingMatrix
-                            SET LastPushRowVersion = ${maxRv},
+                            SET LastPushRowVersion = ${targetPushRv},
                                 CurrentLocalRowVersion = ${maxRv},
                                 LastLocalTimestamp = ${maxU},
                                 LastSyncedTimestamp = SYSUTCDATETIME(),
                                 LocalRowsCount = ${totalRows},
-                                PendingChangesCount = 0,
-                                SyncStatus = 'synced',
+                                PendingChangesCount = ${pendingRemaining},
+                                SyncStatus = '${pendingRemaining > 0 ? "pending_push" : "synced"}',
                                 LastSyncCheckAt = SYSUTCDATETIME()
                             WHERE TableName = '${tableName}';
                         `);
@@ -1031,13 +1074,20 @@ export async function runFullSync(options?: {
                             const cMaxRes = await localPool.request().query(`SELECT MAX(UpdatedAt) as maxU, COUNT(*) as c FROM dbo.[${meta.childTable}]`);
                             const cMaxU = cMaxRes.recordset[0]?.maxU ? `'${new Date(cMaxRes.recordset[0].maxU).toISOString()}'` : 'NULL';
                             const cTotalRows = cMaxRes.recordset[0]?.c || 0;
+                            const cPendingCheck = await localPool.request().query(`
+                                SELECT COUNT(*) as pendingCount 
+                                FROM dbo.[${meta.childTable}] 
+                                WHERE SyncStatus = 'pending' OR LastSyncedAt IS NULL
+                            `);
+                            const cPendingRemaining = cPendingCheck.recordset[0]?.pendingCount || 0;
+
                             await localPool.request().query(`
                                 UPDATE dbo.SyncTrackingMatrix
                                 SET LastLocalTimestamp = ${cMaxU},
                                     LastSyncedTimestamp = SYSUTCDATETIME(),
                                     LocalRowsCount = ${cTotalRows},
-                                    PendingChangesCount = 0,
-                                    SyncStatus = 'synced',
+                                    PendingChangesCount = ${cPendingRemaining},
+                                    SyncStatus = '${cPendingRemaining > 0 ? "pending_push" : "synced"}',
                                     LastSyncCheckAt = SYSUTCDATETIME()
                                 WHERE TableName = '${meta.childTable}';
                             `);
@@ -1259,6 +1309,8 @@ export async function runFullSync(options?: {
             pulledCount: totalPulled,
             error: err.message || 'حدث خطأ أثناء إجراء المزامنة مع السيرفر المركزي.'
         };
+    } finally {
+        isSyncInProgress = false;
     }
 }
 

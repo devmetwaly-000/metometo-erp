@@ -373,6 +373,62 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         await refreshDataFromSqlServer();
     }, [refreshDataFromSqlServer]);
 
+    // ==========================================
+    // المشغل التلقائي الدوري للمزامنة في الخلفية (Background Auto-Sync Heartbeat)
+    // ==========================================
+    useEffect(() => {
+        const syncConfig = allData?.settings?.central_sync;
+        if (!syncConfig || syncConfig.autoSync === false || syncConfig.systemRole === 'central') return;
+
+        const intervalMinutes = Math.max(1, Number(syncConfig.autoSyncIntervalMinutes) || 5);
+        const intervalMs = intervalMinutes * 60 * 1000;
+
+        let isSyncing = false;
+
+        const runAutoSyncTick = async () => {
+            if (isSyncing || typeof window === 'undefined') return;
+
+            // تنسيق بين التابات لمنع تكرار الطلب في نفس اللحظة
+            const lastTrigger = Number(localStorage.getItem('app_last_auto_sync_trigger') || '0');
+            const now = Date.now();
+            if (now - lastTrigger < intervalMs - 5000) return;
+
+            localStorage.setItem('app_last_auto_sync_trigger', String(now));
+            try {
+                isSyncing = true;
+                const res = await fetch('/api/sync/central', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ action: 'sync', mode: 'all' })
+                });
+                const data = await res.json();
+                if (data.success && data.pulledCount > 0) {
+                    refreshDataFromSqlServer();
+                }
+            } catch (tickErr) {
+                console.warn('[AutoSync Heartbeat] tick error:', tickErr);
+            } finally {
+                isSyncing = false;
+            }
+        };
+
+        // فحص مبدئي إذا مر وقت كافٍ منذ آخر مزامنة
+        const lastSyncTime = syncConfig.lastSyncTime ? new Date(syncConfig.lastSyncTime).getTime() : 0;
+        if (Date.now() - lastSyncTime > intervalMs) {
+            const timeout = setTimeout(() => {
+                runAutoSyncTick();
+            }, 5000);
+            const interval = setInterval(runAutoSyncTick, Math.min(intervalMs, 60000));
+            return () => {
+                clearTimeout(timeout);
+                clearInterval(interval);
+            };
+        }
+
+        const interval = setInterval(runAutoSyncTick, Math.min(intervalMs, 60000));
+        return () => clearInterval(interval);
+    }, [allData?.settings?.central_sync, refreshDataFromSqlServer]);
+
     const systemRole: 'branch' | 'central' = useMemo(() => {
         const sRole = allData?.settings?.system_role || allData?.settings?.central_sync?.systemRole;
         return sRole === 'central' ? 'central' : 'branch';
