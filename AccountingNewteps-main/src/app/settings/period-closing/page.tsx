@@ -1,4 +1,3 @@
-
 "use client";
 
 import PageHeader from "@/components/page-header";
@@ -15,8 +14,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
 import { useData } from "@/contexts/data-provider";
-import { Loader2, AlertTriangle, History, RefreshCcw, Lock, Trash2, Calculator } from "lucide-react";
-import React, { useState, useMemo, useCallback, useEffect } from "react";
+import { Loader2, AlertTriangle, Lock, Trash2, Calculator, CheckCircle2 } from "lucide-react";
+import React, { useState, useMemo } from "react";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -31,12 +30,12 @@ import {
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { useAuth } from "@/contexts/auth-context";
-
+import { calculateStockForItemInWarehouse } from "@/lib/inventory-utils";
+import { cn } from "@/lib/utils";
 
 interface Item { id: string; name: string; code: string; }
 interface Warehouse { id: string; name: string; }
 interface InventoryClosing { id: string; warehouseId: string; closingDate: string; closedByName: string; balances: { itemId: string, balance: number }[] }
-
 
 export default function PeriodClosingPage() {
     const { toast } = useToast();
@@ -48,12 +47,61 @@ export default function PeriodClosingPage() {
     const { user } = useAuth();
     
     const { 
-        items, warehouses, inventoryClosings, inventory, dbAction, loading: dataLoading,
-        stockInRecords, salesInvoices, posSales, stockOutRecords, stockTransferRecords, stockAdjustmentRecords, salesReturns, posReturns, purchaseReturns, stockIssuesToReps, stockReturnsFromReps,
-        posSessions
+        items, warehouses, inventoryClosings, allData, dbAction, loading: dataLoading,
+        posSessions, settings
     } = useData();
 
-    const openWorkDay = useMemo(() => posSessions.find((s: any) => !s.isClosed), [posSessions]);
+    // فحص حالة اليوم المحدد في يوميات العمل (هل اليوم مغلق أم لا يزال مفتوحاً)
+    const selectedDayStatus = useMemo(() => {
+        if (!closingDate) return null;
+
+        // استخراج تاريخ الإقفال المختار بصيغة YYYY-MM-DD
+        const selectedDateStr = new Date(closingDate).toLocaleDateString('en-CA');
+        const todayStr = new Date().toLocaleDateString('en-CA');
+        const activePosWorkDay = settings?.main?.posSettings?.workDay;
+
+        const openSessions = (posSessions || []).filter((s: any) => !s.isClosed);
+
+        // هل توجد جلسة عمل مفتوحة تطابق اليوم المختار تحديداً؟
+        const openSessionOnSelectedDate = openSessions.find((s: any) => {
+            const sDate = s.workDayDate 
+                || s.closingStatement?.workDayDate 
+                || (s.startTime ? new Date(s.startTime).toLocaleDateString('en-CA') : null)
+                || activePosWorkDay;
+            return sDate === selectedDateStr;
+        });
+
+        // إذا كان اليوم المختار هو تاريخ اليوم الفعلي وتوجد جلسة عمل مفتوحة لم تُقفل بعد
+        const isTodayOpen = (selectedDateStr === todayStr && openSessions.length > 0);
+
+        // إذا كان اليوم المختار يطابق يوم العمل النشط في إعدادات نقاط البيع ولم يُقفل
+        const isActiveWorkDayOpen = Boolean(activePosWorkDay && selectedDateStr === activePosWorkDay && openSessions.length > 0);
+
+        if (openSessionOnSelectedDate || isTodayOpen || isActiveWorkDayOpen) {
+            return {
+                isClosed: false,
+                isOpen: true,
+                message: `يوم العمل لتاريخ (${selectedDateStr}) ما زال مفتوحاً ونشطاً في نقاط البيع.`
+            };
+        }
+
+        // البحث عما إذا كان هناك سجل إقفال مثبت ليوم العمل لهذا التاريخ
+        const closedSession = (posSessions || []).find((s: any) => {
+            if (!s.isClosed) return false;
+            const sDate = s.workDayDate 
+                || s.closingStatement?.workDayDate 
+                || (s.startTime ? new Date(s.startTime).toLocaleDateString('en-CA') : null);
+            return sDate === selectedDateStr;
+        });
+
+        return {
+            isClosed: true,
+            isOpen: false,
+            message: closedSession 
+                ? `يوم العمل لتاريخ (${selectedDateStr}) مغلق في سجل اليوميات.` 
+                : `تاريخ (${selectedDateStr}) مغلق وجاهز للإقفال وتكوين الرصيد الافتتاحي.`
+        };
+    }, [closingDate, posSessions, settings]);
 
     const closingsForSelectedWarehouse = useMemo(() => {
         if (!warehouseId) return [];
@@ -67,40 +115,6 @@ export default function PeriodClosingPage() {
         return new Date(closingsForSelectedWarehouse[0].closingDate);
     }, [closingsForSelectedWarehouse]);
 
-    const calculateStock = useCallback((item: any, warehouseId: string, upToDate: Date): number => {
-        const closingsForWarehouse = inventoryClosings.filter((c: any) => c.warehouseId === warehouseId);
-        const lastClosing = closingsForWarehouse.length > 0 ? closingsForWarehouse.reduce((latest: any, current: any) => new Date(latest.closingDate) > new Date(current.closingDate) ? latest : current) : null;
-        const lastClosingDate = lastClosing ? new Date(lastClosing.closingDate) : new Date(0);
-        
-        let stock = lastClosing?.balances.find((b: any) => b.itemId === item.id)?.balance || 0;
-        
-        const filterTransactions = (t: any) => {
-            const txDate = new Date(t.date);
-            return txDate > lastClosingDate && txDate <= upToDate;
-        };
-
-        // INCOMING
-        stockInRecords.filter((si:any) => si.warehouseId === warehouseId && filterTransactions(si)).forEach((si: any) => si.items.filter((i: any) => (i.id || i.itemId) === item.id).forEach((i: any) => stock += i.qty));
-        stockTransferRecords.filter((t:any) => t.toSourceId === warehouseId && filterTransactions(t)).forEach((t: any) => t.items.filter((i: any) => i.id === item.id).forEach((i: any) => stock += i.qty));
-        stockAdjustmentRecords.filter((adj:any) => adj.warehouseId === warehouseId && filterTransactions(adj)).forEach((adj: any) => adj.items.filter((i: any) => i.itemId === item.id && i.difference > 0).forEach((i: any) => stock += i.difference));
-        salesReturns.filter((sr:any) => sr.warehouseId === warehouseId && filterTransactions(sr)).forEach((sr: any) => sr.items.filter((i: any) => i.id === item.id).forEach((i: any) => stock += i.qty));
-        posReturns.filter((pr:any) => (pr as any).warehouseId === warehouseId && filterTransactions(pr)).forEach((pr: any) => pr.items.filter((i: any) => i.id === item.id).forEach((i: any) => stock += i.qty));
-        stockReturnsFromReps.filter((rfr:any) => rfr.warehouseId === warehouseId && filterTransactions(rfr)).forEach((rfr: any) => rfr.items.filter((i: any) => i.id === item.id).forEach((i: any) => stock += i.qty));
-        
-        // OUTGOING
-        salesInvoices.filter((s:any) => s.warehouseId === warehouseId && s.status === 'approved' && filterTransactions(s)).forEach((s: any) => s.items.filter((i: any) => i.id === item.id).forEach((i: any) => stock -= i.qty));
-        posSales.filter((s: any) => s.warehouseId === warehouseId && filterTransactions(s)).forEach((s: any) => s.items.filter((i: any) => i.id === item.id).forEach((i: any) => stock -= i.qty));
-        stockOutRecords.filter((so:any) => so.sourceId === warehouseId && filterTransactions(so)).forEach((so: any) => so.items.filter((i:any) => i.id === item.id).forEach((i:any) => stock -= i.qty));
-        stockTransferRecords.filter((t:any) => t.fromSourceId === warehouseId && filterTransactions(t)).forEach((t: any) => t.items.filter((i: any) => i.id === item.id).forEach((i: any) => stock -= i.qty));
-        stockAdjustmentRecords.filter((adj:any) => adj.warehouseId === warehouseId && filterTransactions(adj)).forEach((adj: any) => adj.items.filter((i: any) => i.itemId === item.id && i.difference < 0).forEach((i: any) => stock += i.difference));
-        purchaseReturns.filter((pr:any) => pr.warehouseId === warehouseId && filterTransactions(pr)).forEach((pr: any) => pr.items.filter((i: any) => i.id === item.id).forEach((i: any) => stock -= i.qty));
-        stockIssuesToReps.filter((itr:any) => itr.warehouseId === warehouseId && filterTransactions(itr)).forEach((itr: any) => itr.items.filter((i: any) => i.id === item.id).forEach((i: any) => stock -= i.qty));
-        
-        return stock;
-
-    }, [inventoryClosings, stockInRecords, stockTransferRecords, stockAdjustmentRecords, salesReturns, posReturns, stockReturnsFromReps, salesInvoices, posSales, stockOutRecords, purchaseReturns, stockIssuesToReps]);
-
-    
     const handleCalculateBalances = () => {
         if (!closingDate || !warehouseId) {
             toast({ variant: 'destructive', title: 'خطأ', description: 'يرجى تحديد الفرع وتاريخ الإقفال.' });
@@ -108,27 +122,34 @@ export default function PeriodClosingPage() {
         }
 
         if (lastClosingDate && new Date(closingDate) <= lastClosingDate) {
-            toast({ variant: 'destructive', title: 'تاريخ غير صالح', description: `تاريخ الإقفال يجب أن يكون بعد تاريخ آخر إقفال (${lastClosingDate.toLocaleDateString('ar-EG')}).` });
+            toast({ 
+                variant: 'destructive', 
+                title: 'تاريخ غير صالح', 
+                description: `تاريخ الإقفال يجب أن يكون بعد تاريخ آخر إقفال (${lastClosingDate.toLocaleDateString('ar-EG')}).` 
+            });
             return;
         }
         
         if (new Date(closingDate) > new Date()) {
-             toast({ variant: 'destructive', title: 'تاريخ غير صالح', description: 'لا يمكن إقفال فترة في تاريخ مستقبلي.' });
+            toast({ variant: 'destructive', title: 'تاريخ غير صالح', description: 'لا يمكن إقفال فترة في تاريخ مستقبلي.' });
             return;
         }
 
-        if (openWorkDay) {
-            toast({ variant: 'destructive', title: 'يوم العمل مفتوح', description: 'يجب إقفال يوم العمل الحالي في شاشة إدارة اليومية قبل إقفال الفترة المخزنية.' });
+        // إذا كان اليوم المختار بالذات ما زال مفتوحاً كـ يوم عمل في نقاط البيع
+        if (selectedDayStatus && selectedDayStatus.isOpen) {
+            toast({ 
+                variant: 'destructive', 
+                title: 'يوم العمل لا يزال مفتوحاً', 
+                description: `${selectedDayStatus.message} يجب إقفال يوم العمل أولاً في شاشة إدارة اليومية قبل إقفال الفترة المخزنية.` 
+            });
             return;
         }
 
         setIsLoading(true);
-        const upToDate = new Date(closingDate);
-        upToDate.setHours(23, 59, 59, 999);
-
+        // حساب الرصيد الدفتري الدقيق لكل صنف في المخزن المحدد حتى تاريخ ونهاية يوم الإقفال
         const balances = items
             .map((item: Item) => {
-                const balance = calculateStock(item, warehouseId, upToDate);
+                const balance = calculateStockForItemInWarehouse(item.id, warehouseId, allData, closingDate);
                 return {
                     itemId: item.id,
                     name: item.name,
@@ -140,25 +161,40 @@ export default function PeriodClosingPage() {
 
         setReviewData(balances);
         setIsLoading(false);
-    }
-    
+    };
 
     const handlePerformClosing = async () => {
         if (!closingDate || !warehouseId || !reviewData) {
             toast({ variant: "destructive", title: "خطأ", description: "البيانات غير جاهزة للإقفال." });
             return;
         }
+
+        if (selectedDayStatus && selectedDayStatus.isOpen) {
+            toast({ 
+                variant: 'destructive', 
+                title: 'يوم العمل لا يزال مفتوحاً', 
+                description: `${selectedDayStatus.message} يجب إقفال يوم العمل أولاً قبل إقفال الفترة.` 
+            });
+            return;
+        }
+
         setIsLoading(true);
         try {
+            const closingDateTime = new Date(closingDate);
+            closingDateTime.setHours(23, 59, 59, 999);
+
             await dbAction('inventoryClosings', 'add', {
                 warehouseId: warehouseId,
-                closingDate: new Date(closingDate).toISOString(),
+                closingDate: closingDateTime.toISOString(),
                 closedById: user?.id,
                 closedByName: user?.name,
                 balances: reviewData.map(({ itemId, balance }) => ({ itemId, balance })),
             });
 
-            toast({ title: "تم الإقفال بنجاح!", description: `تم إقفال الأرصدة للمخزن المحدد بتاريخ ${new Date(closingDate).toLocaleDateString('ar-EG')}.` });
+            toast({ 
+                title: "تم الإقفال بنجاح!", 
+                description: `تم إقفال الأرصدة للمخزن المحدد وتكوين الرصيد الافتتاحي الجديد بتاريخ ${new Date(closingDate).toLocaleDateString('ar-EG')}.` 
+            });
             setReviewData(null);
             setClosingDate("");
             setWarehouseId("");
@@ -172,35 +208,34 @@ export default function PeriodClosingPage() {
     const handleDeleteClosing = async (closingId: string) => {
         setIsLoading(true);
         try {
-            await dbAction('inventoryClosings', 'remove', {id: closingId});
-            toast({title: "تم فك الإقفال بنجاح"});
-            setSelectedClosingDetails(null); // Close details view after deletion
+            await dbAction('inventoryClosings', 'remove', { id: closingId });
+            toast({ title: "تم فك الإقفال بنجاح" });
+            setSelectedClosingDetails(null);
         } catch (error) {
-             toast({ variant: 'destructive', title: "خطأ", description: "فشلت عملية فك الإقفال." });
+            toast({ variant: 'destructive', title: "خطأ", description: "فشلت عملية فك الإقفال." });
         } finally {
             setIsLoading(false);
         }
-    }
-
+    };
 
     return (
         <>
-            <PageHeader title="إقفال الفترات المخزنية" />
+            <PageHeader title="إقفال الفترات المخزنية والأرصدة الافتتاحية" />
             <main className="flex flex-1 flex-col gap-4 p-4 md:gap-8 md:p-6">
                 <Card>
                     <CardHeader>
-                        <CardTitle>إقفال فترة جديدة</CardTitle>
+                        <CardTitle>إقفال فترة جديدة وتكوين رصيد افتتاحي</CardTitle>
                         <CardDescription>
-                            حدد المخزن وتاريخ الإقفال. سيقوم النظام بحساب الأرصدة الدفترية وحفظها كرصيد افتتاحي للفترة الجديدة، وتجميد جميع الحركات قبل هذا التاريخ.
+                            حدد المخزن وتاريخ الإقفال. سيقوم النظام بحساب الأرصدة الدفترية وحفظها كرصيد افتتاحي للفترة الجديدة، مع التحقق من أن اليوم المختار مغلق في يوميات العمل.
                         </CardDescription>
                     </CardHeader>
                     <CardContent className="grid md:grid-cols-3 gap-4">
                        <div className="space-y-2">
                             <Label htmlFor="warehouse">المخزن (الفرع)</Label>
-                            <Select value={warehouseId} onValueChange={v => {setWarehouseId(v); setReviewData(null); setSelectedClosingDetails(null);}}>
+                            <Select value={warehouseId} onValueChange={v => { setWarehouseId(v); setReviewData(null); setSelectedClosingDetails(null); }}>
                                 <SelectTrigger><SelectValue placeholder="اختر فرعًا" /></SelectTrigger>
                                 <SelectContent>
-                                    {warehouses.map((w: Warehouse) => <SelectItem key={w.id} value={w.id!}>{w.name}</SelectItem>)}
+                                    {warehouses.map((w: Warehouse) => <SelectItem key={w.id} value={w.id}>{w.name}</SelectItem>)}
                                 </SelectContent>
                             </Select>
                             {lastClosingDate && (
@@ -215,8 +250,31 @@ export default function PeriodClosingPage() {
                                 id="closing-date"
                                 type="date"
                                 value={closingDate}
-                                onChange={(e) => setClosingDate(e.target.value)}
+                                onChange={(e) => {
+                                    setClosingDate(e.target.value);
+                                    setReviewData(null);
+                                }}
                             />
+                            {closingDate && selectedDayStatus && (
+                                <div className={cn(
+                                    "text-xs px-2.5 py-1.5 rounded flex items-center gap-1.5 font-medium mt-1",
+                                    selectedDayStatus.isClosed 
+                                        ? "bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border border-emerald-500/20" 
+                                        : "bg-amber-500/10 text-amber-700 dark:text-amber-400 border border-amber-500/20"
+                                )}>
+                                    {selectedDayStatus.isClosed ? (
+                                        <>
+                                            <CheckCircle2 className="h-4 w-4 shrink-0 text-emerald-600 dark:text-emerald-400" />
+                                            <span>{selectedDayStatus.message} (جاهز للإقفال)</span>
+                                        </>
+                                    ) : (
+                                        <>
+                                            <AlertTriangle className="h-4 w-4 shrink-0 text-amber-600 dark:text-amber-400" />
+                                            <span>{selectedDayStatus.message} (يجب إقفال اليوم أولاً)</span>
+                                        </>
+                                    )}
+                                </div>
+                            )}
                         </div>
                     </CardContent>
                      <CardFooter className="gap-4">
@@ -232,7 +290,7 @@ export default function PeriodClosingPage() {
                         <CardHeader>
                             <CardTitle>مراجعة الأرصدة الدفترية قبل الإقفال</CardTitle>
                             <CardDescription>
-                                هذه هي الأرصدة التي سيتم إقفالها بتاريخ {new Date(closingDate).toLocaleDateString('ar-EG')}.
+                                هذه هي الأرصدة التي سيتم اعتمادها كرصيد افتتاحي جديد بتاريخ {new Date(closingDate).toLocaleDateString('ar-EG')}.
                             </CardDescription>
                         </CardHeader>
                         <CardContent>
@@ -242,41 +300,43 @@ export default function PeriodClosingPage() {
                                         <TableRow>
                                             <TableHead>كود الصنف</TableHead>
                                             <TableHead>اسم الصنف</TableHead>
-                                            <TableHead className="text-center">الرصيد الدفتري</TableHead>
+                                            <TableHead className="text-center">الرصيد الدفتري المحسوب</TableHead>
                                         </TableRow>
                                     </TableHeader>
                                     <TableBody>
                                         {reviewData.map((item: any) => (
                                             <TableRow key={item.itemId}>
-                                                <TableCell>{item.code}</TableCell>
-                                                <TableCell>{item.name}</TableCell>
-                                                <TableCell className="text-center font-bold">{item.balance}</TableCell>
+                                                <TableCell className="font-mono text-xs">{item.code}</TableCell>
+                                                <TableCell className="font-medium">{item.name}</TableCell>
+                                                <TableCell className="text-center font-bold text-primary">{item.balance}</TableCell>
                                             </TableRow>
                                         ))}
                                     </TableBody>
                                 </Table>
                              </div>
                         </CardContent>
-                         <CardFooter className="flex justify-between">
-                            <p className="text-sm text-muted-foreground">إجمالي الأصناف ذات الرصيد: {reviewData.length}</p>
+                         <CardFooter className="flex justify-between items-center">
+                            <p className="text-sm text-muted-foreground">إجمالي الأصناف ذات الرصيد: <span className="font-bold text-foreground">{reviewData.length}</span></p>
                             <AlertDialog>
                                 <AlertDialogTrigger asChild>
                                     <Button variant="destructive" disabled={isLoading || !reviewData || !closingDate || !warehouseId}>
                                         {isLoading ? <Loader2 className="ml-2 h-4 w-4 animate-spin" /> : <Lock className="ml-2 h-4 w-4" />}
-                                        تنفيذ الإقفال النهائي
+                                        اعتماد وتثبيت الإقفال النهائي
                                     </Button>
                                 </AlertDialogTrigger>
                                 <AlertDialogContent>
                                     <AlertDialogHeader>
-                                        <AlertDialogTitle>هل أنت متأكد تمامًا؟</AlertDialogTitle>
+                                        <AlertDialogTitle>تأكيد الإقفال وتكوين الرصيد الافتتاحي</AlertDialogTitle>
                                         <AlertDialogDescription>
-                                            سيتم إقفال جميع الحركات للمخزن المحدد حتى تاريخ <span className="font-bold">{new Date(closingDate).toLocaleDateString('ar-EG')}</span>.
-                                            وستصبح الأرصدة الحالية هي أرصدة الفترة الجديدة. لا يمكن التراجع عن هذا الإجراء إلا بحذف سجل الإقفال.
+                                            سيتم إقفال جميع الحركات للمخزن المحدد حتى نهاية تاريخ <span className="font-bold text-foreground">{new Date(closingDate).toLocaleDateString('ar-EG')}</span>.
+                                            وستتحول هذه الأرصدة إلى رصيد افتتاحي رسمي للفترة الجديدة.
                                         </AlertDialogDescription>
                                     </AlertDialogHeader>
                                     <AlertDialogFooter>
                                         <AlertDialogCancel>إلغاء</AlertDialogCancel>
-                                        <AlertDialogAction onClick={handlePerformClosing} className="bg-destructive hover:bg-destructive/90">نعم، قم بالإقفال</AlertDialogAction>
+                                        <AlertDialogAction onClick={handlePerformClosing} className="bg-destructive hover:bg-destructive/90">
+                                            نعم، قم بالإقفال وتكوين الرصيد
+                                        </AlertDialogAction>
                                     </AlertDialogFooter>
                                 </AlertDialogContent>
                             </AlertDialog>
@@ -295,18 +355,18 @@ export default function PeriodClosingPage() {
                                     <TableRow>
                                         <TableHead>تاريخ الإقفال</TableHead>
                                         <TableHead>المستخدم</TableHead>
-                                        <TableHead className="text-center">عدد الأصناف</TableHead>
+                                        <TableHead className="text-center">عدد الأصناف المقفلة</TableHead>
                                         <TableHead className="text-center">الإجراء</TableHead>
                                     </TableRow>
                                 </TableHeader>
                                 <TableBody>
                                     {closingsForSelectedWarehouse.map((closing: InventoryClosing, index: number) => (
                                         <TableRow key={closing.id} className="cursor-pointer hover:bg-muted/50" onClick={() => setSelectedClosingDetails(closing)}>
-                                            <TableCell>{new Date(closing.closingDate).toLocaleDateString('ar-EG')}</TableCell>
-                                            <TableCell>{closing.closedByName}</TableCell>
-                                            <TableCell className="text-center">{closing.balances?.length || 0}</TableCell>
+                                            <TableCell className="font-medium">{new Date(closing.closingDate).toLocaleDateString('ar-EG')}</TableCell>
+                                            <TableCell>{closing.closedByName || 'غير محدد'}</TableCell>
+                                            <TableCell className="text-center font-bold">{closing.balances?.length || 0}</TableCell>
                                             <TableCell className="text-center">
-                                                {index === 0 && ( // Only allow deleting the most recent closing
+                                                {index === 0 && (
                                                     <AlertDialog>
                                                         <AlertDialogTrigger asChild>
                                                             <Button variant="ghost" size="icon" className="text-destructive hover:text-destructive" onClick={(e) => e.stopPropagation()}>
@@ -315,14 +375,14 @@ export default function PeriodClosingPage() {
                                                         </AlertDialogTrigger>
                                                         <AlertDialogContent>
                                                             <AlertDialogHeader>
-                                                                <AlertDialogTitle>فك الإقفال؟</AlertDialogTitle>
+                                                                <AlertDialogTitle>فك الإقفال الأخير؟</AlertDialogTitle>
                                                                 <AlertDialogDescription>
-                                                                    هل أنت متأكد من حذف هذا الإقفال؟ سيؤدي هذا إلى إعادة فتح الفترة للتعديل. يجب عليك إعادة إقفالها مرة أخرى لاحقًا.
+                                                                    هل أنت متأكد من حذف هذا الإقفال؟ سيؤدي هذا إلى إلغاء الرصيد الافتتاحي وإعادة فتح الفترة للتعديل.
                                                                 </AlertDialogDescription>
                                                             </AlertDialogHeader>
                                                             <AlertDialogFooter>
                                                                 <AlertDialogCancel>إلغاء</AlertDialogCancel>
-                                                                <AlertDialogAction onClick={() => handleDeleteClosing(closing.id!)}>نعم، قم بالحذف</AlertDialogAction>
+                                                                <AlertDialogAction onClick={() => handleDeleteClosing(closing.id)}>نعم، قم بالحذف</AlertDialogAction>
                                                             </AlertDialogFooter>
                                                         </AlertDialogContent>
                                                     </AlertDialog>
@@ -339,26 +399,28 @@ export default function PeriodClosingPage() {
                  {selectedClosingDetails && (
                     <Card>
                         <CardHeader>
-                            <CardTitle>تفاصيل الإقفال بتاريخ: {new Date(selectedClosingDetails.closingDate).toLocaleDateString('ar-EG')}</CardTitle>
+                            <CardTitle>تفاصيل الأرصدة المقفلة بتاريخ: {new Date(selectedClosingDetails.closingDate).toLocaleDateString('ar-EG')}</CardTitle>
                         </CardHeader>
                         <CardContent>
                              <div className="w-full overflow-auto border rounded-lg max-h-96">
                                 <Table>
                                     <TableHeader>
                                         <TableRow>
+                                            <TableHead>كود الصنف</TableHead>
                                             <TableHead>اسم الصنف</TableHead>
                                             <TableHead className="text-center">الرصيد المقفل</TableHead>
                                         </TableRow>
                                     </TableHeader>
                                     <TableBody>
                                         {selectedClosingDetails.balances.map(item => {
-                                            const itemDetails = items.find((i:Item) => i.id === item.itemId);
+                                            const itemDetails = items.find((i: Item) => i.id === item.itemId);
                                             return (
                                                 <TableRow key={item.itemId}>
+                                                    <TableCell className="font-mono text-xs">{itemDetails?.code || '-'}</TableCell>
                                                     <TableCell>{itemDetails?.name || 'صنف محذوف'}</TableCell>
-                                                    <TableCell className="text-center font-bold">{item.balance}</TableCell>
+                                                    <TableCell className="text-center font-bold text-primary">{item.balance}</TableCell>
                                                 </TableRow>
-                                            )
+                                            );
                                         })}
                                     </TableBody>
                                 </Table>
@@ -371,5 +433,3 @@ export default function PeriodClosingPage() {
         </>
     );
 }
-
-    
