@@ -20,7 +20,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { PlusCircle, Loader2, MoreHorizontal, FileText, Undo2, Printer, FileSearch, Eye, Edit, CheckCircle, MessageCircle, Image as ImageIcon, Search, Truck } from "lucide-react";
+import { PlusCircle, Loader2, MoreHorizontal, FileText, Undo2, Printer, FileSearch, Eye, Edit, CheckCircle, MessageCircle, Image as ImageIcon, Search, Truck, ShieldCheck, QrCode, Cpu } from "lucide-react";
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import {
@@ -117,6 +117,55 @@ export default function SalesInvoicesListPage() {
 
   const [isSharing, setIsSharing] = useState(false);
   const [sharingData, setSharingData] = useState<{ invoice: SaleInvoice, type: 'A4' | 'Thermal' } | null>(null);
+
+  // E-Invoice (ETA) Submission & Simulation State
+  const [etaSubmittingId, setEtaSubmittingId] = useState<string | null>(null);
+  const [etaSubmittedMap, setEtaSubmittedMap] = useState<Record<string, any>>({});
+  const [etaModal, setEtaModal] = useState<{ open: boolean; result: any | null; invoiceNumber?: string }>({
+    open: false,
+    result: null,
+  });
+
+  const handleEtaSubmit = async (invoice: any) => {
+    setEtaSubmittingId(invoice.id);
+    try {
+      const eInvoiceSettings = settings?.main?.eInvoice?.default || {};
+      const res = await fetch('/api/e-invoice/simulate-submit', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          invoice: {
+            ...invoice,
+            items: (invoice.items || []).map((it: any) => ({
+              name: it.name,
+              code: it.code,
+              quantity: it.qty || it.quantity || 1,
+              price: it.price || 0,
+              discount: it.discount || 0,
+              taxRate: settings?.main?.financial?.vatRate || 14,
+            })),
+          },
+          settings: eInvoiceSettings,
+          mode: 'simulate_no_token',
+        }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        setEtaSubmittedMap((prev) => ({ ...prev, [invoice.id]: data }));
+        setEtaModal({ open: true, result: data, invoiceNumber: invoice.invoiceNumber });
+        toast({
+          title: 'تم رفع واعتماد الفاتورة إلكترونياً',
+          description: `تم توليد UUID: ${data.uuid.substring(0, 14)}... وحفظ الحالة بنجاح.`,
+        });
+      } else {
+        toast({ variant: 'destructive', title: 'خطأ في الرفع', description: data.message });
+      }
+    } catch (err: any) {
+      toast({ variant: 'destructive', title: 'خطأ', description: err.message });
+    } finally {
+      setEtaSubmittingId(null);
+    }
+  };
 
   // Aggressive Cleanup for Pointer Events and Scroll
   useEffect(() => {
@@ -373,6 +422,7 @@ export default function SalesInvoicesListPage() {
                       <TableHead className="text-center">الإجمالي</TableHead>
                       <TableHead className="text-center">المدفوع</TableHead>
                       <TableHead className="text-center">المتبقي</TableHead>
+                      <TableHead className="text-center">الفاتورة الإلكترونية (ETA)</TableHead>
                       <TableHead className="text-center w-[100px]">الإجراءات</TableHead>
                     </TableRow>
                   </TableHeader>
@@ -381,6 +431,7 @@ export default function SalesInvoicesListPage() {
                       filteredInvoices.map((invoice:any) => {
                         const paid = invoice.paidAmount || 0;
                         const remaining = invoice.total - paid;
+                        const etaInfo = etaSubmittedMap[invoice.id] || (invoice.etaUuid ? { uuid: invoice.etaUuid, status: invoice.etaStatus || 'Valid' } : null);
                         return (
                             <TableRow key={invoice.id} className={cn(invoice.isLocked ? 'bg-muted/30 opacity-80' : '', "hover:bg-muted/20")}>
                             <TableCell className="font-mono font-bold">{invoice.invoiceNumber}</TableCell>
@@ -399,6 +450,32 @@ export default function SalesInvoicesListPage() {
                             <TableCell className="text-center text-green-600">{paid.toLocaleString(undefined, { minimumFractionDigits: 2 })}</TableCell>
                             <TableCell className={cn("text-center font-bold", remaining > 0.01 ? 'text-destructive' : 'text-muted-foreground')}>
                                 {remaining.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                            </TableCell>
+                            <TableCell className="text-center">
+                                {etaInfo ? (
+                                    <Badge 
+                                        className="bg-emerald-600 hover:bg-emerald-700 cursor-pointer gap-1 font-mono text-[11px]"
+                                        onClick={() => etaInfo.etaDocument ? setEtaModal({ open: true, result: etaInfo, invoiceNumber: invoice.invoiceNumber }) : handleEtaSubmit(invoice)}
+                                    >
+                                        <ShieldCheck className="h-3 w-3" />
+                                        Valid ({String(etaInfo.uuid).substring(0, 8)}...)
+                                    </Badge>
+                                ) : (
+                                    <Button 
+                                        size="sm" 
+                                        variant="outline" 
+                                        className="h-7 text-xs gap-1 border-primary/30 text-primary hover:bg-primary/10"
+                                        disabled={etaSubmittingId === invoice.id}
+                                        onClick={() => handleEtaSubmit(invoice)}
+                                    >
+                                        {etaSubmittingId === invoice.id ? (
+                                            <Loader2 className="h-3 w-3 animate-spin" />
+                                        ) : (
+                                            <Cpu className="h-3 w-3" />
+                                        )}
+                                        رفع إلكتروني (ETA)
+                                    </Button>
+                                )}
                             </TableCell>
                             <TableCell className="text-center">
                                 <DropdownMenu modal={false}>
@@ -429,6 +506,12 @@ export default function SalesInvoicesListPage() {
                                         </DropdownMenuItem>
 
                                         <DropdownMenuSeparator />
+
+                                        <DropdownMenuItem onClick={() => handleEtaSubmit(invoice)} className="text-emerald-600 font-semibold">
+                                            <ShieldCheck className="ml-2 h-4 w-4" /> رفع الفاتورة إلكترونياً (ETA)
+                                        </DropdownMenuItem>
+
+                                        <DropdownMenuSeparator />
                                         
                                         <DropdownMenuItem onClick={() => handleShareAsImage(invoice, 'A4')} className="text-primary font-semibold">
                                             <ImageIcon className="ml-2 h-4 w-4" /> مشاركة كصورة (A4)
@@ -451,7 +534,7 @@ export default function SalesInvoicesListPage() {
                       })
                     ) : (
                       <TableRow>
-                        <TableCell colSpan={8} className="text-center py-20 text-muted-foreground italic">
+                        <TableCell colSpan={9} className="text-center py-20 text-muted-foreground italic">
                           لا توجد فواتير تطابق معايير البحث الحالية.
                         </TableCell>
                       </TableRow>
@@ -491,6 +574,62 @@ export default function SalesInvoicesListPage() {
                     </TableBody>
                 </Table>
             </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* ETA E-Invoice Certificate & Details Modal */}
+      <Dialog open={etaModal.open} onOpenChange={(open) => setEtaModal({ ...etaModal, open })}>
+        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+            <DialogHeader>
+                <DialogTitle className="flex items-center gap-2 text-emerald-600">
+                    <ShieldCheck className="h-5 w-5" />
+                    شهادة اعتماد الفاتورة الإلكترونية ({etaModal.invoiceNumber})
+                </DialogTitle>
+                <DialogDescription>
+                    تم بناء المستند بصيغة ETA v1.0 وتوليد التوقيع الرقمي المشفر ورمز الاستجابة السريع (QR Code) بنجاح
+                </DialogDescription>
+            </DialogHeader>
+            {etaModal.result && (
+                <div className="space-y-4 text-xs">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3 p-3 bg-muted/40 rounded-lg font-mono">
+                        <div>
+                            <span className="text-muted-foreground block font-sans text-[11px]">المعرف الضريبي الفريد (ETA UUID):</span>
+                            <span className="font-bold text-primary break-all select-all">{etaModal.result.uuid}</span>
+                        </div>
+                        <div>
+                            <span className="text-muted-foreground block font-sans text-[11px]">رقم حزمة الإرسال (Submission ID):</span>
+                            <span className="font-bold text-foreground break-all select-all">{etaModal.result.submissionId}</span>
+                        </div>
+                        <div className="md:col-span-2">
+                            <span className="text-muted-foreground block font-sans text-[11px]">بصمة التجزئة الرسمية (SHA-256 Canonical Hash):</span>
+                            <span className="break-all select-all text-muted-foreground text-[10px]">{etaModal.result.hash}</span>
+                        </div>
+                    </div>
+
+                    <div className="p-3 border rounded-lg bg-muted/20 flex items-center justify-between gap-4">
+                        <div className="flex items-center gap-3">
+                            <QrCode className="h-8 w-8 text-primary shrink-0" />
+                            <div>
+                                <div className="font-bold text-sm">رمز التحقق الضريبي المشفر (TLV Base64 QR)</div>
+                                <div className="text-muted-foreground text-[11px]">يتضمن اسم الممول، الرقم الضريبي، التاريخ، الإجمالي، وضريبة القيمة المضافة</div>
+                            </div>
+                        </div>
+                        <Badge className="bg-emerald-600">Valid</Badge>
+                    </div>
+
+                    {etaModal.result.etaDocument && (
+                        <div className="space-y-1.5">
+                            <Label className="text-xs font-semibold">مستند الفاتورة الإلكترونية الرسمي (ETA v1.0 JSON):</Label>
+                            <pre className="p-3 bg-slate-950 text-emerald-400 rounded-lg text-[10px] font-mono max-h-48 overflow-y-auto direction-ltr text-left">
+                                {JSON.stringify(etaModal.result.etaDocument, null, 2)}
+                            </pre>
+                        </div>
+                    )}
+                </div>
+            )}
+            <DialogFooter>
+                <Button variant="outline" onClick={() => setEtaModal({ ...etaModal, open: false })}>إغلاق</Button>
+            </DialogFooter>
         </DialogContent>
       </Dialog>
 

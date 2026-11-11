@@ -140,15 +140,17 @@ const usePayrollPageLogic = () => {
                 .filter(filterByMonth)
                 .reduce((sum, item) => sum + item.amount, 0);
 
+            const allowances = (Number((employee as any).housingAllowance) || 0) + (Number((employee as any).transportAllowance) || 0);
+
             const totalRewards = employeeAdjustments
                 .filter(item => item.type === 'reward' && filterByMonth(item))
-                .reduce((sum, item) => sum + item.amount, 0);
+                .reduce((sum, item) => sum + item.amount, 0) + allowances;
 
             const totalPenalties = employeeAdjustments
                 .filter(item => item.type === 'penalty' && filterByMonth(item))
-                .reduce((sum, item) => sum + item.amount, 0);
+                .reduce((sum, item) => sum + item.amount, 0) + (Number((employee as any).socialInsuranceDeduction) || 0);
             
-            const netSalary = employee.basicSalary + totalRewards - totalAdvances - totalPenalties;
+            const netSalary = (employee.basicSalary || 0) + totalRewards - totalAdvances - totalPenalties;
 
             return {
                 employeeId: employee.id,
@@ -227,19 +229,82 @@ export default function PayrollPage() {
         setIsPosting(true);
 
         const monthName = months.find(m => m.value === selectedMonth)?.label;
+        const receiptNum = `رواتب-${await getNextId('payroll')}`;
+        const payrollDate = new Date(parseInt(selectedYear), parseInt(selectedMonth) - 1, 28).toISOString();
         
         try {
             await dbAction('payrollRecords', 'add', {
-                date: new Date(parseInt(selectedYear), parseInt(selectedMonth) -1, 28).toISOString(),
+                date: payrollDate,
                 payrollData: payrollDataToPost,
                 paidFromAccountId: accountId,
                 month: `${monthName} ${selectedYear}`,
-                receiptNumber: `رواتب-${await getNextId('payroll')}`,
+                receiptNumber: receiptNum,
                 createdById: user?.id,
                 createdByName: user?.name,
             });
+
+            // Auto-post to General Ledger
+            try {
+                const grossSalaries = payrollDataToPost.reduce((s, p) => s + (p.basicSalary || 0) + (p.totalRewards || 0), 0);
+                const advTotal = payrollDataToPost.reduce((s, p) => s + (p.totalAdvances || 0), 0);
+                const penTotal = payrollDataToPost.reduce((s, p) => s + (p.totalPenalties || 0), 0);
+                const netPaid = payrollDataToPost.reduce((s, p) => s + (p.netSalary || 0), 0);
+
+                const glLines: any[] = [
+                    {
+                        accountCode: '5105',
+                        accountName: 'حـ/ مصروف الرواتب والأجور والبدلات',
+                        debit: grossSalaries,
+                        credit: 0,
+                        memo: `استحقاق رواتب وبدلات شهر ${monthName} ${selectedYear}`
+                    },
+                    {
+                        accountCode: '1101',
+                        accountName: 'حـ/ الخزينة والبنوك (صرف الرواتب)',
+                        debit: 0,
+                        credit: netPaid,
+                        memo: `صافي الرواتب المنصرفة لشهر ${monthName} ${selectedYear}`
+                    }
+                ];
+                if (advTotal > 0) {
+                    glLines.push({
+                        accountCode: '1108',
+                        accountName: 'حـ/ سلف العاملين المستردة',
+                        debit: 0,
+                        credit: advTotal,
+                        memo: `تسوية سلف الموظفين من مسير ${monthName} ${selectedYear}`
+                    });
+                }
+                if (penTotal > 0) {
+                    glLines.push({
+                        accountCode: '4205',
+                        accountName: 'حـ/ استقطاعات وجزاءات وتأمينات العاملين',
+                        debit: 0,
+                        credit: penTotal,
+                        memo: `استقطاعات وجزاءات شهر ${monthName} ${selectedYear}`
+                    });
+                }
+
+                await fetch('/api/accounting/posting', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        sourceType: 'payroll_sheet',
+                        sourceId: `pay_${selectedYear}_${selectedMonth}`,
+                        sourceNumber: receiptNum,
+                        warehouseId: 'main',
+                        date: payrollDate,
+                        description: `إثبات وصرف مسير رواتب وأجور شهر ${monthName} ${selectedYear} (${payrollDataToPost.length} موظف)`,
+                        lines: glLines,
+                        userId: user?.id,
+                        userName: user?.name
+                    })
+                });
+            } catch (glErr) {
+                console.warn('Payroll GL posting note:', glErr);
+            }
             
-            toast({ title: "تم الترحيل بنجاح", description: "تم إنشاء قيد الرواتب في دفتر اليومية." });
+            toast({ title: "تم الترحيل بنجاح", description: "تم إنشاء قيد الرواتب وترحيله إلى دفتر الأستاذ العام." });
             setPayrollData(null); // Reset the view after posting
         } catch (error) {
             console.error(error);

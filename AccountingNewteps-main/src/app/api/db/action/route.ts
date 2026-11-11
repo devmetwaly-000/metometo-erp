@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getDbPool, sql } from '@/lib/db';
+import { logAuditEvent } from '@/lib/audit-logger';
 
 async function ensureRepWarehouseAndAccount(pool: sql.ConnectionPool, userId: string, userName: string, currentWarehouseIds?: any) {
     if (!userId) return;
@@ -147,6 +148,28 @@ export async function POST(req: Request) {
             } catch {}
             return false;
         };
+
+        // Automatic Immutable Audit Trail Hook (Non-blocking)
+        if ((action === 'add' || action === 'update' || action === 'remove') && path && path !== 'loginHistory') {
+            const auditActionMap: Record<string, 'INSERT' | 'UPDATE' | 'DELETE'> = {
+                add: 'INSERT',
+                update: 'UPDATE',
+                remove: 'DELETE'
+            };
+            const targetId = payload?.id || id;
+            const userId = payload?.createdById || payload?.cashierId || payload?.userId || payload?.data?.updatedBy || 'system';
+            const userName = payload?.createdByName || payload?.cashierName || payload?.userName || 'مستخدم النظام';
+            const docNum = payload?.invoiceNumber || payload?.receiptNumber || payload?.code || payload?.name || payload?.data?.name || '';
+            logAuditEvent({
+                action: auditActionMap[action] || 'UPDATE',
+                entity: path,
+                entityId: String(targetId),
+                userId: String(userId),
+                userName: String(userName),
+                details: `${action === 'add' ? 'إضافة' : action === 'update' ? 'تعديل' : 'حذف'} في جدول [${path}] ${docNum ? `- (${docNum})` : ''}`,
+                newState: action === 'remove' ? { deletedId: targetId } : (payload?.data || payload)
+            }).catch(() => {});
+        }
 
         // =====================================================================
         // ACTION: ADD (Document Principle: Every action generates a source record)

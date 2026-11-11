@@ -293,6 +293,50 @@ export default function ManufacturingOrdersPage() {
                 throw new Error(data.message);
             }
 
+            // 1.5 Execute Inventory Movements (Deduct Raw Materials & Receive Finished Goods)
+            try {
+                let bomList: any[] = [];
+                if (selectedOrder.BOMDetailsJson) {
+                    try { bomList = JSON.parse(selectedOrder.BOMDetailsJson); } catch {}
+                }
+                if (bomList.length > 0) {
+                    await dbAction('stockOutRecords', 'add', {
+                        sourceId: selectedOrder.SourceWarehouseId,
+                        date: new Date().toISOString(),
+                        reason: 'manufacturing_consumption',
+                        notes: `سحب خامات تشغيل أمر تصنيع رقم ${selectedOrder.OrderNumber} لإنتاج [${selectedOrder.FinishedItemName}]`,
+                        items: bomList.map((b: any) => ({
+                            id: b.itemId,
+                            itemId: b.itemId,
+                            name: b.name,
+                            qty: Number(b.unitQty || 1) * Number(producedQty),
+                            cost: Number(b.costPerUnit || 0)
+                        })),
+                        createdById: user?.id,
+                        createdByName: user?.name
+                    });
+                }
+
+                await dbAction('stockInRecords', 'add', {
+                    warehouseId: selectedOrder.TargetWarehouseId,
+                    date: new Date().toISOString(),
+                    reason: 'manufacturing_output',
+                    status: 'completed',
+                    notes: `استلام منتج تام من أمر التصنيع رقم ${selectedOrder.OrderNumber}`,
+                    items: [{
+                        id: selectedOrder.FinishedItemId,
+                        itemId: selectedOrder.FinishedItemId,
+                        name: selectedOrder.FinishedItemName,
+                        qty: Number(producedQty),
+                        cost: Number(selectedOrder.UnitCost || 0)
+                    }],
+                    createdById: user?.id,
+                    createdByName: user?.name
+                });
+            } catch (invErr) {
+                console.warn('Inventory movement execution note:', invErr);
+            }
+
             // 2. Post to General Ledger (Automatic Subledger Posting)
             try {
                 await fetch('/api/accounting/posting', {
