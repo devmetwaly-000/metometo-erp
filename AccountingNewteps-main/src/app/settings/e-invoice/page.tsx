@@ -39,6 +39,7 @@ import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Combobox } from '@/components/ui/combobox';
 import { Badge } from "@/components/ui/badge";
+import { QRCodeSVG } from 'qrcode.react';
 
 interface EInvoiceSettings {
     environment: 'preprod' | 'prod';
@@ -93,6 +94,7 @@ export default function EInvoiceSettingsPage() {
     const [simSelectedInvoiceId, setSimSelectedInvoiceId] = useState<string>('');
     const [simulating, setSimulating] = useState(false);
     const [simResult, setSimResult] = useState<any>(null);
+    const [qrMode, setQrMode] = useState<'readable' | 'tlv'>('readable');
     
     const [defaultSettings, setDefaultSettings] = useState<EInvoiceSettings>(DEFAULT_SETTINGS);
     const [branchOverrides, setBranchOverrides] = useState<Record<string, Partial<EInvoiceSettings>>>({});
@@ -725,12 +727,72 @@ export default function EInvoiceSettingsPage() {
 
                                         {/* QR Code and JSON preview */}
                                         <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pt-2">
-                                            <div className="border rounded-lg p-3 bg-muted/20 flex flex-col items-center justify-center text-center space-y-2">
-                                                <QrCode className="h-8 w-8 text-primary" />
-                                                <span className="text-xs font-bold font-sans">رمز الاستجابة السريع (TLV QR)</span>
-                                                <p className="text-[10px] text-muted-foreground font-sans">متوافق مع هيئة الضرائب والزكاة</p>
-                                                <div className="p-2 bg-white rounded border text-black font-mono text-[9px] break-all max-h-24 overflow-y-auto">
-                                                    {simResult.qrCodeBase64}
+                                            <div className="border rounded-xl p-4 bg-muted/20 flex flex-col items-center justify-between text-center space-y-3">
+                                                <div className="space-y-1">
+                                                    <span className="text-xs font-bold font-sans flex items-center justify-center gap-1.5">
+                                                        <QrCode className="h-4 w-4 text-primary" />
+                                                        رمز الاستجابة السريع الفعلي (Scannable QR)
+                                                    </span>
+                                                    <p className="text-[11px] text-muted-foreground font-sans">
+                                                        وجّه كاميرا الموبايل أو قارئ الباركود لمسح الرمز مباشرةً
+                                                    </p>
+                                                </div>
+
+                                                {/* Real Scannable QR Code SVG on crisp white quiet-zone */}
+                                                <div className="p-3 bg-white rounded-xl border-2 border-primary/20 shadow-md flex items-center justify-center">
+                                                    <QRCodeSVG
+                                                        value={
+                                                            qrMode === 'readable'
+                                                                ? (simResult.qrReadableText || `ETA UUID: ${simResult.uuid}\nTotal: ${simResult.etaDocument?.totalAmount || 0} EGP`)
+                                                                : (simResult.qrCodeBase64 || simResult.qrCode || simResult.uuid)
+                                                        }
+                                                        size={180}
+                                                        bgColor="#ffffff"
+                                                        fgColor="#000000"
+                                                        level="M"
+                                                        includeMargin={true}
+                                                    />
+                                                </div>
+
+                                                {/* Mode Switch: Normal Phone Camera vs TLV Base64 */}
+                                                <div className="w-full grid grid-cols-2 gap-1 p-1 rounded-lg bg-muted border text-[11px]">
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => setQrMode('readable')}
+                                                        className={`py-1.5 px-2 rounded-md font-semibold transition-all ${
+                                                            qrMode === 'readable'
+                                                                ? 'bg-primary text-primary-foreground shadow-sm'
+                                                                : 'text-muted-foreground hover:text-foreground'
+                                                        }`}
+                                                    >
+                                                        كاميرا الموبايل (مقروء)
+                                                    </button>
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => setQrMode('tlv')}
+                                                        className={`py-1.5 px-2 rounded-md font-semibold transition-all ${
+                                                            qrMode === 'tlv'
+                                                                ? 'bg-primary text-primary-foreground shadow-sm'
+                                                                : 'text-muted-foreground hover:text-foreground'
+                                                        }`}
+                                                    >
+                                                        تشفير ضريبي (TLV Base64)
+                                                    </button>
+                                                </div>
+
+                                                {/* Decoded TLV Summary */}
+                                                {simResult.tlvDecoded && (
+                                                    <div className="w-full text-right bg-background/80 rounded-lg border p-2.5 text-[11px] space-y-1">
+                                                        <div className="font-bold text-primary border-b pb-1 mb-1">بيانات الـ QR المشفرة (TLV Tags):</div>
+                                                        <div className="flex justify-between"><span className="text-muted-foreground">1. الممول:</span><span className="font-semibold">{simResult.tlvDecoded.sellerName}</span></div>
+                                                        <div className="flex justify-between"><span className="text-muted-foreground">2. ر.ضريبي:</span><span className="font-mono font-bold">{simResult.tlvDecoded.taxNumber}</span></div>
+                                                        <div className="flex justify-between"><span className="text-muted-foreground">4. الإجمالي:</span><span className="font-mono font-bold text-emerald-600">{simResult.tlvDecoded.totalAmount} ج.م</span></div>
+                                                        <div className="flex justify-between"><span className="text-muted-foreground">5. الضريبة:</span><span className="font-mono">{simResult.tlvDecoded.taxAmount} ج.م</span></div>
+                                                    </div>
+                                                )}
+
+                                                <div className="w-full p-2 bg-white rounded border text-black font-mono text-[9px] break-all max-h-16 overflow-y-auto select-all" title="TLV Base64 Payload">
+                                                    {simResult.qrCodeBase64 || simResult.qrCode}
                                                 </div>
                                             </div>
 

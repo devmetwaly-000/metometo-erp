@@ -86,34 +86,35 @@ export interface EtaDocument {
  * Builds standard ETA JSON v1.0 document from internal sales invoice
  */
 export function buildEtaDocument(invoice: any, settings: any): EtaDocument {
-    const eInvoiceSettings = settings?.main?.eInvoice?.default || {};
+    const eInvoiceSettings = settings?.main?.eInvoice?.default || settings?.eInvoice?.default || settings || {};
     const financialSettings = settings?.main?.financial || {};
     const generalSettings = settings?.main?.general || {};
 
-    const issuerTaxId = (eInvoiceSettings.taxRegNumber || "300123456").replace(/\D/g, '');
-    const issuerName = generalSettings.companyName || "شركة المحاسبة والأنظمة";
+    const issuerTaxId = (eInvoiceSettings.taxRegNumber || "300123456").replace(/\D/g, '') || "300123456";
+    const issuerName = eInvoiceSettings.companyLegalName || generalSettings.companyName || "شركة المحاسبة والأنظمة الذكية";
     const activityCode = eInvoiceSettings.activityCode || "4711";
     const branchCode = eInvoiceSettings.branchCode || "0";
-    const vatRate = financialSettings.vatRate || 14;
+    const vatRate = Number(financialSettings.vatRate || 14);
 
-    const receiverTaxId = (invoice.customerTaxReg || invoice.taxNumber || "").replace(/\D/g, '') || "999999999";
+    const receiverTaxId = (invoice.customerTaxId || invoice.customerTaxReg || invoice.taxNumber || "").replace(/\D/g, '') || "999999999";
     const isBusiness = receiverTaxId.length === 9;
     const receiverType = isBusiness ? 'B' : 'P';
     const receiverName = invoice.customerName || "عميل نقدي";
 
     const lines: EtaDocumentLine[] = (invoice.items || []).map((item: any, idx: number) => {
-        const qty = Number(item.qty || item.quantity) || 1;
-        const unitPrice = Number(item.cost || item.price || item.unitPrice) || 0;
-        const salesTotal = qty * unitPrice;
+        const qty = Number(item.qty ?? item.quantity) || 1;
+        const unitPrice = Number(item.price ?? item.unitPrice ?? item.cost) || 0;
+        const salesTotal = Number((qty * unitPrice).toFixed(2));
         const discount = Number(item.discount || 0);
-        const netTotal = salesTotal - discount;
-        const taxAmount = Number(item.tax || (netTotal * (vatRate / 100)));
-        const total = netTotal + taxAmount;
+        const netTotal = Number((salesTotal - discount).toFixed(2));
+        const itemTaxRate = Number(item.taxRate ?? vatRate);
+        const taxAmount = Number((item.tax !== undefined ? Number(item.tax) : netTotal * (itemTaxRate / 100)).toFixed(2));
+        const total = Number((netTotal + taxAmount).toFixed(2));
 
         return {
             description: item.name || `صنف ${idx + 1}`,
-            itemType: item.code && item.code.startsWith('EG-') ? 'EGS' : 'GS1',
-            itemCode: item.code || '10001000',
+            itemType: item.code && String(item.code).startsWith('EG-') ? 'EGS' : 'GS1',
+            itemCode: String(item.code || '10001000'),
             unitType: 'EA',
             quantity: qty,
             unitValue: {
@@ -130,20 +131,22 @@ export function buildEtaDocument(invoice: any, settings: any): EtaDocument {
                 {
                     taxType: 'T1',
                     subType: 'V009',
-                    rate: vatRate,
+                    rate: itemTaxRate,
                     amount: taxAmount,
                 }
             ]
         };
     });
 
-    const totalSalesAmount = lines.reduce((sum, l) => sum + l.salesTotal, 0);
-    const totalDiscountAmount = Number(invoice.discount || 0);
-    const netAmount = totalSalesAmount - totalDiscountAmount;
-    const totalTax = lines.reduce((sum, l) => sum + l.taxableItems.reduce((ts, t) => ts + t.amount, 0), 0);
-    const totalAmount = netAmount + totalTax;
+    const totalSalesAmount = Number(lines.reduce((sum, l) => sum + l.salesTotal, 0).toFixed(2));
+    const totalDiscountAmount = Number(Number(invoice.discount || 0).toFixed(2));
+    const netAmount = Number((totalSalesAmount - totalDiscountAmount).toFixed(2));
+    const totalTax = Number(lines.reduce((sum, l) => sum + l.taxableItems.reduce((ts, t) => ts + t.amount, 0), 0).toFixed(2));
+    const totalAmount = Number((netAmount + totalTax).toFixed(2));
 
-    const issuedIso = invoice.date ? new Date(invoice.date).toISOString().replace(/\.\d{3}Z$/, 'Z') : new Date().toISOString().replace(/\.\d{3}Z$/, 'Z');
+    const issuedIso = invoice.date
+        ? new Date(invoice.date).toISOString().replace(/\.\d{3}Z$/, 'Z')
+        : new Date().toISOString().replace(/\.\d{3}Z$/, 'Z');
 
     return {
         issuer: {
@@ -175,7 +178,7 @@ export function buildEtaDocument(invoice: any, settings: any): EtaDocument {
         documentTypeVersion: '1.0',
         dateTimeIssued: issuedIso,
         taxpayerActivityCode: activityCode,
-        internalID: invoice.invoiceNumber || String(invoice.id),
+        internalID: String(invoice.invoiceNumber || invoice.id || 'INV-001'),
         payment: {
             terms: 'نقد / فوري'
         },
@@ -231,18 +234,34 @@ export function simulateNoTokenSubmission(doc: EtaDocument) {
     const docHash = computeCanonicalHash(doc);
     const uuid = crypto.randomUUID();
     const submissionId = `SUB-${crypto.randomBytes(6).toString('hex').toUpperCase()}`;
-    const qrCode = generateTlvQrCode(
+    const taxAmount = doc.taxTotals[0]?.amount || 0;
+
+    const qrCodeBase64 = generateTlvQrCode(
         doc.issuer.name,
         doc.issuer.id,
         doc.dateTimeIssued,
         doc.totalAmount,
-        doc.taxTotals[0]?.amount || 0
+        taxAmount
     );
 
+    const qrReadableText = [
+        `فاتورة ضريبية إلكترونية معتمدة (ETA Valid)`,
+        `المصدر: ${doc.issuer.name}`,
+        `الرقم الضريبي: ${doc.issuer.id}`,
+        `العميل: ${doc.receiver.name}`,
+        `رقم الفاتورة: ${doc.internalID}`,
+        `UUID: ${uuid}`,
+        `التاريخ: ${doc.dateTimeIssued}`,
+        `الصافي: ${doc.netAmount.toFixed(2)} ج.م`,
+        `الضريبة: ${taxAmount.toFixed(2)} ج.م`,
+        `الإجمالي: ${doc.totalAmount.toFixed(2)} ج.م`,
+    ].join('\n');
+
     // Mock CAdES-BES signature block
+    const simulatedSignature = `MIIF0wYJKoZIhvcNAQcCoIIFxDCCBcACAQExDTALBglghkgBZQMEAgEwggU+BglghkgBZQMEAgEwoIIF...SIMULATED_CADES_TOKEN_${docHash.slice(0, 24)}`;
     const mockSignature = {
         signatureType: "I",
-        value: `MIIF0wYJKoZIhvcNAQcCoIIFxDCCBcACAQExDTALBglghkgBZQMEAgEwggU+BglghkgBZQMEAgEwoIIF...SIMULATED_CADES_TOKEN_${docHash.slice(0, 16)}`
+        value: simulatedSignature
     };
 
     const signedDoc = {
@@ -256,11 +275,22 @@ export function simulateNoTokenSubmission(doc: EtaDocument) {
         status: 'Valid',
         uuid,
         submissionId,
+        hash: docHash,
         canonicalHash: docHash,
+        simulatedSignature,
         dateTimeApproved: new Date().toISOString(),
         publicUrl: `https://invoicing.eta.gov.eg/documents/${uuid}/details`,
-        qrCode,
+        qrCode: qrCodeBase64,
+        qrCodeBase64,
+        qrReadableText,
+        tlvDecoded: {
+            sellerName: doc.issuer.name,
+            taxNumber: doc.issuer.id,
+            invoiceDate: doc.dateTimeIssued,
+            totalAmount: doc.totalAmount.toFixed(2),
+            taxAmount: taxAmount.toFixed(2),
+        },
+        etaDocument: signedDoc,
         signedDoc
     };
 }
-

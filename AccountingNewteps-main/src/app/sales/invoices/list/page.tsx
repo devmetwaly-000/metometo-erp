@@ -33,6 +33,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
+import { QRCodeSVG } from 'qrcode.react';
 import { useData } from '@/contexts/data-provider';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
 import { InvoiceTemplate } from '@/components/invoice-template';
@@ -606,15 +607,34 @@ export default function SalesInvoicesListPage() {
                         </div>
                     </div>
 
-                    <div className="p-3 border rounded-lg bg-muted/20 flex items-center justify-between gap-4">
-                        <div className="flex items-center gap-3">
-                            <QrCode className="h-8 w-8 text-primary shrink-0" />
-                            <div>
-                                <div className="font-bold text-sm">رمز التحقق الضريبي المشفر (TLV Base64 QR)</div>
-                                <div className="text-muted-foreground text-[11px]">يتضمن اسم الممول، الرقم الضريبي، التاريخ، الإجمالي، وضريبة القيمة المضافة</div>
+                    <div className="p-4 border rounded-xl bg-muted/20 flex flex-col sm:flex-row items-center justify-between gap-4">
+                        <div className="flex items-center gap-4">
+                            <div className="p-2.5 bg-white rounded-xl border-2 border-primary/20 shadow-sm shrink-0">
+                                <QRCodeSVG
+                                    value={etaModal.result.qrReadableText || etaModal.result.qrCodeBase64 || etaModal.result.uuid}
+                                    size={128}
+                                    bgColor="#ffffff"
+                                    fgColor="#000000"
+                                    level="M"
+                                    includeMargin={true}
+                                />
+                            </div>
+                            <div className="space-y-1.5">
+                                <div className="font-bold text-sm flex items-center gap-2">
+                                    <span>رمز التحقق الضريبي الفعلي (Scannable QR)</span>
+                                    <Badge className="bg-emerald-600">Valid</Badge>
+                                </div>
+                                <div className="text-muted-foreground text-[11px]">
+                                    قابل للمسح المباشر بكاميرا الموبايل أو قارئ الباركود للتحقق من بيانات الفاتورة الضريبية والـ UUID.
+                                </div>
+                                {etaModal.result.tlvDecoded && (
+                                    <div className="text-[11px] bg-background/80 p-2 rounded border space-y-0.5">
+                                        <div><strong>الممول:</strong> {etaModal.result.tlvDecoded.sellerName} ({etaModal.result.tlvDecoded.taxNumber})</div>
+                                        <div><strong>الإجمالي شامل الضريبة:</strong> {etaModal.result.tlvDecoded.totalAmount} ج.م (الضريبة: {etaModal.result.tlvDecoded.taxAmount} ج.م)</div>
+                                    </div>
+                                )}
                             </div>
                         </div>
-                        <Badge className="bg-emerald-600">Valid</Badge>
                     </div>
 
                     {etaModal.result.etaDocument && (

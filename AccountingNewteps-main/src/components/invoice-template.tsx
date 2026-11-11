@@ -1,6 +1,7 @@
 
 import React, { useState } from 'react';
 import Barcode from 'react-barcode';
+import { QRCodeSVG } from 'qrcode.react';
 
 interface InvoiceTemplateProps {
   invoice: any; 
@@ -257,6 +258,31 @@ export const InvoiceTemplate: React.FC<InvoiceTemplateProps> = ({ invoice, compa
       </div>
 
        <footer style={footerStyle}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
+          <div style={{ textAlign: 'right', fontSize: '11px' }}>
+            <p style={{ margin: '2px 0', fontWeight: 'bold' }}>بيانات الفاتورة الضريبية الإلكترونية (ETA):</p>
+            <p style={{ margin: '2px 0' }}>رقم الفاتورة: {invoice?.receiptNumber || invoice?.invoiceNumber || '-'}</p>
+            {invoice?.etaUuid && <p style={{ margin: '2px 0', fontFamily: 'monospace' }}>UUID: {invoice.etaUuid}</p>}
+            <p style={{ margin: '2px 0' }}>الحالة: {invoice?.etaStatus === 'Valid' ? 'معتمدة ضريبياً (Valid)' : 'معتمدة بالنظام'}</p>
+          </div>
+          <div style={{ padding: '6px', backgroundColor: '#fff', border: '1px solid #000', borderRadius: '6px' }}>
+            <QRCodeSVG
+              value={[
+                `فاتورة ضريبية - ${effectiveCompanyName}`,
+                `رقم الفاتورة: ${invoice?.receiptNumber || invoice?.invoiceNumber || '-'}`,
+                `العميل: ${effectivePartyName}`,
+                `التاريخ: ${invoice?.date ? new Date(invoice.date).toLocaleDateString('ar-EG') : '-'}`,
+                `الإجمالي: ${totalAmount.toFixed(2)} ج.م`,
+                invoice?.etaUuid ? `UUID: ${invoice.etaUuid}` : '',
+              ].filter(Boolean).join('\n')}
+              size={96}
+              bgColor="#ffffff"
+              fgColor="#000000"
+              level="M"
+              includeMargin={false}
+            />
+          </div>
+        </div>
         <p style={{fontWeight: 'bold', fontSize: '14px'}}>{company?.invoiceFooter || 'شكرًا لتعاملكم معنا!'}</p>
       </footer>
     </div>

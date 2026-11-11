@@ -3,6 +3,7 @@
 
 import React, { useState } from 'react';
 import JsBarcode from 'jsbarcode';
+import { QRCodeSVG } from 'qrcode.react';
 
 export const PosReceipt = ({ invoice, company, design, warehouse, customer, customerBalance }: { invoice: any, company: any, design: any, warehouse?: any, customer?: any, customerBalance?: number }) => {
   const [imgError, setImgError] = useState(false);
@@ -241,7 +242,26 @@ export const PosReceipt = ({ invoice, company, design, warehouse, customer, cust
       </div>
 
        <div style={footerStyle}>
-        <p style={{marginTop: '15px', fontWeight: 'bold'}}>{company?.invoiceFooter || 'شكرًا لتعاملكم معنا!'}</p>
+        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', margin: '10px 0' }}>
+          <div style={{ padding: '6px', backgroundColor: '#fff', border: '1px solid #000', borderRadius: '4px' }}>
+            <QRCodeSVG
+              value={[
+                `${effectiveCompanyName}`,
+                `إيصال رقم: ${invoice?.invoiceNumber || '-'}`,
+                `التاريخ: ${invoice?.date ? new Date(invoice.date).toLocaleString('ar-EG') : '-'}`,
+                `الإجمالي: ${totalAmount.toFixed(2)} ج.م`,
+                invoice?.etaUuid ? `UUID: ${invoice.etaUuid}` : '',
+              ].filter(Boolean).join('\n')}
+              size={105}
+              bgColor="#ffffff"
+              fgColor="#000000"
+              level="M"
+              includeMargin={false}
+            />
+          </div>
+          <span style={{ fontSize: '10px', marginTop: '4px' }}>امسح الرمز للتحقق من الفاتورة الإلكترونية</span>
+        </div>
+        <p style={{marginTop: '8px', fontWeight: 'bold'}}>{company?.invoiceFooter || 'شكرًا لتعاملكم معنا!'}</p>
       </div>
     </div>
   );
