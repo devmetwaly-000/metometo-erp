@@ -931,6 +931,10 @@ export async function POST(req: Request) {
                     .input('HousingAllowance', sql.Decimal(18, 4), Number(payload.housingAllowance) || 0)
                     .input('TransportAllowance', sql.Decimal(18, 4), Number(payload.transportAllowance) || 0)
                     .input('SocialInsuranceDeduction', sql.Decimal(18, 4), Number(payload.socialInsuranceDeduction) || 0)
+                    .input('PhotoUrl', sql.NVarChar(sql.MAX), payload.photoUrl || null)
+                    .input('WeeklyOffDays', sql.NVarChar(255), payload.weeklyOffDays ? jsonString(payload.weeklyOffDays) : JSON.stringify(['الجمعة']))
+                    .input('AnnualLeaveDays', sql.Int, payload.annualLeaveDays !== undefined ? Number(payload.annualLeaveDays) : 21)
+                    .input('UsedLeaveDays', sql.Int, payload.usedLeaveDays !== undefined ? Number(payload.usedLeaveDays) : 0)
                     .input('Status', sql.NVarChar(50), payload.status || 'active')
                     .input('BranchId', sql.NVarChar(64), payload.branchId || null)
                     .input('Notes', sql.NVarChar(sql.MAX), payload.notes || null)
@@ -950,14 +954,16 @@ export async function POST(req: Request) {
                         INSERT INTO dbo.Users (
                             Id, LoginName, Name, Password, Phone, Email, NationalId, SocialInsuranceNumber,
                             JobTitle, Department, HiringDate, BasicSalary, HousingAllowance, TransportAllowance,
-                            SocialInsuranceDeduction, Status, BranchId, Notes, Role, WarehouseIds,
+                            SocialInsuranceDeduction, PhotoUrl, WeeklyOffDays, AnnualLeaveDays, UsedLeaveDays,
+                            Status, BranchId, Notes, Role, WarehouseIds,
                             IsCashier, IsDelivery, IsSalesRep, CanOpenOwnShift, CanDeleteFromCart,
                             CanProcessReturn, CanCancelInvoice, CanBypassScannerForReturn, IsDisabled, ThemeSettings
                         )
                         VALUES (
                             @Id, @LoginName, @Name, @Password, @Phone, @Email, @NationalId, @SocialInsuranceNumber,
                             @JobTitle, @Department, @HiringDate, @BasicSalary, @HousingAllowance, @TransportAllowance,
-                            @SocialInsuranceDeduction, @Status, @BranchId, @Notes, @Role, @WarehouseIds,
+                            @SocialInsuranceDeduction, @PhotoUrl, @WeeklyOffDays, @AnnualLeaveDays, @UsedLeaveDays,
+                            @Status, @BranchId, @Notes, @Role, @WarehouseIds,
                             @IsCashier, @IsDelivery, @IsSalesRep, @CanOpenOwnShift, @CanDeleteFromCart,
                             @CanProcessReturn, @CanCancelInvoice, @CanBypassScannerForReturn, @IsDisabled, @ThemeSettings
                         );
@@ -1568,6 +1574,10 @@ export async function POST(req: Request) {
                     .input('HousingAllowance', sql.Decimal(18, 4), data.housingAllowance !== undefined ? Number(data.housingAllowance) : null)
                     .input('TransportAllowance', sql.Decimal(18, 4), data.transportAllowance !== undefined ? Number(data.transportAllowance) : null)
                     .input('SocialInsuranceDeduction', sql.Decimal(18, 4), data.socialInsuranceDeduction !== undefined ? Number(data.socialInsuranceDeduction) : null)
+                    .input('PhotoUrl', sql.NVarChar(sql.MAX), data.photoUrl !== undefined ? (data.photoUrl || '') : null)
+                    .input('WeeklyOffDays', sql.NVarChar(255), data.weeklyOffDays !== undefined ? jsonString(data.weeklyOffDays) : null)
+                    .input('AnnualLeaveDays', sql.Int, data.annualLeaveDays !== undefined ? Number(data.annualLeaveDays) : null)
+                    .input('UsedLeaveDays', sql.Int, data.usedLeaveDays !== undefined ? Number(data.usedLeaveDays) : null)
                     .input('Status', sql.NVarChar(50), data.status || null)
                     .input('BranchId', sql.NVarChar(64), data.branchId !== undefined ? (data.branchId || null) : null)
                     .input('Notes', sql.NVarChar(sql.MAX), data.notes !== undefined ? String(data.notes) : null)
@@ -1600,6 +1610,10 @@ export async function POST(req: Request) {
                             HousingAllowance = COALESCE(@HousingAllowance, HousingAllowance),
                             TransportAllowance = COALESCE(@TransportAllowance, TransportAllowance),
                             SocialInsuranceDeduction = COALESCE(@SocialInsuranceDeduction, SocialInsuranceDeduction),
+                            PhotoUrl = CASE WHEN @PhotoUrl IS NOT NULL THEN NULLIF(@PhotoUrl, '') ELSE PhotoUrl END,
+                            WeeklyOffDays = COALESCE(@WeeklyOffDays, WeeklyOffDays),
+                            AnnualLeaveDays = COALESCE(@AnnualLeaveDays, AnnualLeaveDays),
+                            UsedLeaveDays = COALESCE(@UsedLeaveDays, UsedLeaveDays),
                             Status = COALESCE(@Status, Status),
                             BranchId = COALESCE(@BranchId, BranchId),
                             Notes = COALESCE(@Notes, Notes),

@@ -24,7 +24,9 @@ import {
   MapPin,
   Users,
   Save,
-  AlertTriangle
+  AlertTriangle,
+  Camera,
+  CalendarOff
 } from "lucide-react";
 import {
   Card,
@@ -103,11 +105,25 @@ interface User {
   canCancelInvoice?: boolean;
   canBypassScannerForReturn?: boolean;
   canOpenOwnShift?: boolean;
+  photoUrl?: string;
+  weeklyOffDays?: string[];
+  annualLeaveDays?: number;
+  usedLeaveDays?: number;
   themeSettings?: {
     licenseKey?: string;
     [key: string]: any;
   };
 }
+
+const WEEK_DAYS = [
+  { id: "الجمعة", label: "الجمعة" },
+  { id: "السبت", label: "السبت" },
+  { id: "الأحد", label: "الأحد" },
+  { id: "الإثنين", label: "الإثنين" },
+  { id: "الثلاثاء", label: "الثلاثاء" },
+  { id: "الأربعاء", label: "الأربعاء" },
+  { id: "الخميس", label: "الخميس" },
+];
 
 const UserForm = ({
   user,
@@ -142,7 +158,59 @@ const UserForm = ({
     canCancelInvoice: user?.canCancelInvoice || false,
     canBypassScannerForReturn: user?.canBypassScannerForReturn || false,
     canOpenOwnShift: user?.canOpenOwnShift || false,
+    photoUrl: user?.photoUrl || "",
+    weeklyOffDays: Array.isArray(user?.weeklyOffDays) && user!.weeklyOffDays.length > 0 ? user!.weeklyOffDays : ["الجمعة"],
+    annualLeaveDays: user?.annualLeaveDays !== undefined ? Number(user.annualLeaveDays) : 21,
+    usedLeaveDays: user?.usedLeaveDays !== undefined ? Number(user.usedLeaveDays) : 0,
   });
+
+  const handlePhotoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (!file.type.startsWith("image/")) return;
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      const img = new Image();
+      img.onload = () => {
+        const canvas = document.createElement("canvas");
+        const maxDim = 256;
+        let width = img.width;
+        let height = img.height;
+        if (width > height) {
+          if (width > maxDim) {
+            height = Math.round((height * maxDim) / width);
+            width = maxDim;
+          }
+        } else {
+          if (height > maxDim) {
+            width = Math.round((width * maxDim) / height);
+            height = maxDim;
+          }
+        }
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext("2d");
+        if (ctx) {
+          ctx.drawImage(img, 0, 0, width, height);
+          const compressedDataUrl = canvas.toDataURL("image/jpeg", 0.8);
+          setFormData((prev) => ({ ...prev, photoUrl: compressedDataUrl }));
+        }
+      };
+      img.src = ev.target?.result as string;
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const toggleOffDay = (dayId: string) => {
+    setFormData((prev) => {
+      const current = prev.weeklyOffDays || [];
+      const exists = current.includes(dayId);
+      return {
+        ...prev,
+        weeklyOffDays: exists ? current.filter((d) => d !== dayId) : [...current, dayId],
+      };
+    });
+  };
 
   const licenseKeyToDisplay = user?.themeSettings?.licenseKey || currentLicenseKey || 'بدون ترخيص';
 
@@ -205,7 +273,52 @@ const UserForm = ({
 
   return (
     <div className="space-y-4 py-2 pb-4 max-h-[70vh] overflow-y-auto pr-2">
-      <div className="space-y-4">
+      {/* رفع صورة المستخدم (اختياري) */}
+      <div className="flex items-center gap-4 p-3 rounded-xl border bg-muted/30">
+        <div className="relative h-16 w-16 rounded-full border-2 border-primary/30 bg-background overflow-hidden flex items-center justify-center shrink-0">
+          {formData.photoUrl ? (
+            <img src={formData.photoUrl} alt={formData.name || "صورة الموظف"} className="h-full w-full object-cover" />
+          ) : (
+            <UserRound className="h-8 w-8 text-muted-foreground/50" />
+          )}
+        </div>
+        <div className="flex-1 space-y-1.5">
+          <div className="flex items-center gap-2">
+            <Label className="text-xs font-bold">صورة الموظف / المستخدم</Label>
+            <Badge variant="outline" className="text-[10px] py-0 h-4">اختياري</Badge>
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <Label
+              htmlFor="user-photo-upload"
+              className="cursor-pointer inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold bg-primary/10 text-primary hover:bg-primary/20 transition-colors"
+            >
+              <Camera className="h-3.5 w-3.5" />
+              {formData.photoUrl ? "تغيير الصورة" : "رفع صورة"}
+            </Label>
+            <input
+              id="user-photo-upload"
+              type="file"
+              accept="image/*"
+              className="hidden"
+              onChange={handlePhotoUpload}
+            />
+            {formData.photoUrl && (
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                className="h-7 px-2 text-xs text-destructive hover:text-destructive"
+                onClick={() => setFormData({ ...formData, photoUrl: "" })}
+              >
+                <Trash2 className="h-3.5 w-3.5 ml-1" />
+                إزالة
+              </Button>
+            )}
+          </div>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <div className="space-y-2">
           <Label htmlFor="employee-name">اسم المستخدم</Label>
           <Input
@@ -222,6 +335,61 @@ const UserForm = ({
             value={formData.phone}
             onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
           />
+        </div>
+      </div>
+
+      {/* أيام الإجازة الأسبوعية ورصيد الإجازات */}
+      <div className="space-y-3 p-3.5 border rounded-lg bg-sky-500/5 border-sky-500/20">
+        <div className="flex items-center justify-between">
+          <Label className="text-xs font-bold flex items-center gap-1.5 text-sky-700 dark:text-sky-400">
+            <CalendarOff className="h-3.5 w-3.5" />
+            أيام الإجازة الأسبوعية ورصيد الإجازات السنوية
+          </Label>
+          <Badge variant="secondary" className="text-[10px]">
+            المتبقي: {Math.max(0, Number(formData.annualLeaveDays || 0) - Number(formData.usedLeaveDays || 0))} يوم
+          </Badge>
+        </div>
+        <div className="flex flex-wrap gap-1.5">
+          {WEEK_DAYS.map((day) => {
+            const selected = (formData.weeklyOffDays || []).includes(day.id);
+            return (
+              <button
+                key={day.id}
+                type="button"
+                onClick={() => toggleOffDay(day.id)}
+                className={cn(
+                  "px-2.5 py-1 rounded-md text-xs font-bold border transition-all",
+                  selected
+                    ? "bg-sky-600 text-white border-sky-600 shadow-sm"
+                    : "bg-background text-muted-foreground border-border hover:border-sky-400"
+                )}
+              >
+                {day.label}
+              </button>
+            );
+          })}
+        </div>
+        <div className="grid grid-cols-2 gap-3 pt-1">
+          <div className="space-y-1">
+            <Label className="text-[11px]">رصيد الإجازات السنوية (يوم)</Label>
+            <Input
+              type="number"
+              min={0}
+              className="h-8 text-xs font-mono"
+              value={formData.annualLeaveDays}
+              onChange={(e) => setFormData({ ...formData, annualLeaveDays: Number(e.target.value) })}
+            />
+          </div>
+          <div className="space-y-1">
+            <Label className="text-[11px]">الإجازات المستنفدة (يوم)</Label>
+            <Input
+              type="number"
+              min={0}
+              className="h-8 text-xs font-mono"
+              value={formData.usedLeaveDays}
+              onChange={(e) => setFormData({ ...formData, usedLeaveDays: Number(e.target.value) })}
+            />
+          </div>
         </div>
       </div>
 
@@ -678,15 +846,24 @@ export default function UsersPage() {
                       <Card key={u.id} className={cn("overflow-hidden border-r-4 shadow-sm", u.isDisabled ? "border-r-destructive opacity-80" : "border-r-primary")}>
                         <CardContent className="p-4">
                           <div className="flex justify-between items-start mb-3">
-                            <div className="space-y-1">
-                              <div className="font-bold text-base leading-tight flex items-center gap-2">
-                                {u.name}
-                                {u.isDisabled && <Badge variant="destructive" className="text-[9px] h-4">معطل</Badge>}
-                              </div>
-                              <div className="text-xs text-muted-foreground flex items-center gap-1 font-mono">
-                                <UserRound className="h-3 w-3"/>
-                                {u.loginName}
-                                {u.phone && <><span className="mx-1">•</span><Phone className="h-3 w-3"/>{u.phone}</>}
+                            <div className="flex items-center gap-2.5">
+                              {u.photoUrl ? (
+                                <img src={u.photoUrl} alt={u.name} className="h-10 w-10 rounded-full object-cover border border-primary/30 shrink-0" />
+                              ) : (
+                                <div className="h-10 w-10 rounded-full bg-primary/10 text-primary flex items-center justify-center font-bold text-sm shrink-0">
+                                  {(u.name || "م").charAt(0)}
+                                </div>
+                              )}
+                              <div className="space-y-1">
+                                <div className="font-bold text-base leading-tight flex items-center gap-2">
+                                  {u.name}
+                                  {u.isDisabled && <Badge variant="destructive" className="text-[9px] h-4">معطل</Badge>}
+                                </div>
+                                <div className="text-xs text-muted-foreground flex items-center gap-1 font-mono">
+                                  <UserRound className="h-3 w-3"/>
+                                  {u.loginName}
+                                  {u.phone && <><span className="mx-1">•</span><Phone className="h-3 w-3"/>{u.phone}</>}
+                                </div>
                               </div>
                             </div>
                             <Badge variant="outline" className="text-[10px] font-bold">{u.role}</Badge>
@@ -725,6 +902,7 @@ export default function UsersPage() {
                         <TableRow className="bg-muted/50">
                           <TableHead>اسم المستخدم</TableHead>
                           <TableHead className="hidden md:table-cell">اسم الدخول</TableHead>
+                          <TableHead className="hidden lg:table-cell text-center">الإجازة الأسبوعية</TableHead>
                           <TableHead className="text-center">مندوب</TableHead>
                           <TableHead className="text-center">كاشير</TableHead>
                           <TableHead className="text-center">طيار</TableHead>
@@ -739,8 +917,28 @@ export default function UsersPage() {
                         {filteredUsers.map((u: any) => {
                           return (
                             <TableRow key={u.id} className={cn(u.isDisabled && "bg-muted/30 opacity-70")}>
-                              <TableCell className="font-bold">{u.name}</TableCell>
+                              <TableCell className="font-bold">
+                                <div className="flex items-center gap-2.5">
+                                  {u.photoUrl ? (
+                                    <img src={u.photoUrl} alt={u.name} className="h-8 w-8 rounded-full object-cover border border-primary/30 shrink-0" />
+                                  ) : (
+                                    <div className="h-8 w-8 rounded-full bg-primary/10 text-primary flex items-center justify-center font-bold text-xs shrink-0">
+                                      {(u.name || "م").charAt(0)}
+                                    </div>
+                                  )}
+                                  <span>{u.name}</span>
+                                </div>
+                              </TableCell>
                               <TableCell className="font-mono hidden md:table-cell">{u.loginName}</TableCell>
+                              <TableCell className="hidden lg:table-cell text-center">
+                                <div className="flex flex-wrap justify-center gap-1">
+                                  {(Array.isArray(u.weeklyOffDays) && u.weeklyOffDays.length > 0 ? u.weeklyOffDays : ["الجمعة"]).map((d: string) => (
+                                    <Badge key={d} variant="secondary" className="text-[10px] px-1.5 py-0 font-normal">
+                                      {d}
+                                    </Badge>
+                                  ))}
+                                </div>
+                              </TableCell>
                               <TableCell className="text-center">
                                 {u.isSalesRep && (
                                   <CheckCircle className="h-5 w-5 text-green-500 mx-auto" />

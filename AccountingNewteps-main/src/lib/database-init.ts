@@ -1487,6 +1487,10 @@ export async function createAndInitializeDatabase(options: DbInitOptions): Promi
                 [HousingAllowance] DECIMAL(18,4) NULL DEFAULT ((0)),
                 [TransportAllowance] DECIMAL(18,4) NULL DEFAULT ((0)),
                 [SocialInsuranceDeduction] DECIMAL(18,4) NULL DEFAULT ((0)),
+                [PhotoUrl] NVARCHAR(MAX) NULL,
+                [WeeklyOffDays] NVARCHAR(255) NULL DEFAULT (N'["الجمعة"]'),
+                [AnnualLeaveDays] INT NULL DEFAULT ((21)),
+                [UsedLeaveDays] INT NULL DEFAULT ((0)),
                 [Status] NVARCHAR(50) NULL DEFAULT (N'active'),
                 [BranchId] NVARCHAR(64) NULL,
                 [Notes] NVARCHAR(MAX) NULL,
@@ -1685,6 +1689,14 @@ export async function createAndInitializeDatabase(options: DbInitOptions): Promi
                 ALTER TABLE dbo.Users ADD [TransportAllowance] DECIMAL(18,4) NULL DEFAULT ((0));`,
             `IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('dbo.Users') AND name = 'SocialInsuranceDeduction')
                 ALTER TABLE dbo.Users ADD [SocialInsuranceDeduction] DECIMAL(18,4) NULL DEFAULT ((0));`,
+            `IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('dbo.Users') AND name = 'PhotoUrl')
+                ALTER TABLE dbo.Users ADD [PhotoUrl] NVARCHAR(MAX) NULL;`,
+            `IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('dbo.Users') AND name = 'WeeklyOffDays')
+                ALTER TABLE dbo.Users ADD [WeeklyOffDays] NVARCHAR(255) NULL DEFAULT (N'["الجمعة"]');`,
+            `IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('dbo.Users') AND name = 'AnnualLeaveDays')
+                ALTER TABLE dbo.Users ADD [AnnualLeaveDays] INT NULL DEFAULT ((21));`,
+            `IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('dbo.Users') AND name = 'UsedLeaveDays')
+                ALTER TABLE dbo.Users ADD [UsedLeaveDays] INT NULL DEFAULT ((0));`,
             `IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('dbo.Users') AND name = 'Status')
                 ALTER TABLE dbo.Users ADD [Status] NVARCHAR(50) NULL DEFAULT (N'active');`,
             `IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('dbo.Users') AND name = 'BranchId')
