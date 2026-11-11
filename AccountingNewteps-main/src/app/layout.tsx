@@ -10,9 +10,9 @@ import { PermissionsProvider } from "@/contexts/permissions-context";
 import { AuthProvider } from "@/contexts/auth-context";
 import { DataProvider, useData } from "@/contexts/data-provider";
 import { NotificationProvider } from "@/contexts/notification-context";
-import React, { ReactNode, useEffect } from "react";
+import React, { ReactNode, useEffect, useState } from "react";
 import { useToast } from "@/hooks/use-toast";
-import { Loader2 } from "lucide-react";
+import { Loader2, Download, Smartphone, X } from "lucide-react";
 
 const inter = Inter({
   subsets: ["latin"],
@@ -26,22 +26,41 @@ const notoKufi = Noto_Kufi_Arabic({
 });
 
 
-// New component to handle PWA lifecycle events
+// New component to handle PWA lifecycle events and Mobile Install Banner
 const PWALifecycle = () => {
   const { toast } = useToast();
   const { isOnline } = useData();
+  const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
+  const [showInstallBanner, setShowInstallBanner] = useState(false);
 
   useEffect(() => {
-    // Check for secure context (HTTPS or localhost)
-    if (typeof window !== 'undefined' && !window.isSecureContext) {
-         toast({
-            variant: "destructive",
-            title: "تنبيه أمني (PWA)",
-            description: "ميزات الأوفلاين والتثبيت لا تعمل إلا عبر HTTPS أو localhost. الاتصال الحالي غير آمن.",
-            duration: 10000,
-        });
-    }
+    const handler = (e: Event) => {
+      e.preventDefault();
+      setDeferredPrompt(e);
+      const dismissed = sessionStorage.getItem('pwa_install_dismissed');
+      if (!dismissed) {
+        setShowInstallBanner(true);
+      }
+    };
+    window.addEventListener('beforeinstallprompt', handler);
+    return () => window.removeEventListener('beforeinstallprompt', handler);
+  }, []);
 
+  const handleInstallClick = async () => {
+    if (!deferredPrompt) return;
+    deferredPrompt.prompt();
+    const { outcome } = await deferredPrompt.userChoice;
+    if (outcome === 'accepted') {
+      toast({
+        title: "تم تثبيت التطبيق بنجاح",
+        description: "يمكنك الآن فتح البرنامج مباشرة من الشاشة الرئيسية للموبايل.",
+      });
+    }
+    setDeferredPrompt(null);
+    setShowInstallBanner(false);
+  };
+
+  useEffect(() => {
     if (!isOnline) {
         toast({
             variant: "destructive",
@@ -56,7 +75,6 @@ const PWALifecycle = () => {
     if (typeof window !== 'undefined' && 'serviceWorker' in navigator && (window as any).workbox !== undefined) {
       const wb = (window as any).workbox;
 
-      // A common UX pattern for PWAs is to show a toast when a new version is available.
       wb.addEventListener('installed', (event: any) => {
         if (!event.isUpdate) {
             toast({
@@ -75,12 +93,46 @@ const PWALifecycle = () => {
         });
       });
 
-      // Register the service worker
       wb.register();
     }
   }, [toast]);
 
-  return null;
+  if (!showInstallBanner || !deferredPrompt) return null;
+
+  return (
+    <div className="fixed bottom-3 left-3 right-3 md:left-4 md:right-auto md:w-96 z-50 bg-primary text-primary-foreground p-3 rounded-xl shadow-2xl border border-white/20 flex items-center justify-between gap-3 animate-in slide-in-from-bottom-5">
+      <div className="flex items-center gap-2.5 min-w-0">
+        <div className="p-2 rounded-lg bg-white/15 shrink-0">
+          <Smartphone className="h-5 w-5" />
+        </div>
+        <div className="min-w-0">
+          <p className="text-xs font-bold truncate">تثبيت تطبيق MetoStore على جهازك</p>
+          <p className="text-[10px] opacity-90 truncate">سرعة أعلى، عمل أوفلاين، وجرد مباشر بالكاميرا</p>
+        </div>
+      </div>
+      <div className="flex items-center gap-1.5 shrink-0">
+        <button
+          type="button"
+          onClick={handleInstallClick}
+          className="px-3 py-1.5 rounded-lg bg-white text-primary font-bold text-xs flex items-center gap-1 shadow hover:bg-white/90 transition"
+        >
+          <Download className="h-3.5 w-3.5" />
+          تثبيت
+        </button>
+        <button
+          type="button"
+          onClick={() => {
+            sessionStorage.setItem('pwa_install_dismissed', '1');
+            setShowInstallBanner(false);
+          }}
+          className="p-1 rounded-md hover:bg-white/15 transition"
+          aria-label="إغلاق"
+        >
+          <X className="h-4 w-4" />
+        </button>
+      </div>
+    </div>
+  );
 };
 
 
@@ -121,11 +173,12 @@ export default function RootLayout({
   return (
     <html lang="ar" dir="rtl" suppressHydrationWarning>
        <head>
-          <meta name="application-name" content="MetoStore" />
+          <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=5, viewport-fit=cover" />
+          <meta name="application-name" content="MetoStore ERP" />
           <meta name="apple-mobile-web-app-capable" content="yes" />
-          <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+          <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
           <meta name="apple-mobile-web-app-title" content="MetoStore" />
-          <meta name="description" content="نظام إدارة المحلات المتكامل" />
+          <meta name="description" content="نظام إدارة المحلات والفروع والمخازن المتكامل" />
           <meta name="format-detection" content="telephone=no" />
           <meta name="mobile-web-app-capable" content="yes" />
           <meta name="theme-color" content="#3b82f6" />

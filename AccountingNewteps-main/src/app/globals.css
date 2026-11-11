@@ -152,6 +152,19 @@ body {
     @apply bg-background text-foreground;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
+    -webkit-tap-highlight-color: transparent;
+    overscroll-behavior-y: none;
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+
+  button, a, input, select, textarea, [role="button"] {
+    touch-action: manipulation;
+  }
+
+  @media (max-width: 768px) {
+    input, select, textarea {
+      font-size: 16px !important;
+    }
   }
 
   ::-webkit-scrollbar {

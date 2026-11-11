@@ -39,7 +39,7 @@ export default function StockAdjustmentDetailsPage() {
 
   const [record, setRecord] = useState<StockAdjustmentRecord | null>(null);
   
-  const { stockAdjustmentRecords, warehouses, loading } = useData();
+  const { stockAdjustmentRecords, warehouses, inventoryZones, loading } = useData();
   
   useEffect(() => {
     if (stockAdjustmentRecords.length > 0 && id) {
@@ -48,7 +48,12 @@ export default function StockAdjustmentDetailsPage() {
     }
   }, [stockAdjustmentRecords, id]);
   
-  const getWarehouseName = (warehouseId: string) => warehouses.find((w:any) => w.id === warehouseId)?.name || 'غير معروف';
+  const getWarehouseName = (warehouseId: string) => {
+    const found =
+      (warehouses || []).find((w: any) => w.id === warehouseId) ||
+      (inventoryZones || []).find((z: any) => z.id === warehouseId);
+    return found?.name || 'غير معروف';
+  };
 
   const handlePrint = () => {
     window.print();

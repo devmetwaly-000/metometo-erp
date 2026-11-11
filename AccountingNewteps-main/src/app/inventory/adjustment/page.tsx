@@ -49,12 +49,15 @@ interface Warehouse {
 }
 
 export default function StockAdjustmentListPage() {
-  const { stockAdjustmentRecords, warehouses, loading } = useData();
+  const { stockAdjustmentRecords, warehouses, inventoryZones, loading } = useData();
   const router = useRouter();
   const isMobile = useIsMobile();
 
   const getWarehouseName = (warehouseId: string) => {
-    return warehouses.find((w: Warehouse) => w.id === warehouseId)?.name || 'غير معروف';
+    const found =
+      (warehouses || []).find((w: Warehouse) => w.id === warehouseId) ||
+      (inventoryZones || []).find((z: Warehouse) => z.id === warehouseId);
+    return found?.name || 'غير معروف';
   };
   
   const getReasonLabel = (reason?: string) => {

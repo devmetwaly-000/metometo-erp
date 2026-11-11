@@ -1,23 +1,105 @@
 {
-  "name": "MetoStore ERP",
+  "id": "/",
+  "name": "MetoStore ERP - نظام إدارة الفروع والمخازن",
   "short_name": "MetoStore",
-  "description": "نظام إدارة المحلات المتكامل والمحاسبة الفنية",
+  "description": "نظام إدارة المحلات والفروع والمخازن والمحاسبة المتكامل مع الجرد بالكاميرا والعمل أوفلاين",
+  "dir": "rtl",
+  "lang": "ar",
   "start_url": "/",
+  "scope": "/",
   "display": "standalone",
-  "background_color": "#ffffff",
+  "display_override": [
+    "window-controls-overlay",
+    "standalone",
+    "minimal-ui"
+  ],
+  "orientation": "any",
+  "background_color": "#0f172a",
   "theme_color": "#3b82f6",
+  "categories": [
+    "business",
+    "finance",
+    "productivity"
+  ],
+  "prefer_related_applications": false,
   "icons": [
     {
       "src": "/icons/icon-192x192.svg",
       "sizes": "192x192",
       "type": "image/svg+xml",
-      "purpose": "any maskable"
+      "purpose": "any"
+    },
+    {
+      "src": "/icons/icon-192x192.svg",
+      "sizes": "192x192",
+      "type": "image/svg+xml",
+      "purpose": "maskable"
     },
     {
       "src": "/icons/icon-512x512.svg",
       "sizes": "512x512",
       "type": "image/svg+xml",
-      "purpose": "any maskable"
+      "purpose": "any"
+    },
+    {
+      "src": "/icons/icon-512x512.svg",
+      "sizes": "512x512",
+      "type": "image/svg+xml",
+      "purpose": "maskable"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "جرد المخزون بالكاميرا",
+      "short_name": "جرد بالكاميرا",
+      "description": "بدء جرد سريع للمخزن أو القسم باستخدام كاميرا الموبايل",
+      "url": "/inventory/adjustment/new",
+      "icons": [
+        {
+          "src": "/icons/icon-192x192.svg",
+          "sizes": "192x192",
+          "type": "image/svg+xml"
+        }
+      ]
+    },
+    {
+      "name": "نقطة البيع (الكاشير)",
+      "short_name": "الكاشير POS",
+      "description": "فتح شاشة الكاشير ونقاط البيع",
+      "url": "/pos",
+      "icons": [
+        {
+          "src": "/icons/icon-192x192.svg",
+          "sizes": "192x192",
+          "type": "image/svg+xml"
+        }
+      ]
+    },
+    {
+      "name": "تسكين البضاعة الواردة",
+      "short_name": "التسكين",
+      "description": "تسكين البضاعة الواردة في الحاويات والأقسام",
+      "url": "/inventory/stock-in",
+      "icons": [
+        {
+          "src": "/icons/icon-192x192.svg",
+          "sizes": "192x192",
+          "type": "image/svg+xml"
+        }
+      ]
+    },
+    {
+      "name": "فواتير المبيعات",
+      "short_name": "المبيعات",
+      "description": "عرض وإدارة فواتير المبيعات",
+      "url": "/sales/invoices/list",
+      "icons": [
+        {
+          "src": "/icons/icon-192x192.svg",
+          "sizes": "192x192",
+          "type": "image/svg+xml"
+        }
+      ]
     }
   ]
 }
