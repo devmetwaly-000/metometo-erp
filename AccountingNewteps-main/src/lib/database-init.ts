@@ -1728,13 +1728,45 @@ export async function createAndInitializeDatabase(options: DbInitOptions): Promi
             `IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('dbo.Warehouses') AND name = 'BranchId')
                 ALTER TABLE dbo.Warehouses ADD [BranchId] NVARCHAR(64) NULL;`,
 
-            // AuditTrailLogs, GeneralLedgerEntries, ManufacturingOrders sync & compatibility columns
+            // AuditTrailLogs, GeneralLedgerEntries, ManufacturingOrders sync & compatibility columns (checked individually)
             `IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('dbo.AuditTrailLogs') AND name = 'BranchCode')
-                ALTER TABLE dbo.AuditTrailLogs ADD [BranchCode] NVARCHAR(50) NULL, [BranchName] NVARCHAR(255) NULL, [SyncStatus] NVARCHAR(20) NULL DEFAULT ('synced'), [LastSyncedAt] DATETIME2 NULL, [UpdatedAt] DATETIME2 NOT NULL DEFAULT (sysutcdatetime()), [CreatedAt] DATETIME2 NOT NULL DEFAULT (sysutcdatetime());`,
+                ALTER TABLE dbo.AuditTrailLogs ADD [BranchCode] NVARCHAR(50) NULL;`,
+            `IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('dbo.AuditTrailLogs') AND name = 'BranchName')
+                ALTER TABLE dbo.AuditTrailLogs ADD [BranchName] NVARCHAR(255) NULL;`,
+            `IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('dbo.AuditTrailLogs') AND name = 'SyncStatus')
+                ALTER TABLE dbo.AuditTrailLogs ADD [SyncStatus] NVARCHAR(20) NULL DEFAULT ('synced');`,
+            `IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('dbo.AuditTrailLogs') AND name = 'LastSyncedAt')
+                ALTER TABLE dbo.AuditTrailLogs ADD [LastSyncedAt] DATETIME2 NULL;`,
+            `IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('dbo.AuditTrailLogs') AND name = 'UpdatedAt')
+                ALTER TABLE dbo.AuditTrailLogs ADD [UpdatedAt] DATETIME2 NOT NULL DEFAULT (sysutcdatetime());`,
+            `IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('dbo.AuditTrailLogs') AND name = 'CreatedAt')
+                ALTER TABLE dbo.AuditTrailLogs ADD [CreatedAt] DATETIME2 NOT NULL DEFAULT (sysutcdatetime());`,
+
             `IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('dbo.GeneralLedgerEntries') AND name = 'BranchCode')
-                ALTER TABLE dbo.GeneralLedgerEntries ADD [BranchCode] NVARCHAR(50) NULL, [BranchName] NVARCHAR(255) NULL, [SyncStatus] NVARCHAR(20) NULL DEFAULT ('synced'), [LastSyncedAt] DATETIME2 NULL, [UpdatedAt] DATETIME2 NOT NULL DEFAULT (sysutcdatetime());`,
+                ALTER TABLE dbo.GeneralLedgerEntries ADD [BranchCode] NVARCHAR(50) NULL;`,
+            `IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('dbo.GeneralLedgerEntries') AND name = 'BranchName')
+                ALTER TABLE dbo.GeneralLedgerEntries ADD [BranchName] NVARCHAR(255) NULL;`,
+            `IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('dbo.GeneralLedgerEntries') AND name = 'SyncStatus')
+                ALTER TABLE dbo.GeneralLedgerEntries ADD [SyncStatus] NVARCHAR(20) NULL DEFAULT ('synced');`,
+            `IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('dbo.GeneralLedgerEntries') AND name = 'LastSyncedAt')
+                ALTER TABLE dbo.GeneralLedgerEntries ADD [LastSyncedAt] DATETIME2 NULL;`,
+            `IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('dbo.GeneralLedgerEntries') AND name = 'UpdatedAt')
+                ALTER TABLE dbo.GeneralLedgerEntries ADD [UpdatedAt] DATETIME2 NOT NULL DEFAULT (sysutcdatetime());`,
+            `IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('dbo.GeneralLedgerEntries') AND name = 'CreatedAt')
+                ALTER TABLE dbo.GeneralLedgerEntries ADD [CreatedAt] DATETIME2 NOT NULL DEFAULT (sysutcdatetime());`,
+
             `IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('dbo.ManufacturingOrders') AND name = 'BranchCode')
-                ALTER TABLE dbo.ManufacturingOrders ADD [BranchCode] NVARCHAR(50) NULL, [BranchName] NVARCHAR(255) NULL, [SyncStatus] NVARCHAR(20) NULL DEFAULT ('synced'), [LastSyncedAt] DATETIME2 NULL, [UpdatedAt] DATETIME2 NOT NULL DEFAULT (sysutcdatetime());`,
+                ALTER TABLE dbo.ManufacturingOrders ADD [BranchCode] NVARCHAR(50) NULL;`,
+            `IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('dbo.ManufacturingOrders') AND name = 'BranchName')
+                ALTER TABLE dbo.ManufacturingOrders ADD [BranchName] NVARCHAR(255) NULL;`,
+            `IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('dbo.ManufacturingOrders') AND name = 'SyncStatus')
+                ALTER TABLE dbo.ManufacturingOrders ADD [SyncStatus] NVARCHAR(20) NULL DEFAULT ('synced');`,
+            `IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('dbo.ManufacturingOrders') AND name = 'LastSyncedAt')
+                ALTER TABLE dbo.ManufacturingOrders ADD [LastSyncedAt] DATETIME2 NULL;`,
+            `IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('dbo.ManufacturingOrders') AND name = 'UpdatedAt')
+                ALTER TABLE dbo.ManufacturingOrders ADD [UpdatedAt] DATETIME2 NOT NULL DEFAULT (sysutcdatetime());`,
+            `IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('dbo.ManufacturingOrders') AND name = 'CreatedAt')
+                ALTER TABLE dbo.ManufacturingOrders ADD [CreatedAt] DATETIME2 NOT NULL DEFAULT (sysutcdatetime());`,
             `IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('dbo.ManufacturingOrders') AND name = 'FinishedItemId')
                 ALTER TABLE dbo.ManufacturingOrders ADD [OrderDate] DATETIME2 NULL DEFAULT (sysutcdatetime()), [FinishedItemId] NVARCHAR(64) NULL, [FinishedItemName] NVARCHAR(255) NULL, [TargetQuantity] DECIMAL(18,4) NULL DEFAULT ((1)), [ProducedQuantity] DECIMAL(18,4) NULL DEFAULT ((0)), [SourceWarehouseId] NVARCHAR(64) NULL, [TargetWarehouseId] NVARCHAR(64) NULL, [TotalRawMaterialCost] DECIMAL(18,4) NOT NULL DEFAULT ((0)), [TotalProductionCost] DECIMAL(18,4) NOT NULL DEFAULT ((0)), [UnitProductionCost] DECIMAL(18,4) NOT NULL DEFAULT ((0)), [BOMDetailsJson] NVARCHAR(MAX) NULL, [CreatedBy] NVARCHAR(255) NULL;`,
             `IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('dbo.ManufacturingOrders') AND name = 'ProductId')

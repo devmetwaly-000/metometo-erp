@@ -491,6 +491,21 @@ async function ensureSyncTrackingMatrixTable(pool: sql.ConnectionPool) {
                 [RowVersion] ROWVERSION,
                 CONSTRAINT [PK_AuditTrailLogs] PRIMARY KEY CLUSTERED ([Id])
             );
+        END
+        ELSE
+        BEGIN
+            IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('dbo.AuditTrailLogs') AND name = 'BranchCode')
+                ALTER TABLE dbo.AuditTrailLogs ADD [BranchCode] NVARCHAR(50) NULL;
+            IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('dbo.AuditTrailLogs') AND name = 'BranchName')
+                ALTER TABLE dbo.AuditTrailLogs ADD [BranchName] NVARCHAR(255) NULL;
+            IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('dbo.AuditTrailLogs') AND name = 'SyncStatus')
+                ALTER TABLE dbo.AuditTrailLogs ADD [SyncStatus] NVARCHAR(20) NULL DEFAULT ('synced');
+            IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('dbo.AuditTrailLogs') AND name = 'LastSyncedAt')
+                ALTER TABLE dbo.AuditTrailLogs ADD [LastSyncedAt] DATETIME2 NULL;
+            IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('dbo.AuditTrailLogs') AND name = 'UpdatedAt')
+                ALTER TABLE dbo.AuditTrailLogs ADD [UpdatedAt] DATETIME2 NOT NULL DEFAULT (sysutcdatetime());
+            IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('dbo.AuditTrailLogs') AND name = 'CreatedAt')
+                ALTER TABLE dbo.AuditTrailLogs ADD [CreatedAt] DATETIME2 NOT NULL DEFAULT (sysutcdatetime());
         END;
 
         IF NOT EXISTS (SELECT * FROM sys.tables WHERE name = 'GeneralLedgerEntries')
@@ -519,6 +534,21 @@ async function ensureSyncTrackingMatrixTable(pool: sql.ConnectionPool) {
                 [RowVersion] ROWVERSION,
                 CONSTRAINT [PK_GeneralLedgerEntries] PRIMARY KEY CLUSTERED ([Id])
             );
+        END
+        ELSE
+        BEGIN
+            IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('dbo.GeneralLedgerEntries') AND name = 'BranchCode')
+                ALTER TABLE dbo.GeneralLedgerEntries ADD [BranchCode] NVARCHAR(50) NULL;
+            IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('dbo.GeneralLedgerEntries') AND name = 'BranchName')
+                ALTER TABLE dbo.GeneralLedgerEntries ADD [BranchName] NVARCHAR(255) NULL;
+            IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('dbo.GeneralLedgerEntries') AND name = 'SyncStatus')
+                ALTER TABLE dbo.GeneralLedgerEntries ADD [SyncStatus] NVARCHAR(20) NULL DEFAULT ('synced');
+            IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('dbo.GeneralLedgerEntries') AND name = 'LastSyncedAt')
+                ALTER TABLE dbo.GeneralLedgerEntries ADD [LastSyncedAt] DATETIME2 NULL;
+            IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('dbo.GeneralLedgerEntries') AND name = 'UpdatedAt')
+                ALTER TABLE dbo.GeneralLedgerEntries ADD [UpdatedAt] DATETIME2 NOT NULL DEFAULT (sysutcdatetime());
+            IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('dbo.GeneralLedgerEntries') AND name = 'CreatedAt')
+                ALTER TABLE dbo.GeneralLedgerEntries ADD [CreatedAt] DATETIME2 NOT NULL DEFAULT (sysutcdatetime());
         END;
 
         IF NOT EXISTS (SELECT * FROM sys.tables WHERE name = 'ManufacturingOrders')
@@ -563,6 +593,21 @@ async function ensureSyncTrackingMatrixTable(pool: sql.ConnectionPool) {
                 [RowVersion] ROWVERSION,
                 CONSTRAINT [PK_ManufacturingOrders] PRIMARY KEY CLUSTERED ([Id])
             );
+        END
+        ELSE
+        BEGIN
+            IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('dbo.ManufacturingOrders') AND name = 'BranchCode')
+                ALTER TABLE dbo.ManufacturingOrders ADD [BranchCode] NVARCHAR(50) NULL;
+            IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('dbo.ManufacturingOrders') AND name = 'BranchName')
+                ALTER TABLE dbo.ManufacturingOrders ADD [BranchName] NVARCHAR(255) NULL;
+            IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('dbo.ManufacturingOrders') AND name = 'SyncStatus')
+                ALTER TABLE dbo.ManufacturingOrders ADD [SyncStatus] NVARCHAR(20) NULL DEFAULT ('synced');
+            IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('dbo.ManufacturingOrders') AND name = 'LastSyncedAt')
+                ALTER TABLE dbo.ManufacturingOrders ADD [LastSyncedAt] DATETIME2 NULL;
+            IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('dbo.ManufacturingOrders') AND name = 'UpdatedAt')
+                ALTER TABLE dbo.ManufacturingOrders ADD [UpdatedAt] DATETIME2 NOT NULL DEFAULT (sysutcdatetime());
+            IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('dbo.ManufacturingOrders') AND name = 'CreatedAt')
+                ALTER TABLE dbo.ManufacturingOrders ADD [CreatedAt] DATETIME2 NOT NULL DEFAULT (sysutcdatetime());
         END;
     `);
 }
