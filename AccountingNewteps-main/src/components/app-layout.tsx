@@ -130,20 +130,38 @@ const Logo = () => {
 
   return (
     <div className="flex items-center gap-2" >
-        <Scale className="h-7 w-7 text-green-500"/>
-        <Laptop className="h-7 w-7 text-green-500"/>
+        <Scale className="h-5 w-5 text-green-500 shrink-0"/>
+        <Laptop className="h-5 w-5 text-green-500 shrink-0"/>
         <div className="flex flex-col">
-            <h1 className="text-lg font-bold text-primary leading-none">{companyName}</h1>
+            <h1 className="text-base font-bold text-primary leading-none">{companyName}</h1>
             {!isOnline && <span className="text-[10px] text-destructive font-semibold">وضع الأوفلاين</span>}
         </div>
     </div>
   );
 };
 
+const normalizeArabicSearch = (text: string): string => {
+  if (!text) return "";
+  return text
+    .toLowerCase()
+    .replace(/[أإآ]/g, "ا")
+    .replace(/ة/g, "ه")
+    .replace(/ى/g, "ي")
+    .replace(/[\u064B-\u065F]/g, "")
+    .trim();
+};
+
+const matchesSearch = (text: string | undefined, query: string): boolean => {
+  const normQuery = normalizeArabicSearch(query);
+  if (!normQuery) return true;
+  if (!text) return false;
+  const normText = normalizeArabicSearch(text);
+  const words = normQuery.split(/\s+/).filter(Boolean);
+  return words.every((w) => normText.includes(w));
+};
 
 const NavLink = ({ href, children, icon, module }: { href: string; children: React.ReactNode; icon: React.ReactNode, module: string }) => {
   const pathname = usePathname();
-  const router = useRouter();
   const { setOpenMobile } = useSidebar();
   const { can } = usePermissions();
   const isActive = pathname === href;
@@ -153,23 +171,23 @@ const NavLink = ({ href, children, icon, module }: { href: string; children: Rea
   }
 
   return (
-    <SidebarMenuItem className="my-0.5">
-      <SidebarMenuButton asChild isActive={isActive} className="h-auto min-h-10 py-2 px-3 text-sm leading-relaxed">
+    <SidebarMenuItem className="my-0">
+      <SidebarMenuButton asChild isActive={isActive} className="h-auto min-h-8 py-1.5 px-2.5 text-[13px] leading-snug">
         <Link 
           href={href} 
           prefetch={true}
           onClick={() => setOpenMobile(false)}
-          className="flex items-center gap-2.5 w-full text-right"
+          className="flex items-center gap-2 w-full text-right"
         >
           {icon}
-          <span className="flex-1 text-right leading-relaxed break-words whitespace-normal">{children}</span>
+          <span className="flex-1 text-right leading-snug break-words whitespace-normal">{children}</span>
         </Link>
       </SidebarMenuButton>
     </SidebarMenuItem>
   );
 };
 
-const NavCollapsible = ({ title, icon, children, modules, searchTerm, defaultOpen }: { title: string; icon: React.ReactNode; children: React.ReactNode; modules: readonly string[], searchTerm: string, defaultOpen?: boolean }) => {
+const NavCollapsible = ({ title, icon, children, modules, searchTerm, defaultOpen, isSubCollapsible }: { title: string; icon: React.ReactNode; children: React.ReactNode; modules: readonly string[], searchTerm: string, defaultOpen?: boolean, isSubCollapsible?: boolean }) => {
     const pathname = usePathname();
     const { can } = usePermissions();
     
@@ -177,11 +195,9 @@ const NavCollapsible = ({ title, icon, children, modules, searchTerm, defaultOpe
     const canViewAnyChild = (items: React.ReactNode): boolean => {
         return React.Children.toArray(items).some((child) => {
             if (React.isValidElement(child)) {
-                // Direct link check
                 if ((child.props as any).module && can('view', (child.props as any).module)) {
                     return true;
                 }
-                // Nested collapsible check (recursive)
                 if ((child.props as any).children) {
                     return canViewAnyChild((child.props as any).children);
                 }
@@ -190,10 +206,6 @@ const NavCollapsible = ({ title, icon, children, modules, searchTerm, defaultOpe
         });
     };
 
-    if (!canViewAnyChild(children)) {
-        return null;
-    }
-    
     const isAnyChildActive = (items: React.ReactNode): boolean => {
         return React.Children.toArray(items).some((child: any) => {
              if (React.isValidElement(child)) {
@@ -206,39 +218,86 @@ const NavCollapsible = ({ title, icon, children, modules, searchTerm, defaultOpe
              }
              return false;
         });
-    }
+    };
 
-    const filteredChildren = React.Children.toArray(children).filter((child: any) => {
-        if (React.isValidElement(child) && (child.props as any).children) {
-            const grandChildren = React.Children.toArray((child.props as any).children);
-            const hasMatchingGrandChild = grandChildren.some((gc: any) => 
-                React.isValidElement(gc) && (gc.props as any).children?.toLowerCase().includes(searchTerm.toLowerCase())
-            );
-            return (child.props as any).title?.toLowerCase().includes(searchTerm.toLowerCase()) || hasMatchingGrandChild;
-        }
-        if (React.isValidElement(child) && typeof (child.props as any).children === 'string') {
-            return (child.props as any).children.toLowerCase().includes(searchTerm.toLowerCase());
-        }
-        return false;
-    });
+    const [isOpen, setIsOpen] = useState<boolean>(() => Boolean(defaultOpen || isAnyChildActive(children)));
 
-     if (searchTerm && !title.toLowerCase().includes(searchTerm.toLowerCase()) && filteredChildren.length === 0) {
+    useEffect(() => {
+        if (isAnyChildActive(children)) {
+            setIsOpen(true);
+        }
+    }, [pathname]);
+
+    if (!canViewAnyChild(children)) {
         return null;
     }
 
+    // Recursive filter supporting sub-tabs and sub-sub-tabs of any depth
+    const filterNodesRecursive = (nodes: React.ReactNode, query: string): React.ReactNode[] => {
+        const trimmed = query.trim();
+        if (!trimmed) return React.Children.toArray(nodes);
+
+        return React.Children.toArray(nodes).reduce<React.ReactNode[]>((acc, child: any) => {
+            if (!React.isValidElement(child)) return acc;
+            const props = child.props as any;
+
+            // Nested NavCollapsible (sub-tab group containing sub-sub-tabs)
+            if (props.title && props.children) {
+                const subTitleMatch = matchesSearch(props.title, trimmed);
+                const matchingNested = filterNodesRecursive(props.children, trimmed);
+                if (subTitleMatch || matchingNested.length > 0) {
+                    acc.push(child);
+                }
+                return acc;
+            }
+
+            // Leaf link item
+            const textContent = typeof props.children === 'string'
+                ? props.children
+                : Array.isArray(props.children)
+                  ? props.children.filter((c: any) => typeof c === 'string').join(' ')
+                  : '';
+
+            if (matchesSearch(textContent, trimmed) || matchesSearch(props.title, trimmed)) {
+                acc.push(child);
+            }
+            return acc;
+        }, []);
+    };
+
+    const isSearching = searchTerm.trim().length > 0;
+    const titleMatches = isSearching && matchesSearch(title, searchTerm);
+    const filteredChildren = isSearching ? filterNodesRecursive(children, searchTerm) : [];
+
+    if (isSearching && !titleMatches && filteredChildren.length === 0) {
+        return null;
+    }
+
+    const childrenToRender = isSearching
+        ? (filteredChildren.length > 0 ? filteredChildren : children)
+        : children;
+
     return (
-        <Collapsible defaultOpen={defaultOpen || isAnyChildActive(children) || (searchTerm !== '' && filteredChildren.length > 0)}>
-            <SidebarMenuItem className="my-1">
+        <Collapsible
+            open={isSearching ? true : isOpen}
+            onOpenChange={(nextOpen) => {
+                if (!isSearching) setIsOpen(nextOpen);
+            }}
+        >
+            <SidebarMenuItem className="my-0">
                 <CollapsibleTrigger asChild>
-                     <SidebarMenuButton className="h-auto min-h-10 py-2.5 px-3 text-sm leading-relaxed w-full">
+                     <SidebarMenuButton className={cn(
+                         "h-auto w-full leading-snug",
+                         isSubCollapsible ? "min-h-7 py-1 px-2 text-xs" : "min-h-8 py-1.5 px-2.5 text-[13px]"
+                     )}>
                         {icon}
-                        <span className="flex-1 text-right leading-relaxed break-words whitespace-normal font-medium">{title}</span>
-                        <ChevronDown className="mr-auto h-4 w-4 shrink-0 transition-transform duration-200 group-data-[state=open]:rotate-180" />
+                        <span className="flex-1 text-right leading-snug break-words whitespace-normal font-medium">{title}</span>
+                        <ChevronDown className="mr-auto h-3.5 w-3.5 shrink-0 transition-transform duration-200 group-data-[state=open]:rotate-180" />
                     </SidebarMenuButton>
                 </CollapsibleTrigger>
             </SidebarMenuItem>
             <CollapsibleContent asChild>
-                <SidebarMenuSub>{searchTerm ? filteredChildren : children}</SidebarMenuSub>
+                <SidebarMenuSub>{childrenToRender}</SidebarMenuSub>
             </CollapsibleContent>
         </Collapsible>
     );
@@ -246,7 +305,6 @@ const NavCollapsible = ({ title, icon, children, modules, searchTerm, defaultOpe
 
 const NavSubLink = ({ href, children, module }: { href: string; children: React.ReactNode, module: string }) => {
     const pathname = usePathname();
-    const router = useRouter();
     const { setOpenMobile } = useSidebar();
     const { can } = usePermissions();
     const isActive = pathname === href || pathname.startsWith(`${href}/`);
@@ -256,15 +314,15 @@ const NavSubLink = ({ href, children, module }: { href: string; children: React.
     }
 
     return (
-        <SidebarMenuSubItem className="my-1">
-            <SidebarMenuSubButton asChild isActive={isActive} className="h-auto min-h-10 py-2 px-3 text-sm leading-relaxed w-full">
+        <SidebarMenuSubItem className="my-0">
+            <SidebarMenuSubButton asChild isActive={isActive} className="h-auto min-h-7 py-1 px-2 text-xs leading-snug w-full">
                 <Link 
                     href={href} 
                     prefetch={true}
                     onClick={() => setOpenMobile(false)}
-                    className="flex items-center gap-2 w-full text-right"
+                    className="flex items-center gap-1.5 w-full text-right"
                 >
-                    <span className="flex-1 text-right leading-relaxed break-words whitespace-normal text-sm">{children}</span>
+                    <span className="flex-1 text-right leading-snug break-words whitespace-normal text-xs">{children}</span>
                 </Link>
             </SidebarMenuSubButton>
         </SidebarMenuSubItem>
@@ -454,26 +512,35 @@ const MobileSidebar = () => {
              <SheetContent 
                 side="right" 
                 className="w-[var(--sidebar-width-mobile)] bg-sidebar p-0 text-sidebar-foreground flex flex-col" 
-                style={{ '--sidebar-width-mobile': '350px' } as React.CSSProperties}
+                style={{ '--sidebar-width-mobile': '285px' } as React.CSSProperties}
                 onOpenAutoFocus={(event) => event.preventDefault()}
             >
-                 <SheetHeader className="p-4 border-b">
+                 <SheetHeader className="p-2.5 border-b">
                      <SheetTitle>
                         <Logo />
                      </SheetTitle>
                      <SheetDescription className="sr-only">قائمة التنقل الرئيسية</SheetDescription>
                  </SheetHeader>
-                  <div className="p-2">
+                  <div className="px-2 py-1.5">
                       <div className="relative">
-                          <Search className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                          <Input placeholder="بحث في القائمة..." className="h-9 pr-9" value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} />
+                          <Search className="absolute right-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
+                          <Input placeholder="بحث في جميع التبويبات..." className="h-8 pr-8 pl-7 text-xs" value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} />
+                          {searchTerm && (
+                              <button
+                                  type="button"
+                                  onClick={() => setSearchTerm('')}
+                                  className="absolute left-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                              >
+                                  <X className="h-3.5 w-3.5" />
+                              </button>
+                          )}
                       </div>
                   </div>
                  <SidebarContent>
                      <SidebarMenu>
                          {navStructure.map((item: any) => {
                              if (item.type === 'link') {
-                                 if (!searchTerm || item.title.toLowerCase().includes(searchTerm.toLowerCase())) {
+                                 if (matchesSearch(item.title, searchTerm)) {
                                      return <NavLink key={item.href} href={item.href || '/'} icon={item.icon} module={item.module || ''}>{item.title}</NavLink>;
                                  }
                                  return null;
@@ -484,7 +551,7 @@ const MobileSidebar = () => {
                                          {item.children?.map((child: any) => {
                                              if (child.type === 'collapsible') {
                                                  return (
-                                                      <NavCollapsible key={child.title} title={child.title} icon={<div className="h-1 w-1 rounded-full bg-border" />} modules={child.modules || []} searchTerm={searchTerm}>
+                                                      <NavCollapsible key={child.title} title={child.title} icon={<div className="h-1.5 w-1.5 rounded-full bg-primary/60 shrink-0" />} modules={child.modules || []} searchTerm={searchTerm} isSubCollapsible>
                                                           {child.children?.map((subChild: any) => (
                                                               <NavSubLink key={subChild.href} href={subChild.href} module={subChild.module}>{subChild.title}</NavSubLink>
                                                           ))}
@@ -504,16 +571,16 @@ const MobileSidebar = () => {
                      </SidebarMenu>
                  </SidebarContent>
                  <SidebarFooter>
-                    <div className="flex items-center gap-2 p-3 rounded-lg bg-card m-2">
+                    <div className="flex items-center gap-2 p-2 rounded-lg bg-card m-1.5">
                         <DropdownMenu>
                             <DropdownMenuTrigger asChild>
                                 <Button variant="ghost" className="flex items-center gap-2 p-1 h-auto justify-start w-full">
-                                    <Avatar>
-                                        <AvatarImage src={user?.photoURL || ''} />
-                                        <AvatarFallback>{user?.name?.charAt(0) || 'U'}</AvatarFallback>
+                                    <Avatar className="h-7 w-7">
+                                        <AvatarImage src={(user as any)?.photoUrl || user?.photoURL || ''} />
+                                        <AvatarFallback className="text-xs">{user?.name?.charAt(0) || 'U'}</AvatarFallback>
                                     </Avatar>
                                     <div className="flex flex-col flex-1 overflow-hidden text-right">
-                                        <span className="font-semibold text-sm truncate">{user?.name || "مستخدم"}</span>
+                                        <span className="font-semibold text-xs truncate">{user?.name || "مستخدم"}</span>
                                     </div>
                                 </Button>
                             </DropdownMenuTrigger>
@@ -788,32 +855,41 @@ export function AppLayoutContent({ children }: { children: React.ReactNode }) {
     <>
       {desktopLayout === 'sidebar' && (
         <Sidebar side="right">
-          <SidebarHeader>
-              <div className="flex flex-col w-full p-4 border-b gap-3">
+          <SidebarHeader className="p-0 gap-0">
+              <div className="flex flex-col w-full px-3 py-2.5 border-b gap-2">
                   <div className="flex w-full items-center justify-between">
                       <Logo />
                   </div>
                   {offlineReadiness !== null && (
-                      <div className="w-full space-y-1">
+                      <div className="w-full space-y-0.5">
                           <div className="flex justify-between text-[10px] text-muted-foreground">
                               <span>جاهزية الأوفلاين</span>
                               <span>{Math.round(offlineReadiness)}%</span>
                           </div>
-                          <Progress value={offlineReadiness} className="h-1.5" />
+                          <Progress value={offlineReadiness} className="h-1" />
                       </div>
                   )}
               </div>
-              <div className="p-2">
+              <div className="px-2 py-1.5">
                   <div className="relative">
-                      <Search className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                      <Input placeholder="بحث في القائمة..." className="h-9 pr-9" value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} />
+                      <Search className="absolute right-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
+                      <Input placeholder="بحث في جميع التبويبات..." className="h-8 pr-8 pl-7 text-xs" value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} />
+                      {searchTerm && (
+                          <button
+                              type="button"
+                              onClick={() => setSearchTerm('')}
+                              className="absolute left-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                          >
+                              <X className="h-3.5 w-3.5" />
+                          </button>
+                      )}
                   </div>
               </div>
           </SidebarHeader>
           <SidebarContent>
             <SidebarMenu>
               {memoizedNavStructure.map((item: any) => {
-                if(item.type === 'link' && (item.title.toLowerCase().includes(searchTerm.toLowerCase()) || !searchTerm)) {
+                if(item.type === 'link' && matchesSearch(item.title, searchTerm)) {
                   return <NavLink key={item.href} href={item.href || '/'} icon={item.icon} module={item.module || ''}>{item.title}</NavLink>
                 }
                 if(item.type === 'collapsible') {
@@ -822,7 +898,7 @@ export function AppLayoutContent({ children }: { children: React.ReactNode }) {
                           {item.children?.map((child: any) => {
                               if (child.type === 'collapsible') {
                                   return (
-                                       <NavCollapsible key={child.title} title={child.title} icon={<div className="h-1 w-1 rounded-full bg-border" />} modules={child.modules || []} searchTerm={searchTerm}>
+                                       <NavCollapsible key={child.title} title={child.title} icon={<div className="h-1.5 w-1.5 rounded-full bg-primary/60 shrink-0" />} modules={child.modules || []} searchTerm={searchTerm} isSubCollapsible>
                                            {child.children?.map((subChild: any) => (
                                                <NavSubLink key={subChild.href} href={subChild.href} module={subChild.module}>{subChild.title}</NavSubLink>
                                            ))}
@@ -841,17 +917,17 @@ export function AppLayoutContent({ children }: { children: React.ReactNode }) {
               })}
             </SidebarMenu>
           </SidebarContent>
-          <SidebarFooter className="hidden md:flex">
+          <SidebarFooter className="hidden md:flex p-1.5">
                 <DropdownMenu>
                     <DropdownMenuTrigger asChild>
-                         <Button variant="ghost" className="flex items-center justify-start gap-2 p-3 m-2 rounded-lg bg-card w-[calc(100%-1rem)] h-auto">
-                            <Avatar>
-                                <AvatarImage src={user?.photoURL || ''} />
-                                <AvatarFallback>{user?.name?.charAt(0) || 'U'}</AvatarFallback>
+                         <Button variant="ghost" className="flex items-center justify-start gap-2 p-2 rounded-lg bg-card w-full h-auto">
+                            <Avatar className="h-7 w-7">
+                                <AvatarImage src={(user as any)?.photoUrl || user?.photoURL || ''} />
+                                <AvatarFallback className="text-xs">{user?.name?.charAt(0) || 'U'}</AvatarFallback>
                             </Avatar>
                             <div className="flex flex-col flex-1 overflow-hidden text-right">
-                                <span className="font-semibold text-sm truncate">{user?.name || "مستخدم"}</span>
-                                <span className="text-xs text-muted-foreground truncate">{user?.loginName ? `${user.loginName}@admin.com` : "email@example.com"}</span>
+                                <span className="font-semibold text-xs truncate">{user?.name || "مستخدم"}</span>
+                                <span className="text-[10px] text-muted-foreground truncate">{user?.loginName ? `${user.loginName}@admin.com` : "email@example.com"}</span>
                             </div>
                         </Button>
                     </DropdownMenuTrigger>

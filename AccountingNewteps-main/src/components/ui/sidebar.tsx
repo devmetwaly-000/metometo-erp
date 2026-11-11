@@ -22,8 +22,8 @@ import {
 
 const SIDEBAR_COOKIE_NAME = "sidebar_state"
 const SIDEBAR_COOKIE_MAX_AGE = 60 * 60 * 24 * 7
-const SIDEBAR_WIDTH = "23rem"
-const SIDEBAR_WIDTH_MOBILE = "23rem"
+const SIDEBAR_WIDTH = "16.5rem"
+const SIDEBAR_WIDTH_MOBILE = "18rem"
 const SIDEBAR_WIDTH_ICON = "3rem"
 const SIDEBAR_KEYBOARD_SHORTCUT = "b"
 
@@ -473,7 +473,7 @@ const SidebarMenu = React.forwardRef<
   <ul
     ref={ref}
     data-sidebar="menu"
-    className={cn("flex w-full min-w-0 flex-col gap-1 p-2", className)}
+    className={cn("flex w-full min-w-0 flex-col gap-0.5 p-1.5", className)}
     {...props}
   />
 ))
@@ -493,7 +493,7 @@ const SidebarMenuItem = React.forwardRef<
 SidebarMenuItem.displayName = "SidebarMenuItem"
 
 const sidebarMenuButtonVariants = cva(
-  "peer/menu-button flex w-full items-center gap-2 rounded-md p-2 text-right rtl:text-right text-sm outline-none ring-sidebar-ring transition-[width,height,padding] hover:bg-sidebar-accent hover:text-sidebar-accent-foreground focus-visible:ring-2 active:bg-sidebar-accent active:text-sidebar-accent-foreground disabled:pointer-events-none disabled:opacity-50 group-has-[[data-sidebar=menu-action]]/menu-item:pr-8 aria-disabled:pointer-events-none aria-disabled:opacity-50 data-[active=true]:bg-sidebar-accent data-[active=true]:font-medium data-[active=true]:text-sidebar-accent-foreground data-[state=open]:hover:bg-sidebar-accent data-[state=open]:hover:text-sidebar-accent-foreground group-data-[collapsible=icon]:!size-8 group-data-[collapsible=icon]:!p-2 [&>svg]:size-4 [&>svg]:shrink-0 leading-relaxed whitespace-normal break-words",
+  "peer/menu-button flex w-full items-center gap-2 rounded-md p-1.5 text-right rtl:text-right text-[13px] outline-none ring-sidebar-ring transition-[width,height,padding] hover:bg-sidebar-accent hover:text-sidebar-accent-foreground focus-visible:ring-2 active:bg-sidebar-accent active:text-sidebar-accent-foreground disabled:pointer-events-none disabled:opacity-50 group-has-[[data-sidebar=menu-action]]/menu-item:pr-8 aria-disabled:pointer-events-none aria-disabled:opacity-50 data-[active=true]:bg-sidebar-accent data-[active=true]:font-medium data-[active=true]:text-sidebar-accent-foreground data-[state=open]:hover:bg-sidebar-accent data-[state=open]:hover:text-sidebar-accent-foreground group-data-[collapsible=icon]:!size-8 group-data-[collapsible=icon]:!p-2 [&>svg]:size-4 [&>svg]:shrink-0 leading-snug whitespace-normal break-words",
   {
     variants: {
       variant: {
@@ -502,9 +502,9 @@ const sidebarMenuButtonVariants = cva(
           "bg-background shadow-[0_0_0_1px_hsl(var(--sidebar-border))] hover:bg-sidebar-accent hover:text-sidebar-accent-foreground hover:shadow-[0_0_0_1px_hsl(var(--sidebar-accent))]",
       },
       size: {
-        default: "h-auto min-h-10 py-2 px-3 text-sm leading-relaxed",
-        sm: "h-auto min-h-8 py-1.5 px-2.5 text-xs leading-relaxed",
-        lg: "h-12 text-sm group-data-[collapsible=icon]:!p-0",
+        default: "h-auto min-h-8 py-1.5 px-2.5 text-[13px] leading-snug",
+        sm: "h-auto min-h-7 py-1 px-2 text-xs leading-snug",
+        lg: "h-10 text-sm group-data-[collapsible=icon]:!p-0",
       },
     },
     defaultVariants: {
@@ -671,7 +671,7 @@ const SidebarMenuSub = React.forwardRef<
     ref={ref}
     data-sidebar="menu-sub"
     className={cn(
-      "mx-2 flex min-w-0 translate-x-px flex-col gap-1.5 border-l border-sidebar-border pl-2 pr-0 py-1 rtl:border-r rtl:border-l-0 rtl:pr-2.5 rtl:pl-0 rtl:mr-2 rtl:ml-0 rtl:-translate-x-px",
+      "mx-1.5 flex min-w-0 translate-x-px flex-col gap-0.5 border-l border-sidebar-border pl-2 pr-0 py-0.5 rtl:border-r rtl:border-l-0 rtl:pr-2 rtl:pl-0 rtl:mr-1.5 rtl:ml-0 rtl:-translate-x-px",
       "group-data-[collapsible=icon]:hidden",
       className
     )}
@@ -684,7 +684,7 @@ const SidebarMenuSubItem = React.forwardRef<
   HTMLLIElement,
   React.ComponentProps<"li">
 >(({ className, ...props }, ref) => (
-  <li ref={ref} data-sidebar="menu-sub-item" className={cn("relative w-full my-0.5", className)} {...props} />
+  <li ref={ref} data-sidebar="menu-sub-item" className={cn("relative w-full", className)} {...props} />
 ))
 SidebarMenuSubItem.displayName = "SidebarMenuSubItem"
 
@@ -705,10 +705,10 @@ const SidebarMenuSubButton = React.forwardRef<
       data-size={size}
       data-active={isActive}
       className={cn(
-        "flex h-auto min-h-10 min-w-0 -translate-x-px items-center gap-2 rounded-md px-3 py-2 text-sidebar-foreground outline-none ring-sidebar-ring hover:bg-sidebar-accent hover:text-sidebar-accent-foreground focus-visible:ring-2 active:bg-sidebar-accent active:text-sidebar-accent-foreground disabled:pointer-events-none disabled:opacity-50 aria-disabled:pointer-events-none aria-disabled:opacity-50 [&>svg]:size-4 [&>svg]:shrink-0 [&>svg]:text-sidebar-accent-foreground text-right w-full leading-relaxed whitespace-normal break-words",
+        "flex h-auto min-h-7 min-w-0 -translate-x-px items-center gap-1.5 rounded-md px-2 py-1 text-sidebar-foreground outline-none ring-sidebar-ring hover:bg-sidebar-accent hover:text-sidebar-accent-foreground focus-visible:ring-2 active:bg-sidebar-accent active:text-sidebar-accent-foreground disabled:pointer-events-none disabled:opacity-50 aria-disabled:pointer-events-none aria-disabled:opacity-50 [&>svg]:size-3.5 [&>svg]:shrink-0 [&>svg]:text-sidebar-accent-foreground text-right w-full leading-snug whitespace-normal break-words",
         "data-[active=true]:bg-sidebar-accent data-[active=true]:text-sidebar-accent-foreground font-medium",
-        size === "sm" && "text-xs",
-        size === "md" && "text-sm",
+        size === "sm" && "text-[11px]",
+        size === "md" && "text-xs",
         "group-data-[collapsible=icon]:hidden",
         className
       )}
