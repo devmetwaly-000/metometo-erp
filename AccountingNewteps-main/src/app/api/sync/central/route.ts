@@ -19,6 +19,14 @@ export async function GET() {
         const config = await getCentralConfig();
         const pool = await getDbPool();
 
+        // مصفوفة المزامنة الشاملة المعتمدة على التوقيت الزمني (Sync Matrix) — تقوم أيضاً بإنشاء الجداول الرقابية والمحاسبية إن لم تكن موجودة
+        let syncMatrix: Awaited<ReturnType<typeof getTablesSyncMatrix>> | null = null;
+        try {
+            syncMatrix = await getTablesSyncMatrix();
+        } catch (tableErr: any) {
+            console.warn('Failed to get tables sync matrix:', tableErr.message);
+        }
+
         // إحصائيات سريعة للوثائق المعلقة من قاعدة البيانات المحلية
         const queueRes = await pool.request().query(`
             SELECT 
@@ -30,17 +38,20 @@ export async function GET() {
                 (SELECT COUNT(*) FROM dbo.SupplierPayments WHERE SyncStatus = 'pending' OR LastSyncedAt IS NULL) as supplierPaymentsPending,
                 (SELECT COUNT(*) FROM dbo.Expenses WHERE SyncStatus = 'pending' OR LastSyncedAt IS NULL) +
                 (SELECT COUNT(*) FROM dbo.ExceptionalIncomes WHERE SyncStatus = 'pending' OR LastSyncedAt IS NULL) as expensesPending,
-                (SELECT COUNT(*) FROM dbo.TreasuryTransactions WHERE SyncStatus = 'pending' OR LastSyncedAt IS NULL) as treasuryPending,
+                (SELECT COUNT(*) FROM dbo.TreasuryTransactions WHERE SyncStatus = 'pending' OR LastSyncedAt IS NULL) +
+                (SELECT COUNT(*) FROM dbo.GeneralLedgerEntries WHERE SyncStatus = 'pending' OR LastSyncedAt IS NULL) as treasuryPending,
                 (SELECT COUNT(*) FROM dbo.StockInRecords WHERE SyncStatus = 'pending' OR LastSyncedAt IS NULL) +
                 (SELECT COUNT(*) FROM dbo.StockOutRecords WHERE SyncStatus = 'pending' OR LastSyncedAt IS NULL) +
-                (SELECT COUNT(*) FROM dbo.StockAdjustmentRecords WHERE SyncStatus = 'pending' OR LastSyncedAt IS NULL) as stockPending,
+                (SELECT COUNT(*) FROM dbo.StockAdjustmentRecords WHERE SyncStatus = 'pending' OR LastSyncedAt IS NULL) +
+                (SELECT COUNT(*) FROM dbo.ManufacturingOrders WHERE SyncStatus = 'pending' OR LastSyncedAt IS NULL) as stockPending,
                 (SELECT COUNT(*) FROM dbo.StockTransferRecords WHERE SyncStatus = 'pending' OR LastSyncedAt IS NULL) as transfersPending,
                 (SELECT COUNT(*) FROM dbo.RepRemittances WHERE SyncStatus = 'pending' OR LastSyncedAt IS NULL) +
                 (SELECT COUNT(*) FROM dbo.StockIssuesToReps WHERE SyncStatus = 'pending' OR LastSyncedAt IS NULL) +
                 (SELECT COUNT(*) FROM dbo.StockReturnsFromReps WHERE SyncStatus = 'pending' OR LastSyncedAt IS NULL) as repPending,
                 (SELECT COUNT(*) FROM dbo.EmployeeAdvances WHERE SyncStatus = 'pending' OR LastSyncedAt IS NULL) +
                 (SELECT COUNT(*) FROM dbo.PayrollRecords WHERE SyncStatus = 'pending' OR LastSyncedAt IS NULL) as hrPending,
-                (SELECT COUNT(*) FROM dbo.PosSessions WHERE SyncStatus = 'pending' OR LastSyncedAt IS NULL) as posPending;
+                (SELECT COUNT(*) FROM dbo.PosSessions WHERE SyncStatus = 'pending' OR LastSyncedAt IS NULL) +
+                (SELECT COUNT(*) FROM dbo.AuditTrailLogs WHERE SyncStatus = 'pending' OR LastSyncedAt IS NULL) as posPending;
         `);
 
         const q = queueRes.recordset[0] || {};
@@ -63,14 +74,6 @@ export async function GET() {
                 branch: `${config.currentBranchName} (${config.currentBranchCode})`
             }
         ];
-
-        // مصفوفة المزامنة الشاملة المعتمدة على التوقيت الزمني (Sync Matrix)
-        let syncMatrix: Awaited<ReturnType<typeof getTablesSyncMatrix>> | null = null;
-        try {
-            syncMatrix = await getTablesSyncMatrix();
-        } catch (tableErr: any) {
-            console.warn('Failed to get tables sync matrix:', tableErr.message);
-        }
 
         return NextResponse.json({
             success: true,

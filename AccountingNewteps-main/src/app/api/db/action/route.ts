@@ -776,21 +776,27 @@ export async function POST(req: Request) {
 
             // Fixed Assets & Depreciation
             if (path === 'fixedAssets') {
+                const assetCost = Number(payload.cost ?? payload.purchasePrice) || 0;
+                const lifeYears = Number(payload.usefulLifeYears) || 5;
+                const depRate = Number(payload.depreciationRate) || (lifeYears > 0 ? Number((100 / lifeYears).toFixed(2)) : 20);
                 await pool.request()
                     .input('Id', sql.NVarChar(64), id)
                     .input('Code', sql.NVarChar(100), payload.code || null)
                     .input('Name', sql.NVarChar(255), payload.name || 'Asset')
                     .input('PurchaseDate', sql.DateTime2, parseDate(payload.purchaseDate))
-                    .input('PurchasePrice', sql.Decimal(18, 4), Number(payload.purchasePrice) || 0)
-                    .input('CurrentValue', sql.Decimal(18, 4), Number(payload.currentValue) || 0)
-                    .input('DepreciationRate', sql.Decimal(5, 2), Number(payload.depreciationRate) || 0)
+                    .input('PurchasePrice', sql.Decimal(18, 4), assetCost)
+                    .input('Cost', sql.Decimal(18, 4), assetCost)
+                    .input('CurrentValue', sql.Decimal(18, 4), Number(payload.currentValue ?? assetCost) || 0)
+                    .input('UsefulLifeYears', sql.Int, lifeYears)
+                    .input('SalvageValue', sql.Decimal(18, 4), Number(payload.salvageValue) || 0)
+                    .input('DepreciationRate', sql.Decimal(5, 2), depRate)
                     .input('DepreciationMethod', sql.NVarChar(50), payload.depreciationMethod || 'straight_line')
                     .input('WarehouseId', sql.NVarChar(64), payload.warehouseId || null)
                     .input('Status', sql.NVarChar(50), payload.status || 'active')
                     .input('Notes', sql.NVarChar(sql.MAX), payload.notes || null)
                     .query(`
-                        INSERT INTO dbo.FixedAssets (Id, Code, Name, PurchaseDate, PurchasePrice, CurrentValue, DepreciationRate, DepreciationMethod, WarehouseId, Status, Notes)
-                        VALUES (@Id, @Code, @Name, @PurchaseDate, @PurchasePrice, @CurrentValue, @DepreciationRate, @DepreciationMethod, @WarehouseId, @Status, @Notes);
+                        INSERT INTO dbo.FixedAssets (Id, Code, Name, PurchaseDate, PurchasePrice, Cost, CurrentValue, UsefulLifeYears, SalvageValue, DepreciationRate, DepreciationMethod, WarehouseId, Status, Notes)
+                        VALUES (@Id, @Code, @Name, @PurchaseDate, @PurchasePrice, @Cost, @CurrentValue, @UsefulLifeYears, @SalvageValue, @DepreciationRate, @DepreciationMethod, @WarehouseId, @Status, @Notes);
                     `);
                 return NextResponse.json({ success: true, id });
             }
@@ -911,10 +917,23 @@ export async function POST(req: Request) {
                 const isRepUser = !!(payload.isSalesRep || payload.role === 'مندوب' || (typeof payload.role === 'string' && payload.role.includes('مندوب')));
                 await pool.request()
                     .input('Id', sql.NVarChar(64), id)
-                    .input('LoginName', sql.NVarChar(100), payload.loginName)
+                    .input('LoginName', sql.NVarChar(100), payload.loginName || id)
                     .input('Name', sql.NVarChar(255), payload.name || 'User')
                     .input('Password', sql.NVarChar(255), payload.password || '123456')
                     .input('Phone', sql.NVarChar(50), payload.phone || null)
+                    .input('Email', sql.NVarChar(255), payload.email || null)
+                    .input('NationalId', sql.NVarChar(50), payload.nationalId || null)
+                    .input('SocialInsuranceNumber', sql.NVarChar(50), payload.socialInsuranceNumber || null)
+                    .input('JobTitle', sql.NVarChar(100), payload.jobTitle || null)
+                    .input('Department', sql.NVarChar(100), payload.department || null)
+                    .input('HiringDate', sql.NVarChar(50), payload.hiringDate || null)
+                    .input('BasicSalary', sql.Decimal(18, 4), Number(payload.basicSalary) || 0)
+                    .input('HousingAllowance', sql.Decimal(18, 4), Number(payload.housingAllowance) || 0)
+                    .input('TransportAllowance', sql.Decimal(18, 4), Number(payload.transportAllowance) || 0)
+                    .input('SocialInsuranceDeduction', sql.Decimal(18, 4), Number(payload.socialInsuranceDeduction) || 0)
+                    .input('Status', sql.NVarChar(50), payload.status || 'active')
+                    .input('BranchId', sql.NVarChar(64), payload.branchId || null)
+                    .input('Notes', sql.NVarChar(sql.MAX), payload.notes || null)
                     .input('Role', sql.NVarChar(100), payload.role || 'كاشير')
                     .input('WarehouseIds', sql.NVarChar(sql.MAX), jsonString(payload.warehouseIds))
                     .input('IsCashier', sql.Bit, payload.isCashier ? 1 : 0)
@@ -929,12 +948,16 @@ export async function POST(req: Request) {
                     .input('ThemeSettings', sql.NVarChar(sql.MAX), jsonString(payload.themeSettings))
                     .query(`
                         INSERT INTO dbo.Users (
-                            Id, LoginName, Name, Password, Phone, Role, WarehouseIds,
+                            Id, LoginName, Name, Password, Phone, Email, NationalId, SocialInsuranceNumber,
+                            JobTitle, Department, HiringDate, BasicSalary, HousingAllowance, TransportAllowance,
+                            SocialInsuranceDeduction, Status, BranchId, Notes, Role, WarehouseIds,
                             IsCashier, IsDelivery, IsSalesRep, CanOpenOwnShift, CanDeleteFromCart,
                             CanProcessReturn, CanCancelInvoice, CanBypassScannerForReturn, IsDisabled, ThemeSettings
                         )
                         VALUES (
-                            @Id, @LoginName, @Name, @Password, @Phone, @Role, @WarehouseIds,
+                            @Id, @LoginName, @Name, @Password, @Phone, @Email, @NationalId, @SocialInsuranceNumber,
+                            @JobTitle, @Department, @HiringDate, @BasicSalary, @HousingAllowance, @TransportAllowance,
+                            @SocialInsuranceDeduction, @Status, @BranchId, @Notes, @Role, @WarehouseIds,
                             @IsCashier, @IsDelivery, @IsSalesRep, @CanOpenOwnShift, @CanDeleteFromCart,
                             @CanProcessReturn, @CanCancelInvoice, @CanBypassScannerForReturn, @IsDisabled, @ThemeSettings
                         );
@@ -1379,12 +1402,59 @@ export async function POST(req: Request) {
                     .input('Status', sql.NVarChar(50), data.status || null)
                     .input('PaidAmount', sql.Decimal(18, 4), data.paidAmount !== undefined ? Number(data.paidAmount) : null)
                     .input('DeliveryReconciled', sql.Bit, data.deliveryReconciled !== undefined ? (data.deliveryReconciled ? 1 : 0) : null)
+                    .input('EtaUuid', sql.NVarChar(64), data.etaUuid || null)
+                    .input('EtaStatus', sql.NVarChar(50), data.etaStatus || null)
+                    .input('EtaSubmissionId', sql.NVarChar(64), data.etaSubmissionId || null)
                     .query(`
                         UPDATE dbo.SalesInvoices
                         SET 
                             Status = COALESCE(@Status, Status),
                             PaidAmount = COALESCE(@PaidAmount, PaidAmount),
-                            DeliveryReconciled = COALESCE(@DeliveryReconciled, DeliveryReconciled)
+                            DeliveryReconciled = COALESCE(@DeliveryReconciled, DeliveryReconciled),
+                            EtaUuid = COALESCE(@EtaUuid, EtaUuid),
+                            EtaStatus = COALESCE(@EtaStatus, EtaStatus),
+                            EtaSubmissionId = COALESCE(@EtaSubmissionId, EtaSubmissionId),
+                            UpdatedAt = SYSUTCDATETIME()
+                        WHERE Id = @Id;
+                    `);
+                return NextResponse.json({ success: true });
+            }
+
+            if (path === 'fixedAssets' && updateId) {
+                await pool.request()
+                    .input('Id', sql.NVarChar(64), updateId)
+                    .input('Name', sql.NVarChar(255), data.name || null)
+                    .input('Code', sql.NVarChar(100), data.code || null)
+                    .input('PurchasePrice', sql.Decimal(18, 4), (data.purchasePrice ?? data.cost) !== undefined ? Number(data.purchasePrice ?? data.cost) : null)
+                    .input('Cost', sql.Decimal(18, 4), (data.cost ?? data.purchasePrice) !== undefined ? Number(data.cost ?? data.purchasePrice) : null)
+                    .input('CurrentValue', sql.Decimal(18, 4), data.currentValue !== undefined ? Number(data.currentValue) : null)
+                    .input('UsefulLifeYears', sql.Int, data.usefulLifeYears !== undefined ? Number(data.usefulLifeYears) : null)
+                    .input('SalvageValue', sql.Decimal(18, 4), data.salvageValue !== undefined ? Number(data.salvageValue) : null)
+                    .input('DepreciationRate', sql.Decimal(5, 2), data.depreciationRate !== undefined ? Number(data.depreciationRate) : null)
+                    .input('DepreciationMethod', sql.NVarChar(50), data.depreciationMethod || null)
+                    .input('WarehouseId', sql.NVarChar(64), data.warehouseId || null)
+                    .input('Status', sql.NVarChar(50), data.status || null)
+                    .input('DisposedDate', sql.DateTime2, data.disposedDate ? parseDate(data.disposedDate) : null)
+                    .input('SaleProceeds', sql.Decimal(18, 4), data.saleProceeds !== undefined ? Number(data.saleProceeds) : null)
+                    .input('Notes', sql.NVarChar(sql.MAX), data.notes !== undefined ? String(data.notes) : null)
+                    .query(`
+                        UPDATE dbo.FixedAssets
+                        SET 
+                            Name = COALESCE(@Name, Name),
+                            Code = COALESCE(@Code, Code),
+                            PurchasePrice = COALESCE(@PurchasePrice, PurchasePrice),
+                            Cost = COALESCE(@Cost, Cost),
+                            CurrentValue = COALESCE(@CurrentValue, CurrentValue),
+                            UsefulLifeYears = COALESCE(@UsefulLifeYears, UsefulLifeYears),
+                            SalvageValue = COALESCE(@SalvageValue, SalvageValue),
+                            DepreciationRate = COALESCE(@DepreciationRate, DepreciationRate),
+                            DepreciationMethod = COALESCE(@DepreciationMethod, DepreciationMethod),
+                            WarehouseId = COALESCE(@WarehouseId, WarehouseId),
+                            Status = COALESCE(@Status, Status),
+                            DisposedDate = COALESCE(@DisposedDate, DisposedDate),
+                            SaleProceeds = COALESCE(@SaleProceeds, SaleProceeds),
+                            Notes = COALESCE(@Notes, Notes),
+                            UpdatedAt = SYSUTCDATETIME()
                         WHERE Id = @Id;
                     `);
                 return NextResponse.json({ success: true });
@@ -1487,7 +1557,20 @@ export async function POST(req: Request) {
                     .input('LoginName', sql.NVarChar(100), data.loginName || null)
                     .input('Password', sql.NVarChar(255), data.password ? String(data.password) : null)
                     .input('Role', sql.NVarChar(100), data.role || null)
-                    .input('Phone', sql.NVarChar(50), data.phone || null)
+                    .input('Phone', sql.NVarChar(50), data.phone !== undefined ? (data.phone || null) : null)
+                    .input('Email', sql.NVarChar(255), data.email !== undefined ? (data.email || null) : null)
+                    .input('NationalId', sql.NVarChar(50), data.nationalId !== undefined ? (data.nationalId || null) : null)
+                    .input('SocialInsuranceNumber', sql.NVarChar(50), data.socialInsuranceNumber !== undefined ? (data.socialInsuranceNumber || null) : null)
+                    .input('JobTitle', sql.NVarChar(100), data.jobTitle !== undefined ? (data.jobTitle || null) : null)
+                    .input('Department', sql.NVarChar(100), data.department !== undefined ? (data.department || null) : null)
+                    .input('HiringDate', sql.NVarChar(50), data.hiringDate !== undefined ? (data.hiringDate || null) : null)
+                    .input('BasicSalary', sql.Decimal(18, 4), data.basicSalary !== undefined ? Number(data.basicSalary) : null)
+                    .input('HousingAllowance', sql.Decimal(18, 4), data.housingAllowance !== undefined ? Number(data.housingAllowance) : null)
+                    .input('TransportAllowance', sql.Decimal(18, 4), data.transportAllowance !== undefined ? Number(data.transportAllowance) : null)
+                    .input('SocialInsuranceDeduction', sql.Decimal(18, 4), data.socialInsuranceDeduction !== undefined ? Number(data.socialInsuranceDeduction) : null)
+                    .input('Status', sql.NVarChar(50), data.status || null)
+                    .input('BranchId', sql.NVarChar(64), data.branchId !== undefined ? (data.branchId || null) : null)
+                    .input('Notes', sql.NVarChar(sql.MAX), data.notes !== undefined ? String(data.notes) : null)
                     .input('IsCashier', sql.Bit, data.isCashier !== undefined ? (data.isCashier ? 1 : 0) : null)
                     .input('IsDelivery', sql.Bit, data.isDelivery !== undefined ? (data.isDelivery ? 1 : 0) : null)
                     .input('IsSalesRep', sql.Bit, isRepUser ? 1 : (data.isSalesRep !== undefined ? (data.isSalesRep ? 1 : 0) : null))
@@ -1507,6 +1590,19 @@ export async function POST(req: Request) {
                             Password = COALESCE(@Password, Password),
                             Role = COALESCE(@Role, Role),
                             Phone = COALESCE(@Phone, Phone),
+                            Email = COALESCE(@Email, Email),
+                            NationalId = COALESCE(@NationalId, NationalId),
+                            SocialInsuranceNumber = COALESCE(@SocialInsuranceNumber, SocialInsuranceNumber),
+                            JobTitle = COALESCE(@JobTitle, JobTitle),
+                            Department = COALESCE(@Department, Department),
+                            HiringDate = COALESCE(@HiringDate, HiringDate),
+                            BasicSalary = COALESCE(@BasicSalary, BasicSalary),
+                            HousingAllowance = COALESCE(@HousingAllowance, HousingAllowance),
+                            TransportAllowance = COALESCE(@TransportAllowance, TransportAllowance),
+                            SocialInsuranceDeduction = COALESCE(@SocialInsuranceDeduction, SocialInsuranceDeduction),
+                            Status = COALESCE(@Status, Status),
+                            BranchId = COALESCE(@BranchId, BranchId),
+                            Notes = COALESCE(@Notes, Notes),
                             IsCashier = COALESCE(@IsCashier, IsCashier),
                             IsDelivery = COALESCE(@IsDelivery, IsDelivery),
                             IsSalesRep = COALESCE(@IsSalesRep, IsSalesRep),
@@ -1517,7 +1613,8 @@ export async function POST(req: Request) {
                             CanBypassScannerForReturn = COALESCE(@CanBypassScannerForReturn, CanBypassScannerForReturn),
                             IsDisabled = COALESCE(@IsDisabled, IsDisabled),
                             WarehouseIds = COALESCE(@WarehouseIds, WarehouseIds),
-                            ThemeSettings = COALESCE(@ThemeSettings, ThemeSettings)
+                            ThemeSettings = COALESCE(@ThemeSettings, ThemeSettings),
+                            UpdatedAt = SYSUTCDATETIME()
                         WHERE Id = @Id;
                     `);
 

@@ -27,7 +27,7 @@ export async function GET() {
             database: currentDb,
             tablesCount,
             usersCount,
-            status: tablesCount >= 69 ? 'healthy' : 'needs_initialization',
+            status: tablesCount >= 72 ? 'healthy' : 'needs_initialization',
             message: `قاعدة البيانات [${currentDb}] متصلة وتضم ${tablesCount} جدولاً و ${usersCount} مستخدماً.`
         });
     } catch (error: any) {

@@ -125,13 +125,27 @@ export async function GET() {
             counters[row.Name] = Number(row.CurrentValue);
         }
 
-        // Users
+        // Users (including HRMS & Payroll fields)
         const users = usersRes.recordset.map(u => ({
             ...u,
             id: u.Id,
             loginName: u.LoginName,
             name: u.Name,
             password: u.Password,
+            phone: u.Phone || u.phone || '',
+            email: u.Email || u.email || '',
+            nationalId: u.NationalId || u.nationalId || '',
+            socialInsuranceNumber: u.SocialInsuranceNumber || u.socialInsuranceNumber || '',
+            jobTitle: u.JobTitle || u.jobTitle || '',
+            department: u.Department || u.department || '',
+            hiringDate: u.HiringDate || u.hiringDate || '',
+            basicSalary: Number(u.BasicSalary ?? u.basicSalary ?? 0),
+            housingAllowance: Number(u.HousingAllowance ?? u.housingAllowance ?? 0),
+            transportAllowance: Number(u.TransportAllowance ?? u.transportAllowance ?? 0),
+            socialInsuranceDeduction: Number(u.SocialInsuranceDeduction ?? u.socialInsuranceDeduction ?? 0),
+            status: u.Status || u.status || 'active',
+            branchId: u.BranchId || u.branchId || '',
+            notes: u.Notes || u.notes || '',
             role: u.Role,
             warehouseIds: parseJson(u.WarehouseIds, []),
             uid: u.Uid,
@@ -143,6 +157,7 @@ export async function GET() {
             canProcessReturn: !!u.CanProcessReturn,
             canCancelInvoice: !!u.CanCancelInvoice,
             canBypassScannerForReturn: !!u.CanBypassScannerForReturn,
+            isDisabled: !!u.IsDisabled,
             themeSettings: parseJson(u.ThemeSettings, null)
         }));
 
@@ -167,6 +182,9 @@ export async function GET() {
             isDelivery: !!s.IsDelivery,
             deliveryReconciled: !!s.DeliveryReconciled,
             isTaxIncluded: !!s.IsTaxIncluded,
+            etaUuid: s.EtaUuid || s.etaUuid || null,
+            etaStatus: s.EtaStatus || s.etaStatus || null,
+            etaSubmissionId: s.EtaSubmissionId || s.etaSubmissionId || null,
             notes: s.Notes,
             items: parseItemsArray(s)
         }));
@@ -527,8 +545,35 @@ export async function GET() {
                     totalAmount: Number(pr.TotalAmount),
                     payrollData: parseJson(pr.DetailsJson, [])
                 })),
-                fixedAssets: fixedAssetsRes.recordset.map(fa => ({ ...fa, id: fa.Id, purchasePrice: Number(fa.PurchasePrice), currentValue: Number(fa.CurrentValue) })),
-                depreciationRecords: depreciationRecordsRes.recordset.map(dr => ({ ...dr, id: dr.Id, amount: Number(dr.Amount) })),
+                fixedAssets: fixedAssetsRes.recordset.map(fa => ({
+                    ...fa,
+                    id: fa.Id,
+                    code: fa.Code,
+                    name: fa.Name,
+                    purchaseDate: fa.PurchaseDate ? new Date(fa.PurchaseDate).toISOString() : null,
+                    purchasePrice: Number(fa.PurchasePrice ?? fa.Cost ?? 0),
+                    cost: Number(fa.Cost ?? fa.PurchasePrice ?? 0),
+                    currentValue: Number(fa.CurrentValue ?? 0),
+                    usefulLifeYears: Number(fa.UsefulLifeYears ?? 5),
+                    salvageValue: Number(fa.SalvageValue ?? 0),
+                    depreciationRate: Number(fa.DepreciationRate ?? 0),
+                    depreciationMethod: fa.DepreciationMethod || 'straight_line',
+                    warehouseId: fa.WarehouseId,
+                    status: fa.Status || 'active',
+                    disposedDate: fa.DisposedDate ? new Date(fa.DisposedDate).toISOString() : null,
+                    saleProceeds: fa.SaleProceeds != null ? Number(fa.SaleProceeds) : null,
+                    notes: fa.Notes || ''
+                })),
+                depreciationRecords: depreciationRecordsRes.recordset.map(dr => ({
+                    ...dr,
+                    id: dr.Id,
+                    assetId: dr.AssetId,
+                    date: dr.Date ? new Date(dr.Date).toISOString() : null,
+                    amount: Number(dr.Amount),
+                    accumulatedTotal: Number(dr.AccumulatedTotal ?? 0),
+                    remainingValue: Number(dr.RemainingValue ?? 0),
+                    notes: dr.Notes || ''
+                })),
 
                 // Inventory Documents
                 stockInRecords: stockInRes.recordset.map(si => ({

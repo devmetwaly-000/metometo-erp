@@ -1,7 +1,7 @@
 /**
  * @fileOverview محرك إنشاء وتهيئة قواعد البيانات (Database Initialization Engine)
- * يُتيح إنشاء وتأسيس قاعدة البيانات المركزية أو الفرعية بكامل جداولها (69 جدولاً)
- * والمشغلات الآلية (Triggers) والعروض التحليلية (Views) بضغطة زر واحدة مباشرة من التطبيق.
+ * يُتيح إنشاء وتأسيس قاعدة البيانات المركزية أو الفرعية بكامل جداولها (72+ جدولاً شاملة ركائز الـ ERP المؤسسية)
+ * وترقية الأعمدة تلقائياً والمشغلات الآلية (Triggers) والعروض التحليلية (Views) بضغطة زر واحدة مباشرة من التطبيق.
  */
 
 import sql from 'mssql';
@@ -347,11 +347,16 @@ export async function createAndInitializeDatabase(options: DbInitOptions): Promi
                 [Name] NVARCHAR(255) NOT NULL,
                 [PurchaseDate] DATETIME2 NOT NULL,
                 [PurchasePrice] DECIMAL(18,4) NOT NULL,
+                [Cost] DECIMAL(18,4) NULL DEFAULT ((0)),
                 [CurrentValue] DECIMAL(18,4) NOT NULL,
+                [UsefulLifeYears] INT NULL DEFAULT ((5)),
+                [SalvageValue] DECIMAL(18,4) NULL DEFAULT ((0)),
                 [DepreciationRate] DECIMAL(5,2) NOT NULL DEFAULT ((0)),
                 [DepreciationMethod] NVARCHAR(50) NOT NULL DEFAULT (N'straight_line'),
                 [WarehouseId] NVARCHAR(64) NULL,
                 [Status] NVARCHAR(50) NOT NULL DEFAULT (N'active'),
+                [DisposedDate] DATETIME2 NULL,
+                [SaleProceeds] DECIMAL(18,4) NULL,
                 [Notes] NVARCHAR(MAX) NULL,
                 [CreatedAt] DATETIME2 NOT NULL DEFAULT (sysutcdatetime()),
                 [BranchCode] NVARCHAR(50) NULL,
@@ -442,6 +447,7 @@ export async function createAndInitializeDatabase(options: DbInitOptions): Promi
             `IF NOT EXISTS (SELECT * FROM sys.tables WHERE name = 'InventorySections')
             CREATE TABLE dbo.[InventorySections] (
                 [Id] NVARCHAR(64) NOT NULL,
+                [Code] NVARCHAR(50) NULL,
                 [MainWarehouseId] NVARCHAR(64) NULL,
                 [Name] NVARCHAR(255) NOT NULL,
                 [Capacity] INT NULL DEFAULT ((0)),
@@ -474,6 +480,7 @@ export async function createAndInitializeDatabase(options: DbInitOptions): Promi
             `IF NOT EXISTS (SELECT * FROM sys.tables WHERE name = 'ItemCategories')
             CREATE TABLE dbo.[ItemCategories] (
                 [Id] NVARCHAR(64) NOT NULL,
+                [Code] NVARCHAR(50) NULL,
                 [SectionId] NVARCHAR(64) NULL,
                 [Name] NVARCHAR(255) NOT NULL,
                 [BranchCode] NVARCHAR(50) NULL,
@@ -506,6 +513,7 @@ export async function createAndInitializeDatabase(options: DbInitOptions): Promi
                 [Id] NVARCHAR(64) NOT NULL,
                 [Name] NVARCHAR(255) NOT NULL,
                 [Code] NVARCHAR(50) NULL,
+                [ParentCategoryId] NVARCHAR(64) NULL,
                 [BranchCode] NVARCHAR(50) NULL,
                 [BranchName] NVARCHAR(255) NULL,
                 [SyncStatus] NVARCHAR(20) NULL DEFAULT ('synced'),
@@ -581,6 +589,7 @@ export async function createAndInitializeDatabase(options: DbInitOptions): Promi
             `IF NOT EXISTS (SELECT * FROM sys.tables WHERE name = 'ItemSubCategories1')
             CREATE TABLE dbo.[ItemSubCategories1] (
                 [Id] NVARCHAR(64) NOT NULL,
+                [Code] NVARCHAR(50) NULL,
                 [Name] NVARCHAR(255) NOT NULL,
                 [CreatedAt] DATETIME2 NOT NULL DEFAULT (sysutcdatetime()),
                 [BranchCode] NVARCHAR(50) NULL,
@@ -595,6 +604,7 @@ export async function createAndInitializeDatabase(options: DbInitOptions): Promi
             `IF NOT EXISTS (SELECT * FROM sys.tables WHERE name = 'ItemSubCategories2')
             CREATE TABLE dbo.[ItemSubCategories2] (
                 [Id] NVARCHAR(64) NOT NULL,
+                [Code] NVARCHAR(50) NULL,
                 [Name] NVARCHAR(255) NOT NULL,
                 [CreatedAt] DATETIME2 NOT NULL DEFAULT (sysutcdatetime()),
                 [BranchCode] NVARCHAR(50) NULL,
@@ -760,6 +770,11 @@ export async function createAndInitializeDatabase(options: DbInitOptions): Promi
                 [Code] NVARCHAR(50) NULL,
                 [Name] NVARCHAR(255) NOT NULL,
                 [WarehouseId] NVARCHAR(64) NULL,
+                [PosPrinterType] NVARCHAR(50) NULL DEFAULT (N'system'),
+                [PosPrinterAddress] NVARCHAR(255) NULL,
+                [EnableKitchenPrinter] BIT NULL DEFAULT ((0)),
+                [KitchenPrinterType] NVARCHAR(50) NULL DEFAULT (N'system'),
+                [KitchenPrinterAddress] NVARCHAR(255) NULL,
                 [BranchCode] NVARCHAR(50) NULL,
                 [BranchName] NVARCHAR(255) NULL,
                 [SyncStatus] NVARCHAR(20) NULL DEFAULT ('synced'),
@@ -991,12 +1006,15 @@ export async function createAndInitializeDatabase(options: DbInitOptions): Promi
                 [RequisitionNumber] NVARCHAR(100) NULL,
                 [Date] DATETIME2 NOT NULL,
                 [WarehouseId] NVARCHAR(64) NULL,
+                [FromWarehouseId] NVARCHAR(64) NULL,
+                [ToWarehouseId] NVARCHAR(64) NULL,
                 [RequestedById] NVARCHAR(64) NULL,
                 [RequestedByName] NVARCHAR(255) NULL,
                 [Status] NVARCHAR(50) NOT NULL DEFAULT (N'pending'),
                 [Priority] NVARCHAR(50) NOT NULL DEFAULT (N'normal'),
                 [Notes] NVARCHAR(MAX) NULL,
                 [ItemsJson] NVARCHAR(MAX) NULL,
+                [DetailsJson] NVARCHAR(MAX) NULL,
                 [CreatedAt] DATETIME2 NOT NULL DEFAULT (sysutcdatetime()),
                 [BranchCode] NVARCHAR(50) NULL,
                 [BranchName] NVARCHAR(255) NULL,
@@ -1080,6 +1098,9 @@ export async function createAndInitializeDatabase(options: DbInitOptions): Promi
                 [IsDelivery] BIT NOT NULL DEFAULT ((0)),
                 [DeliveryReconciled] BIT NOT NULL DEFAULT ((0)),
                 [IsTaxIncluded] BIT NOT NULL DEFAULT ((0)),
+                [EtaUuid] NVARCHAR(64) NULL,
+                [EtaStatus] NVARCHAR(50) NULL,
+                [EtaSubmissionId] NVARCHAR(64) NULL,
                 [Notes] NVARCHAR(MAX) NULL,
                 [ItemsJson] NVARCHAR(MAX) NULL,
                 [CreatedAt] DATETIME2 NOT NULL DEFAULT (sysutcdatetime()),
@@ -1225,10 +1246,12 @@ export async function createAndInitializeDatabase(options: DbInitOptions): Promi
                 [Date] DATETIME2 NOT NULL,
                 [WarehouseId] NVARCHAR(64) NULL,
                 [PurchaseInvoiceId] NVARCHAR(64) NULL,
+                [StockTransferId] NVARCHAR(64) NULL,
                 [Reason] NVARCHAR(255) NULL,
                 [Status] NVARCHAR(50) NOT NULL DEFAULT (N'approved'),
                 [Notes] NVARCHAR(MAX) NULL,
                 [ItemsJson] NVARCHAR(MAX) NULL,
+                [AllocationsJson] NVARCHAR(MAX) NULL,
                 [CreatedAt] DATETIME2 NOT NULL DEFAULT (sysutcdatetime()),
                 [BranchCode] NVARCHAR(50) NULL,
                 [BranchName] NVARCHAR(255) NULL,
@@ -1454,6 +1477,19 @@ export async function createAndInitializeDatabase(options: DbInitOptions): Promi
                 [Name] NVARCHAR(255) NOT NULL,
                 [Password] NVARCHAR(255) NOT NULL,
                 [Phone] NVARCHAR(50) NULL,
+                [Email] NVARCHAR(255) NULL,
+                [NationalId] NVARCHAR(50) NULL,
+                [SocialInsuranceNumber] NVARCHAR(50) NULL,
+                [JobTitle] NVARCHAR(100) NULL,
+                [Department] NVARCHAR(100) NULL,
+                [HiringDate] NVARCHAR(50) NULL,
+                [BasicSalary] DECIMAL(18,4) NULL DEFAULT ((0)),
+                [HousingAllowance] DECIMAL(18,4) NULL DEFAULT ((0)),
+                [TransportAllowance] DECIMAL(18,4) NULL DEFAULT ((0)),
+                [SocialInsuranceDeduction] DECIMAL(18,4) NULL DEFAULT ((0)),
+                [Status] NVARCHAR(50) NULL DEFAULT (N'active'),
+                [BranchId] NVARCHAR(64) NULL,
+                [Notes] NVARCHAR(MAX) NULL,
                 [Role] NVARCHAR(100) NULL,
                 [WarehouseIds] NVARCHAR(MAX) NULL,
                 [Uid] NVARCHAR(100) NULL,
@@ -1488,13 +1524,107 @@ export async function createAndInitializeDatabase(options: DbInitOptions): Promi
                 [IsMain] BIT NOT NULL DEFAULT (0),
                 [IsClosed] BIT NOT NULL DEFAULT (0),
                 [RepId] NVARCHAR(64) NULL,
+                [BranchId] NVARCHAR(64) NULL,
                 [CreatedAt] DATETIME2 NOT NULL DEFAULT (sysutcdatetime()),
                 [BranchCode] NVARCHAR(50) NULL,
                 [BranchName] NVARCHAR(255) NULL,
                 [SyncStatus] NVARCHAR(20) NULL DEFAULT ('synced'),
                 [LastSyncedAt] DATETIME2 NULL,
                 [UpdatedAt] DATETIME2 NOT NULL DEFAULT (sysutcdatetime()),
+                [RowVersion] ROWVERSION,
                 CONSTRAINT [PK_Warehouses] PRIMARY KEY CLUSTERED ([Id])
+            );`,
+
+            `IF NOT EXISTS (SELECT * FROM sys.tables WHERE name = 'AuditTrailLogs')
+            CREATE TABLE dbo.[AuditTrailLogs] (
+                [Id] NVARCHAR(64) NOT NULL,
+                [Timestamp] DATETIME2 NOT NULL DEFAULT (sysutcdatetime()),
+                [UserId] NVARCHAR(64) NULL,
+                [UserName] NVARCHAR(255) NULL,
+                [Action] NVARCHAR(50) NOT NULL,
+                [Entity] NVARCHAR(100) NOT NULL,
+                [EntityId] NVARCHAR(100) NULL,
+                [Details] NVARCHAR(MAX) NULL,
+                [PreviousState] NVARCHAR(MAX) NULL,
+                [NewState] NVARCHAR(MAX) NULL,
+                [IpAddress] NVARCHAR(50) NULL,
+                [Hash] NVARCHAR(128) NULL,
+                [BranchCode] NVARCHAR(50) NULL,
+                [BranchName] NVARCHAR(255) NULL,
+                [SyncStatus] NVARCHAR(20) NULL DEFAULT ('synced'),
+                [LastSyncedAt] DATETIME2 NULL,
+                [UpdatedAt] DATETIME2 NOT NULL DEFAULT (sysutcdatetime()),
+                [CreatedAt] DATETIME2 NOT NULL DEFAULT (sysutcdatetime()),
+                [RowVersion] ROWVERSION,
+                CONSTRAINT [PK_AuditTrailLogs] PRIMARY KEY CLUSTERED ([Id])
+            );`,
+
+            `IF NOT EXISTS (SELECT * FROM sys.tables WHERE name = 'GeneralLedgerEntries')
+            CREATE TABLE dbo.[GeneralLedgerEntries] (
+                [Id] NVARCHAR(64) NOT NULL,
+                [EntryNumber] NVARCHAR(100) NOT NULL,
+                [Date] DATETIME2 NOT NULL,
+                [SourceType] NVARCHAR(50) NOT NULL,
+                [SourceId] NVARCHAR(64) NOT NULL,
+                [SourceNumber] NVARCHAR(100) NULL,
+                [WarehouseId] NVARCHAR(64) NULL,
+                [Description] NVARCHAR(500) NULL,
+                [Status] NVARCHAR(50) NOT NULL DEFAULT ('posted'),
+                [TotalDebit] DECIMAL(18,4) NOT NULL DEFAULT ((0)),
+                [TotalCredit] DECIMAL(18,4) NOT NULL DEFAULT ((0)),
+                [LinesJson] NVARCHAR(MAX) NOT NULL,
+                [CreatedById] NVARCHAR(64) NULL,
+                [CreatedByName] NVARCHAR(255) NULL,
+                [BranchCode] NVARCHAR(50) NULL,
+                [BranchName] NVARCHAR(255) NULL,
+                [SyncStatus] NVARCHAR(20) NULL DEFAULT ('synced'),
+                [LastSyncedAt] DATETIME2 NULL,
+                [UpdatedAt] DATETIME2 NOT NULL DEFAULT (sysutcdatetime()),
+                [CreatedAt] DATETIME2 NOT NULL DEFAULT (sysutcdatetime()),
+                [RowVersion] ROWVERSION,
+                CONSTRAINT [PK_GeneralLedgerEntries] PRIMARY KEY CLUSTERED ([Id])
+            );`,
+
+            `IF NOT EXISTS (SELECT * FROM sys.tables WHERE name = 'ManufacturingOrders')
+            CREATE TABLE dbo.[ManufacturingOrders] (
+                [Id] NVARCHAR(64) NOT NULL,
+                [OrderNumber] NVARCHAR(100) NOT NULL,
+                [Date] DATETIME2 NULL DEFAULT (sysutcdatetime()),
+                [OrderDate] DATETIME2 NULL DEFAULT (sysutcdatetime()),
+                [ProductId] NVARCHAR(64) NULL,
+                [ProductName] NVARCHAR(255) NULL,
+                [FinishedItemId] NVARCHAR(64) NULL,
+                [FinishedItemName] NVARCHAR(255) NULL,
+                [QuantityToProduce] DECIMAL(18,4) NULL DEFAULT ((1)),
+                [TargetQuantity] DECIMAL(18,4) NULL DEFAULT ((1)),
+                [ProducedQuantity] DECIMAL(18,4) NULL DEFAULT ((0)),
+                [RawMaterialsWarehouseId] NVARCHAR(64) NULL,
+                [FinishedGoodsWarehouseId] NVARCHAR(64) NULL,
+                [SourceWarehouseId] NVARCHAR(64) NULL,
+                [TargetWarehouseId] NVARCHAR(64) NULL,
+                [RawMaterialCost] DECIMAL(18,4) NOT NULL DEFAULT ((0)),
+                [TotalRawMaterialCost] DECIMAL(18,4) NOT NULL DEFAULT ((0)),
+                [LaborCost] DECIMAL(18,4) NOT NULL DEFAULT ((0)),
+                [OverheadCost] DECIMAL(18,4) NOT NULL DEFAULT ((0)),
+                [TotalCost] DECIMAL(18,4) NOT NULL DEFAULT ((0)),
+                [TotalProductionCost] DECIMAL(18,4) NOT NULL DEFAULT ((0)),
+                [UnitCost] DECIMAL(18,4) NOT NULL DEFAULT ((0)),
+                [UnitProductionCost] DECIMAL(18,4) NOT NULL DEFAULT ((0)),
+                [Status] NVARCHAR(50) NOT NULL DEFAULT ('completed'),
+                [BomSnapshotJson] NVARCHAR(MAX) NULL,
+                [BOMDetailsJson] NVARCHAR(MAX) NULL,
+                [Notes] NVARCHAR(MAX) NULL,
+                [CreatedBy] NVARCHAR(255) NULL,
+                [CreatedById] NVARCHAR(64) NULL,
+                [CreatedByName] NVARCHAR(255) NULL,
+                [BranchCode] NVARCHAR(50) NULL,
+                [BranchName] NVARCHAR(255) NULL,
+                [SyncStatus] NVARCHAR(20) NULL DEFAULT ('synced'),
+                [LastSyncedAt] DATETIME2 NULL,
+                [UpdatedAt] DATETIME2 NOT NULL DEFAULT (sysutcdatetime()),
+                [CreatedAt] DATETIME2 NOT NULL DEFAULT (sysutcdatetime()),
+                [RowVersion] ROWVERSION,
+                CONSTRAINT [PK_ManufacturingOrders] PRIMARY KEY CLUSTERED ([Id])
             );`
         ];
 
@@ -1503,6 +1633,119 @@ export async function createAndInitializeDatabase(options: DbInitOptions): Promi
                 await targetPool.request().query(ddl);
             } catch (tableErr: any) {
                 console.error('Error creating table in init:', tableErr.message);
+            }
+        }
+
+        // 3b. Schema Upgrades & Column Migrations for Existing Databases (Local & Central)
+        const schemaUpgrades = [
+            // StockInRecords: Logistics Container Put-Away Allocations & Transfers
+            `IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('dbo.StockInRecords') AND name = 'AllocationsJson')
+                ALTER TABLE dbo.StockInRecords ADD [AllocationsJson] NVARCHAR(MAX) NULL;`,
+            `IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('dbo.StockInRecords') AND name = 'StockTransferId')
+                ALTER TABLE dbo.StockInRecords ADD [StockTransferId] NVARCHAR(64) NULL;`,
+
+            // SalesInvoices: E-Invoicing (ETA / ZATCA) Columns
+            `IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('dbo.SalesInvoices') AND name = 'EtaUuid')
+                ALTER TABLE dbo.SalesInvoices ADD [EtaUuid] NVARCHAR(64) NULL;`,
+            `IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('dbo.SalesInvoices') AND name = 'EtaStatus')
+                ALTER TABLE dbo.SalesInvoices ADD [EtaStatus] NVARCHAR(50) NULL;`,
+            `IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('dbo.SalesInvoices') AND name = 'EtaSubmissionId')
+                ALTER TABLE dbo.SalesInvoices ADD [EtaSubmissionId] NVARCHAR(64) NULL;`,
+
+            // FixedAssets: Depreciation Engine Columns
+            `IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('dbo.FixedAssets') AND name = 'Cost')
+                ALTER TABLE dbo.FixedAssets ADD [Cost] DECIMAL(18,4) NULL DEFAULT ((0));`,
+            `IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('dbo.FixedAssets') AND name = 'UsefulLifeYears')
+                ALTER TABLE dbo.FixedAssets ADD [UsefulLifeYears] INT NULL DEFAULT ((5));`,
+            `IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('dbo.FixedAssets') AND name = 'SalvageValue')
+                ALTER TABLE dbo.FixedAssets ADD [SalvageValue] DECIMAL(18,4) NULL DEFAULT ((0));`,
+            `IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('dbo.FixedAssets') AND name = 'DisposedDate')
+                ALTER TABLE dbo.FixedAssets ADD [DisposedDate] DATETIME2 NULL;`,
+            `IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('dbo.FixedAssets') AND name = 'SaleProceeds')
+                ALTER TABLE dbo.FixedAssets ADD [SaleProceeds] DECIMAL(18,4) NULL;`,
+
+            // Users: HRMS & Payroll Columns
+            `IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('dbo.Users') AND name = 'Email')
+                ALTER TABLE dbo.Users ADD [Email] NVARCHAR(255) NULL;`,
+            `IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('dbo.Users') AND name = 'NationalId')
+                ALTER TABLE dbo.Users ADD [NationalId] NVARCHAR(50) NULL;`,
+            `IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('dbo.Users') AND name = 'SocialInsuranceNumber')
+                ALTER TABLE dbo.Users ADD [SocialInsuranceNumber] NVARCHAR(50) NULL;`,
+            `IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('dbo.Users') AND name = 'JobTitle')
+                ALTER TABLE dbo.Users ADD [JobTitle] NVARCHAR(100) NULL;`,
+            `IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('dbo.Users') AND name = 'Department')
+                ALTER TABLE dbo.Users ADD [Department] NVARCHAR(100) NULL;`,
+            `IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('dbo.Users') AND name = 'HiringDate')
+                ALTER TABLE dbo.Users ADD [HiringDate] NVARCHAR(50) NULL;`,
+            `IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('dbo.Users') AND name = 'BasicSalary')
+                ALTER TABLE dbo.Users ADD [BasicSalary] DECIMAL(18,4) NULL DEFAULT ((0));`,
+            `IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('dbo.Users') AND name = 'HousingAllowance')
+                ALTER TABLE dbo.Users ADD [HousingAllowance] DECIMAL(18,4) NULL DEFAULT ((0));`,
+            `IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('dbo.Users') AND name = 'TransportAllowance')
+                ALTER TABLE dbo.Users ADD [TransportAllowance] DECIMAL(18,4) NULL DEFAULT ((0));`,
+            `IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('dbo.Users') AND name = 'SocialInsuranceDeduction')
+                ALTER TABLE dbo.Users ADD [SocialInsuranceDeduction] DECIMAL(18,4) NULL DEFAULT ((0));`,
+            `IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('dbo.Users') AND name = 'Status')
+                ALTER TABLE dbo.Users ADD [Status] NVARCHAR(50) NULL DEFAULT (N'active');`,
+            `IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('dbo.Users') AND name = 'BranchId')
+                ALTER TABLE dbo.Users ADD [BranchId] NVARCHAR(64) NULL;`,
+            `IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('dbo.Users') AND name = 'Notes')
+                ALTER TABLE dbo.Users ADD [Notes] NVARCHAR(MAX) NULL;`,
+
+            // InventorySections, ItemCategories, ItemGroups, ItemSubCategories, PosTerminals, Requisitions, Warehouses
+            `IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('dbo.InventorySections') AND name = 'Code')
+                ALTER TABLE dbo.InventorySections ADD [Code] NVARCHAR(50) NULL;`,
+            `IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('dbo.InventorySections') AND name = 'MainWarehouseId')
+                ALTER TABLE dbo.InventorySections ADD [MainWarehouseId] NVARCHAR(64) NULL;`,
+            `IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('dbo.InventorySections') AND name = 'Capacity')
+                ALTER TABLE dbo.InventorySections ADD [Capacity] INT NULL DEFAULT ((0));`,
+            `IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('dbo.InventorySections') AND name = 'AllowOverfill')
+                ALTER TABLE dbo.InventorySections ADD [AllowOverfill] BIT NULL DEFAULT ((1));`,
+            `IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('dbo.ItemCategories') AND name = 'Code')
+                ALTER TABLE dbo.ItemCategories ADD [Code] NVARCHAR(50) NULL;`,
+            `IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('dbo.ItemGroups') AND name = 'ParentCategoryId')
+                ALTER TABLE dbo.ItemGroups ADD [ParentCategoryId] NVARCHAR(64) NULL;`,
+            `IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('dbo.ItemSubCategories1') AND name = 'Code')
+                ALTER TABLE dbo.ItemSubCategories1 ADD [Code] NVARCHAR(50) NULL;`,
+            `IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('dbo.ItemSubCategories2') AND name = 'Code')
+                ALTER TABLE dbo.ItemSubCategories2 ADD [Code] NVARCHAR(50) NULL;`,
+            `IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('dbo.PosTerminals') AND name = 'PosPrinterType')
+                ALTER TABLE dbo.PosTerminals ADD [PosPrinterType] NVARCHAR(50) NULL DEFAULT (N'system');`,
+            `IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('dbo.PosTerminals') AND name = 'PosPrinterAddress')
+                ALTER TABLE dbo.PosTerminals ADD [PosPrinterAddress] NVARCHAR(255) NULL;`,
+            `IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('dbo.PosTerminals') AND name = 'EnableKitchenPrinter')
+                ALTER TABLE dbo.PosTerminals ADD [EnableKitchenPrinter] BIT NULL DEFAULT ((0));`,
+            `IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('dbo.PosTerminals') AND name = 'KitchenPrinterType')
+                ALTER TABLE dbo.PosTerminals ADD [KitchenPrinterType] NVARCHAR(50) NULL DEFAULT (N'system');`,
+            `IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('dbo.PosTerminals') AND name = 'KitchenPrinterAddress')
+                ALTER TABLE dbo.PosTerminals ADD [KitchenPrinterAddress] NVARCHAR(255) NULL;`,
+            `IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('dbo.Requisitions') AND name = 'FromWarehouseId')
+                ALTER TABLE dbo.Requisitions ADD [FromWarehouseId] NVARCHAR(64) NULL;`,
+            `IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('dbo.Requisitions') AND name = 'ToWarehouseId')
+                ALTER TABLE dbo.Requisitions ADD [ToWarehouseId] NVARCHAR(64) NULL;`,
+            `IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('dbo.Requisitions') AND name = 'DetailsJson')
+                ALTER TABLE dbo.Requisitions ADD [DetailsJson] NVARCHAR(MAX) NULL;`,
+            `IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('dbo.Warehouses') AND name = 'BranchId')
+                ALTER TABLE dbo.Warehouses ADD [BranchId] NVARCHAR(64) NULL;`,
+
+            // AuditTrailLogs, GeneralLedgerEntries, ManufacturingOrders sync & compatibility columns
+            `IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('dbo.AuditTrailLogs') AND name = 'BranchCode')
+                ALTER TABLE dbo.AuditTrailLogs ADD [BranchCode] NVARCHAR(50) NULL, [BranchName] NVARCHAR(255) NULL, [SyncStatus] NVARCHAR(20) NULL DEFAULT ('synced'), [LastSyncedAt] DATETIME2 NULL, [UpdatedAt] DATETIME2 NOT NULL DEFAULT (sysutcdatetime()), [CreatedAt] DATETIME2 NOT NULL DEFAULT (sysutcdatetime());`,
+            `IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('dbo.GeneralLedgerEntries') AND name = 'BranchCode')
+                ALTER TABLE dbo.GeneralLedgerEntries ADD [BranchCode] NVARCHAR(50) NULL, [BranchName] NVARCHAR(255) NULL, [SyncStatus] NVARCHAR(20) NULL DEFAULT ('synced'), [LastSyncedAt] DATETIME2 NULL, [UpdatedAt] DATETIME2 NOT NULL DEFAULT (sysutcdatetime());`,
+            `IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('dbo.ManufacturingOrders') AND name = 'BranchCode')
+                ALTER TABLE dbo.ManufacturingOrders ADD [BranchCode] NVARCHAR(50) NULL, [BranchName] NVARCHAR(255) NULL, [SyncStatus] NVARCHAR(20) NULL DEFAULT ('synced'), [LastSyncedAt] DATETIME2 NULL, [UpdatedAt] DATETIME2 NOT NULL DEFAULT (sysutcdatetime());`,
+            `IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('dbo.ManufacturingOrders') AND name = 'FinishedItemId')
+                ALTER TABLE dbo.ManufacturingOrders ADD [OrderDate] DATETIME2 NULL DEFAULT (sysutcdatetime()), [FinishedItemId] NVARCHAR(64) NULL, [FinishedItemName] NVARCHAR(255) NULL, [TargetQuantity] DECIMAL(18,4) NULL DEFAULT ((1)), [ProducedQuantity] DECIMAL(18,4) NULL DEFAULT ((0)), [SourceWarehouseId] NVARCHAR(64) NULL, [TargetWarehouseId] NVARCHAR(64) NULL, [TotalRawMaterialCost] DECIMAL(18,4) NOT NULL DEFAULT ((0)), [TotalProductionCost] DECIMAL(18,4) NOT NULL DEFAULT ((0)), [UnitProductionCost] DECIMAL(18,4) NOT NULL DEFAULT ((0)), [BOMDetailsJson] NVARCHAR(MAX) NULL, [CreatedBy] NVARCHAR(255) NULL;`,
+            `IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('dbo.ManufacturingOrders') AND name = 'ProductId')
+                ALTER TABLE dbo.ManufacturingOrders ADD [Date] DATETIME2 NULL DEFAULT (sysutcdatetime()), [ProductId] NVARCHAR(64) NULL, [ProductName] NVARCHAR(255) NULL, [QuantityToProduce] DECIMAL(18,4) NULL DEFAULT ((1)), [RawMaterialsWarehouseId] NVARCHAR(64) NULL, [FinishedGoodsWarehouseId] NVARCHAR(64) NULL, [RawMaterialCost] DECIMAL(18,4) NOT NULL DEFAULT ((0)), [TotalCost] DECIMAL(18,4) NOT NULL DEFAULT ((0)), [UnitCost] DECIMAL(18,4) NOT NULL DEFAULT ((0)), [BomSnapshotJson] NVARCHAR(MAX) NULL, [CreatedById] NVARCHAR(64) NULL, [CreatedByName] NVARCHAR(255) NULL;`
+        ];
+
+        for (const upg of schemaUpgrades) {
+            try {
+                await targetPool.request().query(upg);
+            } catch (upgErr: any) {
+                console.warn('Schema upgrade warning:', upgErr.message);
             }
         }
 
@@ -1581,6 +1824,66 @@ export async function createAndInitializeDatabase(options: DbInitOptions): Promi
                 FROM dbo.Expenses e
                 INNER JOIN inserted i ON e.Id = i.Id
                 LEFT JOIN dbo.Warehouses w ON e.WarehouseId = w.Id;
+            END;`,
+
+            `CREATE OR ALTER TRIGGER trg_GeneralLedgerEntries_BranchSync
+            ON dbo.GeneralLedgerEntries
+            AFTER INSERT, UPDATE
+            AS
+            BEGIN
+                SET NOCOUNT ON;
+                IF TRIGGER_NESTLEVEL() > 1 RETURN;
+                UPDATE g
+                SET g.BranchCode = COALESCE(g.BranchCode, w.Code, '${branchCode}'),
+                    g.BranchName = COALESCE(g.BranchName, w.Name, N'${branchName}')
+                FROM dbo.GeneralLedgerEntries g
+                INNER JOIN inserted i ON g.Id = i.Id
+                LEFT JOIN dbo.Warehouses w ON g.WarehouseId = w.Id;
+            END;`,
+
+            `CREATE OR ALTER TRIGGER trg_ManufacturingOrders_BranchSync
+            ON dbo.ManufacturingOrders
+            AFTER INSERT, UPDATE
+            AS
+            BEGIN
+                SET NOCOUNT ON;
+                IF TRIGGER_NESTLEVEL() > 1 RETURN;
+                UPDATE m
+                SET m.BranchCode = COALESCE(m.BranchCode, w.Code, '${branchCode}'),
+                    m.BranchName = COALESCE(m.BranchName, w.Name, N'${branchName}')
+                FROM dbo.ManufacturingOrders m
+                INNER JOIN inserted i ON m.Id = i.Id
+                LEFT JOIN dbo.Warehouses w ON COALESCE(m.RawMaterialsWarehouseId, m.SourceWarehouseId) = w.Id;
+            END;`,
+
+            `CREATE OR ALTER TRIGGER trg_StockInRecords_BranchSync
+            ON dbo.StockInRecords
+            AFTER INSERT, UPDATE
+            AS
+            BEGIN
+                SET NOCOUNT ON;
+                IF TRIGGER_NESTLEVEL() > 1 RETURN;
+                UPDATE si
+                SET si.BranchCode = COALESCE(si.BranchCode, w.Code, '${branchCode}'),
+                    si.BranchName = COALESCE(si.BranchName, w.Name, N'${branchName}')
+                FROM dbo.StockInRecords si
+                INNER JOIN inserted i ON si.Id = i.Id
+                LEFT JOIN dbo.Warehouses w ON si.WarehouseId = w.Id;
+            END;`,
+
+            `CREATE OR ALTER TRIGGER trg_StockOutRecords_BranchSync
+            ON dbo.StockOutRecords
+            AFTER INSERT, UPDATE
+            AS
+            BEGIN
+                SET NOCOUNT ON;
+                IF TRIGGER_NESTLEVEL() > 1 RETURN;
+                UPDATE so
+                SET so.BranchCode = COALESCE(so.BranchCode, w.Code, '${branchCode}'),
+                    so.BranchName = COALESCE(so.BranchName, w.Name, N'${branchName}')
+                FROM dbo.StockOutRecords so
+                INNER JOIN inserted i ON so.Id = i.Id
+                LEFT JOIN dbo.Warehouses w ON COALESCE(so.WarehouseId, so.SourceId) = w.Id;
             END;`
         ];
 
@@ -1793,18 +2096,26 @@ export async function createAndInitializeDatabase(options: DbInitOptions): Promi
                         inventory_transfer: { view: true, add: true },
                         inventory_adjustment: { view: true, add: true, delete: true, print: true },
                         inventory_stockStatus: { view: true, generate: true, print: true },
+                        manufacturing_orders: { view: true, add: true, edit: true, delete: true, print: true },
                         accounting_treasury: { view: true, add: true },
                         accounting_expenses: { view: true, add: true },
                         accounting_customerPayments: { view: true, add: true, delete: true },
                         accounting_supplierPayments: { view: true, add: true, delete: true },
+                        accounting_posting: { view: true, add: true, edit: true, print: true },
+                        accounting_assets: { view: true, add: true, edit: true, delete: true, print: true },
+                        hr_employees: { view: true, add: true, edit: true, delete: true },
+                        hr_payroll: { view: true, add: true, edit: true, print: true },
                         reports_sales: { view: true },
                         reports_posSales: { view: true },
                         reports_itemLedger: { view: true },
                         reports_financialStatements: { view: true },
+                        reports_taxDeclaration: { view: true, print: true },
                         reports_discrepancies: { view: true },
                         settings_users: { view: true, add: true, edit: true, delete: true },
                         settings_cashAccounts: { view: true, add: true, edit: true, delete: true },
                         settings_printers: { view: true, edit: true },
+                        settings_auditTrail: { view: true, print: true },
+                        settings_eInvoice: { view: true, add: true, edit: true },
                         users: { view: true, add: true, edit: true, delete: true }
                     })
                 },
@@ -1826,12 +2137,19 @@ export async function createAndInitializeDatabase(options: DbInitOptions): Promi
                         purchases_invoices: { view: true, add: true, edit: true, print: true },
                         inventory_movements: { view: true },
                         inventory_stockStatus: { view: true, print: true },
+                        manufacturing_orders: { view: true, add: true, print: true },
                         accounting_treasury: { view: true, add: true },
                         accounting_expenses: { view: true, add: true },
                         accounting_customerPayments: { view: true, add: true },
                         accounting_supplierPayments: { view: true, add: true },
+                        accounting_posting: { view: true, add: true, print: true },
+                        accounting_assets: { view: true, add: true, edit: true, print: true },
+                        hr_employees: { view: true, add: true, edit: true },
+                        hr_payroll: { view: true, add: true, print: true },
                         reports_sales: { view: true },
-                        reports_financialStatements: { view: true }
+                        reports_financialStatements: { view: true },
+                        reports_taxDeclaration: { view: true, print: true },
+                        settings_eInvoice: { view: true, edit: true }
                     })
                 }
             ];
@@ -2090,6 +2408,17 @@ export async function createAndInitializeDatabase(options: DbInitOptions): Promi
                     autoPrintReceipt: true,
                     showItemStock: true,
                     layout: { layout: 'cart-left', cartWidth: 50, itemsWidth: 50, groupsPosition: 'right', paymentPosition: 'bottom' }
+                },
+                eInvoice: {
+                    provider: 'ETA',
+                    environment: 'sandbox',
+                    simulationMode: true,
+                    taxRegistrationNumber: '100-200-300',
+                    branchCode: branchCode || '0',
+                    activityCode: '4711',
+                    companyTradeName: branchName || 'نظام إدارة الفروع ونقاط البيع',
+                    autoSubmitPOS: false,
+                    autoSubmitB2B: false
                 }
             });
 
@@ -2117,7 +2446,9 @@ export async function createAndInitializeDatabase(options: DbInitOptions): Promi
                 { name: 'stockInReceipt', val: 1 },
                 { name: 'stockOutReceipt', val: 1 },
                 { name: 'stockTransferReceipt', val: 1 },
-                { name: 'stockAdjustmentReceipt', val: 1 }
+                { name: 'stockAdjustmentReceipt', val: 1 },
+                { name: 'manufacturingOrder', val: 1 },
+                { name: 'journalEntry', val: 1 }
             ];
             for (const c of defaultCounters) {
                 await targetPool.request()
@@ -2162,7 +2493,13 @@ export async function createAndInitializeDatabase(options: DbInitOptions): Promi
             `IF NOT EXISTS (SELECT * FROM sys.indexes WHERE name = 'IX_Customers_Name' AND object_id = OBJECT_ID('dbo.Customers'))
              CREATE NONCLUSTERED INDEX IX_Customers_Name ON dbo.Customers (Name);`,
             `IF NOT EXISTS (SELECT * FROM sys.indexes WHERE name = 'IX_Suppliers_Name' AND object_id = OBJECT_ID('dbo.Suppliers'))
-             CREATE NONCLUSTERED INDEX IX_Suppliers_Name ON dbo.Suppliers (Name);`
+             CREATE NONCLUSTERED INDEX IX_Suppliers_Name ON dbo.Suppliers (Name);`,
+            `IF NOT EXISTS (SELECT * FROM sys.indexes WHERE name = 'IX_GeneralLedgerEntries_Source' AND object_id = OBJECT_ID('dbo.GeneralLedgerEntries'))
+             CREATE NONCLUSTERED INDEX IX_GeneralLedgerEntries_Source ON dbo.GeneralLedgerEntries (SourceType, SourceId, Date DESC);`,
+            `IF NOT EXISTS (SELECT * FROM sys.indexes WHERE name = 'IX_AuditTrailLogs_Timestamp' AND object_id = OBJECT_ID('dbo.AuditTrailLogs'))
+             CREATE NONCLUSTERED INDEX IX_AuditTrailLogs_Timestamp ON dbo.AuditTrailLogs (Timestamp DESC, Entity, Action);`,
+            `IF NOT EXISTS (SELECT * FROM sys.indexes WHERE name = 'IX_ManufacturingOrders_Status' AND object_id = OBJECT_ID('dbo.ManufacturingOrders'))
+             CREATE NONCLUSTERED INDEX IX_ManufacturingOrders_Status ON dbo.ManufacturingOrders (Status, CreatedAt DESC);`
         ];
 
         for (const idxSql of performanceIndexes) {

@@ -59,11 +59,11 @@ export interface TableSyncMeta {
 }
 
 /**
- * خريطة بيانات ومحددات وتوصيف جميع جداول النظام الـ 69
+ * خريطة بيانات ومحددات وتوصيف جميع جداول النظام الـ 72 (شاملة ركائز الـ ERP المتقدمة)
  */
 export const TABLE_METADATA_MAP: Record<string, TableSyncMeta> = {
     // 1. فواتير وعمليات (فواتير، مرتجعات، كاشير)
-    SalesInvoices: { name: 'فواتير المبيعات', category: 'فواتير وعمليات', direction: 'push', idColumn: 'Id', childTable: 'SalesInvoiceItems', foreignKey: 'InvoiceId', description: 'بيانات فواتير المبيعات الصادرة من نقاط البيع، أرقام الفواتير، الإجماليات، والضرائب', dataScope: 'حركات مبيعات' },
+    SalesInvoices: { name: 'فواتير المبيعات', category: 'فواتير وعمليات', direction: 'push', idColumn: 'Id', childTable: 'SalesInvoiceItems', foreignKey: 'InvoiceId', description: 'بيانات فواتير المبيعات الصادرة من نقاط البيع، أرقام الفواتير، الإجماليات، والضرائب، وحالة الفوترة الإلكترونية (ETA/ZATCA)', dataScope: 'حركات مبيعات' },
     SalesInvoiceItems: { name: 'بنود فواتير المبيعات', category: 'فواتير وعمليات', direction: 'push', idColumn: 'Id', description: 'تفاصيل بنود الأصناف المباعة، الكميات، أسعار البيع والتكلفة والخصم', dataScope: 'حركات مبيعات' },
     SalesReturns: { name: 'مردودات المبيعات', category: 'فواتير وعمليات', direction: 'push', idColumn: 'Id', childTable: 'SalesReturnItems', foreignKey: 'ReturnId', description: 'سجل فواتير مرتجعات المبيعات المستردة من العملاء وقيم الاسترداد', dataScope: 'حركات مرتجعات' },
     SalesReturnItems: { name: 'بنود مردودات المبيعات', category: 'فواتير وعمليات', direction: 'push', idColumn: 'Id', description: 'تفاصيل بنود الأصناف المرتجعة والكميات المستردة للمخزن', dataScope: 'حركات مرتجعات' },
@@ -86,6 +86,7 @@ export const TABLE_METADATA_MAP: Record<string, TableSyncMeta> = {
     // 4. حسابات ومالية
     CashAccounts: { name: 'الخزائن والحسابات البنكية', category: 'حسابات ومالية', direction: 'bidirectional', idColumn: 'Id', description: 'دفاتر الخزائن النقدية، الحسابات البنكية، والعهد المالية', dataScope: 'حسابات مالية' },
     TreasuryTransactions: { name: 'حركات الخزينة والتحويلات', category: 'حسابات ومالية', direction: 'push', idColumn: 'Id', description: 'سجل حركة المقبوضات والمدفوعات والتحويلات بين الخزائن', dataScope: 'حركات مالية' },
+    GeneralLedgerEntries: { name: 'قيود اليومية العامة والترحيل الآلي', category: 'حسابات ومالية', direction: 'push', idColumn: 'Id', description: 'سجل قيود اليومية العامة المرحلة آلياً من الدفاتر الفرعية (المبيعات، المشتريات، المخزون، الرواتب، الإهلاك)', dataScope: 'الأستاذ العام' },
     Expenses: { name: 'المصروفات التشغيلية', category: 'حسابات ومالية', direction: 'push', idColumn: 'Id', description: 'بنود المصروفات التشغيلية، الإيجارات، الفواتير، والمصاريف العامة', dataScope: 'مصروفات تشغيل' },
     ExceptionalIncomes: { name: 'الإيرادات الاستثنائية', category: 'حسابات ومالية', direction: 'push', idColumn: 'Id', description: 'الإيرادات العرضية والاستثنائية خارج النشاط البيعي المعتاد', dataScope: 'إيرادات أخرى' },
     ProfitDistributions: { name: 'توزيعات الأرباح', category: 'حسابات ومالية', direction: 'push', idColumn: 'Id', description: 'حركات توزيع الأرباح على الشركاء والمساهمين', dataScope: 'حقوق ملكية' },
@@ -93,11 +94,12 @@ export const TABLE_METADATA_MAP: Record<string, TableSyncMeta> = {
     PaymentMethods: { name: 'طرق الدفع والتحصيل', category: 'حسابات ومالية', direction: 'bidirectional', idColumn: 'Id', description: 'وسائل وطرق الدفع المقبولة (نقدي، فيزا، فودافون كاش، محفظة)', dataScope: 'إعدادات دفع' },
 
     // 5. أصول وإهلاك
-    FixedAssets: { name: 'الأصول الثابتة', category: 'أصول وإهلاك', direction: 'bidirectional', idColumn: 'Id', description: 'سجل الأصول والعدد والأجهزة ومواقعها وقيمتها الدفترية', dataScope: 'أصول ثابتة' },
-    DepreciationRecords: { name: 'قيود إهلاك الأصول', category: 'أصول وإهلاك', direction: 'push', idColumn: 'Id', description: 'قيود الإهلاك الدورية للأصول الثابتة ومجمع الإهلاك', dataScope: 'قيود إهلاك' },
+    FixedAssets: { name: 'الأصول الثابتة', category: 'أصول وإهلاك', direction: 'bidirectional', idColumn: 'Id', description: 'سجل الأصول والعدد والأجهزة ومواقعها وقيمتها الدفترية والعمر الإنتاجي وقيمة الخردة', dataScope: 'أصول ثابتة' },
+    DepreciationRecords: { name: 'قيود إهلاك الأصول', category: 'أصول وإهلاك', direction: 'push', idColumn: 'Id', description: 'قيود الإهلاك الدورية للأصول الثابتة ومجمع الإهلاك وصافي القيمة الدفترية', dataScope: 'قيود إهلاك' },
 
-    // 6. مخازن وأصناف
-    Items: { name: 'الأصناف والمنتجات', category: 'مخازن وأصناف', direction: 'bidirectional', idColumn: 'Id', description: 'بطاقات الأصناف، الأسعار، التكلفة، الوحدات، والباركودات', dataScope: 'بيانات رئيسية' },
+    // 6. مخازن وأصناف وتصنيع
+    Items: { name: 'الأصناف والمنتجات', category: 'مخازن وأصناف', direction: 'bidirectional', idColumn: 'Id', description: 'بطاقات الأصناف، الأسعار، التكلفة، الوحدات، الباركودات، وشجرة مكونات التصنيع (BOM)', dataScope: 'بيانات رئيسية' },
+    ManufacturingOrders: { name: 'أوامر التصنيع والإنتاج', category: 'مخازن وأصناف', direction: 'push', idColumn: 'Id', description: 'أوامر التشغيل والتصنيع، سحب الخامات، احتساب تكاليف العمالة والمصروفات الصناعية، وإيداع المنتج التام', dataScope: 'تصنيع وإنتاج' },
     ItemCategories: { name: 'تصنيفات ومجموعات الأصناف', category: 'مخازن وأصناف', direction: 'bidirectional', idColumn: 'Id', description: 'التصنيفات والفئات لفرز وترتيب الأصناف في القوائم', dataScope: 'شجرة الأصناف' },
     ItemSections: { name: 'أقسام الأصناف', category: 'مخازن وأصناف', direction: 'bidirectional', idColumn: 'Id', description: 'الأقسام الرئيسية لتصنيف المخزون (مكملات، أغذية، أدوات)', dataScope: 'شجرة الأصناف' },
     ItemGroups: { name: 'الفئات العامة للأصناف', category: 'مخازن وأصناف', direction: 'bidirectional', idColumn: 'Id', description: 'المجموعات العامة التابعة للفئات لترتيب المنتجات', dataScope: 'شجرة الأصناف' },
@@ -106,12 +108,12 @@ export const TABLE_METADATA_MAP: Record<string, TableSyncMeta> = {
     ItemColors: { name: 'ألوان وموديلات الأصناف', category: 'مخازن وأصناف', direction: 'bidirectional', idColumn: 'Id', description: 'ألوان ومتغيرات الأصناف وموديلاتها', dataScope: 'متغيرات أصناف' },
     ItemSizes: { name: 'مقاسات وأحجام الأصناف', category: 'مخازن وأصناف', direction: 'bidirectional', idColumn: 'Id', description: 'مقاسات وأحجام وأوزان المنتجات', dataScope: 'متغيرات أصناف' },
     PriceChangeLogs: { name: 'سجل تعديلات الأسعار', category: 'مخازن وأصناف', direction: 'bidirectional', idColumn: 'Id', description: 'سجل تتبع ومراجعة تعديلات الأسعار وتاريخ التغيير', dataScope: 'سجل رقابي' },
-    Warehouses: { name: 'المستودعات والفروع', category: 'مخازن وأصناف', direction: 'bidirectional', idColumn: 'Id', description: 'دليل المستودعات، المخازن الفرعية، ونقاط التوزيع', dataScope: 'مستودعات' },
-    InventorySections: { name: 'قواطع وأقسام المستودع', category: 'مخازن وأصناف', direction: 'bidirectional', idColumn: 'Id', description: 'تقسيمات وقواطع المستودع الداخلية لتنظيم التخزين', dataScope: 'مستودعات' },
+    Warehouses: { name: 'المستودعات والفروع', category: 'مخازن وأصناف', direction: 'bidirectional', idColumn: 'Id', description: 'دليل المستودعات، المخازن اللوجستية، ونقاط التوزيع', dataScope: 'مستودعات' },
+    InventorySections: { name: 'الحاويات وقواطع المستودع', category: 'مخازن وأصناف', direction: 'bidirectional', idColumn: 'Id', description: 'حاويات التخزين اللوجستية وقواطع المستودع الداخلية وسعتها القصوى', dataScope: 'مستودعات' },
     InventoryZones: { name: 'مناطق وأرفف التخزين', category: 'مخازن وأصناف', direction: 'bidirectional', idColumn: 'Id', description: 'الممرات والأرفف التفصيلية داخل أقسام المستودع', dataScope: 'مستودعات' },
-    StockInRecords: { name: 'أذون إضافة واستلام مخزني', category: 'مخازن وأصناف', direction: 'push', idColumn: 'Id', childTable: 'StockInRecordItems', foreignKey: 'StockInId', description: 'أذون استلام وإضافة البضاعة والمنتجات للمخزن', dataScope: 'حركات مخزنية' },
+    StockInRecords: { name: 'أذون إضافة وتسكين مخزني', category: 'مخازن وأصناف', direction: 'push', idColumn: 'Id', childTable: 'StockInRecordItems', foreignKey: 'StockInId', description: 'أذون استلام البضاعة للمخزن وتوزيعات التسكين داخل الحاويات (Put-Away Allocations)', dataScope: 'حركات مخزنية' },
     StockInRecordItems: { name: 'بنود أذون الإضافة المخزنية', category: 'مخازن وأصناف', direction: 'push', idColumn: 'Id', description: 'بنود أصناف وكميات أذون الإضافة المخزنية', dataScope: 'حركات مخزنية' },
-    StockOutRecords: { name: 'أذون صرف وتسليم مخزني', category: 'مخازن وأصناف', direction: 'push', idColumn: 'Id', description: 'أذون صرف وتسليم البضاعة من المخزن للأقسام', dataScope: 'حركات مخزنية' },
+    StockOutRecords: { name: 'أذون صرف وتسليم مخزني', category: 'مخازن وأصناف', direction: 'push', idColumn: 'Id', description: 'أذون صرف وتسليم البضاعة من المخزن للأقسام أو للتصنيع', dataScope: 'حركات مخزنية' },
     StockTransferRecords: { name: 'تحويلات المخزون بين الفروع', category: 'مخازن وأصناف', direction: 'push', idColumn: 'Id', description: 'مناقلات وتحويلات المخزون بين الفروع والمستودعات', dataScope: 'حركات مخزنية' },
     StockAdjustmentRecords: { name: 'تسويات الجرد المخزني', category: 'مخازن وأصناف', direction: 'push', idColumn: 'Id', childTable: 'StockAdjustmentItems', foreignKey: 'AdjustmentId', description: 'تسويات العجز والزيادة الناتجة عن الجرد الفعلي للمخزون', dataScope: 'تسويات جرد' },
     StockAdjustmentItems: { name: 'بنود تسويات الجرد المخزني', category: 'مخازن وأصناف', direction: 'push', idColumn: 'Id', description: 'تفاصيل بنود أصناف تسويات الجرد المخزني وتكاليفها', dataScope: 'تسويات جرد' },
@@ -128,28 +130,29 @@ export const TABLE_METADATA_MAP: Record<string, TableSyncMeta> = {
     Employees: { name: 'سجل الموظفين', category: 'موارد بشرية', direction: 'bidirectional', idColumn: 'Id', description: 'ملفات الموظفين، الوظائف، والبيانات الشخصية والتعاقدية', dataScope: 'شؤون عاملين' },
     EmployeeAdvances: { name: 'سلف الموظفين', category: 'موارد بشرية', direction: 'push', idColumn: 'Id', description: 'سجل سلف الموظفين والخصومات الشهرية من الرواتب', dataScope: 'استحقاقات رواتب' },
     EmployeeAdjustments: { name: 'بدلات وخصومات الموظفين', category: 'موارد بشرية', direction: 'push', idColumn: 'Id', description: 'بدلات ومكافآت وجزاءات العاملين المعتمدة', dataScope: 'استحقاقات رواتب' },
-    PayrollRecords: { name: 'مسيرات الرواتب الشهرية', category: 'موارد بشرية', direction: 'push', idColumn: 'Id', description: 'كشوفات واعتمادات صرف الرواتب الشهرية وصافي المستحق', dataScope: 'مسيرات رواتب' },
+    PayrollRecords: { name: 'مسيرات الرواتب الشهرية', category: 'موارد بشرية', direction: 'push', idColumn: 'Id', description: 'كشوفات واعتمادات صرف الرواتب الشهرية وصافي المستحق وتفاصيل الاستقطاعات', dataScope: 'مسيرات رواتب' },
     GratuityDistributions: { name: 'توزيعات مكافأة نهاية الخدمة', category: 'موارد بشرية', direction: 'push', idColumn: 'Id', description: 'صرف مستحقات ومكافآت نهاية الخدمة والتعويضات', dataScope: 'مستحقات نهاية خدمة' },
     GratuityLogs: { name: 'سجل مكافآت وبقشيش الكاشير', category: 'موارد بشرية', direction: 'push', idColumn: 'Id', description: 'سجل وتوزيع بقشيش وإكراميات عمال الصالة والكاشير', dataScope: 'إكراميات' },
 
     // 9. نقاط البيع
     PosSessions: { name: 'جلسات ودورات نقاط البيع', category: 'نقاط البيع', direction: 'push', idColumn: 'Id', description: 'سجل فتح وإغلاق دوريات وشفتات الكاشير اليومية وحصيلة الدرج', dataScope: 'جلسات كاشير' },
-    PosTerminals: { name: 'شاشات وأجهزة الكاشير', category: 'نقاط البيع', direction: 'bidirectional', idColumn: 'Id', description: 'تعريف أجهزة وشاشات نقاط البيع وطابعات الإيصالات', dataScope: 'أجهزة نقاط بيع' },
+    PosTerminals: { name: 'شاشات وأجهزة الكاشير', category: 'نقاط البيع', direction: 'bidirectional', idColumn: 'Id', description: 'تعريف أجهزة وشاشات نقاط البيع وطابعات الإيصالات والمطبخ', dataScope: 'أجهزة نقاط بيع' },
     PosAuditLogs: { name: 'سجل رقابة وتدقيق الكاشير', category: 'نقاط البيع', direction: 'push', idColumn: 'Id', description: 'سجل رقابة عمليات الكاشير الحساسة وحذف الفواتير والبنود', dataScope: 'سجل رقابي' },
     Promotions: { name: 'العروض الترويجية والخصومات', category: 'نقاط البيع', direction: 'bidirectional', idColumn: 'Id', description: 'خطط الخصومات، العروض الترويجية، وكوبونات التخفيض', dataScope: 'عروض وخصومات' },
     RestaurantTables: { name: 'طاولات وصالات المطعم', category: 'نقاط البيع', direction: 'bidirectional', idColumn: 'Id', description: 'خريطة طاولات وصالات تقديم الطلبات ومواقع الجلوس', dataScope: 'صالات وطاولات' },
 
-    // 10. إعدادات النظام ومستخدمين
+    // 10. إعدادات النظام ومستخدمين ورقابة
     BarcodeDesigns: { name: 'تصميمات ونماذج الباركود', category: 'إعدادات النظام', direction: 'bidirectional', idColumn: 'Id', description: 'قوالب وتصميمات طباعة استيكر الباركود والمقاسات', dataScope: 'نماذج باركود' },
-    Users: { name: 'المستخدمين وحسابات الدخول', category: 'إعدادات النظام', direction: 'bidirectional', idColumn: 'Id', description: 'حسابات المستخدمين، كلمات المرور المشفرة، وبيانات الدخول', dataScope: 'مستخدمين وأمان' },
+    Users: { name: 'المستخدمين والموظفين (HRMS)', category: 'إعدادات النظام', direction: 'bidirectional', idColumn: 'Id', description: 'حسابات المستخدمين، الصلاحيات، وملفات شؤون الموظفين والرواتب الأساسية والبدلات والتأمينات', dataScope: 'مستخدمين وموارد بشرية' },
     Roles: { name: 'الأدوار ومصفوفة الصلاحيات', category: 'إعدادات النظام', direction: 'bidirectional', idColumn: 'Id', description: 'الأدوار الوظيفية ومصفوفة الصلاحيات وشاشات النظام', dataScope: 'مستخدمين وأمان' },
     Licenses: { name: 'التراخيص والنسخ المرخصة', category: 'إعدادات النظام', direction: 'bidirectional', idColumn: 'Id', description: 'بيانات ترخيص النسخة وتاريخ صلاحية البرنامج والأجهزة', dataScope: 'تراخيص النظام' },
-    AppSettings: { name: 'إعدادات النظام والمتغيرات', category: 'إعدادات النظام', direction: 'bidirectional', idColumn: 'SettingKey', description: 'الإعدادات العامة للشركة، الضرائب، الترويسة، ودور النظام', dataScope: 'إعدادات النظام' },
-    Counters: { name: 'عدادات الترقيم التلقائي', category: 'إعدادات النظام', direction: 'push', idColumn: 'Name', description: 'سلسلة الترقيم التلقائي التراكمي للفواتير والسندات المالية', dataScope: 'إعدادات الترقيم' },
+    AppSettings: { name: 'إعدادات النظام والمتغيرات', category: 'إعدادات النظام', direction: 'bidirectional', idColumn: 'SettingKey', description: 'الإعدادات العامة للشركة، الضرائب، الفوترة الإلكترونية (ETA/ZATCA)، ودور النظام', dataScope: 'إعدادات النظام' },
+    Counters: { name: 'عدادات الترقيم التلقائي', category: 'إعدادات النظام', direction: 'push', idColumn: 'Name', description: 'سلسلة الترقيم التلقائي التراكمي للفواتير والسندات وأوامر التصنيع وقيود اليومية', dataScope: 'إعدادات الترقيم' },
     Targets: { name: 'الأهداف البيعية والعمولات', category: 'إعدادات النظام', direction: 'bidirectional', idColumn: 'Id', description: 'أهداف المبيعات المحددة للفروع والموظفين ونسب العمولات', dataScope: 'خطط مبيعات' },
-    Requisitions: { name: 'طلبات الاحتياج والشراء', category: 'إعدادات النظام', direction: 'push', idColumn: 'Id', description: 'طلبات الاحتياج الداخلي ومذكرات الشراء المرفوعة من الفروع', dataScope: 'طلبات شراء' },
+    Requisitions: { name: 'طلبات الاحتياج والشراء', category: 'إعدادات النظام', direction: 'push', idColumn: 'Id', description: 'طلبات الاحتياج الداخلي ومذكرات الشراء والتحويل المرفوعة من الفروع', dataScope: 'طلبات شراء' },
     Notifications: { name: 'الإشعارات والتنبيهات', category: 'إعدادات النظام', direction: 'push', idColumn: 'Id', description: 'إشعارات النظام اللحظية والتنبيهات الإدارية الهامة', dataScope: 'إشعارات' },
-    LoginHistory: { name: 'سجل الدخول والأمان', category: 'إعدادات النظام', direction: 'push', idColumn: 'Id', description: 'سجل أمان وتتبع تسجيل دخول وخروج المستخدمين وعناوين IP', dataScope: 'سجل أمان' }
+    LoginHistory: { name: 'سجل الدخول والأمان', category: 'إعدادات النظام', direction: 'push', idColumn: 'Id', description: 'سجل أمان وتتبع تسجيل دخول وخروج المستخدمين وعناوين IP', dataScope: 'سجل أمان' },
+    AuditTrailLogs: { name: 'سجل التدقيق الرقابي غير القابل للتعديل', category: 'إعدادات النظام', direction: 'push', idColumn: 'Id', description: 'سجل الرقابة الصارم غير القابل للحذف أو التعديل مع البصمة الرقمية (SHA-256) وحالة السجلات قبل وبعد التعديل', dataScope: 'رقابة وتدقيق' }
 };
 
 /**
@@ -422,7 +425,7 @@ export async function testCentralConnection(configOverride?: Partial<CentralSync
 }
 
 /**
- * التأكد من وجود جدول dbo.SyncTrackingMatrix وتحديثه في قاعدة البيانات
+ * التأكد من وجود جدول dbo.SyncTrackingMatrix والجداول المؤسسية الحديثة (ERP Pillars) وتحديثها في قاعدة البيانات
  */
 async function ensureSyncTrackingMatrixTable(pool: sql.ConnectionPool) {
     await pool.request().query(`
@@ -433,6 +436,8 @@ async function ensureSyncTrackingMatrixTable(pool: sql.ConnectionPool) {
                 TableDisplayName NVARCHAR(255) NOT NULL,
                 Category NVARCHAR(100) NOT NULL,
                 SyncDirection NVARCHAR(30) NOT NULL DEFAULT ('push'),
+                DataDescription NVARCHAR(500) NULL,
+                DataScope NVARCHAR(100) NULL,
                 LastLocalTimestamp DATETIME2 NULL,
                 LastSyncedTimestamp DATETIME2 NULL,
                 LastCentralTimestamp DATETIME2 NULL,
@@ -460,7 +465,105 @@ async function ensureSyncTrackingMatrixTable(pool: sql.ConnectionPool) {
                 ALTER TABLE dbo.SyncTrackingMatrix ADD CurrentLocalRowVersion BIGINT NULL;
             IF NOT EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = 'SyncTrackingMatrix' AND COLUMN_NAME = 'CurrentCentralRowVersion')
                 ALTER TABLE dbo.SyncTrackingMatrix ADD CurrentCentralRowVersion BIGINT NULL;
-        END
+        END;
+
+        IF NOT EXISTS (SELECT * FROM sys.tables WHERE name = 'AuditTrailLogs')
+        BEGIN
+            CREATE TABLE dbo.[AuditTrailLogs] (
+                [Id] NVARCHAR(64) NOT NULL,
+                [Timestamp] DATETIME2 NOT NULL DEFAULT (sysutcdatetime()),
+                [UserId] NVARCHAR(64) NULL,
+                [UserName] NVARCHAR(255) NULL,
+                [Action] NVARCHAR(50) NOT NULL,
+                [Entity] NVARCHAR(100) NOT NULL,
+                [EntityId] NVARCHAR(100) NULL,
+                [Details] NVARCHAR(MAX) NULL,
+                [PreviousState] NVARCHAR(MAX) NULL,
+                [NewState] NVARCHAR(MAX) NULL,
+                [IpAddress] NVARCHAR(50) NULL,
+                [Hash] NVARCHAR(128) NULL,
+                [BranchCode] NVARCHAR(50) NULL,
+                [BranchName] NVARCHAR(255) NULL,
+                [SyncStatus] NVARCHAR(20) NULL DEFAULT ('synced'),
+                [LastSyncedAt] DATETIME2 NULL,
+                [UpdatedAt] DATETIME2 NOT NULL DEFAULT (sysutcdatetime()),
+                [CreatedAt] DATETIME2 NOT NULL DEFAULT (sysutcdatetime()),
+                [RowVersion] ROWVERSION,
+                CONSTRAINT [PK_AuditTrailLogs] PRIMARY KEY CLUSTERED ([Id])
+            );
+        END;
+
+        IF NOT EXISTS (SELECT * FROM sys.tables WHERE name = 'GeneralLedgerEntries')
+        BEGIN
+            CREATE TABLE dbo.[GeneralLedgerEntries] (
+                [Id] NVARCHAR(64) NOT NULL,
+                [EntryNumber] NVARCHAR(100) NOT NULL,
+                [Date] DATETIME2 NOT NULL,
+                [SourceType] NVARCHAR(50) NOT NULL,
+                [SourceId] NVARCHAR(64) NOT NULL,
+                [SourceNumber] NVARCHAR(100) NULL,
+                [WarehouseId] NVARCHAR(64) NULL,
+                [Description] NVARCHAR(500) NULL,
+                [Status] NVARCHAR(50) NOT NULL DEFAULT ('posted'),
+                [TotalDebit] DECIMAL(18,4) NOT NULL DEFAULT ((0)),
+                [TotalCredit] DECIMAL(18,4) NOT NULL DEFAULT ((0)),
+                [LinesJson] NVARCHAR(MAX) NOT NULL,
+                [CreatedById] NVARCHAR(64) NULL,
+                [CreatedByName] NVARCHAR(255) NULL,
+                [BranchCode] NVARCHAR(50) NULL,
+                [BranchName] NVARCHAR(255) NULL,
+                [SyncStatus] NVARCHAR(20) NULL DEFAULT ('synced'),
+                [LastSyncedAt] DATETIME2 NULL,
+                [UpdatedAt] DATETIME2 NOT NULL DEFAULT (sysutcdatetime()),
+                [CreatedAt] DATETIME2 NOT NULL DEFAULT (sysutcdatetime()),
+                [RowVersion] ROWVERSION,
+                CONSTRAINT [PK_GeneralLedgerEntries] PRIMARY KEY CLUSTERED ([Id])
+            );
+        END;
+
+        IF NOT EXISTS (SELECT * FROM sys.tables WHERE name = 'ManufacturingOrders')
+        BEGIN
+            CREATE TABLE dbo.[ManufacturingOrders] (
+                [Id] NVARCHAR(64) NOT NULL,
+                [OrderNumber] NVARCHAR(100) NOT NULL,
+                [Date] DATETIME2 NULL DEFAULT (sysutcdatetime()),
+                [OrderDate] DATETIME2 NULL DEFAULT (sysutcdatetime()),
+                [ProductId] NVARCHAR(64) NULL,
+                [ProductName] NVARCHAR(255) NULL,
+                [FinishedItemId] NVARCHAR(64) NULL,
+                [FinishedItemName] NVARCHAR(255) NULL,
+                [QuantityToProduce] DECIMAL(18,4) NULL DEFAULT ((1)),
+                [TargetQuantity] DECIMAL(18,4) NULL DEFAULT ((1)),
+                [ProducedQuantity] DECIMAL(18,4) NULL DEFAULT ((0)),
+                [RawMaterialsWarehouseId] NVARCHAR(64) NULL,
+                [FinishedGoodsWarehouseId] NVARCHAR(64) NULL,
+                [SourceWarehouseId] NVARCHAR(64) NULL,
+                [TargetWarehouseId] NVARCHAR(64) NULL,
+                [RawMaterialCost] DECIMAL(18,4) NOT NULL DEFAULT ((0)),
+                [TotalRawMaterialCost] DECIMAL(18,4) NOT NULL DEFAULT ((0)),
+                [LaborCost] DECIMAL(18,4) NOT NULL DEFAULT ((0)),
+                [OverheadCost] DECIMAL(18,4) NOT NULL DEFAULT ((0)),
+                [TotalCost] DECIMAL(18,4) NOT NULL DEFAULT ((0)),
+                [TotalProductionCost] DECIMAL(18,4) NOT NULL DEFAULT ((0)),
+                [UnitCost] DECIMAL(18,4) NOT NULL DEFAULT ((0)),
+                [UnitProductionCost] DECIMAL(18,4) NOT NULL DEFAULT ((0)),
+                [Status] NVARCHAR(50) NOT NULL DEFAULT ('completed'),
+                [BomSnapshotJson] NVARCHAR(MAX) NULL,
+                [BOMDetailsJson] NVARCHAR(MAX) NULL,
+                [Notes] NVARCHAR(MAX) NULL,
+                [CreatedBy] NVARCHAR(255) NULL,
+                [CreatedById] NVARCHAR(64) NULL,
+                [CreatedByName] NVARCHAR(255) NULL,
+                [BranchCode] NVARCHAR(50) NULL,
+                [BranchName] NVARCHAR(255) NULL,
+                [SyncStatus] NVARCHAR(20) NULL DEFAULT ('synced'),
+                [LastSyncedAt] DATETIME2 NULL,
+                [UpdatedAt] DATETIME2 NOT NULL DEFAULT (sysutcdatetime()),
+                [CreatedAt] DATETIME2 NOT NULL DEFAULT (sysutcdatetime()),
+                [RowVersion] ROWVERSION,
+                CONSTRAINT [PK_ManufacturingOrders] PRIMARY KEY CLUSTERED ([Id])
+            );
+        END;
     `);
 }
 
