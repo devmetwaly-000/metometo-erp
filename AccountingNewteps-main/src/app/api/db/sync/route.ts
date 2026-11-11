@@ -354,7 +354,15 @@ export async function GET() {
                     allowOverfill: s.AllowOverfill !== undefined ? !!s.AllowOverfill : true
                 })),
                 itemSections: itemSectionsRes.recordset.map(s => ({ ...s, id: s.Id || s.id, name: s.Name || s.name, code: s.Code || s.code })),
-                itemCategories: itemCategoriesRes.recordset.map(c => ({ ...c, id: c.Id || c.id, name: c.Name || c.name, code: c.Code || c.code, sectionId: c.SectionId || c.sectionId })),
+                itemCategories: itemCategoriesRes.recordset.map(c => ({
+                    ...c,
+                    id: c.Id || c.id,
+                    name: c.Name || c.name,
+                    code: c.Code || c.code,
+                    sectionId: c.SectionId || c.sectionId,
+                    showOnPos: c.ShowOnPos !== undefined && c.ShowOnPos !== null ? !!c.ShowOnPos : true,
+                    color: c.Color || c.color || ''
+                })),
                 items,
                 allItems: items,
                 customers,
@@ -387,7 +395,15 @@ export async function GET() {
                 licenses: licensesRes.recordset.map(lic => ({ ...lic, id: lic.Id })),
                 deliveryStaff: deliveryStaffRes.recordset.map(d => ({ ...d, id: d.Id, name: d.Name || d.name })),
                 sellers: sellersRes.recordset.map(s => ({ ...s, id: s.Id, name: s.Name || s.name })),
-                itemGroups: itemGroupsRes.recordset.map(g => ({ ...g, id: g.Id || g.id, name: g.Name || g.name, code: g.Code || g.code, parentCategoryId: g.ParentCategoryId || g.parentCategoryId })),
+                itemGroups: itemGroupsRes.recordset.map(g => ({
+                    ...g,
+                    id: g.Id || g.id,
+                    name: g.Name || g.name,
+                    code: g.Code || g.code,
+                    parentCategoryId: g.ParentCategoryId || g.parentCategoryId,
+                    showOnPos: g.ShowOnPos !== undefined && g.ShowOnPos !== null ? !!g.ShowOnPos : true,
+                    color: g.Color || g.color || ''
+                })),
                 itemSubCategories1: itemSubCategories1Res.recordset.map(sc => ({ ...sc, id: sc.Id || sc.id, name: sc.Name || sc.name, code: sc.Code || sc.code })),
                 itemSubCategories2: itemSubCategories2Res.recordset.map(sc => ({ ...sc, id: sc.Id || sc.id, name: sc.Name || sc.name, code: sc.Code || sc.code })),
                 inventoryZones: inventoryZonesRes.recordset.map(z => ({ ...z, id: z.Id || z.id, name: z.Name || z.name })),

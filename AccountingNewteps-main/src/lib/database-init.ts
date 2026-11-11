@@ -483,6 +483,8 @@ export async function createAndInitializeDatabase(options: DbInitOptions): Promi
                 [Code] NVARCHAR(50) NULL,
                 [SectionId] NVARCHAR(64) NULL,
                 [Name] NVARCHAR(255) NOT NULL,
+                [ShowOnPos] BIT NULL DEFAULT ((1)),
+                [Color] NVARCHAR(50) NULL,
                 [BranchCode] NVARCHAR(50) NULL,
                 [BranchName] NVARCHAR(255) NULL,
                 [SyncStatus] NVARCHAR(20) NULL DEFAULT ('synced'),
@@ -514,6 +516,8 @@ export async function createAndInitializeDatabase(options: DbInitOptions): Promi
                 [Name] NVARCHAR(255) NOT NULL,
                 [Code] NVARCHAR(50) NULL,
                 [ParentCategoryId] NVARCHAR(64) NULL,
+                [ShowOnPos] BIT NULL DEFAULT ((1)),
+                [Color] NVARCHAR(50) NULL,
                 [BranchCode] NVARCHAR(50) NULL,
                 [BranchName] NVARCHAR(255) NULL,
                 [SyncStatus] NVARCHAR(20) NULL DEFAULT ('synced'),
@@ -1715,8 +1719,16 @@ export async function createAndInitializeDatabase(options: DbInitOptions): Promi
                 ALTER TABLE dbo.InventorySections ADD [AllowOverfill] BIT NULL DEFAULT ((1));`,
             `IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('dbo.ItemCategories') AND name = 'Code')
                 ALTER TABLE dbo.ItemCategories ADD [Code] NVARCHAR(50) NULL;`,
+            `IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('dbo.ItemCategories') AND name = 'ShowOnPos')
+                ALTER TABLE dbo.ItemCategories ADD [ShowOnPos] BIT NULL DEFAULT ((1));`,
+            `IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('dbo.ItemCategories') AND name = 'Color')
+                ALTER TABLE dbo.ItemCategories ADD [Color] NVARCHAR(50) NULL;`,
             `IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('dbo.ItemGroups') AND name = 'ParentCategoryId')
                 ALTER TABLE dbo.ItemGroups ADD [ParentCategoryId] NVARCHAR(64) NULL;`,
+            `IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('dbo.ItemGroups') AND name = 'ShowOnPos')
+                ALTER TABLE dbo.ItemGroups ADD [ShowOnPos] BIT NULL DEFAULT ((1));`,
+            `IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('dbo.ItemGroups') AND name = 'Color')
+                ALTER TABLE dbo.ItemGroups ADD [Color] NVARCHAR(50) NULL;`,
             `IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('dbo.ItemSubCategories1') AND name = 'Code')
                 ALTER TABLE dbo.ItemSubCategories1 ADD [Code] NVARCHAR(50) NULL;`,
             `IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('dbo.ItemSubCategories2') AND name = 'Code')

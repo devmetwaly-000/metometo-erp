@@ -1075,11 +1075,13 @@ export async function POST(req: Request) {
                     .input('Code', sql.NVarChar(50), payload.code ? String(payload.code) : (payload.Code ? String(payload.Code) : null))
                     .input('Name', sql.NVarChar(255), payload.name || payload.Name || 'Unnamed Category')
                     .input('SectionId', sql.NVarChar(64), payload.sectionId || payload.SectionId || null)
+                    .input('ShowOnPos', sql.Bit, payload.showOnPos !== undefined ? (payload.showOnPos ? 1 : 0) : (payload.ShowOnPos !== undefined ? (payload.ShowOnPos ? 1 : 0) : 1))
+                    .input('Color', sql.NVarChar(50), payload.color || payload.Color || null)
                     .query(`
                         IF NOT EXISTS (SELECT 1 FROM dbo.ItemCategories WHERE Id = @Id)
-                            INSERT INTO dbo.ItemCategories (Id, Code, Name, SectionId) VALUES (@Id, @Code, @Name, @SectionId);
+                            INSERT INTO dbo.ItemCategories (Id, Code, Name, SectionId, ShowOnPos, Color) VALUES (@Id, @Code, @Name, @SectionId, @ShowOnPos, @Color);
                         ELSE
-                            UPDATE dbo.ItemCategories SET Code = @Code, Name = @Name, SectionId = @SectionId WHERE Id = @Id;
+                            UPDATE dbo.ItemCategories SET Code = @Code, Name = @Name, SectionId = @SectionId, ShowOnPos = @ShowOnPos, Color = @Color WHERE Id = @Id;
                     `);
                 return NextResponse.json({ success: true, id });
             }
@@ -1090,11 +1092,13 @@ export async function POST(req: Request) {
                     .input('Code', sql.NVarChar(50), payload.code ? String(payload.code) : (payload.Code ? String(payload.Code) : null))
                     .input('Name', sql.NVarChar(255), payload.name || payload.Name || 'Unnamed Group')
                     .input('ParentCategoryId', sql.NVarChar(64), payload.parentCategoryId || payload.ParentCategoryId || null)
+                    .input('ShowOnPos', sql.Bit, payload.showOnPos !== undefined ? (payload.showOnPos ? 1 : 0) : (payload.ShowOnPos !== undefined ? (payload.ShowOnPos ? 1 : 0) : 1))
+                    .input('Color', sql.NVarChar(50), payload.color || payload.Color || null)
                     .query(`
                         IF NOT EXISTS (SELECT 1 FROM dbo.ItemGroups WHERE Id = @Id)
-                            INSERT INTO dbo.ItemGroups (Id, Code, Name, ParentCategoryId) VALUES (@Id, @Code, @Name, @ParentCategoryId);
+                            INSERT INTO dbo.ItemGroups (Id, Code, Name, ParentCategoryId, ShowOnPos, Color) VALUES (@Id, @Code, @Name, @ParentCategoryId, @ShowOnPos, @Color);
                         ELSE
-                            UPDATE dbo.ItemGroups SET Code = @Code, Name = @Name, ParentCategoryId = @ParentCategoryId WHERE Id = @Id;
+                            UPDATE dbo.ItemGroups SET Code = @Code, Name = @Name, ParentCategoryId = @ParentCategoryId, ShowOnPos = @ShowOnPos, Color = @Color WHERE Id = @Id;
                     `);
                 return NextResponse.json({ success: true, id });
             }
@@ -1287,6 +1291,7 @@ export async function POST(req: Request) {
             }
 
             if (path === 'items' && updateId) {
+                const clearItemGroupId = (data.itemGroupId === '' || data.itemGroupId === null) ? 1 : 0;
                 await pool.request()
                     .input('Id', sql.NVarChar(64), updateId)
                     .input('Code', sql.NVarChar(100), data.code ? String(data.code) : null)
@@ -1297,6 +1302,7 @@ export async function POST(req: Request) {
                     .input('SectionId', sql.NVarChar(64), data.sectionId || null)
                     .input('CategoryId', sql.NVarChar(64), data.categoryId || null)
                     .input('ItemGroupId', sql.NVarChar(64), data.itemGroupId || null)
+                    .input('ClearItemGroupId', sql.Bit, clearItemGroupId)
                     .input('SubCategoryId1', sql.NVarChar(64), data.subCategoryId1 || null)
                     .input('SubCategoryId2', sql.NVarChar(64), data.subCategoryId2 || null)
                     .input('Barcode', sql.NVarChar(100), data.barcode || null)
@@ -1317,7 +1323,7 @@ export async function POST(req: Request) {
                             ReorderPoint = COALESCE(@ReorderPoint, ReorderPoint),
                             SectionId = COALESCE(@SectionId, SectionId),
                             CategoryId = COALESCE(@CategoryId, CategoryId),
-                            ItemGroupId = COALESCE(@ItemGroupId, ItemGroupId),
+                            ItemGroupId = CASE WHEN @ClearItemGroupId = 1 THEN NULL ELSE COALESCE(@ItemGroupId, ItemGroupId) END,
                             SubCategoryId1 = COALESCE(@SubCategoryId1, SubCategoryId1),
                             SubCategoryId2 = COALESCE(@SubCategoryId2, SubCategoryId2),
                             Barcode = COALESCE(@Barcode, Barcode),
@@ -1347,28 +1353,34 @@ export async function POST(req: Request) {
             }
 
             if (path === 'itemCategories' && updateId) {
+                const showOnPosVal = data.showOnPos !== undefined ? (data.showOnPos ? 1 : 0) : (data.ShowOnPos !== undefined ? (data.ShowOnPos ? 1 : 0) : null);
                 await pool.request()
                     .input('Id', sql.NVarChar(64), updateId)
                     .input('Name', sql.NVarChar(255), data.name || data.Name || null)
                     .input('Code', sql.NVarChar(50), data.code || data.Code || null)
                     .input('SectionId', sql.NVarChar(64), data.sectionId || data.SectionId || null)
+                    .input('ShowOnPos', sql.Bit, showOnPosVal)
+                    .input('Color', sql.NVarChar(50), data.color !== undefined ? data.color : (data.Color !== undefined ? data.Color : null))
                     .query(`
                         UPDATE dbo.ItemCategories 
-                        SET Name = COALESCE(@Name, Name), Code = COALESCE(@Code, Code), SectionId = COALESCE(@SectionId, SectionId) 
+                        SET Name = COALESCE(@Name, Name), Code = COALESCE(@Code, Code), SectionId = COALESCE(@SectionId, SectionId), ShowOnPos = COALESCE(@ShowOnPos, ShowOnPos), Color = COALESCE(@Color, Color)
                         WHERE Id = @Id;
                     `);
                 return NextResponse.json({ success: true });
             }
 
             if (path === 'itemGroups' && updateId) {
+                const showOnPosVal = data.showOnPos !== undefined ? (data.showOnPos ? 1 : 0) : (data.ShowOnPos !== undefined ? (data.ShowOnPos ? 1 : 0) : null);
                 await pool.request()
                     .input('Id', sql.NVarChar(64), updateId)
                     .input('Name', sql.NVarChar(255), data.name || data.Name || null)
                     .input('Code', sql.NVarChar(50), data.code || data.Code || null)
                     .input('ParentCategoryId', sql.NVarChar(64), data.parentCategoryId || data.ParentCategoryId || null)
+                    .input('ShowOnPos', sql.Bit, showOnPosVal)
+                    .input('Color', sql.NVarChar(50), data.color !== undefined ? data.color : (data.Color !== undefined ? data.Color : null))
                     .query(`
                         UPDATE dbo.ItemGroups 
-                        SET Name = COALESCE(@Name, Name), Code = COALESCE(@Code, Code), ParentCategoryId = COALESCE(@ParentCategoryId, ParentCategoryId) 
+                        SET Name = COALESCE(@Name, Name), Code = COALESCE(@Code, Code), ParentCategoryId = COALESCE(@ParentCategoryId, ParentCategoryId), ShowOnPos = COALESCE(@ShowOnPos, ShowOnPos), Color = COALESCE(@Color, Color)
                         WHERE Id = @Id;
                     `);
                 return NextResponse.json({ success: true });

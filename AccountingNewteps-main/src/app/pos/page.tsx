@@ -2348,8 +2348,11 @@ export default function PosPage() {
                                          </Button>
                                          {groupsToShow.map((group: any) => (
                                              <Button key={group.id} variant={activeGroupId === group.id ? 'secondary' : 'outline'} onClick={() => { setActiveGroupId(group.id!); setActiveGroupType(group.type); setSearchTerm(''); }} className="h-16 flex-col gap-1 text-xs justify-center">
-                                                 <span className={`h-4 w-4 rounded-full ${group.color || 'bg-gray-400'}`} />
-                                                 <span className="truncate">{group.name}</span>
+                                                 <span
+                                                     className={`h-4 w-4 rounded-full shrink-0 ${group.color && !group.color.startsWith('#') ? group.color : (!group.color ? 'bg-primary' : '')}`}
+                                                     style={group.color && group.color.startsWith('#') ? { backgroundColor: group.color } : undefined}
+                                                 />
+                                                 <span className="truncate max-w-full">{group.name}</span>
                                              </Button>
                                          ))}
                                      </div>
