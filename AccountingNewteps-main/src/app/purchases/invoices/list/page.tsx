@@ -174,7 +174,13 @@ export default function PurchaseInvoicesListPage() {
         const lastClosingDate = lastClosingDates.get(invoice.warehouseId);
         const isLocked = lastClosingDate && new Date(invoice.date) <= lastClosingDate;
         const isReceived = receivedInvoiceIds.has(invoice.id);
-        return { ...invoice, isLocked, isReceived };
+        const linkedStockIn = stockInRecords.find((rec: any) => rec.purchaseInvoiceId === invoice.id);
+        const isPendingPutAway = linkedStockIn && (
+            linkedStockIn.status === 'pending_putaway' ||
+            (!Array.isArray(linkedStockIn.allocations) || linkedStockIn.allocations.length === 0) &&
+            warehouses.find((w: any) => w.id === invoice.warehouseId)?.isMain
+        );
+        return { ...invoice, isLocked, isReceived, linkedStockInId: linkedStockIn?.id, isPendingPutAway };
     })
     .filter((invoice:any) => {
       const invoiceDate = new Date(invoice.date);
@@ -461,7 +467,16 @@ export default function PurchaseInvoicesListPage() {
                                 <TableCell className="font-medium">{invoice.supplierName}</TableCell>
                                 <TableCell className="text-xs text-muted-foreground">{new Date(invoice.date).toLocaleDateString('ar-EG')}</TableCell>
                                 <TableCell>
-                                    {invoice.isReceived ? (
+                                    {invoice.isPendingPutAway ? (
+                                        <Button
+                                            size="sm"
+                                            variant="outline"
+                                            className="h-7 text-[11px] gap-1 border-amber-500 text-amber-700 dark:text-amber-400 bg-amber-500/10 hover:bg-amber-500/20 font-bold"
+                                            onClick={() => router.push(`/inventory/stock-in?stockInId=${invoice.linkedStockInId}`)}
+                                        >
+                                            بانتظار التسكين (توزيع الحاويات)
+                                        </Button>
+                                    ) : invoice.isReceived ? (
                                         <Badge variant="default" className="bg-green-600 text-[11px]"><CheckCircle className="h-3 w-3 ml-1"/> تم الاستلام</Badge>
                                     ) : (
                                         <Badge variant="outline" className="text-amber-600 border-amber-200 text-[11px]"><FileText className="h-3 w-3 ml-1"/> لم تستلم</Badge>

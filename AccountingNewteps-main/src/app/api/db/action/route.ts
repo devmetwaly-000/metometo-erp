@@ -1095,6 +1095,29 @@ export async function POST(req: Request) {
                 return NextResponse.json({ success: true, id });
             }
 
+            if (path === 'inventorySections') {
+                await pool.request()
+                    .input('Id', sql.NVarChar(64), id)
+                    .input('MainWarehouseId', sql.NVarChar(64), payload.mainWarehouseId || payload.MainWarehouseId || null)
+                    .input('Name', sql.NVarChar(255), payload.name || payload.Name || 'قسم / حاوية')
+                    .input('Capacity', sql.Int, Number(payload.capacity ?? payload.Capacity ?? 0))
+                    .input('AllowOverfill', sql.Bit, payload.allowOverfill !== undefined ? (payload.allowOverfill ? 1 : 0) : 1)
+                    .query(`
+                        IF NOT EXISTS (SELECT 1 FROM dbo.InventorySections WHERE Id = @Id)
+                            INSERT INTO dbo.InventorySections (Id, MainWarehouseId, Name, Capacity, AllowOverfill)
+                            VALUES (@Id, @MainWarehouseId, @Name, @Capacity, @AllowOverfill);
+                        ELSE
+                            UPDATE dbo.InventorySections
+                            SET MainWarehouseId = COALESCE(@MainWarehouseId, MainWarehouseId),
+                                Name = @Name,
+                                Capacity = @Capacity,
+                                AllowOverfill = @AllowOverfill,
+                                UpdatedAt = sysutcdatetime()
+                            WHERE Id = @Id;
+                    `);
+                return NextResponse.json({ success: true, id });
+            }
+
             if (path === 'customerVisits') {
                 const locString = payload.location ? (typeof payload.location === 'string' ? payload.location : JSON.stringify(payload.location)) : null;
                 await pool.request()
@@ -1584,6 +1607,26 @@ export async function POST(req: Request) {
                     `);
                 return NextResponse.json({ success: true });
             }
+
+            if (path === 'inventorySections' && updateId) {
+                await pool.request()
+                    .input('Id', sql.NVarChar(64), updateId)
+                    .input('MainWarehouseId', sql.NVarChar(64), data.mainWarehouseId || data.MainWarehouseId || null)
+                    .input('Name', sql.NVarChar(255), data.name || data.Name || null)
+                    .input('Capacity', sql.Int, data.capacity !== undefined ? Number(data.capacity) : null)
+                    .input('AllowOverfill', sql.Bit, data.allowOverfill !== undefined ? (data.allowOverfill ? 1 : 0) : null)
+                    .query(`
+                        UPDATE dbo.InventorySections
+                        SET 
+                            MainWarehouseId = COALESCE(@MainWarehouseId, MainWarehouseId),
+                            Name = COALESCE(@Name, Name),
+                            Capacity = COALESCE(@Capacity, Capacity),
+                            AllowOverfill = COALESCE(@AllowOverfill, AllowOverfill),
+                            UpdatedAt = sysutcdatetime()
+                        WHERE Id = @Id;
+                    `);
+                return NextResponse.json({ success: true });
+            }
         }
 
         // =====================================================================
@@ -1595,6 +1638,8 @@ export async function POST(req: Request) {
                 const tableMap: Record<string, string> = {
                     items: 'dbo.Items',
                     itemSections: 'dbo.ItemSections',
+                    inventorySections: 'dbo.InventorySections',
+                    inventoryZones: 'dbo.InventoryZones',
                     itemCategories: 'dbo.ItemCategories',
                     itemGroups: 'dbo.ItemGroups',
                     itemSubCategories1: 'dbo.ItemSubCategories1',

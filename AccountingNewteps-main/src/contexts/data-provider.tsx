@@ -360,9 +360,73 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     const depreciationRecords = useMemo(() => allData?.depreciationRecords || [], [allData?.depreciationRecords]);
 
     const inventory = useMemo(() => {
-        if (!allData?.inventory) return [];
-        return allData.inventory;
-    }, [allData?.inventory]);
+        const sectionMap = new Map<string, Record<string, { balance: number }>>();
+
+        // Initialize existing inventory if provided
+        if (Array.isArray(allData?.inventory)) {
+            allData.inventory.forEach((inv: any) => {
+                if (inv?.id && inv?.items) {
+                    sectionMap.set(inv.id, { ...inv.items });
+                }
+            });
+        }
+
+        const addSectionQty = (whId: string, secId: string, itemId: string, delta: number) => {
+            if (!whId || !secId || !itemId || !delta) return;
+            const key = `${whId}-${secId}`;
+            const currentItems = sectionMap.get(key) || {};
+            const prevBal = Number(currentItems[itemId]?.balance || 0);
+            currentItems[itemId] = { balance: prevBal + delta };
+            sectionMap.set(key, currentItems);
+        };
+
+        // 1. Add allocations from stockInRecords
+        stockInRecords.forEach((rec: any) => {
+            if (rec?.status === 'cancelled') return;
+            const whId = rec.warehouseId;
+            if (Array.isArray(rec.allocations)) {
+                rec.allocations.forEach((alloc: any) => {
+                    addSectionQty(whId, alloc.sectionId, alloc.itemId, Number(alloc.quantity || 0));
+                });
+            }
+        });
+
+        // 2. Subtract from stockOutRecords if sectionId is specified on items or sourceId
+        stockOutRecords.forEach((rec: any) => {
+            if (rec?.status === 'cancelled') return;
+            const whId = rec.warehouseId || rec.sourceId;
+            if (Array.isArray(rec.items)) {
+                rec.items.forEach((itm: any) => {
+                    const secId = itm.sectionId || rec.sectionId;
+                    if (secId) {
+                        addSectionQty(whId, secId, itm.itemId || itm.id, -Number(itm.qty || itm.quantity || 0));
+                    }
+                });
+            }
+        });
+
+        // 3. Subtract/Add from stockTransferRecords if sectionId is specified
+        stockTransferRecords.forEach((rec: any) => {
+            if (rec?.status === 'cancelled') return;
+            const fromWh = rec.fromWarehouseId || rec.fromSourceId;
+            const toWh = rec.toWarehouseId || rec.toSourceId;
+            if (Array.isArray(rec.items)) {
+                rec.items.forEach((itm: any) => {
+                    const fromSec = itm.fromSectionId || itm.sectionId || rec.fromSectionId;
+                    const toSec = itm.toSectionId || rec.toSectionId;
+                    const itemId = itm.itemId || itm.id;
+                    const qty = Number(itm.qty || itm.quantity || 0);
+                    if (fromWh && fromSec) addSectionQty(fromWh, fromSec, itemId, -qty);
+                    if (toWh && toSec) addSectionQty(toWh, toSec, itemId, qty);
+                });
+            }
+        });
+
+        return Array.from(sectionMap.entries()).map(([id, itemsObj]) => ({
+            id,
+            items: itemsObj
+        }));
+    }, [allData?.inventory, stockInRecords, stockOutRecords, stockTransferRecords]);
 
     const unreconciledDeliveryCount = useMemo(() => {
         const allSales = [...salesInvoices, ...posSales];

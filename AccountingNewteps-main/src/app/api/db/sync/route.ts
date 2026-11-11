@@ -322,7 +322,15 @@ export async function GET() {
             data: {
                 // Master Data
                 warehouses,
-                inventorySections: inventorySectionsRes.recordset.map(s => ({ ...s, id: s.Id || s.id, name: s.Name || s.name, code: s.Code || s.code, allowOverfill: !!s.AllowOverfill })),
+                inventorySections: inventorySectionsRes.recordset.map(s => ({
+                    ...s,
+                    id: s.Id || s.id,
+                    name: s.Name || s.name,
+                    code: s.Code || s.code,
+                    mainWarehouseId: s.MainWarehouseId || s.mainWarehouseId,
+                    capacity: Number(s.Capacity ?? s.capacity ?? 0),
+                    allowOverfill: s.AllowOverfill !== undefined ? !!s.AllowOverfill : true
+                })),
                 itemSections: itemSectionsRes.recordset.map(s => ({ ...s, id: s.Id || s.id, name: s.Name || s.name, code: s.Code || s.code })),
                 itemCategories: itemCategoriesRes.recordset.map(c => ({ ...c, id: c.Id || c.id, name: c.Name || c.name, code: c.Code || c.code, sectionId: c.SectionId || c.sectionId })),
                 items,

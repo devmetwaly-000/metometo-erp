@@ -431,24 +431,27 @@ export default function PurchaseInvoicePage() {
         }
 
         setIsSaving(true);
-        saveInvoiceAsync(updatePrices);
         const isLogisticsWarehouse = Boolean(
             warehouses.find((w: any) => w.id === warehouseId)?.isMain ||
-            inventorySections.some((s: any) => s.mainWarehouseId === warehouseId) ||
+            inventorySections.some((s: any) => (s.mainWarehouseId || s.MainWarehouseId) === warehouseId) ||
             inventoryZones.some((z: any) => z.id === warehouseId)
         );
         if (isLogisticsWarehouse) {
-            toast({ 
-                title: 'تم إنشاء فاتورة الشراء وإذن التسكين', 
-                description: 'تم توجيه البضاعة للمخزن اللوجستي بانتظار التسكين وتوزيع الأصناف على الأقسام.' 
+            saveInvoiceAsync(updatePrices).then((stockInId) => {
+                toast({ 
+                    title: 'تم حفظ الفاتورة وإنشاء إذن التسكين', 
+                    description: 'يرجى الآن تحديد رقم الحاوية والكمية المراد تسكينها في كل حاوية.' 
+                });
+                router.push(stockInId ? `/inventory/stock-in?stockInId=${stockInId}` : '/inventory/stock-in');
             });
         } else {
+            saveInvoiceAsync(updatePrices);
             toast({ title: 'جاري الحفظ...', description: `سيتم حفظ فاتورة الشراء في الخلفية.` });
+            router.push('/purchases/invoices/list');
         }
-        router.push('/purchases/invoices/list');
   }
 
-  const saveInvoiceAsync = async (updatePrices: boolean) => {
+  const saveInvoiceAsync = async (updatePrices: boolean): Promise<string | void> => {
     try {
         const invoiceNumber = await getNextId('purchaseInvoice');
         if (!invoiceNumber) throw new Error("Failed to generate invoice number.");
@@ -526,12 +529,12 @@ export default function PurchaseInvoicePage() {
         
         const isLogisticsWarehouse = Boolean(
             warehouses.find((w: any) => w.id === warehouseId)?.isMain ||
-            inventorySections.some((s: any) => s.mainWarehouseId === warehouseId) ||
+            inventorySections.some((s: any) => (s.mainWarehouseId || s.MainWarehouseId) === warehouseId) ||
             inventoryZones.some((z: any) => z.id === warehouseId)
         );
 
         if (purchaseWorkflow === 'direct' || isLogisticsWarehouse) {
-            await dbAction('stockInRecords', 'add', {
+            const createdStockInId = await dbAction('stockInRecords', 'add', {
                 warehouseId: warehouseId, 
                 date: finalInvoiceDate.toISOString(),
                 items: invoiceItems.map(item => ({ itemId: item.id, name: item.name, qty: item.qty, cost: item.cost, expiryDate: item.expiryDate })),
@@ -542,6 +545,7 @@ export default function PurchaseInvoicePage() {
                 batchNumber: batchNumberToSave,
                 status: isLogisticsWarehouse ? 'pending_putaway' : 'completed', 
             });
+            return createdStockInId;
         }
         
     } catch (error) {
