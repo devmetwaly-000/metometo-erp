@@ -2071,8 +2071,9 @@ export async function createAndInitializeDatabase(options: DbInitOptions): Promi
         }
 
         // 7. Seed canonical Warehouses
+        // Note: Sales branches have type='branch' and isMain=0; Main Logistics Warehouses have type='warehouse' and isMain=1
         const warehousesSeed = [
-            { id: '-OmnkFba_GsEb0rfdzyA', code: branchCode, name: branchName, type: 'branch', isRep: 0, isMain: 1 },
+            { id: '-OmnkFba_GsEb0rfdzyA', code: branchCode, name: branchName, type: 'branch', isRep: 0, isMain: 0 },
             { id: '-P2S4PYETwslu4f4ym70', code: '5000', name: 'المخزن الرئيسي (ألنهضة)', type: 'warehouse', isRep: 0, isMain: 1 },
             { id: '-OnwGtz2HzhPQCqm55No', code: 'REP-01', name: 'عهدة المندوب: محاسب', type: 'rep', isRep: 1, isMain: 0, repId: '-OnwGtvQ3IuU_85UL0l9' }
         ];
@@ -2105,6 +2106,15 @@ export async function createAndInitializeDatabase(options: DbInitOptions): Promi
             } catch (wErr: any) {
                 console.warn(`Warehouse seed error:`, wErr.message);
             }
+        }
+
+        // Ensure all sales branches (WarehouseType = 'branch') have IsMain = 0 so they appear in Branch & POS Terminal selectors
+        try {
+            await targetPool.request().query(`
+                UPDATE dbo.Warehouses SET IsMain = 0 WHERE WarehouseType = 'branch' AND IsMain = 1;
+            `);
+        } catch (fixBranchErr: any) {
+            console.warn(`Branch IsMain normalization warning:`, fixBranchErr.message);
         }
 
         // 8. Seed default CashAccount

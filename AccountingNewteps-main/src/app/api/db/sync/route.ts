@@ -301,18 +301,22 @@ export async function GET() {
             items: parseJson(s.ItemsJson, [])
         }));
 
-        const warehouses = warehousesRes.recordset.map(w => ({
-            ...w,
-            id: w.Id,
-            code: w.Code,
-            name: w.Name,
-            address: w.Address,
-            isRepWarehouse: !!w.IsRepWarehouse,
-            isMain: !!w.IsMain,
-            isClosed: !!w.IsClosed,
-            repId: w.RepId || null,
-            warehouseType: w.WarehouseType || (w.IsRepWarehouse ? 'rep' : w.IsMain ? 'warehouse' : 'branch')
-        }));
+        const warehouses = warehousesRes.recordset.map(w => {
+            const wType = w.WarehouseType || (w.IsRepWarehouse ? 'rep' : w.IsMain ? 'warehouse' : 'branch');
+            const isMainVal = (wType === 'branch' || wType === 'rep') ? false : !!w.IsMain;
+            return {
+                ...w,
+                id: w.Id,
+                code: w.Code,
+                name: w.Name,
+                address: w.Address,
+                isRepWarehouse: !!w.IsRepWarehouse,
+                isMain: isMainVal,
+                isClosed: !!w.IsClosed,
+                repId: w.RepId || null,
+                warehouseType: wType
+            };
+        });
 
         const cashAccounts = cashAccountsRes.recordset.map(ca => ({
             ...ca,

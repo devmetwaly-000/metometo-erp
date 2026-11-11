@@ -173,7 +173,7 @@ export default function BranchesPage() {
     // قائمة الفروع: تستبعد عهدة المناديب وتستبعد المخازن اللوجستية العامة مع منع التكرار
     const b = warehouses
       .filter((w: any) => 
-        !w.isMain && 
+        (w.warehouseType === 'branch' || !w.isMain) && 
         !w.isRepWarehouse && 
         !w.repId && 
         !w.isClosed && 
@@ -190,8 +190,10 @@ export default function BranchesPage() {
           (t.name && w.name && t.name.trim().toLowerCase() === w.name.trim().toLowerCase())
         )
       );
-    if (user?.warehouseIds?.includes('all')) return b;
-    return b.filter((w: any) => user?.warehouseIds?.includes(w.id));
+    const wIds = user?.warehouseIds || [];
+    if (wIds.includes('all') || user?.role === 'مسؤول' || wIds.length === 0) return b;
+    const permitted = b.filter((w: any) => wIds.includes(w.id));
+    return permitted.length > 0 ? permitted : b;
   }, [warehouses, user]);
 
   useEffect(() => {

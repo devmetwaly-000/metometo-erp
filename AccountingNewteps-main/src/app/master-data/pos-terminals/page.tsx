@@ -67,9 +67,15 @@ interface Warehouse {
 
 const TerminalForm = ({ terminal, onSave, onClose, warehouses, allTerminals, systemPrinters }: { terminal?: PosTerminal; onSave: (data: Partial<PosTerminal>) => void; onClose: () => void; warehouses: Warehouse[], allTerminals: PosTerminal[], systemPrinters: Array<{ deviceId?: string, name: string }> }) => {
   const [formData, setFormData] = useState<Partial<PosTerminal>>(
-    terminal || { name: "", warehouseId: "", code: "", posPrinterType: 'system', posPrinterAddress: '', enableKitchenPrinter: false, kitchenPrinterType: 'system', kitchenPrinterAddress: '' }
+    terminal || { name: "", warehouseId: warehouses.length === 1 ? warehouses[0].id : "", code: "", posPrinterType: 'system', posPrinterAddress: '', enableKitchenPrinter: false, kitchenPrinterType: 'system', kitchenPrinterAddress: '' }
   );
   const { toast } = useToast();
+
+  useEffect(() => {
+    if (!terminal && !formData.warehouseId && warehouses.length === 1) {
+      setFormData(prev => ({ ...prev, warehouseId: warehouses[0].id }));
+    }
+  }, [terminal, formData.warehouseId, warehouses]);
 
   const handleTestSystemPrint = async (printerName: string) => {
     if (!printerName) return toast({ variant: 'destructive', title: 'خطأ', description: 'الرجاء اختيار طابعة أولاً.' });
@@ -111,12 +117,7 @@ const TerminalForm = ({ terminal, onSave, onClose, warehouses, allTerminals, sys
 
   const handleSubmit = () => {
     if (!formData.name || !formData.warehouseId || !formData.code) {
-        toast({ variant: "destructive", title: "خطأ", description: "جميع الحقول مطلوبة." });
-        return;
-    }
-
-    if (formData.posPrinterType === 'system' && !formData.posPrinterAddress) {
-        toast({ variant: "destructive", title: "خطأ", description: "يجب اختيار طابعة النظام لنقطة البيع." });
+        toast({ variant: "destructive", title: "خطأ", description: "جميع الحقول الأساسية (الكود، الاسم، المخزن المرتبط) مطلوبة." });
         return;
     }
 
@@ -126,11 +127,6 @@ const TerminalForm = ({ terminal, onSave, onClose, warehouses, allTerminals, sys
     }
 
     if (formData.enableKitchenPrinter) {
-        if (formData.kitchenPrinterType === 'system' && !formData.kitchenPrinterAddress) {
-            toast({ variant: "destructive", title: "خطأ", description: "يجب اختيار طابعة النظام للمطبخ." });
-            return;
-        }
-
         if (formData.kitchenPrinterType === 'ip' && !formData.kitchenPrinterAddress) {
             toast({ variant: "destructive", title: "خطأ", description: "يجب إدخال عنوان IP لطابعة المطبخ." });
             return;
@@ -285,7 +281,7 @@ export default function PosTerminalsPage() {
     // نقاط البيع (الكاشيرات) ترتبط بفروع البيع الفعلية فقط، ولا ترتبط بعهدة مندوب أو مخزن لوجستي عام
     const salesBranches = warehouses
       .filter((w: any) => 
-        !w.isMain && 
+        (w.warehouseType === 'branch' || !w.isMain) && 
         !w.isRepWarehouse && 
         !w.repId && 
         !w.isClosed && 
@@ -303,8 +299,9 @@ export default function PosTerminalsPage() {
         )
       );
     const wIds = user?.warehouseIds || [];
-    if (wIds.includes('all')) return salesBranches;
-    return salesBranches.filter((w: any) => wIds.includes(w.id));
+    if (wIds.includes('all') || user?.role === 'مسؤول' || wIds.length === 0) return salesBranches;
+    const permitted = salesBranches.filter((w: any) => wIds.includes(w.id));
+    return permitted.length > 0 ? permitted : salesBranches;
   }, [warehouses, user]);
 
   const [systemPrinters, setSystemPrinters] = useState<Array<{ deviceId?: string, name: string }>>([]);
