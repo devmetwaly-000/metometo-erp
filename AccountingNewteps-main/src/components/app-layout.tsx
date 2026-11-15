@@ -25,6 +25,7 @@ import {
   WifiOff,
   LayoutDashboard,
   Package,
+  PackagePlus,
   Users,
   BookUser,
   AreaChart,
@@ -187,7 +188,7 @@ const NavLink = ({ href, children, icon, module }: { href: string; children: Rea
   );
 };
 
-const NavCollapsible = ({ title, icon, children, modules, searchTerm, defaultOpen, isSubCollapsible }: { title: string; icon: React.ReactNode; children: React.ReactNode; modules: readonly string[], searchTerm: string, defaultOpen?: boolean, isSubCollapsible?: boolean }) => {
+const NavCollapsible = ({ title, icon, children, modules, searchTerm, defaultOpen, isSubCollapsible, innerTabHeightClass, innerTabHeightPx }: { title: string; icon: React.ReactNode; children: React.ReactNode; modules: readonly string[], searchTerm: string, defaultOpen?: boolean, isSubCollapsible?: boolean, innerTabHeightClass: string, innerTabHeightPx: number }) => {
     const pathname = usePathname();
     const { can } = usePermissions();
     
@@ -286,12 +287,12 @@ const NavCollapsible = ({ title, icon, children, modules, searchTerm, defaultOpe
         >
             <SidebarMenuItem className="my-0">
                 <CollapsibleTrigger asChild>
-                     <SidebarMenuButton className={cn(
-                         "h-auto w-full leading-snug",
-                         isSubCollapsible ? "min-h-7 py-1 px-2 text-xs" : "min-h-8 py-1.5 px-2.5 text-[13px]"
+                     <SidebarMenuButton style={isSubCollapsible ? { minHeight: `${innerTabHeightPx}px` } : undefined} className={cn(
+                         "h-auto w-full leading-normal",
+                         isSubCollapsible ? `${innerTabHeightClass} px-2 text-xs` : "min-h-8 py-1.5 px-2.5 text-[13px]"
                      )}>
                         {icon}
-                        <span className="flex-1 text-right leading-snug break-words whitespace-normal font-medium">{title}</span>
+                        <span className="flex-1 text-right leading-normal break-words whitespace-normal font-medium">{title}</span>
                         <ChevronDown className="mr-auto h-3.5 w-3.5 shrink-0 transition-transform duration-200 group-data-[state=open]:rotate-180" />
                     </SidebarMenuButton>
                 </CollapsibleTrigger>
@@ -303,7 +304,7 @@ const NavCollapsible = ({ title, icon, children, modules, searchTerm, defaultOpe
     );
 };
 
-const NavSubLink = ({ href, children, module }: { href: string; children: React.ReactNode, module: string }) => {
+const NavSubLink = ({ href, children, module, innerTabHeightClass, innerTabHeightPx }: { href: string; children: React.ReactNode, module: string, innerTabHeightClass: string, innerTabHeightPx: number }) => {
     const pathname = usePathname();
     const { setOpenMobile } = useSidebar();
     const { can } = usePermissions();
@@ -315,14 +316,14 @@ const NavSubLink = ({ href, children, module }: { href: string; children: React.
 
     return (
         <SidebarMenuSubItem className="my-0">
-            <SidebarMenuSubButton asChild isActive={isActive} className="h-auto min-h-7 py-1 px-2 text-xs leading-snug w-full">
+            <SidebarMenuSubButton asChild isActive={isActive} style={{ minHeight: `${innerTabHeightPx}px` }} className={`h-auto ${innerTabHeightClass} px-2 text-xs leading-normal w-full`}>
                 <Link 
                     href={href} 
                     prefetch={true}
                     onClick={() => setOpenMobile(false)}
                     className="flex items-center gap-1.5 w-full text-right"
                 >
-                    <span className="flex-1 text-right leading-snug break-words whitespace-normal text-xs">{children}</span>
+                    <span className="flex-1 text-right leading-normal break-words whitespace-normal text-xs font-medium">{children}</span>
                 </Link>
             </SidebarMenuSubButton>
         </SidebarMenuSubItem>
@@ -406,6 +407,7 @@ export const navStructure = [
         { type: 'link', href: '/accounting/gratuity', module: 'accounting_gratuity', icon: <HeartHandshake />, title: "صندوق الإكراميات (Tips)" },
         { type: 'link', href: '/accounting/treasury', module: 'accounting_treasury', title: dictionary.nav.treasuryMovements },
         { type: 'link', href: '/accounting/profit-distribution', module: 'accounting_profitDistribution', title: dictionary.nav.profitDistribution },
+        { type: 'link', href: '/reports/financial-statements', module: 'reports_financialStatements', title: 'القوائم المالية (ميزانية / دخل / أرباح)' },
     ]},
     { type: 'collapsible', title: dictionary.nav.employeesAndSalesReps, icon: <Users2 />, modules: ['users', 'partners_data', 'sales_issueToRep', 'sales_returnFromRep', 'sales_rep_new_invoice', 'sales_rep_my_invoices', 'sales_repInvoices', 'sales_repOperations', 'sales_remitFromRep', 'sales_recordVisit', 'sales_monitorVisits', 'sales_monitorLogins'], children: [
       { type: 'link', href: '/users', module: 'users', title: dictionary.nav.usersAndSalesReps },
@@ -504,8 +506,16 @@ export const navStructure = [
 
 const MobileSidebar = () => {
     const { user, signOut } = useAuth();
+    const { settings } = useData();
     const [searchTerm, setSearchTerm] = useState('');
     const { openMobile, setOpenMobile } = useSidebar();
+    const configuredTabHeight = settings?.main?.general?.innerTabHeight || 'normal';
+    const innerTabHeightPx = configuredTabHeight === 'compact' ? 24 : configuredTabHeight === 'comfortable' ? 34 : 28;
+    const innerTabHeightClass = configuredTabHeight === 'compact'
+        ? 'min-h-[24px] py-0.5'
+        : configuredTabHeight === 'comfortable'
+            ? 'min-h-[34px] py-1.5'
+            : 'min-h-[28px] py-1';
 
     return (
         <Sheet open={openMobile} onOpenChange={setOpenMobile}>
@@ -547,19 +557,19 @@ const MobileSidebar = () => {
                              }
                              if (item.type === 'collapsible') {
                                  return (
-                                     <NavCollapsible key={item.title} title={item.title} icon={item.icon} modules={item.modules} searchTerm={searchTerm}>
+                                     <NavCollapsible key={item.title} title={item.title} icon={item.icon} modules={item.modules} searchTerm={searchTerm} innerTabHeightClass={innerTabHeightClass} innerTabHeightPx={innerTabHeightPx}>
                                          {item.children?.map((child: any) => {
                                              if (child.type === 'collapsible') {
                                                  return (
-                                                      <NavCollapsible key={child.title} title={child.title} icon={<div className="h-1.5 w-1.5 rounded-full bg-primary/60 shrink-0" />} modules={child.modules || []} searchTerm={searchTerm} isSubCollapsible>
+                                                      <NavCollapsible key={child.title} title={child.title} icon={<div className="h-1.5 w-1.5 rounded-full bg-primary/60 shrink-0" />} modules={child.modules || []} searchTerm={searchTerm} isSubCollapsible innerTabHeightClass={innerTabHeightClass} innerTabHeightPx={innerTabHeightPx}>
                                                           {child.children?.map((subChild: any) => (
-                                                              <NavSubLink key={subChild.href} href={subChild.href} module={subChild.module}>{subChild.title}</NavSubLink>
+                                                              <NavSubLink key={subChild.href} href={subChild.href} module={subChild.module} innerTabHeightClass={innerTabHeightClass} innerTabHeightPx={innerTabHeightPx}>{subChild.title}</NavSubLink>
                                                           ))}
                                                       </NavCollapsible>
                                                  );
                                              }
                                              if(child.type === 'link') {
-                                                return <NavSubLink key={child.href} href={child.href} module={child.module}>{child.title}</NavSubLink>
+                                                return <NavSubLink key={child.href} href={child.href} module={child.module} innerTabHeightClass={innerTabHeightClass} innerTabHeightPx={innerTabHeightPx}>{child.title}</NavSubLink>
                                              }
                                              return null;
                                          })}
@@ -615,6 +625,34 @@ export function AppLayoutContent({ children }: { children: React.ReactNode }) {
   const [offlineReadiness, setOfflineReadiness] = useState<number | null>(null);
 
   const [openTabs, setOpenTabs] = useState<{title: string, href: string}[]>([]);
+  const openTabsStorageKey = user?.id ? `app_open_tabs_${user.id}` : null;
+  const [tabsLoadedFor, setTabsLoadedFor] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!openTabsStorageKey) return;
+
+    try {
+      const storedTabs = JSON.parse(localStorage.getItem(openTabsStorageKey) || '[]');
+      const validTabs = Array.isArray(storedTabs)
+        ? storedTabs.filter((tab): tab is { title: string; href: string } =>
+            tab && typeof tab.title === 'string' && typeof tab.href === 'string' && tab.href.startsWith('/')
+          )
+        : [];
+      setOpenTabs(validTabs);
+    } catch {
+      setOpenTabs([]);
+    }
+    setTabsLoadedFor(openTabsStorageKey);
+  }, [openTabsStorageKey]);
+
+  useEffect(() => {
+    if (!openTabsStorageKey || tabsLoadedFor !== openTabsStorageKey) return;
+    try {
+      localStorage.setItem(openTabsStorageKey, JSON.stringify(openTabs));
+    } catch (error) {
+      console.error('Failed to save open tabs', error);
+    }
+  }, [openTabs, openTabsStorageKey, tabsLoadedFor]);
 
   useEffect(() => {
         const checkReadiness = async () => {
@@ -663,6 +701,7 @@ export function AppLayoutContent({ children }: { children: React.ReactNode }) {
   }, []);
 
   useEffect(() => {
+    if (!openTabsStorageKey || tabsLoadedFor !== openTabsStorageKey) return;
     if (pathname && pathname !== '/' && pathname !== '/pos') {
         const title = findTitleForHref(pathname);
         if (title) {
@@ -672,7 +711,7 @@ export function AppLayoutContent({ children }: { children: React.ReactNode }) {
             });
         }
     }
-  }, [pathname, findTitleForHref]);
+  }, [pathname, findTitleForHref, openTabsStorageKey, tabsLoadedFor]);
 
   // التحميل المسبق الفوري لجميع علامات التبويب المفتوحة لمنع أي تأخير في التنقل
   useEffect(() => {
@@ -701,7 +740,7 @@ export function AppLayoutContent({ children }: { children: React.ReactNode }) {
       '/purchases/invoices/list',
       '/purchases/invoices',
       '/inventory/stock-status',
-      '/inventory/stock-transfers',
+      '/inventory/transfer',
       '/accounting/expenses',
       '/reports',
       '/reports/sales-reports',
@@ -799,6 +838,13 @@ export function AppLayoutContent({ children }: { children: React.ReactNode }) {
   const generalSettings = settings?.main?.general || {};
   const fabPosition = generalSettings.mobileFabPosition || 'bottom-right';
   const desktopLayout = generalSettings.desktopLayout || 'sidebar';
+  const innerTabHeight = generalSettings.innerTabHeight || 'normal';
+  const innerTabHeightPx = innerTabHeight === 'compact' ? 24 : innerTabHeight === 'comfortable' ? 34 : 28;
+  const innerTabHeightClass = innerTabHeight === 'compact'
+    ? 'min-h-[24px] py-0.5'
+    : innerTabHeight === 'comfortable'
+      ? 'min-h-[34px] py-1.5'
+      : 'min-h-[28px] py-1';
 
   const memoizedNavStructure = useMemo(() => {
     if (!isCentral) return navStructure;
@@ -894,19 +940,19 @@ export function AppLayoutContent({ children }: { children: React.ReactNode }) {
                 }
                 if(item.type === 'collapsible') {
                   return (
-                      <NavCollapsible key={item.title} title={item.title} icon={item.icon} modules={item.modules} searchTerm={searchTerm}>
+                      <NavCollapsible key={item.title} title={item.title} icon={item.icon} modules={item.modules} searchTerm={searchTerm} innerTabHeightClass={innerTabHeightClass} innerTabHeightPx={innerTabHeightPx}>
                           {item.children?.map((child: any) => {
                               if (child.type === 'collapsible') {
                                   return (
-                                       <NavCollapsible key={child.title} title={child.title} icon={<div className="h-1.5 w-1.5 rounded-full bg-primary/60 shrink-0" />} modules={child.modules || []} searchTerm={searchTerm} isSubCollapsible>
+                                       <NavCollapsible key={child.title} title={child.title} icon={<div className="h-1.5 w-1.5 rounded-full bg-primary/60 shrink-0" />} modules={child.modules || []} searchTerm={searchTerm} isSubCollapsible innerTabHeightClass={innerTabHeightClass} innerTabHeightPx={innerTabHeightPx}>
                                            {child.children?.map((subChild: any) => (
-                                               <NavSubLink key={subChild.href} href={subChild.href} module={subChild.module}>{subChild.title}</NavSubLink>
+                                               <NavSubLink key={subChild.href} href={subChild.href} module={subChild.module} innerTabHeightClass={innerTabHeightClass} innerTabHeightPx={innerTabHeightPx}>{subChild.title}</NavSubLink>
                                            ))}
                                        </NavCollapsible>
                                   )
                               }
                                if(child.type === 'link') {
-                                return <NavSubLink key={child.href} href={child.href} module={child.module}>{child.title}</NavSubLink>
+                                return <NavSubLink key={child.href} href={child.href} module={child.module} innerTabHeightClass={innerTabHeightClass} innerTabHeightPx={innerTabHeightPx}>{child.title}</NavSubLink>
                                }
                                return null;
                           })}
@@ -1019,6 +1065,20 @@ export function AppLayoutContent({ children }: { children: React.ReactNode }) {
                     <div className="md:hidden absolute left-1/2 -translate-x-1/2">
                         <Logo/>
                     </div>
+                     {can('add', 'inventory_items_list') && (
+                       <TooltipProvider>
+                         <Tooltip>
+                           <TooltipTrigger asChild>
+                             <Button asChild variant="ghost" size="icon" aria-label="إضافة صنف جديد">
+                               <Link href="/master-data/items?newGood=1">
+                                 <PackagePlus className="h-5 w-5" />
+                               </Link>
+                             </Button>
+                           </TooltipTrigger>
+                           <TooltipContent>إضافة صنف جديد</TooltipContent>
+                         </Tooltip>
+                       </TooltipProvider>
+                     )}
                      <TooltipProvider>
                         <Tooltip>
                             <TooltipTrigger asChild>
@@ -1083,12 +1143,15 @@ export function AppLayoutContent({ children }: { children: React.ReactNode }) {
         )}
         
         <div className="flex-1 flex flex-col overflow-hidden relative min-h-0">
-            <div className="flex-1 overflow-y-auto min-h-0">
+            <div
+                className="flex-1 overflow-y-auto min-h-0"
+                data-report-screen={pathname.startsWith('/reports') || pathname.startsWith('/analytics') || pathname.includes('report') ? 'true' : undefined}
+            >
                 {children}
             </div>
 
             {/* Taskbar / Open Tabs Bar */}
-            {openTabs.length > 0 && pathname !== '/pos' && (
+            {tabsLoadedFor === openTabsStorageKey && openTabs.length > 0 && pathname !== '/pos' && (
                 <div className="h-12 bg-card/95 backdrop-blur-md border-t flex items-center px-4 gap-2 overflow-x-auto shrink-0 z-40 sticky bottom-0 shadow-[0_-2px_10px_rgba(0,0,0,0.12)] no-print">
                     {openTabs.map((tab) => (
                         <Link 

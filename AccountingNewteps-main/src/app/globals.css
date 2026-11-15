@@ -6,6 +6,18 @@ body {
   font-family: 'Inter', sans-serif;
 }
 
+/* Keep numeric fields editable without browser stepper arrows. */
+input[type="number"] {
+  -moz-appearance: textfield;
+  appearance: textfield;
+}
+
+input[type="number"]::-webkit-inner-spin-button,
+input[type="number"]::-webkit-outer-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
 @layer base {
   :root {
     --radius: 0.5rem;
@@ -212,36 +224,85 @@ nextjs-portal {
 }
 
 /* Sidebar items readability & line-height fix for Arabic text */
-[data-sidebar="menu-button"],
-[data-sidebar="menu-sub-button"] {
+[data-sidebar="menu-button"] {
   height: auto !important;
-  min-height: 2.5rem !important;
-  line-height: 1.65 !important;
+  min-height: 2.15rem !important;
+  line-height: 1.4 !important;
   white-space: normal !important;
   word-break: break-word !important;
   overflow-wrap: break-word !important;
-  padding-top: 0.5rem !important;
-  padding-bottom: 0.5rem !important;
+  padding: 0.35rem 0.6rem !important;
+  display: flex !important;
+  align-items: center !important;
+}
+
+[data-sidebar="menu-sub-button"] {
+  height: auto !important;
+  line-height: 1.35 !important;
+  white-space: normal !important;
+  word-break: break-word !important;
+  overflow-wrap: break-word !important;
   display: flex !important;
   align-items: center !important;
 }
 
 [data-sidebar="menu-sub-button"] span,
 [data-sidebar="menu-button"] span {
-  line-height: 1.65 !important;
+  line-height: 1.35 !important;
   white-space: normal !important;
   word-break: break-word !important;
 }
 
 [data-sidebar="menu-sub-item"] {
-  margin-top: 0.25rem !important;
-  margin-bottom: 0.25rem !important;
+  margin-top: 1px !important;
+  margin-bottom: 1px !important;
   height: auto !important;
 }
 
 [data-sidebar="menu-sub"] {
-  gap: 0.35rem !important;
-  padding-top: 0.25rem !important;
-  padding-bottom: 0.25rem !important;
+  gap: 2px !important;
+  padding-top: 2px !important;
+  padding-bottom: 2px !important;
+}
+
+/* Reports use a restrained, fast-rendering business layout. */
+[data-report-screen="true"] .bg-gradient-to-br {
+  background-image: none !important;
+}
+
+[data-report-screen="true"] .grid > div.rounded-lg.border > div > div.flex.items-center.justify-between > svg {
+  display: none !important;
+}
+
+[data-report-screen="true"] .rounded-full {
+  border-radius: 0.375rem !important;
+}
+
+[data-report-screen="true"] .animate-pulse {
+  animation: none !important;
+  opacity: 1 !important;
+}
+
+[data-report-screen="true"] svg.lucide-loader-circle.animate-spin {
+  display: none !important;
+}
+
+[data-report-screen="true"] div.flex:has(> svg.lucide-loader-circle):not(:has(p))::after {
+  content: "جاري تحميل البيانات...";
+  display: inline-block;
+  color: hsl(var(--muted-foreground));
+  font-size: 0.875rem;
+}
+
+[data-report-screen="true"] tbody > tr {
+  content-visibility: auto;
+  contain-intrinsic-size: auto 44px;
+}
+
+@media print {
+  [data-report-screen="true"] tbody > tr {
+    content-visibility: visible;
+    contain: none;
+  }
 }
 
