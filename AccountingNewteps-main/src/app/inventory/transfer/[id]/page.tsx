@@ -9,7 +9,8 @@ import PageHeader from '@/components/page-header';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Loader2, Printer, ArrowRight, MessageCircle } from 'lucide-react';
+import { Loader2, Printer, ArrowRight, MessageCircle, Truck, DollarSign, Package } from 'lucide-react';
+import { Badge } from '@/components/ui/badge';
 
 interface StockTransferRecord {
   id: string;
@@ -18,7 +19,14 @@ interface StockTransferRecord {
   fromSourceId: string;
   toSourceId: string;
   notes?: string;
-  items: { id: string; name: string; qty: number; }[];
+  items: { id: string; name: string; qty: number; cost?: number; originalCost?: number; shippingAllocPerUnit?: number }[];
+  shippingCost?: number;
+  shippingPaidBy?: string;
+  shippingPaidFromAccountId?: string;
+  shippingTreatment?: string;
+  carrierName?: string;
+  trackingNumber?: string;
+  expenseId?: string;
 }
 
 interface Warehouse {
@@ -34,7 +42,7 @@ export default function StockTransferDetailsPage() {
   const [record, setRecord] = useState<StockTransferRecord | null>(null);
   const [loading, setLoading] = useState(true);
 
-  const { stockTransferRecords, warehouses, loading: dataLoading } = useData();
+  const { stockTransferRecords, warehouses, cashAccounts, loading: dataLoading } = useData();
   
   useEffect(() => {
     if (stockTransferRecords.length > 0 && id) {
@@ -45,6 +53,7 @@ export default function StockTransferDetailsPage() {
   }, [stockTransferRecords, id]);
   
   const getWarehouseName = (warehouseId: string) => warehouses.find((w: any) => w.id === warehouseId)?.name || 'غير معروف';
+  const getCashAccountName = (accId?: string) => cashAccounts?.find((a: any) => a.id === accId)?.name || 'الخزينة المحددة';
 
   const handlePrint = () => {
     window.print();
@@ -52,6 +61,10 @@ export default function StockTransferDetailsPage() {
   
     const handleShare = () => {
     if (!record) return;
+    const shippingInfo = (record.shippingCost && record.shippingCost > 0)
+      ? `\n*مصاريف الشحن:* ${Number(record.shippingCost).toLocaleString()} ج.م (${record.shippingTreatment === 'capitalized' ? 'مرسملة على المخزون' : 'مصروف تشغيلي'})${record.carrierName ? `\n*شركة الشحن:* ${record.carrierName}` : ''}${record.trackingNumber ? `\n*رقم البوليصة:* ${record.trackingNumber}` : ''}`
+      : '';
+
     const text = `
 *إذن تحويل مخزني*
 --------------------------
@@ -60,7 +73,7 @@ export default function StockTransferDetailsPage() {
 *من مخزن:* ${getWarehouseName(record.fromSourceId)}
 *إلى مخزن:* ${getWarehouseName(record.toSourceId)}
 *إجمالي الأصناف:* ${record.items.length}
-*إجمالي الكمية:* ${record.items.reduce((sum, item) => sum + item.qty, 0)}
+*إجمالي الكمية:* ${record.items.reduce((sum, item) => sum + item.qty, 0)}${shippingInfo}
     `;
     const encodedText = encodeURIComponent(text);
     window.open(`https://wa.me/?text=${encodedText}`);
@@ -103,6 +116,35 @@ export default function StockTransferDetailsPage() {
                 <ArrowRight className="h-5 w-5"/>
                 <span>إلى: {getWarehouseName(record.toSourceId)}</span>
             </div>
+
+            {/* Shipping & Freight Summary Banner */}
+            {record.shippingCost && record.shippingCost > 0 ? (
+                <div className="mt-3 p-3.5 rounded-lg border bg-muted/30 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 text-xs">
+                    <div className="flex items-center gap-2">
+                        <Truck className="h-4 w-4 text-primary shrink-0" />
+                        <div>
+                            <span className="text-muted-foreground block">مصاريف الشحن والنقل:</span>
+                            <span className="font-bold text-sm text-primary">{Number(record.shippingCost).toLocaleString()} ج.م</span>
+                        </div>
+                    </div>
+                    <div>
+                        <span className="text-muted-foreground block">المعالجة المحاسبية:</span>
+                        <Badge variant="outline" className={record.shippingTreatment === 'capitalized' ? 'bg-amber-500/10 text-amber-600 border-amber-300' : 'bg-blue-500/10 text-blue-600 border-blue-300'}>
+                            {record.shippingTreatment === 'capitalized' ? 'مرسملة على المخزون' : 'مصروف نقل تشغيلي'}
+                        </Badge>
+                    </div>
+                    <div>
+                        <span className="text-muted-foreground block">حساب الخزينة المسدد:</span>
+                        <span className="font-medium">{getCashAccountName(record.shippingPaidFromAccountId)}</span>
+                    </div>
+                    <div>
+                        <span className="text-muted-foreground block">الناقل / بوليصة الشحن:</span>
+                        <span className="font-medium">
+                            {record.carrierName || 'غير محدد'} {record.trackingNumber ? `(${record.trackingNumber})` : ''}
+                        </span>
+                    </div>
+                </div>
+            ) : null}
           </CardHeader>
           <CardContent>
              <div className="w-full overflow-auto">
@@ -111,13 +153,27 @@ export default function StockTransferDetailsPage() {
                       <TableRow>
                           <TableHead>الصنف</TableHead>
                           <TableHead className="text-center">الكمية المحولة</TableHead>
+                          {record.items.some((i: any) => i.shippingAllocPerUnit) && (
+                              <>
+                                  <TableHead className="text-center">التكلفة الأساسية</TableHead>
+                                  <TableHead className="text-center">نصيب الوحدة من الشحن</TableHead>
+                                  <TableHead className="text-center font-bold">التكلفة المرسملة الواصلة</TableHead>
+                              </>
+                          )}
                       </TableRow>
                   </TableHeader>
                   <TableBody>
                       {record.items.map((item: any) => (
                           <TableRow key={item.id}>
                               <TableCell>{item.name}</TableCell>
-                              <TableCell className="text-center">{item.qty}</TableCell>
+                              <TableCell className="text-center font-semibold">{item.qty}</TableCell>
+                              {record.items.some((i: any) => i.shippingAllocPerUnit) && (
+                                  <>
+                                      <TableCell className="text-center font-mono">{Number(item.originalCost || item.cost || 0).toFixed(2)} ج.م</TableCell>
+                                      <TableCell className="text-center font-mono text-emerald-600">+{Number(item.shippingAllocPerUnit || 0).toFixed(2)} ج.م</TableCell>
+                                      <TableCell className="text-center font-mono font-bold text-primary">{Number(item.cost || 0).toFixed(2)} ج.م</TableCell>
+                                  </>
+                              )}
                           </TableRow>
                       ))}
                   </TableBody>

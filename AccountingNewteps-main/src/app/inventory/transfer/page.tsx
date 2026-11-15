@@ -35,12 +35,17 @@ import { Label } from '@/components/ui/label';
 import { Combobox } from '@/components/ui/combobox';
 import { useAuth } from '@/contexts/auth-context';
 
+import { Badge } from '@/components/ui/badge';
+
 interface StockTransferRecord {
   id: string;
   receiptNumber: string;
   date: string;
   fromSourceId: string;
   toSourceId: string;
+  shippingCost?: number;
+  shippingTreatment?: string;
+  carrierName?: string;
   items: { name: string; qty: number }[];
 }
 
@@ -165,6 +170,7 @@ export default function StockTransferListPage() {
                       <TableHead>من مخزن</TableHead>
                       <TableHead>إلى مخزن</TableHead>
                       <TableHead className="text-center">الأصناف</TableHead>
+                      <TableHead className="text-center">مصاريف الشحن</TableHead>
                       <TableHead className="text-center w-[120px] no-print">الإجراءات</TableHead>
                     </TableRow>
                   </TableHeader>
@@ -176,7 +182,19 @@ export default function StockTransferListPage() {
                           <TableCell>{new Date(record.date).toLocaleDateString('ar-EG')}</TableCell>
                           <TableCell>{getWarehouseName(record.fromSourceId)}</TableCell>
                           <TableCell>{getWarehouseName(record.toSourceId)}</TableCell>
-                          <TableCell className="text-center">{record.items.length}</TableCell>
+                          <TableCell className="text-center">{record.items?.length || 0}</TableCell>
+                          <TableCell className="text-center">
+                            {record.shippingCost && record.shippingCost > 0 ? (
+                              <div className="flex flex-col items-center">
+                                <span className="font-semibold font-mono text-xs">{Number(record.shippingCost).toLocaleString()} ج.م</span>
+                                <Badge variant="outline" className={`text-[10px] py-0 px-1 ${record.shippingTreatment === 'capitalized' ? 'bg-amber-500/10 text-amber-600' : 'bg-blue-500/10 text-blue-600'}`}>
+                                  {record.shippingTreatment === 'capitalized' ? 'مرسملة' : 'تشغيلي'}
+                                </Badge>
+                              </div>
+                            ) : (
+                              <span className="text-muted-foreground text-xs">-</span>
+                            )}
+                          </TableCell>
                            <TableCell className="text-center no-print">
                              <div className="flex justify-center gap-2">
                                 <Button variant="ghost" size="icon" onClick={() => router.push(`/inventory/transfer/${record.id}`)} title="عرض وتفاصيل">
@@ -191,7 +209,7 @@ export default function StockTransferListPage() {
                       ))
                     ) : (
                       <TableRow>
-                        <TableCell colSpan={6} className="text-center py-10 text-muted-foreground">
+                        <TableCell colSpan={7} className="text-center py-10 text-muted-foreground">
                           لا توجد إيصالات تحويل مسجلة.
                         </TableCell>
                       </TableRow>

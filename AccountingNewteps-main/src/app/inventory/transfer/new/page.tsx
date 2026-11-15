@@ -8,13 +8,14 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow, TableFooter } from "@/components/ui/table";
 import { Textarea } from "@/components/ui/textarea";
-import { PlusCircle, Trash2, Loader2, Save } from "lucide-react";
+import { PlusCircle, Trash2, Loader2, Save, Truck, DollarSign, Info } from "lucide-react";
 import React, { useState, useMemo, useEffect, useCallback } from "react";
 import { useData } from "@/contexts/data-provider";
 import { useToast } from "@/hooks/use-toast";
 import { useRouter } from 'next/navigation';
 import { Combobox } from "@/components/ui/combobox";
 import { useAuth } from "@/contexts/auth-context";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
 interface StockItem {
   id: string;
@@ -79,6 +80,14 @@ export default function NewStockTransferPage() {
     const [notes, setNotes] = useState<string>("");
     const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
 
+    // Shipping & Freight State
+    const [shippingCost, setShippingCost] = useState<number | string>(0);
+    const [shippingTreatment, setShippingTreatment] = useState<'expense' | 'capitalized'>('expense');
+    const [shippingPaidBy, setShippingPaidBy] = useState<'source' | 'destination' | 'central'>('source');
+    const [shippingPaidFromAccountId, setShippingPaidFromAccountId] = useState<string>("");
+    const [carrierName, setCarrierName] = useState<string>("");
+    const [trackingNumber, setTrackingNumber] = useState<string>("");
+
     const { 
         items: allItems,
         users, 
@@ -88,6 +97,7 @@ export default function NewStockTransferPage() {
         getNextId,
         loading,
         settings,
+        cashAccounts,
         salesInvoices,
         stockInRecords,
         stockOutRecords,
@@ -102,6 +112,20 @@ export default function NewStockTransferPage() {
         inventoryClosings,
         requisitions,
      } = useData();
+
+    const cashAccountOptions = useMemo(() => {
+        return (cashAccounts || []).map((acc: any) => ({
+            value: acc.id,
+            label: `${acc.name} (${(Number(acc.currentBalance) || 0).toLocaleString()} ج.م)`
+        }));
+    }, [cashAccounts]);
+
+    useEffect(() => {
+        if (!shippingPaidFromAccountId && cashAccounts?.length) {
+            const matched = cashAccounts.find((acc: any) => acc.warehouseId === fromSource);
+            setShippingPaidFromAccountId(matched ? matched.id : cashAccounts[0].id);
+        }
+    }, [cashAccounts, fromSource, shippingPaidFromAccountId]);
 
     const authorizedBranches = useMemo(() => {
         const b = warehouses.filter((w: any) => !w.isMain && !w.isRepWarehouse && !w.repId);
@@ -327,14 +351,41 @@ export default function NewStockTransferPage() {
             return;
         }
         
+        const numericShippingCost = Math.max(0, Number(shippingCost) || 0);
+        let createdExpenseId: string | null = null;
+
+        const totalRawCost = items.reduce((sum, item) => {
+            const masterItem = allItems.find((i: Item) => i.id === item.itemId);
+            const unitCost = masterItem?.cost || item.cost || 0;
+            return sum + (item.qty * item.conversionFactor * unitCost);
+        }, 0);
+        const totalBaseQty = items.reduce((sum, item) => sum + (item.qty * item.conversionFactor), 0);
+
         const itemsToTransfer = items.map(item => {
-            const masterItem = allItems.find((i:Item) => i.id === item.itemId);
+            const masterItem = allItems.find((i: Item) => i.id === item.itemId);
+            const baseCost = masterItem?.cost || item.cost || 0;
+            const baseQty = item.qty * item.conversionFactor;
+            let allocatedShippingPerUnit = 0;
+
+            if (numericShippingCost > 0 && shippingTreatment === 'capitalized') {
+                if (totalRawCost > 0) {
+                    const itemShareRatio = (baseQty * baseCost) / totalRawCost;
+                    allocatedShippingPerUnit = (numericShippingCost * itemShareRatio) / (baseQty || 1);
+                } else if (totalBaseQty > 0) {
+                    allocatedShippingPerUnit = numericShippingCost / totalBaseQty;
+                }
+            }
+
+            const finalUnitCost = Number((baseCost + allocatedShippingPerUnit).toFixed(4));
+
             return {
                 id: item.itemId,
                 name: item.name,
-                qty: item.qty * item.conversionFactor,
-                cost: masterItem?.cost || 0
-            }
+                qty: baseQty,
+                cost: finalUnitCost,
+                originalCost: baseCost,
+                shippingAllocPerUnit: Number(allocatedShippingPerUnit.toFixed(4)),
+            };
         });
 
         const now = new Date();
@@ -348,15 +399,60 @@ export default function NewStockTransferPage() {
             now.getSeconds()
         );
 
+        const transferReceiptNumber = `إذ-ت-${nextId}`;
+        const fromWhObj = [...warehouses, ...inventoryZones].find((w: any) => w.id === fromSource);
+        const toWhObj = [...warehouses, ...inventoryZones].find((w: any) => w.id === destination);
+
+        // Record shipping expense / payment if shipping cost > 0
+        if (numericShippingCost > 0) {
+            const expenseReceiptNum = `م-${await getNextId('expense')}`;
+            const expenseType = shippingTreatment === 'capitalized' 
+                ? 'رسملة مصاريف شحن على المخزون' 
+                : 'مواصلات ونقل وشحن وتوصيل';
+            const expDesc = shippingTreatment === 'capitalized'
+                ? `سداد مصاريف شحن ونقل مرسملة على مخزون إذن تحويل ${transferReceiptNumber} من ${fromWhObj?.name || 'مخزن المصدر'} إلى ${toWhObj?.name || 'المستلم'}${carrierName ? ` - الناقل: ${carrierName}` : ''}${trackingNumber ? ` (بوليصة: ${trackingNumber})` : ''}`
+                : `مصاريف شحن ونقل بضاعة لإذن تحويل ${transferReceiptNumber} من ${fromWhObj?.name || 'مخزن المصدر'} إلى ${toWhObj?.name || 'المستلم'}${carrierName ? ` - الناقل: ${carrierName}` : ''}${trackingNumber ? ` (بوليصة: ${trackingNumber})` : ''}`;
+
+            const expenseWarehouseId = shippingPaidBy === 'destination' ? destination : fromSource;
+            const expensePaidFromAccountId = shippingPaidFromAccountId || cashAccounts?.[0]?.id || 'main-cash';
+
+            const expensePayload = {
+                receiptNumber: expenseReceiptNum,
+                date: finalDate.toISOString(),
+                expenseType,
+                description: expDesc,
+                amount: numericShippingCost,
+                taxAmount: 0,
+                warehouseId: expenseWarehouseId,
+                paidFromAccountId: expensePaidFromAccountId,
+                status: 'completed',
+                createdById: user?.id,
+                createdByName: user?.name,
+            };
+            try {
+                const resExp = await dbAction('expenses', 'add', expensePayload);
+                createdExpenseId = typeof resExp === 'string' ? resExp : null;
+            } catch (expErr) {
+                console.error("Failed to create shipping expense record:", expErr);
+            }
+        }
+
         const record = {
             fromSourceId: fromSource,
             toSourceId: destination,
             date: finalDate.toISOString(),
             items: itemsToTransfer,
             notes,
-            receiptNumber: `إذ-ت-${nextId}`,
+            receiptNumber: transferReceiptNumber,
             createdById: user?.id,
             createdByName: user?.name,
+            shippingCost: numericShippingCost,
+            shippingPaidBy,
+            shippingPaidFromAccountId: shippingPaidFromAccountId || null,
+            shippingTreatment,
+            carrierName: carrierName.trim() || null,
+            trackingNumber: trackingNumber.trim() || null,
+            expenseId: createdExpenseId,
         };
 
         try {
@@ -370,17 +466,17 @@ export default function NewStockTransferPage() {
                     date: finalDate.toISOString(),
                     items: itemsToTransfer,
                     reason: 'transfer',
-                    notes: `وارد من إذن تحويل رقم ${record.receiptNumber} من ${[...warehouses, ...inventoryZones].find((w:any) => w.id === fromSource)?.name}`,
+                    notes: `وارد من إذن تحويل رقم ${record.receiptNumber} من ${fromWhObj?.name || ''}${numericShippingCost > 0 ? ` (مصاريف شحن: ${numericShippingCost} ج.م ${shippingTreatment === 'capitalized' ? 'مرسملة على الأصناف' : 'كمصروف تشغيلي'})` : ''}`,
                     receiptNumber: `إذ-د-${await getNextId('stockIn')}`,
                     createdById: user?.id,
                     createdByName: user?.name,
                     fromWarehouseId: fromSource,
                     stockTransferId: newTransferId,
                 });
-                toast({ title: "تم التحويل بنجاح", description: `تم إنشاء إذن دخول معلق في الفرع المستلم.` });
+                toast({ title: "تم التحويل بنجاح", description: `تم إنشاء إذن تحويل مخزني ${numericShippingCost > 0 ? `مع قيد مصاريف الشحن (${numericShippingCost} ج.م)` : ''} وإذن دخول معلق في الفرع المستلم.` });
                 router.push('/inventory/goods-in-transit');
             } else {
-                 toast({ title: "تم بنجاح", description: `تم تأكيد تحويل المخزون بنجاح برقم إيصال: ${record.receiptNumber}`});
+                 toast({ title: "تم بنجاح", description: `تم تأكيد تحويل المخزون بنجاح برقم إيصال: ${record.receiptNumber}${numericShippingCost > 0 ? ` ومصاريف الشحن (${numericShippingCost} ج.م)` : ''}`});
                  router.push('/inventory/movements');
             }
 
@@ -596,6 +692,131 @@ export default function NewStockTransferPage() {
                     </Table>
                  </div>
                 </div>
+
+                {/* Shipping & Freight Management Section */}
+                <div className="p-4 border rounded-lg bg-card shadow-sm space-y-4">
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between border-b pb-2 gap-2">
+                        <div className="flex items-center gap-2">
+                            <Truck className="h-5 w-5 text-primary" />
+                            <h4 className="font-semibold text-base">مصاريف وبيانات الشحن والنقل</h4>
+                        </div>
+                        <span className="text-xs text-muted-foreground">معالجة تكاليف النقل والشحن المحاسبية والتكاليفية</span>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                        {/* Shipping Amount */}
+                        <div className="space-y-1.5">
+                            <Label htmlFor="shippingCost" className="flex items-center gap-1 text-xs font-medium">
+                                <DollarSign className="h-3.5 w-3.5 text-primary" />
+                                مبلغ مصاريف الشحن (ج.م)
+                            </Label>
+                            <Input
+                                id="shippingCost"
+                                type="number"
+                                min="0"
+                                step="0.01"
+                                placeholder="0.00"
+                                value={shippingCost}
+                                onChange={(e) => setShippingCost(e.target.value === '' ? '' : Math.max(0, parseFloat(e.target.value) || 0))}
+                                className="font-mono text-left font-semibold"
+                            />
+                        </div>
+
+                        {/* Accounting Treatment */}
+                        <div className="space-y-1.5">
+                            <Label className="text-xs font-medium">طريقة المعالجة المحاسبية</Label>
+                            <Select value={shippingTreatment} onValueChange={(v: any) => setShippingTreatment(v)}>
+                                <SelectTrigger>
+                                    <SelectValue placeholder="اختر المعالجة..." />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value="expense">مصروف تشغيلي منفصل (شحن ونقل)</SelectItem>
+                                    <SelectItem value="capitalized">رسملة وإضافة لتكلفة المخزون المستلم</SelectItem>
+                                </SelectContent>
+                            </Select>
+                        </div>
+
+                        {/* Paid By Warehouse / Party */}
+                        <div className="space-y-1.5">
+                            <Label className="text-xs font-medium">الجهة المتحملة للسداد</Label>
+                            <Select value={shippingPaidBy} onValueChange={(v: any) => setShippingPaidBy(v)}>
+                                <SelectTrigger>
+                                    <SelectValue placeholder="اختر جهة السداد..." />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value="source">فرع المصدر (المحول منه)</SelectItem>
+                                    <SelectItem value="destination">فرع المستلم (المحول إليه)</SelectItem>
+                                    <SelectItem value="central">خزينة رئيسية / إدارة</SelectItem>
+                                </SelectContent>
+                            </Select>
+                        </div>
+
+                        {/* Treasury / Cash Account */}
+                        <div className="space-y-1.5">
+                            <Label className="text-xs font-medium">حساب الخزينة / الدفع</Label>
+                            <Select value={shippingPaidFromAccountId} onValueChange={setShippingPaidFromAccountId}>
+                                <SelectTrigger>
+                                    <SelectValue placeholder="اختر حساب الخزينة..." />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    {cashAccountOptions.map((acc: any) => (
+                                        <SelectItem key={acc.value} value={acc.value}>
+                                            {acc.label}
+                                        </SelectItem>
+                                    ))}
+                                </SelectContent>
+                            </Select>
+                        </div>
+
+                        {/* Carrier / Driver Name */}
+                        <div className="space-y-1.5">
+                            <Label htmlFor="carrierName" className="text-xs font-medium">شركة الشحن / اسم السائق</Label>
+                            <Input
+                                id="carrierName"
+                                placeholder="مثال: شركة أرامكس / السائق محمد..."
+                                value={carrierName}
+                                onChange={(e) => setCarrierName(e.target.value)}
+                            />
+                        </div>
+
+                        {/* Waybill / Tracking Number */}
+                        <div className="space-y-1.5">
+                            <Label htmlFor="trackingNumber" className="text-xs font-medium">رقم البوليصة / التتبع</Label>
+                            <Input
+                                id="trackingNumber"
+                                placeholder="مثال: TRK-98421..."
+                                value={trackingNumber}
+                                onChange={(e) => setTrackingNumber(e.target.value)}
+                                className="font-mono"
+                            />
+                        </div>
+
+                        {/* Live Summary / Hint */}
+                        {Number(shippingCost) > 0 && (
+                            <div className="col-span-1 md:col-span-2 lg:col-span-2 rounded-md bg-primary/5 border border-primary/20 p-2.5 flex items-start gap-2 text-xs">
+                                <Info className="h-4 w-4 text-primary shrink-0 mt-0.5" />
+                                <div className="space-y-0.5">
+                                    {shippingTreatment === 'expense' ? (
+                                        <>
+                                            <div className="font-semibold text-primary">إثبات كمصروف شحن ونقل:</div>
+                                            <div className="text-muted-foreground">
+                                                سيتم تلقائياً تسجيل إيصال مصروف بقيمة <strong>{Number(shippingCost).toLocaleString()} ج.م</strong> تحت بند مواصلات ونقل وشحن، وخصمه من الخزينة المحددة دون تغيير تكلفة الأصناف الأساسية.
+                                            </div>
+                                        </>
+                                    ) : (
+                                        <>
+                                            <div className="font-semibold text-primary">رسملة مصاريف الشحن على المخزون:</div>
+                                            <div className="text-muted-foreground">
+                                                سيتم توزيع مبلغ الشحن (<strong>{Number(shippingCost).toLocaleString()} ج.م</strong>) بالتناسب على الأصناف المحولة، لتصل إلى الفرع المستلم بتكلفة مرسملة جديدة (Landed Cost).
+                                            </div>
+                                        </>
+                                    )}
+                                </div>
+                            </div>
+                        )}
+                    </div>
+                </div>
+
                  <div className="space-y-2">
                     <Label htmlFor="notes">ملاحظات</Label>
                     <Textarea id="notes" placeholder="أضف أي ملاحظات هنا..." value={notes} onChange={(e) => setNotes(e.target.value)} />

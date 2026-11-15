@@ -93,6 +93,7 @@ export default function StockTransfersReportPage() {
     if (end) end.setHours(23, 59, 59, 999);
 
     let totalQtyTransferred = 0;
+    let totalShippingCost = 0;
     let completedCount = 0;
     let inTransitCount = 0;
 
@@ -128,7 +129,10 @@ export default function StockTransfersReportPage() {
         itemsTotalQty += Number(it.qty || it.Qty || it.quantity || it.Quantity || 0);
       });
 
+      const shipCost = Number(tr.shippingCost || tr.ShippingCost || 0);
       totalQtyTransferred += itemsTotalQty;
+      totalShippingCost += shipCost;
+
       if (status === "completed" || status === "received") {
         completedCount++;
       } else {
@@ -143,6 +147,8 @@ export default function StockTransfersReportPage() {
         itemsTotalQty += Number(it.qty || it.Qty || it.quantity || it.Quantity || 0);
       });
 
+      const shipCost = Number(tr.shippingCost || tr.ShippingCost || 0);
+
       return {
         id: tr.id || tr.Id,
         receiptNumber: tr.receiptNumber || tr.ReceiptNumber || tr.id || "-",
@@ -153,6 +159,10 @@ export default function StockTransfersReportPage() {
         toWarehouseName: warehousesMap.get(tr.toWarehouseId || tr.ToWarehouseId) || "مخزن محلي",
         status: tr.status || tr.Status || "completed",
         notes: tr.notes || tr.Notes || "",
+        shippingCost: shipCost,
+        shippingTreatment: tr.shippingTreatment || tr.ShippingTreatment || 'expense',
+        carrierName: tr.carrierName || tr.CarrierName || '',
+        trackingNumber: tr.trackingNumber || tr.TrackingNumber || '',
         items,
         itemsCount: items.length,
         itemsTotalQty
@@ -166,6 +176,7 @@ export default function StockTransfersReportPage() {
       summary: {
         totalTransfers: list.length,
         totalQtyTransferred,
+        totalShippingCost,
         completedCount,
         inTransitCount
       }
@@ -250,7 +261,7 @@ export default function StockTransfersReportPage() {
       </PageHeader>
 
       {/* 2. Top Summary KPI Cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3.5">
         <Card className="border shadow-sm bg-gradient-to-br from-blue-500/5 to-transparent">
           <CardHeader className="p-3.5 pb-1">
             <CardTitle className="text-xs font-medium text-muted-foreground flex items-center justify-between">
@@ -315,6 +326,23 @@ export default function StockTransfersReportPage() {
             </div>
             <p className="text-[11px] text-muted-foreground mt-0.5">
               قيد الشحن أو بانتظار تأكيد الاستلام
+            </p>
+          </CardContent>
+        </Card>
+
+        <Card className="border shadow-sm bg-gradient-to-br from-cyan-500/5 to-transparent">
+          <CardHeader className="p-3.5 pb-1">
+            <CardTitle className="text-xs font-medium text-muted-foreground flex items-center justify-between">
+              <span>إجمالي مصاريف الشحن</span>
+              <Truck className="h-4 w-4 text-cyan-600 dark:text-cyan-400" />
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="p-3.5 pt-0">
+            <div className="text-2xl font-bold font-mono text-cyan-700 dark:text-cyan-400">
+              {summary.totalShippingCost.toLocaleString()} ج.م
+            </div>
+            <p className="text-[11px] text-muted-foreground mt-0.5">
+              تكاليف نقل وشحن البضاعة
             </p>
           </CardContent>
         </Card>
@@ -439,6 +467,7 @@ export default function StockTransfersReportPage() {
                   <TableHead className="text-center">الحالة</TableHead>
                   <TableHead className="text-center font-mono">عدد الأصناف</TableHead>
                   <TableHead className="text-center font-mono font-bold">الكمية الإجمالية</TableHead>
+                  <TableHead className="text-center font-mono font-bold">مصاريف الشحن</TableHead>
                   <TableHead>الملاحظات</TableHead>
                   <TableHead className="w-20 text-center no-print">التفاصيل</TableHead>
                 </TableRow>
@@ -446,7 +475,7 @@ export default function StockTransfersReportPage() {
               <TableBody>
                 {filteredTransfers.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={10} className="text-center py-12 text-muted-foreground text-xs">
+                    <TableCell colSpan={11} className="text-center py-12 text-muted-foreground text-xs">
                       لا توجد أذونات تحويل مطابقة للفترة المحددة.
                     </TableCell>
                   </TableRow>
@@ -490,6 +519,19 @@ export default function StockTransfersReportPage() {
                           <TableCell className="text-center font-mono font-bold text-indigo-700 dark:text-indigo-400">
                             {tr.itemsTotalQty.toLocaleString()}
                           </TableCell>
+                          <TableCell className="text-center font-mono">
+                            {tr.shippingCost > 0 ? (
+                              <div className="flex flex-col items-center">
+                                <span className="font-bold text-xs">{tr.shippingCost.toLocaleString()} ج.م</span>
+                                <span className="text-[10px] text-muted-foreground">
+                                  {tr.shippingTreatment === 'capitalized' ? 'مرسملة' : 'تشغيلي'}
+                                  {tr.carrierName ? ` (${tr.carrierName})` : ''}
+                                </span>
+                              </div>
+                            ) : (
+                              <span className="text-muted-foreground">-</span>
+                            )}
+                          </TableCell>
                           <TableCell className="max-w-xs truncate text-[11px] text-muted-foreground" title={tr.notes}>
                             {tr.notes || "-"}
                           </TableCell>
@@ -522,7 +564,7 @@ export default function StockTransfersReportPage() {
                         {/* Expandable items row */}
                         {isExpanded && tr.items.length > 0 && (
                           <TableRow className="bg-muted/20 border-b">
-                            <TableCell colSpan={10} className="p-3 pr-12">
+                            <TableCell colSpan={11} className="p-3 pr-12">
                               <div className="bg-background border rounded-lg p-3 shadow-xs">
                                 <div className="text-[11px] font-bold text-muted-foreground mb-2">
                                   أصناف إذن التحويل ({tr.receiptNumber}):

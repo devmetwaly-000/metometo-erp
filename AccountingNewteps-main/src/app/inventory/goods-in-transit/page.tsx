@@ -44,6 +44,9 @@ interface StockTransferRecord {
     fromSourceId: string;
     toSourceId: string;
     items: any[];
+    shippingCost?: number;
+    carrierName?: string;
+    trackingNumber?: string;
 }
 
 interface StockInRecord {
@@ -60,12 +63,15 @@ interface StockInRecord {
 }
 
 export default function GoodsInTransitPage() {
-  const { purchaseInvoices, stockInRecords, stockTransferRecords, warehouses, inventoryZones, loading, dbAction, getNextId } = useData();
+  const { purchaseInvoices, stockInRecords, stockTransferRecords, warehouses, inventoryZones, inventorySections, settings, loading, dbAction, getNextId, processSyncQueue } = useData();
   const { user } = useAuth();
   const router = useRouter();
   const { toast } = useToast();
   const [warehouseFilter, setWarehouseFilter] = useState('all');
   const [isReceiving, setIsReceiving] = useState<string | null>(null);
+
+  // إعداد workflow من الإعدادات
+  const purchaseWorkflow: string = settings?.main?.financial?.purchaseWorkflow || settings?.main?.inventory?.purchaseWorkflow || 'direct';
 
   const allWarehouses = useMemo(() => [...warehouses, ...inventoryZones], [warehouses, inventoryZones]);
   
@@ -78,31 +84,39 @@ export default function GoodsInTransitPage() {
   const goodsInTransit = useMemo(() => {
     if (loading) return [];
 
-    const receivedPurchaseInvoiceIds = new Set(
+    // فاتورة تُعتبر "مستلمة" فقط إذا كان لها stockInRecord بحالة مكتملة (وليس pending_putaway أو in_transit)
+    // أي إذن غير ملغى مرتبط بالفاتورة يمنع إنشاء صف فاتورة مكرر؛ الأذونات المعلقة تظهر بالأسفل.
+    const purchaseInvoicesWithStockIn = new Set(
         stockInRecords
-            .filter((rec: StockInRecord) => rec.purchaseInvoiceId)
+            .filter((rec: StockInRecord) => rec.purchaseInvoiceId && (rec.status || '').toLowerCase() !== 'cancelled')
             .map((rec: StockInRecord) => rec.purchaseInvoiceId)
     );
     const receivedTransferIds = new Set(
         stockInRecords
-            .filter((rec: StockInRecord) => rec.stockTransferId)
+            .filter((rec: StockInRecord) => {
+                if (!rec.stockTransferId) return false;
+                const st = (rec.status || '').toLowerCase();
+                return st !== 'in_transit' && st !== 'pending_putaway' && st !== 'pending' && st !== 'draft';
+            })
             .map((rec: StockInRecord) => rec.stockTransferId)
     );
 
+    // الاستلام المباشر ينشئ إذن المخزون تلقائياً عادةً. أظهر أي فاتورة بلا إذن
+    // هنا كحالة استرداد حتى لا تضيع المشتريات التي فشل إنشاء إذنها.
     const pendingPurchases = purchaseInvoices
-        .filter((invoice: PurchaseInvoice) => !receivedPurchaseInvoiceIds.has(invoice.id))
-        .map((invoice: PurchaseInvoice) => ({
-            id: invoice.id,
-            type: 'purchase',
-            number: invoice.invoiceNumber,
-            date: invoice.date,
-            source: invoice.supplierName,
-            warehouseId: invoice.warehouseId,
-            warehouseName: allWarehouses.find((w: any) => w.id === invoice.warehouseId)?.name || 'غير محدد',
-            itemCount: invoice.items.length,
-            actionId: invoice.id,
-            actionType: 'purchaseInvoiceId'
-        }));
+            .filter((invoice: PurchaseInvoice) => !purchaseInvoicesWithStockIn.has(invoice.id))
+            .map((invoice: PurchaseInvoice) => ({
+                id: invoice.id,
+                type: 'purchase',
+                number: invoice.invoiceNumber,
+                date: invoice.date,
+                source: invoice.supplierName,
+                warehouseId: invoice.warehouseId,
+                warehouseName: allWarehouses.find((w: any) => w.id === invoice.warehouseId)?.name || 'غير محدد',
+                itemCount: invoice.items?.length || 0,
+                actionId: invoice.id,
+                actionType: 'purchaseInvoiceId'
+            }));
         
     const pendingTransfers = stockTransferRecords
         .filter((transfer: StockTransferRecord) => !receivedTransferIds.has(transfer.id))
@@ -111,7 +125,7 @@ export default function GoodsInTransitPage() {
             type: 'transfer',
             number: transfer.receiptNumber,
             date: transfer.date,
-            source: `تحويل من ${allWarehouses.find((w: any) => w.id === transfer.fromSourceId)?.name || 'غير معروف'}`,
+            source: `تحويل من ${allWarehouses.find((w: any) => w.id === transfer.fromSourceId)?.name || 'غير معروف'}${transfer.carrierName ? ` (الناقل: ${transfer.carrierName})` : ''}${transfer.trackingNumber ? ` [بوليصة: ${transfer.trackingNumber}]` : ''}`,
             warehouseId: transfer.toSourceId,
             warehouseName: allWarehouses.find((w: any) => w.id === transfer.toSourceId)?.name || 'غير محدد',
             itemCount: transfer.items.length,
@@ -120,7 +134,7 @@ export default function GoodsInTransitPage() {
         }));
         
     const pendingRequisitions = stockInRecords
-        .filter((rec: StockInRecord) => rec.status === 'pending_putaway' || rec.status === 'in_transit')
+        .filter((rec: StockInRecord) => ['pending_putaway', 'in_transit', 'pending', 'draft'].includes((rec.status || '').toLowerCase()))
         .map((rec: StockInRecord) => ({
              id: rec.id,
              type: 'requisition',
@@ -150,10 +164,55 @@ export default function GoodsInTransitPage() {
 
  const handleReceive = async (item: any) => {
     const warehouse = allWarehouses.find((w:any) => w.id === item.warehouseId);
-    const isMainWarehouse = warehouse?.isMain;
+    const isMainWarehouse = Boolean(
+        warehouse?.isMain ||
+        inventorySections.some((section: any) => (section.mainWarehouseId || section.MainWarehouseId) === item.warehouseId) ||
+        inventoryZones.some((zone: any) => zone.id === item.warehouseId)
+    );
     
     // If it's a main warehouse, redirect to the put-away screen
     if (isMainWarehouse) {
+        if (item.actionType === 'purchaseInvoiceId') {
+            const invoice = purchaseInvoices.find((inv: any) => inv.id === item.actionId);
+            if (!invoice) {
+                toast({ variant: 'destructive', title: 'خطأ', description: 'لم يتم العثور على فاتورة الشراء الأصلية.' });
+                return;
+            }
+            setIsReceiving(item.id);
+            try {
+                let stockInRecord = stockInRecords.find((rec: StockInRecord) =>
+                    rec.purchaseInvoiceId === invoice.id && (rec.status || '').toLowerCase() !== 'cancelled'
+                );
+                if (!stockInRecord) {
+                    const newStockInId = await dbAction('stockInRecords', 'add', {
+                        warehouseId: invoice.warehouseId,
+                        date: invoice.date || new Date().toISOString(),
+                        items: (invoice.items || []).map((i: any) => ({
+                            ...i,
+                            itemId: i.itemId || i.id,
+                            name: i.name,
+                        })),
+                        reason: 'purchase',
+                        notes: `إذن استلام مستدرك من فاتورة شراء رقم ${invoice.invoiceNumber}`,
+                        receiptNumber: `إذ-د-${await getNextId('stockIn')}`,
+                        purchaseInvoiceId: invoice.id,
+                        batchNumber: invoice.batchNumber,
+                        createdById: user?.id,
+                        createdByName: user?.name,
+                        status: 'pending_putaway',
+                    });
+                    stockInRecord = { id: String(newStockInId || '') } as StockInRecord;
+                }
+                if (!stockInRecord.id) throw new Error('تعذر إنشاء إذن المخزون المرتبط بفاتورة الشراء.');
+                router.push(`/inventory/stock-in?stockInId=${encodeURIComponent(stockInRecord.id)}`);
+            } catch (error) {
+                console.error('Failed to recover missing purchase stock-in record:', error);
+                toast({ variant: 'destructive', title: 'خطأ', description: 'تعذر إنشاء إذن استلام البضاعة لهذه الفاتورة.' });
+            } finally {
+                setIsReceiving(null);
+            }
+            return;
+        }
         const queryParam = item.actionType === 'stockInId' ? 'stockInId' : item.actionType;
         const queryValue = item.actionId;
         router.push(`/inventory/stock-in?${queryParam}=${queryValue}`);
@@ -188,7 +247,7 @@ export default function GoodsInTransitPage() {
             return;
         }
 
-        // For Purchases and Transfers, we create a new stockInRecord linked to the original document.
+        // For Purchases and Transfers, check if there's already a pending_putaway record first
         let itemsToReceive: any[] = [];
         let sourceDescription = '';
         let originalDocument: any;
@@ -211,27 +270,51 @@ export default function GoodsInTransitPage() {
           throw new Error('لم يتم العثور على الأصناف الأصلية.');
         }
 
-        const newStockInRecord = {
-          warehouseId: item.warehouseId,
-          date: new Date().toISOString(),
-          items: itemsToReceive.map((i:any) => ({ ...i, itemId: i.itemId || i.id, name: i.name })),
-          reason: item.type,
-          notes: sourceDescription,
-          receiptNumber: `إذ-د-${await getNextId('stockIn')}`,
-          createdById: user?.id,
-          createdByName: user?.name,
-          [item.actionType]: item.actionId,
-          status: 'completed', // Mark as completed for branches
-        };
-
-        await dbAction('stockInRecords', 'add', newStockInRecord);
-        
-        toast({
-          title: "تم الاستلام بنجاح",
-          description: `تم إنشاء إذن دخول مخزني للفرع ${item.warehouseName}.`,
+        // هل يوجد سجل pending_putaway لهذه الفاتورة/التحويل؟ نُحدِّثه بدل إنشاء جديد
+        const existingPendingRecord = stockInRecords.find((rec: StockInRecord) => {
+            const st = (rec.status || '').toLowerCase();
+            if (item.actionType === 'purchaseInvoiceId') return rec.purchaseInvoiceId === item.actionId && (st === 'pending_putaway' || st === 'in_transit');
+            if (item.actionType === 'stockTransferId') return rec.stockTransferId === item.actionId && (st === 'pending_putaway' || st === 'in_transit');
+            return false;
         });
 
-        // No need to redirect, component will re-render and remove the item from the list
+        if (existingPendingRecord) {
+            // حدِّث السجل الموجود إلى completed بدل إنشاء جديد
+            await dbAction('stockInRecords', 'update', {
+                id: existingPendingRecord.id,
+                data: {
+                    status: 'completed',
+                    receivedById: user?.id,
+                    receivedByName: user?.name,
+                    receivedDate: new Date().toISOString()
+                }
+            });
+            toast({
+                title: "تم الاستلام بنجاح",
+                description: `تم تأكيد استلام البضاعة في ${item.warehouseName}.`,
+            });
+        } else {
+            // لا يوجد سجل موجود — أنشئ جديداً
+            const newStockInRecord = {
+              warehouseId: item.warehouseId,
+              date: new Date().toISOString(),
+              items: itemsToReceive.map((i:any) => ({ ...i, itemId: i.itemId || i.id, name: i.name })),
+              reason: item.type,
+              notes: sourceDescription,
+              receiptNumber: `إذ-د-${await getNextId('stockIn')}`,
+              createdById: user?.id,
+              createdByName: user?.name,
+              [item.actionType]: item.actionId,
+              status: 'completed',
+            };
+            await dbAction('stockInRecords', 'add', newStockInRecord);
+            toast({
+              title: "تم الاستلام بنجاح",
+              description: `تم إنشاء إذن دخول مخزني للفرع ${item.warehouseName}.`,
+            });
+        }
+        // sync فوري لتحديث أرصدة المخزون
+        setTimeout(() => processSyncQueue?.(), 800);
     } catch (error) {
         console.error("Direct receive failed:", error);
         toast({ variant: 'destructive', title: 'خطأ', description: 'فشل إتمام عملية الاستلام.' });
@@ -273,11 +356,18 @@ export default function GoodsInTransitPage() {
             </CardContent>
         </Card>
         <Card>
-          <CardHeader>
-            <CardTitle>الشحنات المعلقة للاستلام</CardTitle>
-            <CardDescription>
-              قائمة بالبضاعة التي تنتظر الاستلام في المخازن. اضغط على "استلام" لإنشاء إذن دخول مخزني.
-            </CardDescription>
+          <CardHeader className="flex flex-row items-center justify-between">
+            <div>
+                <CardTitle>الشحنات المعلقة للاستلام</CardTitle>
+                <CardDescription>
+                  {purchaseWorkflow === 'direct'
+                    ? 'وضع الاستلام المباشر: تُسجل الفواتير بالمخزون تلقائياً. تظهر هنا أي فاتورة لم يُنشأ لها إذن مخزون لاستكمال الاستلام.'
+                    : 'وضع البضاعة بالطريق: الفواتير تنتظر الاستلام اليدوي قبل دخول المخزن.'}
+                </CardDescription>
+            </div>
+            <Badge variant="outline" className={purchaseWorkflow === 'direct' ? 'border-emerald-500 text-emerald-700 bg-emerald-50' : 'border-amber-500 text-amber-700 bg-amber-50'}>
+                {purchaseWorkflow === 'direct' ? '⚡ استلام مباشر' : '🚛 بضاعة بالطريق'}
+            </Badge>
           </CardHeader>
           <CardContent>
             {loading ? (

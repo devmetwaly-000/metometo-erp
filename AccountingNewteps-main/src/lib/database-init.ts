@@ -896,6 +896,7 @@ export async function createAndInitializeDatabase(options: DbInitOptions): Promi
                 [Tax] DECIMAL(18,4) NOT NULL DEFAULT ((0)),
                 [Total] DECIMAL(18,4) NOT NULL DEFAULT ((0)),
                 [PaidAmount] DECIMAL(18,4) NOT NULL DEFAULT ((0)),
+                [InitialPaidAmount] DECIMAL(18,4) NULL,
                 [PaidFromAccountId] NVARCHAR(64) NULL,
                 [IsTaxIncluded] BIT NOT NULL DEFAULT ((0)),
                 [Notes] NVARCHAR(MAX) NULL,
@@ -962,13 +963,16 @@ export async function createAndInitializeDatabase(options: DbInitOptions): Promi
                 [OriginalInvoiceId] NVARCHAR(64) NULL,
                 [Date] DATETIME2 NOT NULL,
                 [SupplierId] NVARCHAR(64) NULL,
+                [SupplierName] NVARCHAR(255) NULL,
                 [WarehouseId] NVARCHAR(64) NULL,
                 [CreatedById] NVARCHAR(64) NULL,
                 [CreatedByName] NVARCHAR(255) NULL,
                 [Subtotal] DECIMAL(18,4) NOT NULL DEFAULT ((0)),
                 [Discount] DECIMAL(18,4) NOT NULL DEFAULT ((0)),
+                [Tax] DECIMAL(18,4) NOT NULL DEFAULT ((0)),
                 [Total] DECIMAL(18,4) NOT NULL DEFAULT ((0)),
                 [PaidAmount] DECIMAL(18,4) NOT NULL DEFAULT ((0)),
+                [InitialPaidAmount] DECIMAL(18,4) NULL,
                 [PaidToAccountId] NVARCHAR(64) NULL,
                 [Notes] NVARCHAR(MAX) NULL,
                 [ItemsJson] NVARCHAR(MAX) NULL,
@@ -1145,10 +1149,13 @@ export async function createAndInitializeDatabase(options: DbInitOptions): Promi
                 [OriginalInvoiceId] NVARCHAR(64) NULL,
                 [Date] DATETIME2 NOT NULL,
                 [CustomerId] NVARCHAR(64) NULL,
+                [CustomerName] NVARCHAR(255) NULL,
                 [WarehouseId] NVARCHAR(64) NULL,
                 [CreatedById] NVARCHAR(64) NULL,
                 [CreatedByName] NVARCHAR(255) NULL,
                 [Subtotal] DECIMAL(18,4) NOT NULL DEFAULT ((0)),
+                [Discount] DECIMAL(18,4) NOT NULL DEFAULT ((0)),
+                [Tax] DECIMAL(18,4) NOT NULL DEFAULT ((0)),
                 [Total] DECIMAL(18,4) NOT NULL DEFAULT ((0)),
                 [PaidAmount] DECIMAL(18,4) NOT NULL DEFAULT ((0)),
                 [PaidFromAccountId] NVARCHAR(64) NULL,
@@ -1303,6 +1310,8 @@ export async function createAndInitializeDatabase(options: DbInitOptions): Promi
                 [CreatedByName] NVARCHAR(255) NULL,
                 [Notes] NVARCHAR(MAX) NULL,
                 [ItemsJson] NVARCHAR(MAX) NULL,
+                [RequisitionId] NVARCHAR(64) NULL,
+                [ToWarehouseId] NVARCHAR(64) NULL,
                 [CreatedAt] DATETIME2 NOT NULL DEFAULT (sysutcdatetime()),
                 [BranchCode] NVARCHAR(50) NULL,
                 [BranchName] NVARCHAR(255) NULL,
@@ -1346,6 +1355,13 @@ export async function createAndInitializeDatabase(options: DbInitOptions): Promi
                 [Status] NVARCHAR(50) NOT NULL DEFAULT (N'pending'),
                 [Notes] NVARCHAR(MAX) NULL,
                 [ItemsJson] NVARCHAR(MAX) NULL,
+                [ShippingCost] DECIMAL(18,4) NOT NULL DEFAULT ((0)),
+                [ShippingPaidBy] NVARCHAR(50) NULL,
+                [ShippingPaidFromAccountId] NVARCHAR(64) NULL,
+                [ShippingTreatment] NVARCHAR(50) NULL DEFAULT ('expense'),
+                [CarrierName] NVARCHAR(255) NULL,
+                [TrackingNumber] NVARCHAR(100) NULL,
+                [ExpenseId] NVARCHAR(64) NULL,
                 [CreatedAt] DATETIME2 NOT NULL DEFAULT (sysutcdatetime()),
                 [BranchCode] NVARCHAR(50) NULL,
                 [BranchName] NVARCHAR(255) NULL,
@@ -1617,10 +1633,26 @@ export async function createAndInitializeDatabase(options: DbInitOptions): Promi
                 [TotalCost] DECIMAL(18,4) NOT NULL DEFAULT ((0)),
                 [TotalProductionCost] DECIMAL(18,4) NOT NULL DEFAULT ((0)),
                 [UnitCost] DECIMAL(18,4) NOT NULL DEFAULT ((0)),
+                [ProfitMarginPercent] DECIMAL(9,4) NOT NULL DEFAULT ((25)),
+                [EstimatedSalePrice] DECIMAL(18,4) NOT NULL DEFAULT ((0)),
+                [SalePrice] DECIMAL(18,4) NOT NULL DEFAULT ((0)),
+                [WasteTreatment] NVARCHAR(30) NULL,
+                [WastedMaterialCost] DECIMAL(18,4) NOT NULL DEFAULT ((0)),
+                [DamagedOutputCost] DECIMAL(18,4) NOT NULL DEFAULT ((0)),
+                [BaseFinishedGoodsCost] DECIMAL(18,4) NOT NULL DEFAULT ((0)),
+                [AllocatedWasteCost] DECIMAL(18,4) NOT NULL DEFAULT ((0)),
+                [AllocatedWasteCostPerUnit] DECIMAL(18,4) NOT NULL DEFAULT ((0)),
+                [ItemCostUpdated] BIT NOT NULL DEFAULT ((0)),
+                [ItemSalePriceUpdated] BIT NOT NULL DEFAULT ((0)),
+                [ExpectedScrapPercent] DECIMAL(9,4) NOT NULL DEFAULT ((0)),
+                [NormalScrapQuantity] DECIMAL(18,4) NOT NULL DEFAULT ((0)),
+                [AbnormalScrapQuantity] DECIMAL(18,4) NOT NULL DEFAULT ((0)),
+                [NormalScrapCost] DECIMAL(18,4) NOT NULL DEFAULT ((0)),
                 [UnitProductionCost] DECIMAL(18,4) NOT NULL DEFAULT ((0)),
                 [Status] NVARCHAR(50) NOT NULL DEFAULT ('completed'),
                 [BomSnapshotJson] NVARCHAR(MAX) NULL,
                 [BOMDetailsJson] NVARCHAR(MAX) NULL,
+                [BatchNumber] NVARCHAR(100) NULL,
                 [Notes] NVARCHAR(MAX) NULL,
                 [CreatedBy] NVARCHAR(255) NULL,
                 [CreatedById] NVARCHAR(64) NULL,
@@ -1636,21 +1668,59 @@ export async function createAndInitializeDatabase(options: DbInitOptions): Promi
             );`
         ];
 
+        const tableCreationErrors: string[] = [];
         for (const ddl of ddlStatements) {
             try {
                 await targetPool.request().query(ddl);
             } catch (tableErr: any) {
                 console.error('Error creating table in init:', tableErr.message);
+                tableCreationErrors.push(tableErr.message);
             }
+        }
+        if (tableCreationErrors.length) {
+            throw new Error(`تعذر إنشاء أو التحقق من ${tableCreationErrors.length} جدولاً: ${tableCreationErrors.slice(0, 3).join(' | ')}`);
         }
 
         // 3b. Schema Upgrades & Column Migrations for Existing Databases (Local & Central)
         const schemaUpgrades = [
+            // Preserve the amount settled at invoice creation separately from later receipts.
+            `IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('dbo.SalesInvoices') AND name = 'InitialPaidAmount')
+                ALTER TABLE dbo.SalesInvoices ADD [InitialPaidAmount] DECIMAL(18,4) NULL;`,
+            `IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('dbo.PurchaseInvoices') AND name = 'InitialPaidAmount')
+                ALTER TABLE dbo.PurchaseInvoices ADD [InitialPaidAmount] DECIMAL(18,4) NULL;`,
+            `UPDATE inv SET InitialPaidAmount = CASE WHEN inv.PaidAmount >= COALESCE(pay.TotalPaid, 0) THEN inv.PaidAmount - COALESCE(pay.TotalPaid, 0) ELSE inv.PaidAmount END
+                FROM dbo.SalesInvoices inv OUTER APPLY (SELECT SUM(Amount) AS TotalPaid FROM dbo.CustomerPayments WHERE InvoiceId = inv.Id) pay
+                WHERE inv.InitialPaidAmount IS NULL;`,
+            `UPDATE inv SET InitialPaidAmount = CASE WHEN inv.PaidAmount >= COALESCE(pay.TotalPaid, 0) THEN inv.PaidAmount - COALESCE(pay.TotalPaid, 0) ELSE inv.PaidAmount END
+                FROM dbo.PurchaseInvoices inv OUTER APPLY (SELECT SUM(Amount) AS TotalPaid FROM dbo.SupplierPayments WHERE InvoiceId = inv.Id) pay
+                WHERE inv.InitialPaidAmount IS NULL;`,
+            // Return documents must retain the allocated invoice discount and VAT.
+            `IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('dbo.SalesReturns') AND name = 'CustomerName')
+                ALTER TABLE dbo.SalesReturns ADD [CustomerName] NVARCHAR(255) NULL;`,
+            `IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('dbo.SalesReturns') AND name = 'Discount')
+                ALTER TABLE dbo.SalesReturns ADD [Discount] DECIMAL(18,4) NOT NULL CONSTRAINT DF_SalesReturns_Discount DEFAULT ((0));`,
+            `IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('dbo.SalesReturns') AND name = 'Tax')
+                ALTER TABLE dbo.SalesReturns ADD [Tax] DECIMAL(18,4) NOT NULL CONSTRAINT DF_SalesReturns_Tax DEFAULT ((0));`,
+            `IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('dbo.PurchaseReturns') AND name = 'SupplierName')
+                ALTER TABLE dbo.PurchaseReturns ADD [SupplierName] NVARCHAR(255) NULL;`,
+            `IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('dbo.PurchaseReturns') AND name = 'Tax')
+                ALTER TABLE dbo.PurchaseReturns ADD [Tax] DECIMAL(18,4) NOT NULL CONSTRAINT DF_PurchaseReturns_Tax DEFAULT ((0));`,
+
             // StockInRecords: Logistics Container Put-Away Allocations & Transfers
             `IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('dbo.StockInRecords') AND name = 'AllocationsJson')
                 ALTER TABLE dbo.StockInRecords ADD [AllocationsJson] NVARCHAR(MAX) NULL;`,
             `IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('dbo.StockInRecords') AND name = 'StockTransferId')
                 ALTER TABLE dbo.StockInRecords ADD [StockTransferId] NVARCHAR(64) NULL;`,
+            `IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('dbo.StockInRecords') AND name = 'ReceivedById')
+                ALTER TABLE dbo.StockInRecords ADD [ReceivedById] NVARCHAR(64) NULL;`,
+            `IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('dbo.StockInRecords') AND name = 'ReceivedByName')
+                ALTER TABLE dbo.StockInRecords ADD [ReceivedByName] NVARCHAR(255) NULL;`,
+            `IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('dbo.StockInRecords') AND name = 'ReceivedDate')
+                ALTER TABLE dbo.StockInRecords ADD [ReceivedDate] DATETIME2 NULL;`,
+            `IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('dbo.StockInRecords') AND name = 'CreatedById')
+                ALTER TABLE dbo.StockInRecords ADD [CreatedById] NVARCHAR(64) NULL;`,
+            `IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('dbo.StockInRecords') AND name = 'CreatedByName')
+                ALTER TABLE dbo.StockInRecords ADD [CreatedByName] NVARCHAR(255) NULL;`,
 
             // SalesInvoices: E-Invoicing (ETA / ZATCA) Columns
             `IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('dbo.SalesInvoices') AND name = 'EtaUuid')
@@ -1751,6 +1821,10 @@ export async function createAndInitializeDatabase(options: DbInitOptions): Promi
                 ALTER TABLE dbo.Requisitions ADD [DetailsJson] NVARCHAR(MAX) NULL;`,
             `IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('dbo.Warehouses') AND name = 'BranchId')
                 ALTER TABLE dbo.Warehouses ADD [BranchId] NVARCHAR(64) NULL;`,
+            `IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('dbo.StockOutRecords') AND name = 'RequisitionId')
+                ALTER TABLE dbo.StockOutRecords ADD [RequisitionId] NVARCHAR(64) NULL;`,
+            `IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('dbo.StockOutRecords') AND name = 'ToWarehouseId')
+                ALTER TABLE dbo.StockOutRecords ADD [ToWarehouseId] NVARCHAR(64) NULL;`,
 
             // AuditTrailLogs, GeneralLedgerEntries, ManufacturingOrders sync & compatibility columns (checked individually)
             `IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('dbo.AuditTrailLogs') AND name = 'BranchCode')
@@ -1791,18 +1865,67 @@ export async function createAndInitializeDatabase(options: DbInitOptions): Promi
                 ALTER TABLE dbo.ManufacturingOrders ADD [UpdatedAt] DATETIME2 NOT NULL DEFAULT (sysutcdatetime());`,
             `IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('dbo.ManufacturingOrders') AND name = 'CreatedAt')
                 ALTER TABLE dbo.ManufacturingOrders ADD [CreatedAt] DATETIME2 NOT NULL DEFAULT (sysutcdatetime());`,
+            `IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('dbo.ManufacturingOrders') AND name = 'ProfitMarginPercent')
+                ALTER TABLE dbo.ManufacturingOrders ADD [ProfitMarginPercent] DECIMAL(9,4) NOT NULL DEFAULT ((25));`,
+            `IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('dbo.ManufacturingOrders') AND name = 'EstimatedSalePrice')
+                ALTER TABLE dbo.ManufacturingOrders ADD [EstimatedSalePrice] DECIMAL(18,4) NOT NULL DEFAULT ((0));`,
+            `IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('dbo.ManufacturingOrders') AND name = 'SalePrice')
+                ALTER TABLE dbo.ManufacturingOrders ADD [SalePrice] DECIMAL(18,4) NOT NULL DEFAULT ((0));`,
+            `IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('dbo.ManufacturingOrders') AND name = 'WasteTreatment')
+                ALTER TABLE dbo.ManufacturingOrders ADD [WasteTreatment] NVARCHAR(30) NULL;`,
+            `IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('dbo.ManufacturingOrders') AND name = 'WastedMaterialCost')
+                ALTER TABLE dbo.ManufacturingOrders ADD [WastedMaterialCost] DECIMAL(18,4) NOT NULL DEFAULT ((0));`,
+            `IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('dbo.ManufacturingOrders') AND name = 'DamagedOutputCost')
+                ALTER TABLE dbo.ManufacturingOrders ADD [DamagedOutputCost] DECIMAL(18,4) NOT NULL DEFAULT ((0));`,
+            `IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('dbo.ManufacturingOrders') AND name = 'BaseFinishedGoodsCost')
+                ALTER TABLE dbo.ManufacturingOrders ADD [BaseFinishedGoodsCost] DECIMAL(18,4) NOT NULL DEFAULT ((0));`,
+            `IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('dbo.ManufacturingOrders') AND name = 'AllocatedWasteCost')
+                ALTER TABLE dbo.ManufacturingOrders ADD [AllocatedWasteCost] DECIMAL(18,4) NOT NULL DEFAULT ((0));`,
+            `IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('dbo.ManufacturingOrders') AND name = 'AllocatedWasteCostPerUnit')
+                ALTER TABLE dbo.ManufacturingOrders ADD [AllocatedWasteCostPerUnit] DECIMAL(18,4) NOT NULL DEFAULT ((0));`,
+            `IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('dbo.ManufacturingOrders') AND name = 'ItemCostUpdated')
+                ALTER TABLE dbo.ManufacturingOrders ADD [ItemCostUpdated] BIT NOT NULL DEFAULT ((0));`,
+            `IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('dbo.ManufacturingOrders') AND name = 'ItemSalePriceUpdated')
+                ALTER TABLE dbo.ManufacturingOrders ADD [ItemSalePriceUpdated] BIT NOT NULL DEFAULT ((0));`,
+            `IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('dbo.ManufacturingOrders') AND name = 'ExpectedScrapPercent')
+                ALTER TABLE dbo.ManufacturingOrders ADD [ExpectedScrapPercent] DECIMAL(9,4) NOT NULL DEFAULT ((0));`,
+            `IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('dbo.ManufacturingOrders') AND name = 'NormalScrapQuantity')
+                ALTER TABLE dbo.ManufacturingOrders ADD [NormalScrapQuantity] DECIMAL(18,4) NOT NULL DEFAULT ((0));`,
+            `IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('dbo.ManufacturingOrders') AND name = 'AbnormalScrapQuantity')
+                ALTER TABLE dbo.ManufacturingOrders ADD [AbnormalScrapQuantity] DECIMAL(18,4) NOT NULL DEFAULT ((0));`,
+            `IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('dbo.ManufacturingOrders') AND name = 'NormalScrapCost')
+                ALTER TABLE dbo.ManufacturingOrders ADD [NormalScrapCost] DECIMAL(18,4) NOT NULL DEFAULT ((0));`,
             `IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('dbo.ManufacturingOrders') AND name = 'FinishedItemId')
                 ALTER TABLE dbo.ManufacturingOrders ADD [OrderDate] DATETIME2 NULL DEFAULT (sysutcdatetime()), [FinishedItemId] NVARCHAR(64) NULL, [FinishedItemName] NVARCHAR(255) NULL, [TargetQuantity] DECIMAL(18,4) NULL DEFAULT ((1)), [ProducedQuantity] DECIMAL(18,4) NULL DEFAULT ((0)), [SourceWarehouseId] NVARCHAR(64) NULL, [TargetWarehouseId] NVARCHAR(64) NULL, [TotalRawMaterialCost] DECIMAL(18,4) NOT NULL DEFAULT ((0)), [TotalProductionCost] DECIMAL(18,4) NOT NULL DEFAULT ((0)), [UnitProductionCost] DECIMAL(18,4) NOT NULL DEFAULT ((0)), [BOMDetailsJson] NVARCHAR(MAX) NULL, [CreatedBy] NVARCHAR(255) NULL;`,
             `IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('dbo.ManufacturingOrders') AND name = 'ProductId')
-                ALTER TABLE dbo.ManufacturingOrders ADD [Date] DATETIME2 NULL DEFAULT (sysutcdatetime()), [ProductId] NVARCHAR(64) NULL, [ProductName] NVARCHAR(255) NULL, [QuantityToProduce] DECIMAL(18,4) NULL DEFAULT ((1)), [RawMaterialsWarehouseId] NVARCHAR(64) NULL, [FinishedGoodsWarehouseId] NVARCHAR(64) NULL, [RawMaterialCost] DECIMAL(18,4) NOT NULL DEFAULT ((0)), [TotalCost] DECIMAL(18,4) NOT NULL DEFAULT ((0)), [UnitCost] DECIMAL(18,4) NOT NULL DEFAULT ((0)), [BomSnapshotJson] NVARCHAR(MAX) NULL, [CreatedById] NVARCHAR(64) NULL, [CreatedByName] NVARCHAR(255) NULL;`
+                ALTER TABLE dbo.ManufacturingOrders ADD [Date] DATETIME2 NULL DEFAULT (sysutcdatetime()), [ProductId] NVARCHAR(64) NULL, [ProductName] NVARCHAR(255) NULL, [QuantityToProduce] DECIMAL(18,4) NULL DEFAULT ((1)), [RawMaterialsWarehouseId] NVARCHAR(64) NULL, [FinishedGoodsWarehouseId] NVARCHAR(64) NULL, [RawMaterialCost] DECIMAL(18,4) NOT NULL DEFAULT ((0)), [TotalCost] DECIMAL(18,4) NOT NULL DEFAULT ((0)), [UnitCost] DECIMAL(18,4) NOT NULL DEFAULT ((0)), [BomSnapshotJson] NVARCHAR(MAX) NULL, [CreatedById] NVARCHAR(64) NULL, [CreatedByName] NVARCHAR(255) NULL;`,
+            `IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('dbo.StockTransferRecords') AND name = 'ShippingCost')
+                ALTER TABLE dbo.StockTransferRecords ADD [ShippingCost] DECIMAL(18,4) NOT NULL CONSTRAINT DF_StockTransferRecords_ShippingCost DEFAULT ((0));`,
+            `IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('dbo.StockTransferRecords') AND name = 'ShippingPaidBy')
+                ALTER TABLE dbo.StockTransferRecords ADD [ShippingPaidBy] NVARCHAR(50) NULL;`,
+            `IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('dbo.StockTransferRecords') AND name = 'ShippingPaidFromAccountId')
+                ALTER TABLE dbo.StockTransferRecords ADD [ShippingPaidFromAccountId] NVARCHAR(64) NULL;`,
+            `IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('dbo.StockTransferRecords') AND name = 'ShippingTreatment')
+                ALTER TABLE dbo.StockTransferRecords ADD [ShippingTreatment] NVARCHAR(50) NULL CONSTRAINT DF_StockTransferRecords_ShippingTreatment DEFAULT ('expense');`,
+            `IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('dbo.StockTransferRecords') AND name = 'CarrierName')
+                ALTER TABLE dbo.StockTransferRecords ADD [CarrierName] NVARCHAR(255) NULL;`,
+            `IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('dbo.StockTransferRecords') AND name = 'TrackingNumber')
+                ALTER TABLE dbo.StockTransferRecords ADD [TrackingNumber] NVARCHAR(100) NULL;`,
+            `IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('dbo.StockTransferRecords') AND name = 'ExpenseId')
+                ALTER TABLE dbo.StockTransferRecords ADD [ExpenseId] NVARCHAR(64) NULL;`
         ];
 
+        const schemaUpgradeErrors: string[] = [];
         for (const upg of schemaUpgrades) {
             try {
                 await targetPool.request().query(upg);
             } catch (upgErr: any) {
                 console.warn('Schema upgrade warning:', upgErr.message);
+                schemaUpgradeErrors.push(upgErr.message);
             }
+        }
+        if (schemaUpgradeErrors.length) {
+            throw new Error(`فشلت ${schemaUpgradeErrors.length} من ترقيات قاعدة البيانات: ${schemaUpgradeErrors.slice(0, 5).join(' | ')}`);
         }
 
         // 4. Ensure branch columns & triggers are installed

@@ -181,6 +181,7 @@ export async function GET() {
             tax: Number(s.Tax),
             total: Number(s.Total),
             paidAmount: Number(s.PaidAmount),
+            initialPaidAmount: s.InitialPaidAmount == null ? null : Number(s.InitialPaidAmount),
             paidToAccountId: s.PaidToAccountId,
             status: s.Status,
             isDelivery: !!s.IsDelivery,
@@ -210,6 +211,7 @@ export async function GET() {
             tax: Number(p.Tax),
             total: Number(p.Total),
             paidAmount: Number(p.PaidAmount),
+            initialPaidAmount: p.InitialPaidAmount == null ? null : Number(p.InitialPaidAmount),
             paidFromAccountId: p.PaidFromAccountId,
             isTaxIncluded: !!p.IsTaxIncluded,
             notes: p.Notes,
@@ -227,6 +229,8 @@ export async function GET() {
             createdById: r.CreatedById,
             createdByName: r.CreatedByName,
             subtotal: Number(r.Subtotal),
+            discount: Number(r.Discount || 0),
+            tax: Number(r.Tax || 0),
             total: Number(r.Total),
             paidAmount: Number(r.PaidAmount),
             paidFromAccountId: r.PaidFromAccountId,
@@ -246,6 +250,7 @@ export async function GET() {
             createdByName: r.CreatedByName,
             subtotal: Number(r.Subtotal),
             discount: Number(r.Discount),
+            tax: Number(r.Tax || 0),
             total: Number(r.Total),
             paidAmount: Number(r.PaidAmount),
             paidToAccountId: r.PaidToAccountId,
@@ -606,10 +611,16 @@ export async function GET() {
                     date: si.Date ? new Date(si.Date).toISOString() : null,
                     warehouseId: si.WarehouseId,
                     receiptNumber: si.ReceiptNumber,
+                    batchNumber: si.BatchNumber || null,
                     purchaseInvoiceId: si.PurchaseInvoiceId || si.purchaseInvoiceId || null,
                     stockTransferId: si.StockTransferId || si.stockTransferId || null,
                     reason: si.Reason || si.reason || null,
                     status: (si.Status || si.status || 'completed'),
+                    createdById: si.CreatedById || null,
+                    createdByName: si.CreatedByName || null,
+                    receivedById: si.ReceivedById || null,
+                    receivedByName: si.ReceivedByName || null,
+                    receivedDate: si.ReceivedDate ? new Date(si.ReceivedDate).toISOString() : null,
                     allocations: parseJson(si.AllocationsJson, []),
                     items: parseItemsArray(si)
                 })),
@@ -623,6 +634,10 @@ export async function GET() {
                     saleInvoiceId: so.SaleInvoiceId || so.saleInvoiceId || null,
                     reason: so.Reason || so.reason || null,
                     status: (so.Status || so.status || 'completed'),
+                    requisitionId: so.RequisitionId || so.requisitionId || null,
+                    toWarehouseId: so.ToWarehouseId || so.toWarehouseId || null,
+                    createdByName: so.CreatedByName || so.createdByName || null,
+                    notes: so.Notes || so.notes || '',
                     items: parseItemsArray(so)
                 })),
                 stockTransferRecords: stockTransferRes.recordset.map(st => ({
@@ -634,6 +649,13 @@ export async function GET() {
                     fromSourceId: st.FromWarehouseId,
                     toSourceId: st.ToWarehouseId,
                     receiptNumber: st.ReceiptNumber,
+                    shippingCost: Number(st.ShippingCost ?? st.shippingCost ?? 0),
+                    shippingPaidBy: st.ShippingPaidBy ?? st.shippingPaidBy ?? 'source',
+                    shippingPaidFromAccountId: st.ShippingPaidFromAccountId ?? st.shippingPaidFromAccountId ?? null,
+                    shippingTreatment: st.ShippingTreatment ?? st.shippingTreatment ?? 'expense',
+                    carrierName: st.CarrierName ?? st.carrierName ?? '',
+                    trackingNumber: st.TrackingNumber ?? st.trackingNumber ?? '',
+                    expenseId: st.ExpenseId ?? st.expenseId ?? null,
                     items: parseItemsArray(st)
                 })),
                 stockAdjustmentRecords: stockAdjRes.recordset.map(sa => ({
@@ -714,6 +736,11 @@ export async function GET() {
         });
     } catch (error: any) {
         console.error('Error in /api/db/sync:', error);
-        return NextResponse.json({ success: false, error: error.message }, { status: 500 });
+        return NextResponse.json({
+            success: false,
+            error: error.message,
+            code: error.code,
+            database: process.env.DB_NAME || 'MultiBranchPOS_DB'
+        }, { status: 500 });
     }
 }

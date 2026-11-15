@@ -1,6 +1,128 @@
 import { NextResponse } from 'next/server';
 import { getDbPool, sql } from '@/lib/db';
 import { logAuditEvent } from '@/lib/audit-logger';
+import { calculateInvoiceReturnTotals } from '@/lib/invoice-return-totals';
+
+class ReturnValidationError extends Error {}
+
+function parseReturnItems(value: unknown): any[] {
+    if (Array.isArray(value)) return value;
+    if (typeof value !== 'string') return [];
+    try {
+        const parsed = JSON.parse(value);
+        return Array.isArray(parsed) ? parsed : [];
+    } catch {
+        return [];
+    }
+}
+
+async function validateAndNormalizeReturn(
+    tx: sql.Transaction,
+    payload: any,
+    kind: 'sales' | 'purchase'
+) {
+    const invoiceTable = kind === 'sales' ? 'dbo.SalesInvoices' : 'dbo.PurchaseInvoices';
+    const returnTable = kind === 'sales' ? 'dbo.SalesReturns' : 'dbo.PurchaseReturns';
+    const paymentTable = kind === 'sales' ? 'dbo.CustomerPayments' : 'dbo.SupplierPayments';
+    const invoiceId = String(payload?.originalInvoiceId || '');
+    if (!invoiceId) throw new ReturnValidationError('يجب ربط المرتجع بفاتورته الأصلية.');
+
+    const invoiceResult = await new sql.Request(tx)
+        .input('InvoiceId', sql.NVarChar(64), invoiceId)
+        .query(`SELECT TOP 1 Id, CustomerId, SupplierId, WarehouseId, Subtotal, Discount, Tax, Total, PaidAmount, InitialPaidAmount, IsTaxIncluded, Status, ItemsJson
+            FROM ${invoiceTable} WITH (UPDLOCK, HOLDLOCK) WHERE Id = @InvoiceId`);
+    const invoice = invoiceResult.recordset[0];
+    if (!invoice) throw new ReturnValidationError('تعذر العثور على الفاتورة الأصلية للمرتجع.');
+    if (kind === 'sales' && invoice.Status && !['approved', 'completed'].includes(String(invoice.Status).toLowerCase())) {
+        throw new ReturnValidationError('لا يمكن إرجاع فاتورة بيع غير معتمدة.');
+    }
+
+    const sourceItems = parseReturnItems(invoice.ItemsJson);
+    const requestedItems = Array.isArray(payload.items) ? payload.items : [];
+    if (!sourceItems.length || !requestedItems.length) throw new ReturnValidationError('لا توجد أصناف صالحة في الفاتورة أو المرتجع.');
+
+    const sourceById = new Map<string, { qty: number; value: number; sample: any }>();
+    for (const item of sourceItems) {
+        const itemId = String(item.id ?? item.itemId ?? '');
+        const qty = Number(item.qty) || 0;
+        const unitValue = Number(kind === 'sales' ? item.price : item.cost ?? item.price) || 0;
+        if (!itemId || qty <= 0) continue;
+        const existing = sourceById.get(itemId) || { qty: 0, value: 0, sample: item };
+        existing.qty += qty;
+        existing.value += qty * unitValue;
+        sourceById.set(itemId, existing);
+    }
+
+    const previousResult = await new sql.Request(tx)
+        .input('InvoiceId', sql.NVarChar(64), invoiceId)
+        .query(`SELECT ItemsJson, Total, PaidAmount FROM ${returnTable} WITH (UPDLOCK, HOLDLOCK) WHERE OriginalInvoiceId = @InvoiceId`);
+    const previousQty = new Map<string, number>();
+    let previousReturnTotal = 0;
+    for (const row of previousResult.recordset) {
+        previousReturnTotal += Number(row.Total) || 0;
+        for (const item of parseReturnItems(row.ItemsJson)) {
+            const itemId = String(item.id ?? item.itemId ?? '');
+            previousQty.set(itemId, (previousQty.get(itemId) || 0) + (Number(item.qty) || 0));
+        }
+    }
+
+    const currentQty = new Map<string, number>();
+    const trustedItems = requestedItems.filter((item: any) => Number(item.qty) > 0).map((item: any) => {
+        const itemId = String(item.id ?? item.itemId ?? '');
+        const qty = Number(item.qty);
+        const source = sourceById.get(itemId);
+        if (!source || !Number.isFinite(qty)) throw new ReturnValidationError('كمية المرتجع غير صالحة أو الصنف غير موجود في الفاتورة الأصلية.');
+        currentQty.set(itemId, (currentQty.get(itemId) || 0) + qty);
+        if ((previousQty.get(itemId) || 0) + (currentQty.get(itemId) || 0) > source.qty + 0.0001) {
+            throw new ReturnValidationError(`كمية المرتجع للصنف ${item.name || source.sample.name || ''} تتجاوز الكمية المتبقية من الفاتورة.`);
+        }
+        const unitValue = source.value / source.qty;
+        const lineTotal = qty * unitValue;
+        return { ...item, id: itemId, qty, price: kind === 'sales' ? unitValue : item.price, cost: kind === 'purchase' ? unitValue : item.cost, total: Number(lineTotal.toFixed(4)) };
+    });
+    if (!trustedItems.length) throw new ReturnValidationError('أدخل كمية موجبة لصنف واحد على الأقل.');
+
+    const subtotal = Number(trustedItems.reduce((sum: number, item: any) => sum + item.total, 0).toFixed(4));
+    const normalizedInvoice = {
+        subtotal: Number(invoice.Subtotal) || 0,
+        discount: Number(invoice.Discount) || 0,
+        tax: Number(invoice.Tax) || 0,
+        isTaxIncluded: Boolean(invoice.IsTaxIncluded),
+    };
+    const totals = calculateInvoiceReturnTotals(normalizedInvoice, subtotal);
+    const originalTotal = Number(invoice.Total) || Math.max(0, normalizedInvoice.subtotal - normalizedInvoice.discount + (normalizedInvoice.isTaxIncluded ? 0 : normalizedInvoice.tax));
+    if (previousReturnTotal + totals.total > originalTotal + 0.01) {
+        throw new ReturnValidationError('إجمالي المرتجعات يتجاوز قيمة الفاتورة الأصلية بعد احتساب المرتجعات السابقة.');
+    }
+
+    const paymentResult = await new sql.Request(tx)
+        .input('InvoiceId', sql.NVarChar(64), invoiceId)
+        .query(`SELECT COALESCE(SUM(Amount), 0) AS LinkedPayments FROM ${paymentTable} WHERE InvoiceId = @InvoiceId`);
+    const linkedPayments = Number(paymentResult.recordset[0]?.LinkedPayments) || 0;
+    const initialPaid = invoice.InitialPaidAmount != null
+        ? Number(invoice.InitialPaidAmount) || 0
+        : Math.max((Number(invoice.PaidAmount) || 0) - linkedPayments, 0);
+    const previouslyReturned = previousReturnTotal;
+    const refundableRemaining = Math.max(0, initialPaid + linkedPayments - previouslyReturned);
+    const paidAmount = Number(payload.paidAmount) || 0;
+    if (!Number.isFinite(paidAmount) || paidAmount < 0 || paidAmount > totals.total + 0.01) {
+        throw new ReturnValidationError('المبلغ النقدي للمرتجع لا يمكن أن يتجاوز إجمالي المرتجع.');
+    }
+    if (paidAmount > refundableRemaining + 0.01) {
+        throw new ReturnValidationError('المبلغ النقدي يتجاوز ما تم تحصيله أو دفعه فعليًا بعد احتساب المرتجعات السابقة.');
+    }
+
+    payload.items = trustedItems;
+    payload.subtotal = subtotal;
+    payload.discount = totals.discount;
+    payload.tax = totals.tax;
+    payload.total = totals.total;
+    payload.paidAmount = paidAmount;
+    payload.warehouseId = invoice.WarehouseId;
+    if (kind === 'sales') payload.customerId = invoice.CustomerId || payload.customerId || null;
+    else payload.supplierId = invoice.SupplierId || payload.supplierId || null;
+    return invoice;
+}
 
 async function ensureRepWarehouseAndAccount(pool: sql.ConnectionPool, userId: string, userName: string, currentWarehouseIds?: any) {
     if (!userId) return;
@@ -132,6 +254,60 @@ export async function POST(req: Request) {
         const id = payload?.id || `doc_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
         const jsonString = (val: any) => (val !== undefined && val !== null ? JSON.stringify(val) : null);
         const parseDate = (d: any) => (d ? new Date(d) : new Date());
+        const recalculateInvoicePaymentImpact = async (
+            tx: sql.Transaction,
+            kind: 'customer' | 'supplier',
+            invoiceId: string
+        ) => {
+            const invoiceTable = kind === 'customer' ? 'dbo.SalesInvoices' : 'dbo.PurchaseInvoices';
+            const paymentTable = kind === 'customer' ? 'dbo.CustomerPayments' : 'dbo.SupplierPayments';
+            await new sql.Request(tx)
+                .input('InvoiceId', sql.NVarChar(64), invoiceId)
+                .query(`
+                    UPDATE inv
+                    SET InitialPaidAmount = base.InitialAmount,
+                        PaidAmount = base.InitialAmount + COALESCE(pay.TotalPaid, 0),
+                        UpdatedAt = SYSUTCDATETIME()
+                    FROM ${invoiceTable} inv
+                    OUTER APPLY (SELECT SUM(Amount) AS TotalPaid FROM ${paymentTable} WHERE InvoiceId = inv.Id) pay
+                    CROSS APPLY (SELECT COALESCE(inv.InitialPaidAmount,
+                        CASE WHEN inv.PaidAmount >= COALESCE(pay.TotalPaid, 0)
+                            THEN inv.PaidAmount - COALESCE(pay.TotalPaid, 0)
+                            ELSE inv.PaidAmount END) AS InitialAmount) base
+                    WHERE inv.Id = @InvoiceId;
+                `);
+        };
+
+        if (action === 'recalculatePaymentEffects') {
+            const tx = new sql.Transaction(pool);
+            await tx.begin();
+            try {
+                const results: Record<string, number> = {};
+                for (const kind of ['customer', 'supplier'] as const) {
+                    const invoiceTable = kind === 'customer' ? 'dbo.SalesInvoices' : 'dbo.PurchaseInvoices';
+                    const paymentTable = kind === 'customer' ? 'dbo.CustomerPayments' : 'dbo.SupplierPayments';
+                    const result = await new sql.Request(tx).query(`
+                        UPDATE inv
+                        SET InitialPaidAmount = base.InitialAmount,
+                            PaidAmount = base.InitialAmount + COALESCE(pay.TotalPaid, 0),
+                            UpdatedAt = SYSUTCDATETIME()
+                        FROM ${invoiceTable} inv
+                        OUTER APPLY (SELECT SUM(Amount) AS TotalPaid FROM ${paymentTable} WHERE InvoiceId = inv.Id) pay
+                        CROSS APPLY (SELECT COALESCE(inv.InitialPaidAmount,
+                            CASE WHEN inv.PaidAmount >= COALESCE(pay.TotalPaid, 0)
+                                THEN inv.PaidAmount - COALESCE(pay.TotalPaid, 0)
+                                ELSE inv.PaidAmount END) AS InitialAmount) base;
+                        SELECT @@ROWCOUNT AS UpdatedCount;
+                    `);
+                    results[kind] = Number(result.recordset[0]?.UpdatedCount || 0);
+                }
+                await tx.commit();
+                return NextResponse.json({ success: true, updatedInvoices: results });
+            } catch (error) {
+                await tx.rollback();
+                throw error;
+            }
+        }
 
         const checkIsCentral = async (): Promise<boolean> => {
             try {
@@ -202,6 +378,7 @@ export async function POST(req: Request) {
                         .input('Tax', sql.Decimal(18, 4), Number(payload.tax) || 0)
                         .input('Total', sql.Decimal(18, 4), Number(payload.total) || 0)
                         .input('PaidAmount', sql.Decimal(18, 4), Number(payload.paidAmount) || 0)
+                        .input('InitialPaidAmount', sql.Decimal(18, 4), Number(payload.paidAmount) || 0)
                         .input('PaidToAccountId', sql.NVarChar(64), payload.paidToAccountId || null)
                         .input('Status', sql.NVarChar(50), payload.status || 'approved')
                         .input('IsDelivery', sql.Bit, payload.isDelivery ? 1 : 0)
@@ -213,12 +390,12 @@ export async function POST(req: Request) {
                     await reqTx.query(`
                         INSERT INTO dbo.SalesInvoices (
                             Id, InvoiceNumber, Date, CustomerId, CustomerName, WarehouseId, SalesRepId, CashierId,
-                            Subtotal, Discount, Tax, Total, PaidAmount, PaidToAccountId, Status, IsDelivery,
+                            Subtotal, Discount, Tax, Total, PaidAmount, InitialPaidAmount, PaidToAccountId, Status, IsDelivery,
                             DeliveryReconciled, IsTaxIncluded, Notes, ItemsJson
                         )
                         VALUES (
                             @Id, @InvoiceNumber, @Date, @CustomerId, @CustomerName, @WarehouseId, @SalesRepId, @CashierId,
-                            @Subtotal, @Discount, @Tax, @Total, @PaidAmount, @PaidToAccountId, @Status, @IsDelivery,
+                            @Subtotal, @Discount, @Tax, @Total, @PaidAmount, @InitialPaidAmount, @PaidToAccountId, @Status, @IsDelivery,
                             @DeliveryReconciled, @IsTaxIncluded, @Notes, @ItemsJson
                         );
                     `);
@@ -252,6 +429,11 @@ export async function POST(req: Request) {
 
             // Commercial: Sales Returns & POS Returns
             if (path === 'salesReturns' || path === 'posReturns' || path.startsWith('posReturns')) {
+                await pool.request().query(`
+                    IF COL_LENGTH('dbo.SalesReturns', 'CustomerName') IS NULL ALTER TABLE dbo.SalesReturns ADD CustomerName NVARCHAR(255) NULL;
+                    IF COL_LENGTH('dbo.SalesReturns', 'Discount') IS NULL ALTER TABLE dbo.SalesReturns ADD Discount DECIMAL(18,4) NOT NULL CONSTRAINT DF_SalesReturns_Discount DEFAULT ((0));
+                    IF COL_LENGTH('dbo.SalesReturns', 'Tax') IS NULL ALTER TABLE dbo.SalesReturns ADD Tax DECIMAL(18,4) NOT NULL CONSTRAINT DF_SalesReturns_Tax DEFAULT ((0));
+                `);
                 if (path === 'posReturns' || path.startsWith('posReturns') || payload.cashierId || payload.isPos) {
                     if (await checkIsCentral()) {
                         return NextResponse.json({ 
@@ -263,6 +445,7 @@ export async function POST(req: Request) {
                 const tx = new sql.Transaction(pool);
                 await tx.begin();
                 try {
+                    await validateAndNormalizeReturn(tx, payload, 'sales');
                     const reqTx = new sql.Request(tx);
                     reqTx.input('Id', sql.NVarChar(64), id)
                         .input('ReceiptNumber', sql.NVarChar(100), payload.receiptNumber ? String(payload.receiptNumber) : null)
@@ -273,20 +456,24 @@ export async function POST(req: Request) {
                         .input('CreatedById', sql.NVarChar(64), payload.createdById || null)
                         .input('CreatedByName', sql.NVarChar(255), payload.createdByName || null)
                         .input('Subtotal', sql.Decimal(18, 4), Number(payload.subtotal) || 0)
+                        .input('Discount', sql.Decimal(18, 4), Number(payload.discount) || 0)
+                        .input('Tax', sql.Decimal(18, 4), Number(payload.tax) || 0)
                         .input('Total', sql.Decimal(18, 4), Number(payload.total) || 0)
                         .input('PaidAmount', sql.Decimal(18, 4), Number(payload.paidAmount) || 0)
+                        .input('InitialPaidAmount', sql.Decimal(18, 4), Number(payload.paidAmount) || 0)
                         .input('PaidFromAccountId', sql.NVarChar(64), payload.paidFromAccountId || null)
+                        .input('CustomerName', sql.NVarChar(255), payload.customerName || null)
                         .input('Notes', sql.NVarChar(sql.MAX), payload.notes || null)
                         .input('ItemsJson', sql.NVarChar(sql.MAX), jsonString(payload.items));
 
                     await reqTx.query(`
                         INSERT INTO dbo.SalesReturns (
                             Id, ReceiptNumber, OriginalInvoiceId, Date, CustomerId, WarehouseId,
-                            CreatedById, CreatedByName, Subtotal, Total, PaidAmount, PaidFromAccountId, Notes, ItemsJson
+                            CreatedById, CreatedByName, Subtotal, Discount, Tax, Total, PaidAmount, PaidFromAccountId, CustomerName, Notes, ItemsJson
                         )
                         VALUES (
                             @Id, @ReceiptNumber, @OriginalInvoiceId, @Date, @CustomerId, @WarehouseId,
-                            @CreatedById, @CreatedByName, @Subtotal, @Total, @PaidAmount, @PaidFromAccountId, @Notes, @ItemsJson
+                            @CreatedById, @CreatedByName, @Subtotal, @Discount, @Tax, @Total, @PaidAmount, @PaidFromAccountId, @CustomerName, @Notes, @ItemsJson
                         );
                     `);
 
@@ -338,6 +525,7 @@ export async function POST(req: Request) {
                         .input('Tax', sql.Decimal(18, 4), Number(payload.tax) || 0)
                         .input('Total', sql.Decimal(18, 4), Number(payload.total) || 0)
                         .input('PaidAmount', sql.Decimal(18, 4), Number(payload.paidAmount) || 0)
+                        .input('InitialPaidAmount', sql.Decimal(18, 4), Number(payload.initialPaidAmount ?? payload.paidAmount) || 0)
                         .input('PaidFromAccountId', sql.NVarChar(64), payload.paidFromAccountId || null)
                         .input('IsTaxIncluded', sql.Bit, payload.isTaxIncluded ? 1 : 0)
                         .input('Notes', sql.NVarChar(sql.MAX), payload.notes || null)
@@ -346,12 +534,12 @@ export async function POST(req: Request) {
                     await reqTx.query(`
                         INSERT INTO dbo.PurchaseInvoices (
                             Id, InvoiceNumber, BatchNumber, Date, DueDate, SupplierId, SupplierName, WarehouseId,
-                            CreatedById, CreatedByName, Subtotal, Discount, Tax, Total, PaidAmount, PaidFromAccountId,
+                            CreatedById, CreatedByName, Subtotal, Discount, Tax, Total, PaidAmount, InitialPaidAmount, PaidFromAccountId,
                             IsTaxIncluded, Notes, ItemsJson
                         )
                         VALUES (
                             @Id, @InvoiceNumber, @BatchNumber, @Date, @DueDate, @SupplierId, @SupplierName, @WarehouseId,
-                            @CreatedById, @CreatedByName, @Subtotal, @Discount, @Tax, @Total, @PaidAmount, @PaidFromAccountId,
+                            @CreatedById, @CreatedByName, @Subtotal, @Discount, @Tax, @Total, @PaidAmount, @InitialPaidAmount, @PaidFromAccountId,
                             @IsTaxIncluded, @Notes, @ItemsJson
                         );
                     `);
@@ -388,9 +576,15 @@ export async function POST(req: Request) {
 
             // Commercial: Purchase Returns
             if (path === 'purchaseReturns') {
+                await pool.request().query(`
+                    IF COL_LENGTH('dbo.PurchaseReturns', 'SupplierName') IS NULL ALTER TABLE dbo.PurchaseReturns ADD SupplierName NVARCHAR(255) NULL;
+                    IF COL_LENGTH('dbo.PurchaseReturns', 'Discount') IS NULL ALTER TABLE dbo.PurchaseReturns ADD Discount DECIMAL(18,4) NOT NULL CONSTRAINT DF_PurchaseReturns_Discount DEFAULT ((0));
+                    IF COL_LENGTH('dbo.PurchaseReturns', 'Tax') IS NULL ALTER TABLE dbo.PurchaseReturns ADD Tax DECIMAL(18,4) NOT NULL CONSTRAINT DF_PurchaseReturns_Tax DEFAULT ((0));
+                `);
                 const tx = new sql.Transaction(pool);
                 await tx.begin();
                 try {
+                    await validateAndNormalizeReturn(tx, payload, 'purchase');
                     const reqTx = new sql.Request(tx);
                     reqTx.input('Id', sql.NVarChar(64), id)
                         .input('ReceiptNumber', sql.NVarChar(100), payload.receiptNumber ? String(payload.receiptNumber) : null)
@@ -402,20 +596,22 @@ export async function POST(req: Request) {
                         .input('CreatedByName', sql.NVarChar(255), payload.createdByName || null)
                         .input('Subtotal', sql.Decimal(18, 4), Number(payload.subtotal) || 0)
                         .input('Discount', sql.Decimal(18, 4), Number(payload.discount) || 0)
+                        .input('Tax', sql.Decimal(18, 4), Number(payload.tax) || 0)
                         .input('Total', sql.Decimal(18, 4), Number(payload.total) || 0)
                         .input('PaidAmount', sql.Decimal(18, 4), Number(payload.paidAmount) || 0)
                         .input('PaidToAccountId', sql.NVarChar(64), payload.paidToAccountId || null)
+                        .input('SupplierName', sql.NVarChar(255), payload.supplierName || null)
                         .input('Notes', sql.NVarChar(sql.MAX), payload.notes || null)
                         .input('ItemsJson', sql.NVarChar(sql.MAX), jsonString(payload.items));
 
                     await reqTx.query(`
                         INSERT INTO dbo.PurchaseReturns (
                             Id, ReceiptNumber, OriginalInvoiceId, Date, SupplierId, WarehouseId,
-                            CreatedById, CreatedByName, Subtotal, Discount, Total, PaidAmount, PaidToAccountId, Notes, ItemsJson
+                            CreatedById, CreatedByName, Subtotal, Discount, Tax, Total, PaidAmount, PaidToAccountId, SupplierName, Notes, ItemsJson
                         )
                         VALUES (
                             @Id, @ReceiptNumber, @OriginalInvoiceId, @Date, @SupplierId, @WarehouseId,
-                            @CreatedById, @CreatedByName, @Subtotal, @Discount, @Total, @PaidAmount, @PaidToAccountId, @Notes, @ItemsJson
+                            @CreatedById, @CreatedByName, @Subtotal, @Discount, @Tax, @Total, @PaidAmount, @PaidToAccountId, @SupplierName, @Notes, @ItemsJson
                         );
                     `);
 
@@ -455,56 +651,77 @@ export async function POST(req: Request) {
                     .input('Id', sql.NVarChar(64), id)
                     .input('RequisitionNumber', sql.NVarChar(100), payload.requisitionNumber ? String(payload.requisitionNumber) : null)
                     .input('Date', sql.DateTime2, parseDate(payload.date))
-                    .input('WarehouseId', sql.NVarChar(64), payload.warehouseId || null)
-                    .input('RequestedById', sql.NVarChar(64), payload.requestedById || null)
-                    .input('RequestedByName', sql.NVarChar(255), payload.requestedByName || null)
+                    .input('WarehouseId', sql.NVarChar(64), payload.warehouseId || payload.fromWarehouseId || null)
+                    .input('FromWarehouseId', sql.NVarChar(64), payload.fromWarehouseId || payload.warehouseId || null)
+                    .input('ToWarehouseId', sql.NVarChar(64), payload.toWarehouseId || null)
+                    .input('RequestedById', sql.NVarChar(64), payload.requestedById || payload.userId || null)
+                    .input('RequestedByName', sql.NVarChar(255), payload.requestedByName || payload.userName || null)
                     .input('Status', sql.NVarChar(50), payload.status || 'pending')
                     .input('Priority', sql.NVarChar(50), payload.priority || 'normal')
                     .input('Notes', sql.NVarChar(sql.MAX), payload.notes || null)
                     .input('ItemsJson', sql.NVarChar(sql.MAX), jsonString(payload.items))
+                    .input('DetailsJson', sql.NVarChar(sql.MAX), jsonString(payload))
                     .query(`
-                        INSERT INTO dbo.Requisitions (Id, RequisitionNumber, Date, WarehouseId, RequestedById, RequestedByName, Status, Priority, Notes, ItemsJson)
-                        VALUES (@Id, @RequisitionNumber, @Date, @WarehouseId, @RequestedById, @RequestedByName, @Status, @Priority, @Notes, @ItemsJson);
+                        INSERT INTO dbo.Requisitions (Id, RequisitionNumber, Date, WarehouseId, FromWarehouseId, ToWarehouseId, RequestedById, RequestedByName, Status, Priority, Notes, ItemsJson, DetailsJson)
+                        VALUES (@Id, @RequisitionNumber, @Date, @WarehouseId, @FromWarehouseId, @ToWarehouseId, @RequestedById, @RequestedByName, @Status, @Priority, @Notes, @ItemsJson, @DetailsJson);
                     `);
                 return NextResponse.json({ success: true, id });
             }
 
             // Financial Documents
             if (path === 'customerPayments') {
-                await pool.request()
-                    .input('Id', sql.NVarChar(64), id)
-                    .input('ReceiptNumber', sql.NVarChar(100), payload.receiptNumber ? String(payload.receiptNumber) : null)
-                    .input('Date', sql.DateTime2, parseDate(payload.date))
-                    .input('CustomerId', sql.NVarChar(64), payload.customerId || '')
-                    .input('InvoiceId', sql.NVarChar(64), payload.invoiceId || null)
-                    .input('Amount', sql.Decimal(18, 4), Number(payload.amount) || 0)
-                    .input('PaidToAccountId', sql.NVarChar(64), payload.paidToAccountId || 'main-cash')
-                    .input('CreatedById', sql.NVarChar(64), payload.createdById || null)
-                    .input('CreatedByName', sql.NVarChar(255), payload.createdByName || null)
-                    .input('Notes', sql.NVarChar(sql.MAX), payload.notes || null)
-                    .query(`
-                        INSERT INTO dbo.CustomerPayments (Id, ReceiptNumber, Date, CustomerId, InvoiceId, Amount, PaidToAccountId, CreatedById, CreatedByName, Notes)
-                        VALUES (@Id, @ReceiptNumber, @Date, @CustomerId, @InvoiceId, @Amount, @PaidToAccountId, @CreatedById, @CreatedByName, @Notes);
-                    `);
+                const tx = new sql.Transaction(pool);
+                await tx.begin();
+                try {
+                    await new sql.Request(tx)
+                        .input('Id', sql.NVarChar(64), id)
+                        .input('ReceiptNumber', sql.NVarChar(100), payload.receiptNumber ? String(payload.receiptNumber) : null)
+                        .input('Date', sql.DateTime2, parseDate(payload.date))
+                        .input('CustomerId', sql.NVarChar(64), payload.customerId || '')
+                        .input('InvoiceId', sql.NVarChar(64), payload.invoiceId || null)
+                        .input('Amount', sql.Decimal(18, 4), Number(payload.amount) || 0)
+                        .input('PaidToAccountId', sql.NVarChar(64), payload.paidToAccountId || 'main-cash')
+                        .input('CreatedById', sql.NVarChar(64), payload.createdById || null)
+                        .input('CreatedByName', sql.NVarChar(255), payload.createdByName || null)
+                        .input('Notes', sql.NVarChar(sql.MAX), payload.notes || null)
+                        .query(`
+                            INSERT INTO dbo.CustomerPayments (Id, ReceiptNumber, Date, CustomerId, InvoiceId, Amount, PaidToAccountId, CreatedById, CreatedByName, Notes)
+                            VALUES (@Id, @ReceiptNumber, @Date, @CustomerId, @InvoiceId, @Amount, @PaidToAccountId, @CreatedById, @CreatedByName, @Notes);
+                        `);
+                    if (payload.invoiceId) await recalculateInvoicePaymentImpact(tx, 'customer', String(payload.invoiceId));
+                    await tx.commit();
+                } catch (error) {
+                    await tx.rollback();
+                    throw error;
+                }
                 return NextResponse.json({ success: true, id });
             }
 
             if (path === 'supplierPayments') {
-                await pool.request()
-                    .input('Id', sql.NVarChar(64), id)
-                    .input('ReceiptNumber', sql.NVarChar(100), payload.receiptNumber ? String(payload.receiptNumber) : null)
-                    .input('Date', sql.DateTime2, parseDate(payload.date))
-                    .input('SupplierId', sql.NVarChar(64), payload.supplierId || '')
-                    .input('InvoiceId', sql.NVarChar(64), payload.invoiceId || null)
-                    .input('Amount', sql.Decimal(18, 4), Number(payload.amount) || 0)
-                    .input('PaidFromAccountId', sql.NVarChar(64), payload.paidFromAccountId || 'main-cash')
-                    .input('CreatedById', sql.NVarChar(64), payload.createdById || null)
-                    .input('CreatedByName', sql.NVarChar(255), payload.createdByName || null)
-                    .input('Notes', sql.NVarChar(sql.MAX), payload.notes || null)
-                    .query(`
-                        INSERT INTO dbo.SupplierPayments (Id, ReceiptNumber, Date, SupplierId, InvoiceId, Amount, PaidFromAccountId, CreatedById, CreatedByName, Notes)
-                        VALUES (@Id, @ReceiptNumber, @Date, @SupplierId, @InvoiceId, @Amount, @PaidFromAccountId, @CreatedById, @CreatedByName, @Notes);
-                    `);
+                const tx = new sql.Transaction(pool);
+                await tx.begin();
+                try {
+                    await new sql.Request(tx)
+                        .input('Id', sql.NVarChar(64), id)
+                        .input('ReceiptNumber', sql.NVarChar(100), payload.receiptNumber ? String(payload.receiptNumber) : null)
+                        .input('Date', sql.DateTime2, parseDate(payload.date))
+                        .input('SupplierId', sql.NVarChar(64), payload.supplierId || '')
+                        .input('InvoiceId', sql.NVarChar(64), payload.invoiceId || null)
+                        .input('Amount', sql.Decimal(18, 4), Number(payload.amount) || 0)
+                        .input('PaidFromAccountId', sql.NVarChar(64), payload.paidFromAccountId || 'main-cash')
+                        .input('CreatedById', sql.NVarChar(64), payload.createdById || null)
+                        .input('CreatedByName', sql.NVarChar(255), payload.createdByName || null)
+                        .input('Notes', sql.NVarChar(sql.MAX), payload.notes || null)
+                        .query(`
+                            INSERT INTO dbo.SupplierPayments (Id, ReceiptNumber, Date, SupplierId, InvoiceId, Amount, PaidFromAccountId, CreatedById, CreatedByName, Notes)
+                            VALUES (@Id, @ReceiptNumber, @Date, @SupplierId, @InvoiceId, @Amount, @PaidFromAccountId, @CreatedById, @CreatedByName, @Notes);
+                        `);
+                    if (payload.invoiceId) await recalculateInvoicePaymentImpact(tx, 'supplier', String(payload.invoiceId));
+                    await tx.commit();
+                } catch (error) {
+                    await tx.rollback();
+                    throw error;
+                }
                 return NextResponse.json({ success: true, id });
             }
 
@@ -607,6 +824,23 @@ export async function POST(req: Request) {
 
             // Inventory Documents
             if (path === 'stockInRecords') {
+                // Self-heal: add missing columns if needed
+                await pool.request().query(`
+                    IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('dbo.StockInRecords') AND name = 'StockTransferId')
+                        ALTER TABLE dbo.StockInRecords ADD StockTransferId NVARCHAR(64) NULL;
+                    IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('dbo.StockInRecords') AND name = 'ReceivedById')
+                        ALTER TABLE dbo.StockInRecords ADD ReceivedById NVARCHAR(64) NULL;
+                    IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('dbo.StockInRecords') AND name = 'ReceivedByName')
+                        ALTER TABLE dbo.StockInRecords ADD ReceivedByName NVARCHAR(255) NULL;
+                    IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('dbo.StockInRecords') AND name = 'ReceivedDate')
+                        ALTER TABLE dbo.StockInRecords ADD ReceivedDate DATETIME2 NULL;
+                    IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('dbo.StockInRecords') AND name = 'CreatedById')
+                        ALTER TABLE dbo.StockInRecords ADD CreatedById NVARCHAR(64) NULL;
+                    IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('dbo.StockInRecords') AND name = 'CreatedByName')
+                        ALTER TABLE dbo.StockInRecords ADD CreatedByName NVARCHAR(255) NULL;
+                    IF COL_LENGTH('dbo.StockInRecords', 'AllocationsJson') IS NULL
+                        ALTER TABLE dbo.StockInRecords ADD AllocationsJson NVARCHAR(MAX) NULL;
+                `);
                 await pool.request()
                     .input('Id', sql.NVarChar(64), id)
                     .input('ReceiptNumber', sql.NVarChar(100), payload.receiptNumber ? String(payload.receiptNumber) : null)
@@ -614,25 +848,40 @@ export async function POST(req: Request) {
                     .input('Date', sql.DateTime2, parseDate(payload.date))
                     .input('WarehouseId', sql.NVarChar(64), payload.warehouseId || null)
                     .input('PurchaseInvoiceId', sql.NVarChar(64), payload.purchaseInvoiceId || null)
+                    .input('StockTransferId', sql.NVarChar(64), payload.stockTransferId || null)
                     .input('Reason', sql.NVarChar(255), payload.reason || null)
                     .input('Status', sql.NVarChar(50), payload.status || 'approved')
                     .input('Notes', sql.NVarChar(sql.MAX), payload.notes || null)
                     .input('ItemsJson', sql.NVarChar(sql.MAX), jsonString(payload.items))
                     .input('AllocationsJson', sql.NVarChar(sql.MAX), payload.allocations ? jsonString(payload.allocations) : null)
+                    .input('CreatedById', sql.NVarChar(64), payload.createdById || null)
+                    .input('CreatedByName', sql.NVarChar(255), payload.createdByName || null)
                     .query(`
-                        INSERT INTO dbo.StockInRecords (Id, ReceiptNumber, BatchNumber, Date, WarehouseId, PurchaseInvoiceId, Reason, Status, Notes, ItemsJson, AllocationsJson)
-                        VALUES (@Id, @ReceiptNumber, @BatchNumber, @Date, @WarehouseId, @PurchaseInvoiceId, @Reason, @Status, @Notes, @ItemsJson, @AllocationsJson);
+                        INSERT INTO dbo.StockInRecords (
+                            Id, ReceiptNumber, BatchNumber, Date, WarehouseId, PurchaseInvoiceId, StockTransferId,
+                            Reason, Status, Notes, ItemsJson, AllocationsJson, CreatedById, CreatedByName
+                        ) VALUES (
+                            @Id, @ReceiptNumber, @BatchNumber, @Date, @WarehouseId, @PurchaseInvoiceId, @StockTransferId,
+                            @Reason, @Status, @Notes, @ItemsJson, @AllocationsJson, @CreatedById, @CreatedByName
+                        );
                     `);
                 return NextResponse.json({ success: true, id });
             }
 
             if (path === 'stockOutRecords') {
+                // Self-heal: ensure workflow link columns exist (logistics preparation & dispatch)
+                await pool.request().query(`
+                    IF COL_LENGTH('dbo.StockOutRecords', 'RequisitionId') IS NULL
+                        ALTER TABLE dbo.StockOutRecords ADD [RequisitionId] NVARCHAR(64) NULL;
+                    IF COL_LENGTH('dbo.StockOutRecords', 'ToWarehouseId') IS NULL
+                        ALTER TABLE dbo.StockOutRecords ADD [ToWarehouseId] NVARCHAR(64) NULL;
+                `);
                 await pool.request()
                     .input('Id', sql.NVarChar(64), id)
                     .input('ReceiptNumber', sql.NVarChar(100), payload.receiptNumber ? String(payload.receiptNumber) : null)
                     .input('Date', sql.DateTime2, parseDate(payload.date))
-                    .input('WarehouseId', sql.NVarChar(64), payload.warehouseId || null)
-                    .input('SourceId', sql.NVarChar(64), payload.sourceId || null)
+                    .input('WarehouseId', sql.NVarChar(64), payload.warehouseId || payload.sourceId || null)
+                    .input('SourceId', sql.NVarChar(64), payload.sourceId || payload.warehouseId || null)
                     .input('SaleInvoiceId', sql.NVarChar(64), payload.saleInvoiceId || null)
                     .input('Reason', sql.NVarChar(255), payload.reason || null)
                     .input('Status', sql.NVarChar(50), payload.status || 'approved')
@@ -640,9 +889,11 @@ export async function POST(req: Request) {
                     .input('CreatedByName', sql.NVarChar(255), payload.createdByName || null)
                     .input('Notes', sql.NVarChar(sql.MAX), payload.notes || null)
                     .input('ItemsJson', sql.NVarChar(sql.MAX), jsonString(payload.items))
+                    .input('RequisitionId', sql.NVarChar(64), payload.requisitionId || null)
+                    .input('ToWarehouseId', sql.NVarChar(64), payload.toWarehouseId || null)
                     .query(`
-                        INSERT INTO dbo.StockOutRecords (Id, ReceiptNumber, Date, WarehouseId, SourceId, SaleInvoiceId, Reason, Status, CreatedById, CreatedByName, Notes, ItemsJson)
-                        VALUES (@Id, @ReceiptNumber, @Date, @WarehouseId, @SourceId, @SaleInvoiceId, @Reason, @Status, @CreatedById, @CreatedByName, @Notes, @ItemsJson);
+                        INSERT INTO dbo.StockOutRecords (Id, ReceiptNumber, Date, WarehouseId, SourceId, SaleInvoiceId, Reason, Status, CreatedById, CreatedByName, Notes, ItemsJson, RequisitionId, ToWarehouseId)
+                        VALUES (@Id, @ReceiptNumber, @Date, @WarehouseId, @SourceId, @SaleInvoiceId, @Reason, @Status, @CreatedById, @CreatedByName, @Notes, @ItemsJson, @RequisitionId, @ToWarehouseId);
                     `);
                 return NextResponse.json({ success: true, id });
             }
@@ -657,9 +908,22 @@ export async function POST(req: Request) {
                     .input('Status', sql.NVarChar(50), payload.status || 'pending')
                     .input('Notes', sql.NVarChar(sql.MAX), payload.notes || null)
                     .input('ItemsJson', sql.NVarChar(sql.MAX), jsonString(payload.items))
+                    .input('ShippingCost', sql.Decimal(18, 4), Number(payload.shippingCost) || 0)
+                    .input('ShippingPaidBy', sql.NVarChar(50), payload.shippingPaidBy || 'source')
+                    .input('ShippingPaidFromAccountId', sql.NVarChar(64), payload.shippingPaidFromAccountId || null)
+                    .input('ShippingTreatment', sql.NVarChar(50), payload.shippingTreatment || 'expense')
+                    .input('CarrierName', sql.NVarChar(255), payload.carrierName || null)
+                    .input('TrackingNumber', sql.NVarChar(100), payload.trackingNumber || null)
+                    .input('ExpenseId', sql.NVarChar(64), payload.expenseId || null)
                     .query(`
-                        INSERT INTO dbo.StockTransferRecords (Id, ReceiptNumber, Date, FromWarehouseId, ToWarehouseId, Status, Notes, ItemsJson)
-                        VALUES (@Id, @ReceiptNumber, @Date, @FromWarehouseId, @ToWarehouseId, @Status, @Notes, @ItemsJson);
+                        INSERT INTO dbo.StockTransferRecords (
+                            Id, ReceiptNumber, Date, FromWarehouseId, ToWarehouseId, Status, Notes, ItemsJson,
+                            ShippingCost, ShippingPaidBy, ShippingPaidFromAccountId, ShippingTreatment, CarrierName, TrackingNumber, ExpenseId
+                        )
+                        VALUES (
+                            @Id, @ReceiptNumber, @Date, @FromWarehouseId, @ToWarehouseId, @Status, @Notes, @ItemsJson,
+                            @ShippingCost, @ShippingPaidBy, @ShippingPaidFromAccountId, @ShippingTreatment, @CarrierName, @TrackingNumber, @ExpenseId
+                        );
                     `);
                 return NextResponse.json({ success: true, id });
             }
@@ -1070,6 +1334,16 @@ export async function POST(req: Request) {
             }
 
             if (path === 'itemCategories') {
+                // Existing installations may predate these optional category columns.
+                // Upgrade before compiling the INSERT/UPDATE that references them.
+                await pool.request().query(`
+                    IF COL_LENGTH('dbo.ItemCategories', 'Code') IS NULL
+                        ALTER TABLE dbo.ItemCategories ADD Code NVARCHAR(50) NULL;
+                    IF COL_LENGTH('dbo.ItemCategories', 'ShowOnPos') IS NULL
+                        ALTER TABLE dbo.ItemCategories ADD ShowOnPos BIT NULL DEFAULT ((1));
+                    IF COL_LENGTH('dbo.ItemCategories', 'Color') IS NULL
+                        ALTER TABLE dbo.ItemCategories ADD Color NVARCHAR(50) NULL;
+                `);
                 await pool.request()
                     .input('Id', sql.NVarChar(64), id)
                     .input('Code', sql.NVarChar(50), payload.code ? String(payload.code) : (payload.Code ? String(payload.Code) : null))
@@ -1087,6 +1361,16 @@ export async function POST(req: Request) {
             }
 
             if (path === 'itemGroups') {
+                await pool.request().query(`
+                    IF COL_LENGTH('dbo.ItemGroups', 'Code') IS NULL
+                        ALTER TABLE dbo.ItemGroups ADD Code NVARCHAR(50) NULL;
+                    IF COL_LENGTH('dbo.ItemGroups', 'ParentCategoryId') IS NULL
+                        ALTER TABLE dbo.ItemGroups ADD ParentCategoryId NVARCHAR(64) NULL;
+                    IF COL_LENGTH('dbo.ItemGroups', 'ShowOnPos') IS NULL
+                        ALTER TABLE dbo.ItemGroups ADD ShowOnPos BIT NULL DEFAULT ((1));
+                    IF COL_LENGTH('dbo.ItemGroups', 'Color') IS NULL
+                        ALTER TABLE dbo.ItemGroups ADD Color NVARCHAR(50) NULL;
+                `);
                 await pool.request()
                     .input('Id', sql.NVarChar(64), id)
                     .input('Code', sql.NVarChar(50), payload.code ? String(payload.code) : (payload.Code ? String(payload.Code) : null))
@@ -1104,18 +1388,38 @@ export async function POST(req: Request) {
             }
 
             if (path === 'itemSubCategories1') {
+                await pool.request().query(`
+                    IF COL_LENGTH('dbo.ItemSubCategories1', 'Code') IS NULL
+                        ALTER TABLE dbo.ItemSubCategories1 ADD Code NVARCHAR(50) NULL;
+                `);
                 await pool.request()
                     .input('Id', sql.NVarChar(64), id)
-                    .input('Name', sql.NVarChar(255), payload.name || 'Unnamed SubCategory')
-                    .query(`INSERT INTO dbo.ItemSubCategories1 (Id, Name) VALUES (@Id, @Name);`);
+                    .input('Code', sql.NVarChar(50), payload.code || payload.Code || null)
+                    .input('Name', sql.NVarChar(255), payload.name || payload.Name || 'Unnamed SubCategory')
+                    .query(`
+                        IF EXISTS (SELECT 1 FROM dbo.ItemSubCategories1 WHERE Id = @Id)
+                            UPDATE dbo.ItemSubCategories1 SET Code = @Code, Name = @Name, UpdatedAt = sysutcdatetime() WHERE Id = @Id;
+                        ELSE
+                            INSERT INTO dbo.ItemSubCategories1 (Id, Code, Name) VALUES (@Id, @Code, @Name);
+                    `);
                 return NextResponse.json({ success: true, id });
             }
 
             if (path === 'itemSubCategories2') {
+                await pool.request().query(`
+                    IF COL_LENGTH('dbo.ItemSubCategories2', 'Code') IS NULL
+                        ALTER TABLE dbo.ItemSubCategories2 ADD Code NVARCHAR(50) NULL;
+                `);
                 await pool.request()
                     .input('Id', sql.NVarChar(64), id)
-                    .input('Name', sql.NVarChar(255), payload.name || 'Unnamed SubCategory')
-                    .query(`INSERT INTO dbo.ItemSubCategories2 (Id, Name) VALUES (@Id, @Name);`);
+                    .input('Code', sql.NVarChar(50), payload.code || payload.Code || null)
+                    .input('Name', sql.NVarChar(255), payload.name || payload.Name || 'Unnamed SubCategory')
+                    .query(`
+                        IF EXISTS (SELECT 1 FROM dbo.ItemSubCategories2 WHERE Id = @Id)
+                            UPDATE dbo.ItemSubCategories2 SET Code = @Code, Name = @Name, UpdatedAt = sysutcdatetime() WHERE Id = @Id;
+                        ELSE
+                            INSERT INTO dbo.ItemSubCategories2 (Id, Code, Name) VALUES (@Id, @Code, @Name);
+                    `);
                 return NextResponse.json({ success: true, id });
             }
 
@@ -1353,6 +1657,14 @@ export async function POST(req: Request) {
             }
 
             if (path === 'itemCategories' && updateId) {
+                await pool.request().query(`
+                    IF COL_LENGTH('dbo.ItemCategories', 'Code') IS NULL
+                        ALTER TABLE dbo.ItemCategories ADD Code NVARCHAR(50) NULL;
+                    IF COL_LENGTH('dbo.ItemCategories', 'ShowOnPos') IS NULL
+                        ALTER TABLE dbo.ItemCategories ADD ShowOnPos BIT NULL DEFAULT ((1));
+                    IF COL_LENGTH('dbo.ItemCategories', 'Color') IS NULL
+                        ALTER TABLE dbo.ItemCategories ADD Color NVARCHAR(50) NULL;
+                `);
                 const showOnPosVal = data.showOnPos !== undefined ? (data.showOnPos ? 1 : 0) : (data.ShowOnPos !== undefined ? (data.ShowOnPos ? 1 : 0) : null);
                 await pool.request()
                     .input('Id', sql.NVarChar(64), updateId)
@@ -1370,6 +1682,16 @@ export async function POST(req: Request) {
             }
 
             if (path === 'itemGroups' && updateId) {
+                await pool.request().query(`
+                    IF COL_LENGTH('dbo.ItemGroups', 'Code') IS NULL
+                        ALTER TABLE dbo.ItemGroups ADD Code NVARCHAR(50) NULL;
+                    IF COL_LENGTH('dbo.ItemGroups', 'ParentCategoryId') IS NULL
+                        ALTER TABLE dbo.ItemGroups ADD ParentCategoryId NVARCHAR(64) NULL;
+                    IF COL_LENGTH('dbo.ItemGroups', 'ShowOnPos') IS NULL
+                        ALTER TABLE dbo.ItemGroups ADD ShowOnPos BIT NULL DEFAULT ((1));
+                    IF COL_LENGTH('dbo.ItemGroups', 'Color') IS NULL
+                        ALTER TABLE dbo.ItemGroups ADD Color NVARCHAR(50) NULL;
+                `);
                 const showOnPosVal = data.showOnPos !== undefined ? (data.showOnPos ? 1 : 0) : (data.ShowOnPos !== undefined ? (data.ShowOnPos ? 1 : 0) : null);
                 await pool.request()
                     .input('Id', sql.NVarChar(64), updateId)
@@ -1381,6 +1703,20 @@ export async function POST(req: Request) {
                     .query(`
                         UPDATE dbo.ItemGroups 
                         SET Name = COALESCE(@Name, Name), Code = COALESCE(@Code, Code), ParentCategoryId = COALESCE(@ParentCategoryId, ParentCategoryId), ShowOnPos = COALESCE(@ShowOnPos, ShowOnPos), Color = COALESCE(@Color, Color)
+                        WHERE Id = @Id;
+                    `);
+                return NextResponse.json({ success: true });
+            }
+
+            if ((path === 'itemSubCategories1' || path === 'itemSubCategories2') && updateId) {
+                const tableName = path === 'itemSubCategories1' ? 'dbo.ItemSubCategories1' : 'dbo.ItemSubCategories2';
+                await pool.request()
+                    .input('Id', sql.NVarChar(64), updateId)
+                    .input('Name', sql.NVarChar(255), data.name || data.Name || null)
+                    .input('Code', sql.NVarChar(50), data.code || data.Code || null)
+                    .query(`
+                        UPDATE ${tableName}
+                        SET Name = COALESCE(@Name, Name), Code = COALESCE(@Code, Code), UpdatedAt = sysutcdatetime()
                         WHERE Id = @Id;
                     `);
                 return NextResponse.json({ success: true });
@@ -1694,19 +2030,56 @@ export async function POST(req: Request) {
             }
 
             if (path === 'stockInRecords' && updateId) {
+                // The receive/update path needs the same compatibility upgrade as creation.
+                await pool.request().query(`
+                    IF COL_LENGTH('dbo.StockInRecords', 'StockTransferId') IS NULL
+                        ALTER TABLE dbo.StockInRecords ADD StockTransferId NVARCHAR(64) NULL;
+                    IF COL_LENGTH('dbo.StockInRecords', 'ReceivedById') IS NULL
+                        ALTER TABLE dbo.StockInRecords ADD ReceivedById NVARCHAR(64) NULL;
+                    IF COL_LENGTH('dbo.StockInRecords', 'ReceivedByName') IS NULL
+                        ALTER TABLE dbo.StockInRecords ADD ReceivedByName NVARCHAR(255) NULL;
+                    IF COL_LENGTH('dbo.StockInRecords', 'ReceivedDate') IS NULL
+                        ALTER TABLE dbo.StockInRecords ADD ReceivedDate DATETIME2 NULL;
+                    IF COL_LENGTH('dbo.StockInRecords', 'AllocationsJson') IS NULL
+                        ALTER TABLE dbo.StockInRecords ADD AllocationsJson NVARCHAR(MAX) NULL;
+                `);
                 await pool.request()
                     .input('Id', sql.NVarChar(64), updateId)
                     .input('Status', sql.NVarChar(50), data.status || null)
                     .input('Notes', sql.NVarChar(sql.MAX), data.notes || null)
                     .input('ItemsJson', sql.NVarChar(sql.MAX), data.items ? jsonString(data.items) : null)
                     .input('AllocationsJson', sql.NVarChar(sql.MAX), data.allocations ? jsonString(data.allocations) : null)
+                    .input('ReceivedById', sql.NVarChar(64), data.receivedById || null)
+                    .input('ReceivedByName', sql.NVarChar(255), data.receivedByName || null)
+                    .input('ReceivedDate', sql.DateTime2, data.receivedDate ? new Date(data.receivedDate) : null)
                     .query(`
                         UPDATE dbo.StockInRecords
+                        SET 
+                            Status        = COALESCE(@Status, Status),
+                            Notes         = COALESCE(@Notes, Notes),
+                            ItemsJson     = COALESCE(@ItemsJson, ItemsJson),
+                            AllocationsJson = COALESCE(@AllocationsJson, AllocationsJson),
+                            ReceivedById  = COALESCE(@ReceivedById, ReceivedById),
+                            ReceivedByName= COALESCE(@ReceivedByName, ReceivedByName),
+                            ReceivedDate  = COALESCE(@ReceivedDate, ReceivedDate),
+                            UpdatedAt     = sysutcdatetime()
+                        WHERE Id = @Id;
+                    `);
+                return NextResponse.json({ success: true });
+            }
+
+            if (path === 'stockOutRecords' && updateId) {
+                await pool.request()
+                    .input('Id', sql.NVarChar(64), updateId)
+                    .input('Status', sql.NVarChar(50), data.status || null)
+                    .input('Notes', sql.NVarChar(sql.MAX), data.notes || null)
+                    .input('ItemsJson', sql.NVarChar(sql.MAX), data.items ? jsonString(data.items) : null)
+                    .query(`
+                        UPDATE dbo.StockOutRecords
                         SET 
                             Status = COALESCE(@Status, Status),
                             Notes = COALESCE(@Notes, Notes),
                             ItemsJson = COALESCE(@ItemsJson, ItemsJson),
-                            AllocationsJson = COALESCE(@AllocationsJson, AllocationsJson),
                             UpdatedAt = sysutcdatetime()
                         WHERE Id = @Id;
                     `);
@@ -1813,9 +2186,31 @@ export async function POST(req: Request) {
                 }
                 const tableName = tableMap[path];
                 if (tableName) {
-                    await pool.request()
-                        .input('Id', sql.NVarChar(64), String(removeId))
-                        .query(`DELETE FROM ${tableName} WHERE Id = @Id;`);
+                    if (path === 'customerPayments' || path === 'supplierPayments') {
+                        const tx = new sql.Transaction(pool);
+                        await tx.begin();
+                        try {
+                            const kind = path === 'customerPayments' ? 'customer' : 'supplier';
+                            const paymentTable = kind === 'customer' ? 'dbo.CustomerPayments' : 'dbo.SupplierPayments';
+                            const payment = await new sql.Request(tx)
+                                .input('Id', sql.NVarChar(64), String(removeId))
+                                .query(`SELECT InvoiceId FROM ${paymentTable} WHERE Id = @Id`);
+                            const invoiceId = payment.recordset[0]?.InvoiceId as string | null;
+                            if (invoiceId) await recalculateInvoicePaymentImpact(tx, kind, invoiceId);
+                            await new sql.Request(tx)
+                                .input('Id', sql.NVarChar(64), String(removeId))
+                                .query(`DELETE FROM ${paymentTable} WHERE Id = @Id;`);
+                            if (invoiceId) await recalculateInvoicePaymentImpact(tx, kind, invoiceId);
+                            await tx.commit();
+                        } catch (error) {
+                            await tx.rollback();
+                            throw error;
+                        }
+                    } else {
+                        await pool.request()
+                            .input('Id', sql.NVarChar(64), String(removeId))
+                            .query(`DELETE FROM ${tableName} WHERE Id = @Id;`);
+                    }
                     return NextResponse.json({ success: true });
                 }
             }
@@ -1824,6 +2219,6 @@ export async function POST(req: Request) {
         return NextResponse.json({ success: true, message: 'Processed' });
     } catch (error: any) {
         console.error('Error in /api/db/action:', error);
-        return NextResponse.json({ success: false, error: error.message }, { status: 500 });
+        return NextResponse.json({ success: false, error: error.message }, { status: error instanceof ReturnValidationError ? 400 : 500 });
     }
 }
