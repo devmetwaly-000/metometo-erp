@@ -39,6 +39,7 @@ interface GeneralSettings {
     mobileFabPosition: 'bottom-right' | 'top-right' | 'bottom-left' | 'top-left' | 'middle-right' | 'middle-left';
     invoiceFooter?: string;
     desktopLayout: 'sidebar' | 'menubar' | 'modern_hub';
+    innerTabHeight?: 'compact' | 'normal' | 'comfortable';
     toastDuration?: number;
     welcomeMessage?: string;
     isClothingStore?: boolean;
@@ -60,6 +61,8 @@ interface FinancialSettings {
     roundingDecimals: number;
     vatRate: number;
     inventoryValuationMethod: 'average' | 'last_purchase';
+    inventoryCostIncludesTax: boolean;
+    itemCostIncludesTax: boolean;
     showInventoryLosses?: boolean;
 }
 
@@ -121,6 +124,7 @@ export default function SettingsPage() {
                 mobileFabPosition: 'bottom-right', 
                 invoiceFooter: '', 
                 desktopLayout: 'sidebar', 
+                innerTabHeight: 'normal',
                 toastDuration: 5, 
                 welcomeMessage: '', 
                 isClothingStore: false, 
@@ -142,6 +146,8 @@ export default function SettingsPage() {
                 roundingDecimals: 2, 
                 vatRate: 14,
                 inventoryValuationMethod: 'last_purchase',
+                inventoryCostIncludesTax: false,
+                itemCostIncludesTax: false,
                 showInventoryLosses: true
             };
 
@@ -173,8 +179,8 @@ export default function SettingsPage() {
         } else {
              const defaultWorkDay = new Date().toISOString().split('T')[0];
              const defaultSettings: Settings = {
-                general: { companyName: '', companyAddress: '', logoUrl: "/logo.png", language: 'ar', mobileFabPosition: 'bottom-right', invoiceFooter: '', desktopLayout: 'sidebar', toastDuration: 5, welcomeMessage: '', isClothingStore: false, licenseKey: '', licenseStatus: 'inactive', showWatermark: false, watermarkOpacity: 0.1 },
-                financial: { openingCapital: 0, fiscalYearStart: '', currency: 'EGP', allowNegativeStock: false, scaleBarcodePrefix: '21', clothingBarcodePrefix: '23', standardItemBarcodePrefix: '25', purchaseWorkflow: 'direct', roundingDecimals: 2, vatRate: 14, inventoryValuationMethod: 'last_purchase', showInventoryLosses: true },
+                general: { companyName: '', companyAddress: '', logoUrl: "/logo.png", language: 'ar', mobileFabPosition: 'bottom-right', invoiceFooter: '', desktopLayout: 'sidebar', innerTabHeight: 'normal', toastDuration: 5, welcomeMessage: '', isClothingStore: false, licenseKey: '', licenseStatus: 'inactive', showWatermark: false, watermarkOpacity: 0.1 },
+                financial: { openingCapital: 0, fiscalYearStart: '', currency: 'EGP', allowNegativeStock: false, scaleBarcodePrefix: '21', clothingBarcodePrefix: '23', standardItemBarcodePrefix: '25', purchaseWorkflow: 'direct', roundingDecimals: 2, vatRate: 14, inventoryValuationMethod: 'last_purchase', inventoryCostIncludesTax: false, itemCostIncludesTax: false, showInventoryLosses: true },
                 posSettings: { 
                     workDay: defaultWorkDay, 
                     scaleItemDefaultFocus: 'weight',
@@ -390,6 +396,19 @@ export default function SettingsPage() {
                       <Label htmlFor="toast-duration">مدة ظهور الإشعارات (بالثواني)</Label>
                       <Input id="toast-duration" type="number" placeholder="5" value={settings.general.toastDuration || 5} onChange={e => handleGeneralChange('toastDuration', parseFloat(e.target.value))} step="0.1" />
                     </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="inner-tab-height">ارتفاع التبويبات الداخلية</Label>
+                      <Select value={settings.general.innerTabHeight || 'normal'} onValueChange={(value: any) => handleGeneralChange('innerTabHeight', value as GeneralSettings['innerTabHeight'])}>
+                        <SelectTrigger id="inner-tab-height">
+                          <SelectValue placeholder="اختر الارتفاع" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="compact">منخفض</SelectItem>
+                          <SelectItem value="normal">متوسط</SelectItem>
+                          <SelectItem value="comfortable">واسع</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
                  </div>
 
                  {/* العلامة المائية */}
@@ -579,6 +598,20 @@ export default function SettingsPage() {
                         <Input id="rounding-decimals" type="number" placeholder="مثال: 2" value={settings.financial.roundingDecimals ?? 2} onChange={e => handleFinancialChange('roundingDecimals', Number(e.target.value))} />
                     </div>
                   </div>
+                <div className="flex items-center justify-between rounded-lg border p-3 shadow-sm">
+                  <div className="space-y-0.5">
+                    <Label htmlFor="inventory-cost-includes-tax">احتساب تكلفة المخزون شاملة الضريبة</Label>
+                    <p className="text-xs text-muted-foreground">عند التفعيل، تُضاف ضريبة الشراء إلى تكلفة المخزون؛ وعند الإيقاف تُستبعد من التكلفة.</p>
+                  </div>
+                  <Switch id="inventory-cost-includes-tax" checked={settings.financial.inventoryCostIncludesTax ?? false} onCheckedChange={checked => handleFinancialChange('inventoryCostIncludesTax', checked)} />
+                </div>
+                <div className="flex items-center justify-between rounded-lg border p-3 shadow-sm">
+                  <div className="space-y-0.5">
+                    <Label htmlFor="item-cost-includes-tax">تكلفة الصنف المسجلة في البطاقة شاملة الضريبة</Label>
+                    <p className="text-xs text-muted-foreground">يُستخدم هذا الخيار عند حساب تكلفة البضاعة المباعة والربح، ويحوّل التكلفة إلى قيمة قبل الضريبة.</p>
+                  </div>
+                  <Switch id="item-cost-includes-tax" checked={settings.financial.itemCostIncludesTax ?? false} onCheckedChange={checked => handleFinancialChange('itemCostIncludesTax', checked)} />
+                </div>
                 <div className="flex items-center justify-between rounded-lg border p-3 shadow-sm">
                   <div className="space-y-0.5">
                     <Label htmlFor="allow-negative-stock">السماح بالبيع بالرصيد السالب</Label>

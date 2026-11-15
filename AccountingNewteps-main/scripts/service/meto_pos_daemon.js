@@ -9,12 +9,13 @@
 const { spawn } = require('child_process');
 const path = require('path');
 const fs = require('fs');
-const http = require('http');
+const net = require('net');
 const { startWarmup } = require('./server_warmup');
 
 const APP_DIR = path.resolve(__dirname, '..', '..');
 const LOGS_DIR = path.join(APP_DIR, 'logs');
 const PID_FILE = path.join(LOGS_DIR, 'pos_service.pid');
+const DAEMON_LOCK_FILE = path.join(LOGS_DIR, 'pos_service_daemon.lock');
 const LOG_FILE = path.join(LOGS_DIR, 'pos_service.log');
 
 if (!fs.existsSync(LOGS_DIR)) {
@@ -30,87 +31,206 @@ function writeLog(message) {
     console.log(line.trim());
 }
 
-// فحص ما إذا كان البورت 9002 يعمل بالفعل
+// فحص حجز المنفذ مباشرة؛ لا نعتمد على سرعة رد HTTP أثناء ضغط الخادم.
 function isPortInUse(port = 9002) {
     return new Promise(resolve => {
-        const req = http.get(`http://localhost:${port}/api/health`, { timeout: 1500 }, res => {
-            resolve(true);
-        });
-        req.on('error', () => {
-            // فحص إضافي عبر طلب رئيسي
-            const testReq = http.get(`http://localhost:${port}`, { timeout: 1500 }, () => resolve(true));
-            testReq.on('error', () => resolve(false));
-        });
+        let settled = false;
+        const finish = value => {
+            if (settled) return;
+            settled = true;
+            socket.destroy();
+            resolve(value);
+        };
+        const socket = net.createConnection({ host: '127.0.0.1', port });
+        socket.once('connect', () => finish(true));
+        socket.once('error', () => finish(false));
+        socket.setTimeout(1500, () => finish(false));
     });
 }
 
 let childProcess = null;
 let isStopping = false;
+let startCheckInProgress = false;
+let occupiedPortMonitor = null;
 
-function startNextServer() {
-    if (isStopping) return;
+function acquireDaemonLock() {
+    for (let attempt = 0; attempt < 2; attempt++) {
+        try {
+            const lockFd = fs.openSync(DAEMON_LOCK_FILE, 'wx');
+            fs.writeFileSync(lockFd, JSON.stringify({ daemonPid: process.pid, startedAt: new Date().toISOString() }));
+            fs.closeSync(lockFd);
+            return true;
+        } catch (err) {
+            if (err.code !== 'EEXIST') throw err;
+            let lock;
+            try {
+                lock = JSON.parse(fs.readFileSync(DAEMON_LOCK_FILE, 'utf8'));
+            } catch {
+                // قد تكون النسخة المالكة أنشأت الملف ولم تكتب محتواه بعد؛ لا تحذف قفلها.
+                try {
+                    if (Date.now() - fs.statSync(DAEMON_LOCK_FILE).mtimeMs < 5000) return false;
+                    fs.unlinkSync(DAEMON_LOCK_FILE);
+                    continue;
+                } catch { return false; }
+            }
 
-    writeLog('جاري بدء تشغيل خادم Next.js على البورت 9002...');
+            if (lock.daemonPid && lock.daemonPid !== process.pid) {
+                try {
+                    process.kill(lock.daemonPid, 0);
+                    writeLog(`حارس الخدمة يعمل بالفعل (Daemon PID: ${lock.daemonPid})؛ سيتم إنهاء النسخة المكررة.`);
+                    return false;
+                } catch (pidError) {
+                    if (pidError.code === 'EPERM') return false;
+                }
+            }
 
-    // مسار npm أو npx أو node
-    const isWindows = process.platform === 'win32';
-    const npmCmd = isWindows ? 'npm.cmd' : 'npm';
-    const buildDir = path.join(APP_DIR, '.next');
-    const hasProductionBuild = fs.existsSync(buildDir) && fs.existsSync(path.join(buildDir, 'BUILD_ID'));
-    const runArg = hasProductionBuild ? 'start' : 'dev';
+            try { fs.unlinkSync(DAEMON_LOCK_FILE); } catch { return false; }
+        }
+    }
+    return false;
+}
 
-    writeLog(`جاري إطلاق خادم التطبيق بنمط ${hasProductionBuild ? 'الإنتاج السريع (Production)' : 'التطوير (Development)'}...`);
+function releaseDaemonLock() {
+    try {
+        const lock = JSON.parse(fs.readFileSync(DAEMON_LOCK_FILE, 'utf8'));
+        if (lock.daemonPid === process.pid) fs.unlinkSync(DAEMON_LOCK_FILE);
+    } catch { }
+}
 
-    childProcess = spawn(npmCmd, ['run', runArg], {
-        cwd: APP_DIR,
-        shell: true,
-        env: {
-            ...process.env,
-            PORT: '9002',
-            NODE_ENV: hasProductionBuild ? 'production' : 'development'
-        },
-        stdio: ['ignore', 'pipe', 'pipe']
-    });
-
-    const currentPid = childProcess.pid;
+function writePidFile(childPid = null) {
     fs.writeFileSync(PID_FILE, JSON.stringify({
         daemonPid: process.pid,
-        childPid: currentPid,
+        childPid,
         startedAt: new Date().toISOString(),
         port: 9002
     }), 'utf8');
-
-    writeLog(`تم إطلاق خادم التطبيق (Child PID: ${currentPid})`);
-
-    const logStream = fs.createWriteStream(LOG_FILE, { flags: 'a' });
-
-    childProcess.stdout.on('data', data => {
-        logStream.write(data);
-    });
-
-    childProcess.stderr.on('data', data => {
-        logStream.write(data);
-    });
-
-    childProcess.on('exit', (code, signal) => {
-        writeLog(`توقف خادم Next.js بكود: ${code} وإشارة: ${signal}`);
-        childProcess = null;
-
-        if (!isStopping) {
-            writeLog('سيتم إعادة تشغيل الخادم تلقائياً خلال 3 ثوانٍ (Auto-Restart Watchdog)...');
-            setTimeout(startNextServer, 3000);
-        }
-    });
-
-    childProcess.on('error', err => {
-        writeLog(`خطأ في العملية: ${err.message}`);
-    });
-
-    // جدولة تسخين كافة الشاشات فور إتاحة البورت
-    scheduleServerWarmup(9002);
 }
 
-function scheduleServerWarmup(port = 9002) {
+function monitorOccupiedPort() {
+    if (occupiedPortMonitor) return;
+    writeLog('المنفذ 9002 مشغول؛ سيبقى حارس واحد ويراقب تحريره دون تشغيل نسخة إضافية.');
+    occupiedPortMonitor = setInterval(async () => {
+        if (isStopping) {
+            clearInterval(occupiedPortMonitor);
+            occupiedPortMonitor = null;
+            return;
+        }
+        if (!(await isPortInUse(9002))) {
+            clearInterval(occupiedPortMonitor);
+            occupiedPortMonitor = null;
+            startNextServer();
+        }
+    }, 5000);
+}
+
+function stageStandaloneAssets(buildDir, standaloneDir) {
+    const buildIdPath = path.join(buildDir, 'BUILD_ID');
+    const markerPath = path.join(standaloneDir, '.static-assets-build-id');
+    const buildId = fs.readFileSync(buildIdPath, 'utf8').trim();
+    let stagedBuildId = '';
+    try { stagedBuildId = fs.readFileSync(markerPath, 'utf8').trim(); } catch { }
+    if (stagedBuildId === buildId
+        && fs.existsSync(path.join(standaloneDir, '.next', 'static'))
+        && fs.existsSync(path.join(standaloneDir, 'public'))) return;
+
+    // Next.js standalone output omits these directories by design. Without them,
+    // HTML loads but browser chunks return 404 and the app remains on its loader.
+    fs.mkdirSync(path.join(standaloneDir, '.next'), { recursive: true });
+    fs.cpSync(path.join(buildDir, 'static'), path.join(standaloneDir, '.next', 'static'), { recursive: true, force: true });
+    fs.cpSync(path.join(APP_DIR, 'public'), path.join(standaloneDir, 'public'), { recursive: true, force: true });
+    fs.writeFileSync(markerPath, buildId, 'utf8');
+    writeLog(`تم تجهيز ملفات JavaScript والأصول الثابتة للإصدار ${buildId}.`);
+}
+
+async function startNextServer() {
+    if (isStopping || startCheckInProgress) return;
+    startCheckInProgress = true;
+    try {
+        if (await isPortInUse(9002)) {
+            writePidFile(null);
+            monitorOccupiedPort();
+            return;
+        }
+        if (occupiedPortMonitor) {
+            clearInterval(occupiedPortMonitor);
+            occupiedPortMonitor = null;
+        }
+
+        writeLog('جاري بدء تشغيل خادم Next.js على البورت 9002...');
+
+        // مسار الإنتاج: .next-current أو .next
+        const buildDir = (fs.existsSync(path.join(APP_DIR, '.next-current', 'BUILD_ID'))) 
+            ? path.join(APP_DIR, '.next-current') 
+            : path.join(APP_DIR, '.next');
+        const hasProductionBuild = fs.existsSync(buildDir) && fs.existsSync(path.join(buildDir, 'BUILD_ID'));
+        const standaloneServer = path.join(buildDir, 'standalone', 'server.js');
+        const useStandalone = hasProductionBuild && fs.existsSync(standaloneServer);
+        if (useStandalone) stageStandaloneAssets(buildDir, path.dirname(standaloneServer));
+        const runArg = hasProductionBuild ? 'start' : 'dev';
+        const nextCli = path.join(APP_DIR, 'node_modules', 'next', 'dist', 'bin', 'next');
+        const serverArgs = useStandalone
+            ? [standaloneServer]
+            : [nextCli, runArg, '-p', '9002'];
+
+        writeLog(`جاري إطلاق خادم التطبيق بنمط ${useStandalone ? 'الإنتاج المستقل (Standalone)' : hasProductionBuild ? 'الإنتاج (Production)' : 'التطوير (Development)'}...`);
+
+        childProcess = spawn(process.execPath, serverArgs, {
+            cwd: useStandalone ? path.dirname(standaloneServer) : APP_DIR,
+            shell: false,
+            env: {
+                ...process.env,
+                PORT: '9002',
+                HOSTNAME: '0.0.0.0',
+                NODE_ENV: hasProductionBuild ? 'production' : 'development'
+            },
+            stdio: ['ignore', 'pipe', 'pipe']
+        });
+
+        const currentPid = childProcess.pid;
+        writePidFile(currentPid);
+
+        writeLog(`تم إطلاق خادم التطبيق (Child PID: ${currentPid})`);
+
+        const logStream = fs.createWriteStream(LOG_FILE, { flags: 'a' });
+
+        childProcess.stdout.on('data', data => {
+            logStream.write(data);
+        });
+
+        childProcess.stderr.on('data', data => {
+            logStream.write(data);
+        });
+
+        childProcess.on('exit', (code, signal) => {
+            writeLog(`توقف خادم Next.js بكود: ${code} وإشارة: ${signal}`);
+            childProcess = null;
+            writePidFile(null);
+
+            if (!isStopping) {
+                writeLog('سيتم إعادة تشغيل الخادم تلقائياً خلال 3 ثوانٍ (Auto-Restart Watchdog)...');
+                setTimeout(startNextServer, 3000);
+            }
+        });
+
+        childProcess.on('error', err => {
+            writeLog(`خطأ في العملية: ${err.message}`);
+        });
+
+        // جدولة تسخين كافة الشاشات فور إتاحة البورت
+        scheduleServerWarmup(9002, hasProductionBuild);
+    } finally {
+        startCheckInProgress = false;
+    }
+}
+
+function scheduleServerWarmup(port = 9002, isProduction = process.env.NODE_ENV === 'production') {
+    // In development, each warmup request triggers an on-demand webpack compile.
+    // Warming every route therefore overloads the machine and delays real navigation.
+    if (!isProduction) {
+        writeLog('تم تخطي تسخين الشاشات في وضع التطوير لتجنب تجميع عشرات الصفحات وإبطاء الاستخدام.');
+        return;
+    }
+
     let attempts = 0;
     const interval = setInterval(async () => {
         attempts++;
@@ -138,9 +258,11 @@ function handleShutdown() {
     isStopping = true;
     writeLog('استلام إشارة إيقاف الخدمة...');
 
-    if (fs.existsSync(PID_FILE)) {
-        try { fs.unlinkSync(PID_FILE); } catch { }
-    }
+    try {
+        const data = JSON.parse(fs.readFileSync(PID_FILE, 'utf8'));
+        if (data.daemonPid === process.pid) fs.unlinkSync(PID_FILE);
+    } catch { }
+    releaseDaemonLock();
 
     if (childProcess) {
         if (process.platform === 'win32') {
@@ -161,17 +283,13 @@ process.on('SIGTERM', handleShutdown);
 async function main() {
     writeLog('=== بدء تشغيل حارس خدمة المنظومة (Meto POS Service Daemon) ===');
 
-    const inUse = await isPortInUse(9002);
-    if (inUse) {
-        writeLog('تنبيه: البورت 9002 يعمل بالفعل بنشاط. الخدمة قيد التشغيل مسبقاً.');
-        // لا نحتاج لإنشاء نسخة مكررة
-        return;
-    }
+    if (!acquireDaemonLock()) return;
 
-    startNextServer();
+    await startNextServer();
 }
 
 main().catch(err => {
     writeLog(`خطأ غير متوقع: ${err.message}`);
+    releaseDaemonLock();
 });
 

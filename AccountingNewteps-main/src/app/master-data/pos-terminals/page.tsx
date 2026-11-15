@@ -278,18 +278,15 @@ export default function PosTerminalsPage() {
   const { toast } = useToast();
   
   const authorizedWarehouses = useMemo(() => {
-    // نقاط البيع (الكاشيرات) ترتبط بفروع البيع الفعلية فقط، ولا ترتبط بعهدة مندوب أو مخزن لوجستي عام
-    const salesBranches = warehouses
+    // نقاط البيع (الكاشيرات) ترتبط بكافة الفروع والمخازن المتاحة للبيع، وتستبعد فقط عهد المناديب والمخازن المغلقة
+    const salesBranches = (warehouses || [])
       .filter((w: any) => 
-        (w.warehouseType === 'branch' || !w.isMain) && 
         !w.isRepWarehouse && 
         !w.repId && 
         !w.isClosed && 
         w.warehouseType !== 'rep' && 
-        w.warehouseType !== 'warehouse' &&
-        !w.name?.includes('عهدة') &&
-        !w.name?.includes('مندوب') &&
-        !w.name?.includes('لوجستي')
+        !w.name?.includes('عهدة') && 
+        !w.name?.includes('مندوب')
       )
       .filter((w: any, idx: number, arr: any[]) => 
         idx === arr.findIndex((t: any) => 

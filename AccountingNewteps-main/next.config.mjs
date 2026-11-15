@@ -1,14 +1,15 @@
 
 // @ts-check
 import nextPWA from "@ducanh2912/next-pwa";
+import path from "node:path";
 
 const withPWA = nextPWA({
   dest: "public",
-  cacheOnFrontEndNav: true,
-  aggressiveFrontEndNavCaching: true,
+  cacheOnFrontEndNav: false,
+  aggressiveFrontEndNavCaching: false,
   reloadOnOnline: true,
   // Disable PWA in development to avoid compilation blocking
-  disable: process.env.NODE_ENV === 'development', 
+  disable: process.env.NODE_ENV === 'development' || process.env.DISABLE_PWA === 'true',
   workboxOptions: {
     disableDevLogs: true,
     runtimeCaching: [
@@ -80,11 +81,13 @@ const withPWA = nextPWA({
 
 /** @type {import('next').NextConfig} */
 const nextConfig = {
+  webpack: (config) => { config.parallelism = 1; config.resolve.alias = { ...config.resolve.alias, "@": path.resolve(process.cwd(), "src") }; return config; },
   eslint: { ignoreDuringBuilds: true },
   typescript: { ignoreBuildErrors: true },
   reactStrictMode: false,
   experimental: {
-    optimizePackageImports: [
+    cpus: 1,
+optimizePackageImports: [
       'lucide-react',
       'date-fns',
       'recharts',

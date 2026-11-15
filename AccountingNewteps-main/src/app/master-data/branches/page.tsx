@@ -170,18 +170,15 @@ export default function BranchesPage() {
   const [password, setPassword] = useState("");
 
   const branches = useMemo(() => {
-    // قائمة الفروع: تستبعد عهدة المناديب وتستبعد المخازن اللوجستية العامة مع منع التكرار
-    const b = warehouses
+    // قائمة الفروع: تشمل الفروع والمخازن مع استبعاد عهدة المناديب والمخازن المغلقة فقط
+    const b = (warehouses || [])
       .filter((w: any) => 
-        (w.warehouseType === 'branch' || !w.isMain) && 
         !w.isRepWarehouse && 
         !w.repId && 
         !w.isClosed && 
         w.warehouseType !== 'rep' && 
-        w.warehouseType !== 'warehouse' &&
-        !w.name?.includes('عهدة') &&
-        !w.name?.includes('مندوب') &&
-        !w.name?.includes('لوجستي')
+        !w.name?.includes('عهدة') && 
+        !w.name?.includes('مندوب')
       )
       .filter((w: any, idx: number, arr: any[]) => 
         idx === arr.findIndex((t: any) => 
@@ -229,6 +226,7 @@ export default function BranchesPage() {
           name: branch.name,
           address: branch.address,
           code: branch.code,
+          warehouseType: 'branch',
         };
 
         const newBranchId = await dbAction('warehouses', 'add', newBranchData);
