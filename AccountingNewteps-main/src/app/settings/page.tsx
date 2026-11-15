@@ -218,6 +218,27 @@ export default function SettingsPage() {
     const handleGeneralChange = (field: keyof GeneralSettings, value: any) => {
         setSettings(prev => prev ? { ...prev, general: { ...prev.general, [field]: value } } : null);
     };
+
+    const handleTabHeightChange = async (value: GeneralSettings['innerTabHeight']) => {
+        if (!settings) return;
+        const updatedSettings = {
+            ...settings,
+            general: {
+                ...settings.general,
+                innerTabHeight: value
+            }
+        };
+        setSettings(updatedSettings);
+        try {
+            await dbAction('settings', 'update', { id: 'main', data: updatedSettings });
+            toast({
+                title: "تم تطبيق الارتفاع بنجاح",
+                description: value === 'compact' ? "تم تفعيل نمط القائمة المدمج (منخفض) بدون مسافات زائدة." : "تم تحديث ارتفاع عناصر القائمة الجانبية بنجاح."
+            });
+        } catch (e) {
+            console.error("Failed to auto-save tab height", e);
+        }
+    };
     
     const handleFinancialChange = (field: keyof FinancialSettings, value: any) => {
          setSettings(prev => prev ? { ...prev, financial: { ...prev.financial, [field]: value } } : null);
@@ -398,12 +419,12 @@ export default function SettingsPage() {
                     </div>
                     <div className="space-y-2">
                       <Label htmlFor="inner-tab-height">ارتفاع التبويبات الداخلية</Label>
-                      <Select value={settings.general.innerTabHeight || 'normal'} onValueChange={(value: any) => handleGeneralChange('innerTabHeight', value as GeneralSettings['innerTabHeight'])}>
+                      <Select value={settings.general.innerTabHeight || 'compact'} onValueChange={(value: any) => handleTabHeightChange(value as GeneralSettings['innerTabHeight'])}>
                         <SelectTrigger id="inner-tab-height">
                           <SelectValue placeholder="اختر الارتفاع" />
                         </SelectTrigger>
                         <SelectContent>
-                          <SelectItem value="compact">منخفض</SelectItem>
+                          <SelectItem value="compact">منخفض (مدمج بدون فراغات)</SelectItem>
                           <SelectItem value="normal">متوسط</SelectItem>
                           <SelectItem value="comfortable">واسع</SelectItem>
                         </SelectContent>

@@ -91,15 +91,18 @@ export default function SubledgerPostingPage() {
             grossSales = Math.max(total - tax + discount, 0);
         }
 
-        const paidAmount  = Math.min(Number(inv.paidAmount || 0), total);
+        const rawPaid     = Number(inv.paidAmount || 0);
+        const paidAmount  = Math.min(rawPaid, total);
+        const excessPaid  = Math.max(rawPaid - total, 0);
         const remaining   = Math.max(total - paidAmount, 0);
         const cashAcc     = cashAccounts.find((c: any) => c.id === inv.paidToAccountId)?.name || 'النقدية / البنك';
         const lines: any[] = [];
-        if (paidAmount  > 0.001) lines.push({ account: cashAcc,                                           debit: paidAmount, credit: 0,        description: `تحصيل نقدي - فاتورة ${inv.invoiceNumber}` });
+        if (rawPaid     > 0.001) lines.push({ account: cashAcc,                                           debit: rawPaid,    credit: 0,        description: `تحصيل نقدي - فاتورة ${inv.invoiceNumber}` });
         if (remaining   > 0.001) lines.push({ account: `حسابات العملاء (${inv.customerName || 'عام'})`,  debit: remaining,  credit: 0,        description: `متبقي آجل - فاتورة ${inv.invoiceNumber}` });
         if (discount    > 0.001) lines.push({ account: 'خصم مسموح به (مبيعات)',                          debit: discount,   credit: 0,        description: `خصم تجاري فاتورة ${inv.invoiceNumber}` });
         if (tax         > 0.001) lines.push({ account: 'ضريبة القيمة المضافة المستحقة (المخرجات)',       debit: 0,          credit: tax,       description: `ضريبة فاتورة ${inv.invoiceNumber}` });
         if (grossSales  > 0.001) lines.push({ account: 'إيرادات المبيعات',                                debit: 0,          credit: grossSales, description: `إيراد مبيعات فاتورة ${inv.invoiceNumber}` });
+        if (excessPaid  > 0.001) lines.push({ account: `حسابات العملاء (${inv.customerName || 'عام'})`,  debit: 0,          credit: excessPaid, description: `دفعة مقدمة / تسوية رصيد عميل - فاتورة ${inv.invoiceNumber}` });
         return autoBalance(lines, inv.invoiceNumber);
     };
 
@@ -121,13 +124,16 @@ export default function SubledgerPostingPage() {
             grossPurchases = Math.max(total - tax + discount, 0);
         }
 
-        const paidAmount  = Math.min(Number(inv.paidAmount || 0), total);
+        const rawPaid     = Number(inv.paidAmount || 0);
+        const paidAmount  = Math.min(rawPaid, total);
+        const excessPaid  = Math.max(rawPaid - total, 0);
         const remaining   = Math.max(total - paidAmount, 0);
         const cashAcc     = cashAccounts.find((c: any) => c.id === inv.paidFromAccountId)?.name || 'النقدية / البنك';
         const lines: any[] = [];
         if (grossPurchases > 0.001) lines.push({ account: 'مخزون البضائع والمشتريات',                     debit: grossPurchases, credit: 0,        description: `إضافة مخزون فاتورة ${inv.invoiceNumber}` });
         if (tax            > 0.001) lines.push({ account: 'ضريبة القيمة المضافة المخصومة (المدخلات)',     debit: tax,            credit: 0,        description: `ضريبة مشتريات فاتورة ${inv.invoiceNumber}` });
-        if (paidAmount     > 0.001) lines.push({ account: cashAcc,                                        debit: 0,              credit: paidAmount, description: `سداد نقدي لفاتورة ${inv.invoiceNumber}` });
+        if (excessPaid     > 0.001) lines.push({ account: `حسابات الموردين (${inv.supplierName || 'عام'})`, debit: excessPaid,     credit: 0,        description: `دفعة مقدمة / تسوية رصيد مورد - فاتورة ${inv.invoiceNumber}` });
+        if (rawPaid        > 0.001) lines.push({ account: cashAcc,                                        debit: 0,              credit: rawPaid,   description: `سداد نقدي لفاتورة ${inv.invoiceNumber}` });
         if (remaining      > 0.001) lines.push({ account: `حسابات الموردين (${inv.supplierName || 'عام'})`, debit: 0,            credit: remaining,  description: `مستحق للمورد فاتورة ${inv.invoiceNumber}` });
         if (discount       > 0.001) lines.push({ account: 'خصم مكتسب (مشتريات)',                          debit: 0,              credit: discount,   description: `خصم مكتسب فاتورة ${inv.invoiceNumber}` });
         return autoBalance(lines, inv.invoiceNumber);
@@ -239,7 +245,9 @@ export default function SubledgerPostingPage() {
         const total = Number(inv.total || 0);
         const tax = Number(inv.tax || 0);
         const discount = Number(inv.discount || 0);
-        const paidAmount = Math.min(Number(inv.paidAmount || 0), total);
+        const rawPaid = Number(inv.paidAmount || 0);
+        const paidAmount = Math.min(rawPaid, total);
+        const excessPaid = Math.max(rawPaid - total, 0);
         const remaining = Math.max(total - paidAmount, 0);
         
         let rawDr = 0, rawCr = 0;
@@ -251,8 +259,8 @@ export default function SubledgerPostingPage() {
             } else {
                 grossSales = Math.max(total - tax + discount, 0);
             }
-            rawDr = paidAmount + remaining + discount;
-            rawCr = grossSales + tax;
+            rawDr = rawPaid + remaining + discount;
+            rawCr = grossSales + tax + excessPaid;
         } else {
             let grossPurchases = 0;
             if (inv.subtotal && Number(inv.subtotal) > 0) {
@@ -261,8 +269,8 @@ export default function SubledgerPostingPage() {
             } else {
                 grossPurchases = Math.max(total - tax + discount, 0);
             }
-            rawDr = grossPurchases + tax;
-            rawCr = paidAmount + remaining + discount;
+            rawDr = grossPurchases + tax + excessPaid;
+            rawCr = rawPaid + remaining + discount;
         }
         if (rawDr === 0 && rawCr === 0) return { isImbalanced: false, diff: 0, rawDr: 0, rawCr: 0 };
         const diff = Math.abs(rawDr - rawCr);
@@ -1279,6 +1287,7 @@ function InvoicePreviewDialog({
                         <Separator />
                         <div className="flex justify-between font-bold text-base"><span>الإجمالي</span><span className="font-mono">{formatCurrency(total)}</span></div>
                         <div className="flex justify-between text-emerald-700"><span>المدفوع</span><span className="font-mono">{formatCurrency(paid)}</span></div>
+                        {paid > total && <div className="flex justify-between text-blue-600 font-semibold"><span>الزيادة المدفوعة (دفعة مقدمة / تسوية)</span><span className="font-mono">{formatCurrency(paid - total)}</span></div>}
                         {remaining > 0.01 && <div className="flex justify-between text-red-600 font-semibold"><span>المتبقي (آجل)</span><span className="font-mono">{formatCurrency(remaining)}</span></div>}
                     </div>
                 </div>

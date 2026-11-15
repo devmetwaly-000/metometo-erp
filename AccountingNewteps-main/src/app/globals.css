@@ -226,43 +226,45 @@ nextjs-portal {
 /* Sidebar items readability & line-height fix for Arabic text */
 [data-sidebar="menu-button"] {
   height: auto !important;
-  min-height: 2.15rem !important;
-  line-height: 1.4 !important;
+  min-height: 2rem !important;
+  line-height: 1.35 !important;
   white-space: normal !important;
   word-break: break-word !important;
   overflow-wrap: break-word !important;
-  padding: 0.35rem 0.6rem !important;
+  padding: 0.25rem 0.5rem !important;
   display: flex !important;
   align-items: center !important;
 }
 
 [data-sidebar="menu-sub-button"] {
   height: auto !important;
-  line-height: 1.35 !important;
+  line-height: 1.25 !important;
   white-space: normal !important;
   word-break: break-word !important;
   overflow-wrap: break-word !important;
   display: flex !important;
   align-items: center !important;
+  padding-top: 0.15rem !important;
+  padding-bottom: 0.15rem !important;
 }
 
 [data-sidebar="menu-sub-button"] span,
 [data-sidebar="menu-button"] span {
-  line-height: 1.35 !important;
+  line-height: 1.25 !important;
   white-space: normal !important;
   word-break: break-word !important;
 }
 
 [data-sidebar="menu-sub-item"] {
-  margin-top: 1px !important;
-  margin-bottom: 1px !important;
+  margin-top: 0px !important;
+  margin-bottom: 0px !important;
   height: auto !important;
 }
 
 [data-sidebar="menu-sub"] {
-  gap: 2px !important;
-  padding-top: 2px !important;
-  padding-bottom: 2px !important;
+  gap: 1px !important;
+  padding-top: 1px !important;
+  padding-bottom: 1px !important;
 }
 
 /* Reports use a restrained, fast-rendering business layout. */

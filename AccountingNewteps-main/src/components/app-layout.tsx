@@ -509,13 +509,13 @@ const MobileSidebar = () => {
     const { settings } = useData();
     const [searchTerm, setSearchTerm] = useState('');
     const { openMobile, setOpenMobile } = useSidebar();
-    const configuredTabHeight = settings?.main?.general?.innerTabHeight || 'normal';
-    const innerTabHeightPx = configuredTabHeight === 'compact' ? 24 : configuredTabHeight === 'comfortable' ? 34 : 28;
+    const configuredTabHeight = settings?.main?.general?.innerTabHeight || 'compact';
+    const innerTabHeightPx = configuredTabHeight === 'compact' ? 22 : configuredTabHeight === 'comfortable' ? 32 : 26;
     const innerTabHeightClass = configuredTabHeight === 'compact'
-        ? 'min-h-[24px] py-0.5'
+        ? 'min-h-[22px] py-0 px-2 text-[11.5px]'
         : configuredTabHeight === 'comfortable'
-            ? 'min-h-[34px] py-1.5'
-            : 'min-h-[28px] py-1';
+            ? 'min-h-[32px] py-1.5 px-2 text-xs'
+            : 'min-h-[26px] py-0.5 px-2 text-xs';
 
     return (
         <Sheet open={openMobile} onOpenChange={setOpenMobile}>
@@ -838,13 +838,13 @@ export function AppLayoutContent({ children }: { children: React.ReactNode }) {
   const generalSettings = settings?.main?.general || {};
   const fabPosition = generalSettings.mobileFabPosition || 'bottom-right';
   const desktopLayout = generalSettings.desktopLayout || 'sidebar';
-  const innerTabHeight = generalSettings.innerTabHeight || 'normal';
-  const innerTabHeightPx = innerTabHeight === 'compact' ? 24 : innerTabHeight === 'comfortable' ? 34 : 28;
+  const innerTabHeight = generalSettings.innerTabHeight || 'compact';
+  const innerTabHeightPx = innerTabHeight === 'compact' ? 22 : innerTabHeight === 'comfortable' ? 32 : 26;
   const innerTabHeightClass = innerTabHeight === 'compact'
-    ? 'min-h-[24px] py-0.5'
+    ? 'min-h-[22px] py-0 px-2 text-[11.5px]'
     : innerTabHeight === 'comfortable'
-      ? 'min-h-[34px] py-1.5'
-      : 'min-h-[28px] py-1';
+      ? 'min-h-[32px] py-1.5 px-2 text-xs'
+      : 'min-h-[26px] py-0.5 px-2 text-xs';
 
   const memoizedNavStructure = useMemo(() => {
     if (!isCentral) return navStructure;
