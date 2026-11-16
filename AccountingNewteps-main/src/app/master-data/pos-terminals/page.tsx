@@ -22,7 +22,14 @@ import {
 import { MoreHorizontal, PlusCircle, Edit, Trash2, Loader2, Printer, Building2 } from "lucide-react";
 import { useData } from "@/contexts/data-provider";
 import { useAuth } from "@/contexts/auth-context";
-import { AddEntityDialog } from "@/components/add-entity-dialog";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import {
@@ -72,10 +79,21 @@ const TerminalForm = ({ terminal, onSave, onClose, warehouses, allTerminals, sys
   const { toast } = useToast();
 
   useEffect(() => {
-    if (!terminal && !formData.warehouseId && warehouses.length === 1) {
-      setFormData(prev => ({ ...prev, warehouseId: warehouses[0].id }));
+    if (terminal) {
+      setFormData(terminal);
+    } else {
+      setFormData({
+        name: "",
+        warehouseId: warehouses.length === 1 ? warehouses[0].id : "",
+        code: "",
+        posPrinterType: 'system',
+        posPrinterAddress: '',
+        enableKitchenPrinter: false,
+        kitchenPrinterType: 'system',
+        kitchenPrinterAddress: ''
+      });
     }
-  }, [terminal, formData.warehouseId, warehouses]);
+  }, [terminal, warehouses]);
 
   const handleTestSystemPrint = async (printerName: string) => {
     if (!printerName) return toast({ variant: 'destructive', title: 'خطأ', description: 'الرجاء اختيار طابعة أولاً.' });
@@ -142,7 +160,7 @@ const TerminalForm = ({ terminal, onSave, onClose, warehouses, allTerminals, sys
         return;
     }
 
-    onSave(formData);
+    onSave({ ...formData, id: terminal?.id });
     onClose();
   };
 
@@ -276,6 +294,10 @@ export default function PosTerminalsPage() {
   const { posTerminals, warehouses, dbAction, loading, isCentral } = useData();
   const { user } = useAuth();
   const { toast } = useToast();
+
+  const [isAddOpen, setIsAddOpen] = useState(false);
+  const [editingTerminal, setEditingTerminal] = useState<PosTerminal | null>(null);
+  const [terminalToDelete, setTerminalToDelete] = useState<PosTerminal | null>(null);
   
   const authorizedWarehouses = useMemo(() => {
     // نقاط البيع (الكاشيرات) ترتبط بكافة الفروع والمخازن المتاحة للبيع، وتستبعد فقط عهد المناديب والمخازن المغلقة
@@ -355,18 +377,35 @@ export default function PosTerminalsPage() {
     <>
       <PageHeader title="نقاط البيع (الكاشيرات)">
         {!isCentral && (
-          <AddEntityDialog
-            title="إضافة نقطة بيع جديدة"
-            description="عرّف أجهزة الكاشير الموجودة لديك واربط كل جهاز بمخزن محدد لصرف البضاعة منه."
-            triggerButton={
+          <Dialog open={isAddOpen} onOpenChange={setIsAddOpen}>
+            <DialogTrigger asChild>
               <Button size="sm" className="gap-1">
                 <PlusCircle className="h-4 w-4" />
                 إضافة نقطة بيع
               </Button>
-            }
-          >
-            {({onClose}) => <TerminalForm onSave={handleSave} onClose={onClose} warehouses={authorizedWarehouses} allTerminals={posTerminals} systemPrinters={systemPrinters} />}
-          </AddEntityDialog>
+            </DialogTrigger>
+            <DialogContent 
+              className="sm:max-w-2xl max-h-[90vh] overflow-y-auto"
+              onInteractOutside={(e) => {
+                const target = e.target as HTMLElement;
+                if (target.closest('[data-radix-popper-content-wrapper]')) {
+                  e.preventDefault();
+                }
+              }}
+            >
+              <DialogHeader>
+                <DialogTitle>إضافة نقطة بيع جديدة</DialogTitle>
+                <DialogDescription>عرّف أجهزة الكاشير الموجودة لديك واربط كل جهاز بمخزن محدد لصرف البضاعة منه.</DialogDescription>
+              </DialogHeader>
+              <TerminalForm 
+                onSave={handleSave} 
+                onClose={() => setIsAddOpen(false)} 
+                warehouses={authorizedWarehouses} 
+                allTerminals={posTerminals} 
+                systemPrinters={systemPrinters} 
+              />
+            </DialogContent>
+          </Dialog>
         )}
       </PageHeader>
       <main className="flex flex-1 flex-col gap-4 p-4 md:gap-8 md:p-6">
@@ -416,44 +455,22 @@ export default function PosTerminalsPage() {
                               مراجعة فقط
                             </span>
                           ) : (
-                            <AlertDialog>
-                               <DropdownMenu>
-                                   <DropdownMenuTrigger asChild>
-                                   <Button aria-haspopup="true" size="icon" variant="ghost">
-                                       <MoreHorizontal className="h-4 w-4" />
-                                   </Button>
-                                   </DropdownMenuTrigger>
-                                   <DropdownMenuContent align="end">
-                                       <DropdownMenuLabel>الإجراءات</DropdownMenuLabel>
-                                       <AddEntityDialog
-                                           title="تعديل نقطة البيع"
-                                           description="تعديل اسم نقطة البيع والمخزن المرتبط بها."
-                                           triggerButton={
-                                               <DropdownMenuItem onSelect={(e) => e.preventDefault()}>
-                                                   <Edit className="ml-2 h-4 w-4" /> تعديل
-                                               </DropdownMenuItem>
-                                           }
-                                       >
-                                           {({onClose}) => <TerminalForm terminal={terminal} onSave={handleSave} onClose={onClose} warehouses={authorizedWarehouses} allTerminals={posTerminals} systemPrinters={systemPrinters}/>}
-                                       </AddEntityDialog>
-                                       <AlertDialogTrigger asChild>
-                                           <DropdownMenuItem className="text-destructive" onSelect={(e) => e.preventDefault()}>
-                                               <Trash2 className="ml-2 h-4 w-4" /> حذف
-                                           </DropdownMenuItem>
-                                       </AlertDialogTrigger>
-                                   </DropdownMenuContent>
-                               </DropdownMenu>
-                                <AlertDialogContent>
-                                   <AlertDialogHeader>
-                                       <AlertDialogTitle>هل أنت متأكد تمامًا؟</AlertDialogTitle>
-                                       <AlertDialogDescription>سيؤدي هذا الإجراء إلى حذف نقطة البيع بشكل دائم.</AlertDialogDescription>
-                                   </AlertDialogHeader>
-                                   <AlertDialogFooter>
-                                       <AlertDialogCancel>إلغاء</AlertDialogCancel>
-                                       <AlertDialogAction onClick={() => handleDelete(terminal.id!)}>متابعة</AlertDialogAction>
-                                   </AlertDialogFooter>
-                               </AlertDialogContent>
-                            </AlertDialog>
+                            <DropdownMenu>
+                              <DropdownMenuTrigger asChild>
+                                <Button aria-haspopup="true" size="icon" variant="ghost">
+                                  <MoreHorizontal className="h-4 w-4" />
+                                </Button>
+                              </DropdownMenuTrigger>
+                              <DropdownMenuContent align="end">
+                                <DropdownMenuLabel>الإجراءات</DropdownMenuLabel>
+                                <DropdownMenuItem onClick={() => setEditingTerminal(terminal)}>
+                                  <Edit className="ml-2 h-4 w-4" /> تعديل
+                                </DropdownMenuItem>
+                                <DropdownMenuItem className="text-destructive" onClick={() => setTerminalToDelete(terminal)}>
+                                  <Trash2 className="ml-2 h-4 w-4" /> حذف
+                                </DropdownMenuItem>
+                              </DropdownMenuContent>
+                            </DropdownMenu>
                           )}
                         </TableCell>
                       </TableRow>
@@ -469,6 +486,57 @@ export default function PosTerminalsPage() {
           </CardContent>
         </Card>
       </main>
+
+      {/* نافذة تعديل نقطة البيع */}
+      <Dialog open={!!editingTerminal} onOpenChange={(open) => !open && setEditingTerminal(null)}>
+        <DialogContent 
+          className="sm:max-w-2xl max-h-[90vh] overflow-y-auto"
+          onInteractOutside={(e) => {
+            const target = e.target as HTMLElement;
+            if (target.closest('[data-radix-popper-content-wrapper]')) {
+              e.preventDefault();
+            }
+          }}
+        >
+          <DialogHeader>
+            <DialogTitle>تعديل نقطة البيع</DialogTitle>
+            <DialogDescription>تعديل كود واسم نقطة البيع والمخزن المرتبط بها وإعدادات الطباعة.</DialogDescription>
+          </DialogHeader>
+          {editingTerminal && (
+            <TerminalForm 
+              terminal={editingTerminal} 
+              onSave={handleSave} 
+              onClose={() => setEditingTerminal(null)} 
+              warehouses={authorizedWarehouses} 
+              allTerminals={posTerminals} 
+              systemPrinters={systemPrinters}
+            />
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* حوار تأكيد حذف نقطة البيع */}
+      <AlertDialog open={!!terminalToDelete} onOpenChange={(open) => !open && setTerminalToDelete(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>هل أنت متأكد تمامًا؟</AlertDialogTitle>
+            <AlertDialogDescription>
+              سيؤدي هذا الإجراء إلى حذف نقطة البيع "{terminalToDelete?.name}" بشكل دائم.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={() => setTerminalToDelete(null)}>إلغاء</AlertDialogCancel>
+            <AlertDialogAction 
+              onClick={() => {
+                if (terminalToDelete?.id) handleDelete(terminalToDelete.id);
+                setTerminalToDelete(null);
+              }}
+            >
+              حذف
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </>
   );
 }
