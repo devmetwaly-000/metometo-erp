@@ -925,28 +925,33 @@ const QuantityEditDialog = ({ item, onConfirm, onClose }: { item: PosItem, onCon
 const SelfShiftOpeningDialog = ({ onConfirm, onClose, warehouses, terminals, activeSessions }: { onConfirm: (data: { posTerminalId: string, sessionWarehouseId: string }) => void, onClose: () => void, warehouses: any[], terminals: any[], activeSessions: any[] }) => {
     const [posTerminalId, setPosTerminalId] = useState('');
     
-    const selectedTerminal = terminals.find(t => t.id === posTerminalId);
-    const sessionWarehouseId = selectedTerminal?.warehouseId;
+    const selectedTerminal = terminals.find(t => (t.id || t.Id) === posTerminalId);
+    const sessionWarehouseId = selectedTerminal?.warehouseId || selectedTerminal?.WarehouseId;
     const sessionWarehouseName = useMemo(() => {
         if (!sessionWarehouseId) return "اختر نقطة بيع أولاً";
-        return warehouses.find(w => w.id === sessionWarehouseId)?.name || "مخزن غير معروف";
+        const foundWh = warehouses.find(w => (w.id || w.Id) === sessionWarehouseId);
+        return foundWh?.name || (foundWh as any)?.Name || "مخزن غير معروف";
     }, [sessionWarehouseId, warehouses]);
 
     const availableTerminals = useMemo(() => {
-        const activeTerminalIds = new Set(activeSessions.map(s => s.posTerminalId));
-        return terminals.filter(t => !activeTerminalIds.has(t.id));
+        const activeTerminalIds = new Set(activeSessions.map(s => s.posTerminalId || s.PosTerminalId));
+        return terminals.filter(t => !activeTerminalIds.has(t.id || t.Id));
     }, [terminals, activeSessions]);
     
     const terminalOptions = useMemo(() => {
         return availableTerminals.map(t => {
-            const warehouseName = warehouses.find(w => w.id === t.warehouseId)?.name || 'غير محدد';
-            return { value: t.id, label: `${t.name} (${warehouseName})` };
+            const wId = t.warehouseId || t.WarehouseId;
+            const foundWh = warehouses.find(w => (w.id || w.Id) === wId);
+            const warehouseName = foundWh?.name || (foundWh as any)?.Name || 'غير محدد';
+            return { value: t.id || t.Id, label: `${t.name || t.Name} (${warehouseName})` };
         });
     }, [availableTerminals, warehouses]);
 
     const handleSubmit = () => {
-        if (posTerminalId && sessionWarehouseId) {
-            onConfirm({ posTerminalId, sessionWarehouseId });
+        const term = terminals.find(t => (t.id || t.Id) === posTerminalId);
+        const wId = sessionWarehouseId || term?.warehouseId || term?.WarehouseId;
+        if (posTerminalId && wId) {
+            onConfirm({ posTerminalId, sessionWarehouseId: wId });
             onClose();
         }
     };
@@ -1002,7 +1007,10 @@ export default function PosPage() {
     }, [allWarehousesData, authorizedBranchIds]);
 
     const posTerminals = useMemo(() => {
-        return allTerminals.filter((t: any) => authorizedBranchIds.includes(t.warehouseId));
+        return allTerminals.filter((t: any) => {
+            const wId = t.warehouseId || t.WarehouseId;
+            return authorizedBranchIds.includes(wId) || authorizedBranchIds.includes('all');
+        });
     }, [allTerminals, authorizedBranchIds]);
     const { toast } = useToast();
     const router = useRouter();
