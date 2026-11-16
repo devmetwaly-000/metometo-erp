@@ -1970,15 +1970,23 @@ export async function POST(req: Request) {
                     .input('CashierSessionsJson', sql.NVarChar(sql.MAX), data.cashierSessions ? jsonString(data.cashierSessions) : null)
                     .input('ClosingStatementJson', sql.NVarChar(sql.MAX), data.closingStatementJson || (data.closingStatement ? jsonString(data.closingStatement) : null))
                     .query(`
-                        UPDATE dbo.PosSessions
-                        SET 
-                            EndTime = COALESCE(@EndTime, EndTime),
-                            ClosedBy = COALESCE(@ClosedBy, ClosedBy),
-                            ClosedByName = COALESCE(@ClosedByName, ClosedByName),
-                            IsClosed = COALESCE(@IsClosed, IsClosed),
-                            CashierSessionsJson = COALESCE(@CashierSessionsJson, CashierSessionsJson),
-                            ClosingStatementJson = COALESCE(@ClosingStatementJson, ClosingStatementJson)
-                        WHERE Id = @Id;
+                        IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('dbo.PosSessions') AND name = 'ClosingStatementJson')
+                        BEGIN
+                            EXEC('ALTER TABLE dbo.PosSessions ADD ClosingStatementJson NVARCHAR(MAX) NULL;');
+                        END
+
+                        EXEC sp_executesql N'
+                            UPDATE dbo.PosSessions
+                            SET 
+                                EndTime = COALESCE(@EndTime, EndTime),
+                                ClosedBy = COALESCE(@ClosedBy, ClosedBy),
+                                ClosedByName = COALESCE(@ClosedByName, ClosedByName),
+                                IsClosed = COALESCE(@IsClosed, IsClosed),
+                                CashierSessionsJson = COALESCE(@CashierSessionsJson, CashierSessionsJson),
+                                ClosingStatementJson = COALESCE(@ClosingStatementJson, ClosingStatementJson)
+                            WHERE Id = @Id;
+                        ', N'@Id NVARCHAR(64), @EndTime DATETIME2, @ClosedBy NVARCHAR(64), @ClosedByName NVARCHAR(255), @IsClosed BIT, @CashierSessionsJson NVARCHAR(MAX), @ClosingStatementJson NVARCHAR(MAX)',
+                        @Id, @EndTime, @ClosedBy, @ClosedByName, @IsClosed, @CashierSessionsJson, @ClosingStatementJson;
                     `);
                 return NextResponse.json({ success: true });
             }

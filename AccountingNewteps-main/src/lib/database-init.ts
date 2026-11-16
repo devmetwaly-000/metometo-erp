@@ -1971,7 +1971,13 @@ export async function createAndInitializeDatabase(options: DbInitOptions): Promi
             `IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('dbo.StockOutRecords') AND name = 'TotalGoodsValue')
                 ALTER TABLE dbo.StockOutRecords ADD [TotalGoodsValue] DECIMAL(18,4) NOT NULL CONSTRAINT DF_StockOutRecords_TotalGoodsValue DEFAULT ((0));`,
             `IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('dbo.StockOutRecords') AND name = 'TotalTransferredValue')
-                ALTER TABLE dbo.StockOutRecords ADD [TotalTransferredValue] DECIMAL(18,4) NOT NULL CONSTRAINT DF_StockOutRecords_TotalTransferredValue DEFAULT ((0));`
+                ALTER TABLE dbo.StockOutRecords ADD [TotalTransferredValue] DECIMAL(18,4) NOT NULL CONSTRAINT DF_StockOutRecords_TotalTransferredValue DEFAULT ((0));`,
+            `IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('dbo.PosSessions') AND name = 'ClosingStatementJson')
+                ALTER TABLE dbo.PosSessions ADD [ClosingStatementJson] NVARCHAR(MAX) NULL;`,
+            `IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('dbo.PosSessions') AND name = 'BranchCode')
+                ALTER TABLE dbo.PosSessions ADD [BranchCode] NVARCHAR(50) NULL;`,
+            `IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('dbo.PosSessions') AND name = 'BranchName')
+                ALTER TABLE dbo.PosSessions ADD [BranchName] NVARCHAR(255) NULL;`
         ];
 
         const schemaUpgradeErrors: string[] = [];
