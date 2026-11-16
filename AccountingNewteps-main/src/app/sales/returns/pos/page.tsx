@@ -47,7 +47,7 @@ interface PosReturnItem {
 }
 
 export default function PosReturnPage() {
-    const { posSales, posReturns, dbAction, loading, getNextId, warehouses, posTerminals, items: allItems } = useData();
+    const { posSales, salesInvoices, posReturns, dbAction, loading, getNextId, warehouses, posTerminals, items: allItems } = useData();
     const { user } = useAuth();
     const { toast } = useToast();
     const router = useRouter();
@@ -57,81 +57,100 @@ export default function PosReturnPage() {
     const [foundInvoice, setFoundInvoice] = useState<PosSale | null>(null);
     const [returnedItems, setReturnedItems] = useState<PosReturnItem[]>([]);
     const [returnTotal, setReturnTotal] = useState(0);
+    const [isSearching, setIsSearching] = useState(false);
 
     const itemScanRef = useRef<HTMLInputElement>(null);
     
     // Permission check for return mode
     const canBypassScanner = user?.canBypassScannerForReturn === true;
 
-    const handleSearch = () => {
-        const cleanedInput = barcodeInput.trim().replace(/\s/g, '');
-        let invoiceToFind: PosSale | undefined;
+    const handleSearch = async () => {
+        const rawInput = barcodeInput.trim();
+        if (!rawInput) return;
+        setIsSearching(true);
 
-        const findInvoiceFromParts = (p: string[]) => {
-            if (p.length !== 4) return undefined;
-            const invoiceCounter = parseInt(p[0], 10);
-            const terminalCode = p[1];
-            const warehouseCode = p[2];
-            const datePart = p[3];
+        const cleanedInput = rawInput.replace(/\s+/g, '');
+        const inputTokens = cleanedInput.toLowerCase().split(/[-_/]/).filter(Boolean);
+        const inputSortedTokens = [...inputTokens].sort().join('-');
 
-            if (isNaN(invoiceCounter)) return undefined;
+        const allAvailableSales = [...(posSales || []), ...(salesInvoices || [])];
 
-            const terminal = posTerminals.find((t: any) => String(t.code) === terminalCode);
-            if (!terminal) return undefined;
+        const matchInvoice = (s: any) => {
+            if (!s) return false;
+            const invNum = String(s.invoiceNumber || s.InvoiceNumber || '').trim().replace(/\s+/g, '');
+            const invId = String(s.id || s.Id || '').trim();
 
-            const warehouse = warehouses.find((w: any) => String(w.code) === warehouseCode);
-            if (!warehouse) return undefined;
-            
-            return posSales.find((s: any) => {
-                const saleDate = new Date(s.date);
-                const saleDay = String(saleDate.getDate()).padStart(2, '0');
-                const saleMonth = String(saleDate.getMonth() + 1).padStart(2, '0');
-                const saleYear = String(saleDate.getFullYear()).slice(-2);
-                const saleDateFormatted = `${saleDay}${saleMonth}${saleYear}`;
-                
-                return s.invoiceCounter === invoiceCounter &&
-                       s.posTerminalId === terminal.id &&
-                       s.warehouseId === warehouse.id &&
-                       datePart === saleDateFormatted;
-            });
-        }
-        
-        const parts = cleanedInput.split('-');
-        invoiceToFind = findInvoiceFromParts(parts);
-        
-        // If not found, try searching by the full invoice number string as a fallback
+            // 1. Direct match (exact or case-insensitive)
+            if (invNum.toLowerCase() === cleanedInput.toLowerCase() || invId.toLowerCase() === cleanedInput.toLowerCase()) {
+                return true;
+            }
+
+            // 2. Token-set match (e.g. C1-10-161126-1 matches 1-C1-10-161126)
+            const sTokens = invNum.toLowerCase().split(/[-_/]/).filter(Boolean);
+            const sSortedTokens = [...sTokens].sort().join('-');
+            if (inputSortedTokens && sSortedTokens === inputSortedTokens) {
+                return true;
+            }
+
+            // 3. Reversed 4-part match (Terminal-Warehouse-Date-Count <-> Count-Terminal-Warehouse-Date)
+            if (inputTokens.length === 4) {
+                const rev1 = `${inputTokens[3]}-${inputTokens[0]}-${inputTokens[1]}-${inputTokens[2]}`;
+                const rev2 = `${inputTokens[3]}-${inputTokens[1]}-${inputTokens[0]}-${inputTokens[2]}`;
+                const sClean = invNum.toLowerCase();
+                if (sClean === rev1 || sClean === rev2) {
+                    return true;
+                }
+            }
+
+            return false;
+        };
+
+        let invoiceToFind: any = allAvailableSales.find(matchInvoice);
+
+        // If not found in client memory, query backend API directly!
         if (!invoiceToFind) {
-            invoiceToFind = posSales.find((s: PosSale) => s.invoiceNumber === cleanedInput);
+            try {
+                const res = await fetch(`/api/sales/find-invoice?query=${encodeURIComponent(cleanedInput)}`);
+                if (res.ok) {
+                    const data = await res.json();
+                    if (data.success && data.invoice) {
+                        invoiceToFind = data.invoice;
+                    }
+                }
+            } catch (err) {
+                console.warn('Backend search error:', err);
+            }
         }
+
+        setIsSearching(false);
 
         if (invoiceToFind) {
             setFoundInvoice(invoiceToFind);
-            const previousReturnsForInvoice = posReturns.filter((pr: any) => pr.originalInvoiceId === invoiceToFind!.id);
+            const previousReturnsForInvoice = (posReturns || []).filter((pr: any) => pr.originalInvoiceId === invoiceToFind!.id || pr.originalInvoiceNumber === invoiceToFind!.invoiceNumber);
             
             const returnedQuantities = new Map<string, number>();
             previousReturnsForInvoice.forEach((pr: any) => {
-                pr.items.forEach((item: any) => {
-                    returnedQuantities.set(item.id, (returnedQuantities.get(item.id) || 0) + item.qty);
+                (pr.items || []).forEach((item: any) => {
+                    returnedQuantities.set(item.id, (returnedQuantities.get(item.id) || 0) + Number(item.qty || 0));
                 });
             });
 
             if (canBypassScanner) {
-                // If user has permission, populate all items for quantity selection
-                setReturnedItems(invoiceToFind.items.map(item => ({
+                setReturnedItems((invoiceToFind.items || []).map((item: any) => ({
                     ...item, 
-                    maxQty: item.qty, 
+                    maxQty: Number(item.qty || 1), 
                     previouslyReturned: returnedQuantities.get(item.id) || 0,
                     total: 0, 
                     qty: 0, 
-                    cost: item.cost || 0 
+                    cost: Number(item.cost || item.price || 0) 
                 })));
             } else {
-                // Otherwise, start with an empty cart
                 setReturnedItems([]);
                 setTimeout(() => itemScanRef.current?.focus(), 100);
             }
+            toast({ title: 'تم العثور على الفاتورة', description: `فاتورة رقم ${invoiceToFind.invoiceNumber}` });
         } else {
-            toast({ variant: 'destructive', title: 'خطأ', description: 'لم يتم العثور على فاتورة بهذا الرقم/الباركود.' });
+            toast({ variant: 'destructive', title: 'خطأ', description: `لم يتم العثور على فاتورة برقم "${rawInput}".` });
             setFoundInvoice(null);
             setReturnedItems([]);
         }
@@ -153,7 +172,10 @@ export default function PosReturnPage() {
         const itemCode = scanInput.trim();
         if (!itemCode || !foundInvoice) return;
 
-        const itemInInvoice = foundInvoice.items.find(i => allItems.find((master: any) => master.id === i.id)?.code === itemCode);
+        const itemInInvoice = foundInvoice.items.find(i => {
+            const master = allItems.find((m: any) => m.id === i.id);
+            return i.code === itemCode || (i as any).barcode === itemCode || master?.code === itemCode || master?.barcode === itemCode || i.id === itemCode;
+        });
         
         if (!itemInInvoice) {
             toast({ variant: 'destructive', title: 'خطأ', description: 'هذا الصنف غير موجود في الفاتورة الأصلية.' });
@@ -161,11 +183,11 @@ export default function PosReturnPage() {
             return;
         }
 
-        const previouslyReturned = posReturns
+        const previouslyReturned = (posReturns || [])
             .filter((pr: any) => pr.originalInvoiceId === foundInvoice.id)
-            .flatMap((pr: any) => pr.items)
+            .flatMap((pr: any) => pr.items || [])
             .filter((item: any) => item.id === itemInInvoice.id)
-            .reduce((sum: number, item: any) => sum + item.qty, 0);
+            .reduce((sum: number, item: any) => sum + Number(item.qty || 0), 0);
 
         const qtyInCart = returnedItems.find(i => i.id === itemInInvoice.id)?.qty || 0;
         const maxReturnable = itemInInvoice.qty - previouslyReturned;
@@ -194,7 +216,7 @@ export default function PosReturnPage() {
             }]);
         }
         setScanInput('');
-    }
+    };
 
     React.useEffect(() => {
         const total = returnedItems.reduce((sum, item) => sum + item.total, 0);
@@ -255,12 +277,20 @@ export default function PosReturnPage() {
                     <CardContent>
                         <form onSubmit={(e) => { e.preventDefault(); handleSearch(); }} className="flex items-end gap-2">
                              <div className="space-y-2 flex-1">
-                                <Label htmlFor="invoiceNumber">رقم فاتورة الكاشير</Label>
-                                <Input id="invoiceNumber" value={barcodeInput} onChange={e => setBarcodeInput(e.target.value)} placeholder="أدخل الرقم المطبوع على الإيصال أو امسح الباركود ضوئيًا..." />
+                                <Label htmlFor="invoiceNumber">رقم فاتورة الكاشير أو الباركود</Label>
+                                <Input 
+                                    id="invoiceNumber" 
+                                    dir="ltr"
+                                    className="font-mono text-left tracking-wide"
+                                    value={barcodeInput} 
+                                    onChange={e => setBarcodeInput(e.target.value)} 
+                                    placeholder="مثال: C1-10-161126-1 أو 1-C1-10-161126 أو امسح الباركود..." 
+                                    autoFocus
+                                />
                             </div>
-                            <Button type="submit" disabled={loading || !barcodeInput}>
-                                {loading ? <Loader2 className="animate-spin ml-2" /> : <Search className="ml-2 h-4 w-4" />}
-                                بحث
+                            <Button type="submit" disabled={loading || isSearching || !barcodeInput.trim()} className="gap-2 px-6">
+                                {isSearching ? <Loader2 className="animate-spin h-4 w-4" /> : <Search className="h-4 w-4" />}
+                                بحث عن الفاتورة
                             </Button>
                         </form>
                     </CardContent>
