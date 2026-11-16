@@ -1254,6 +1254,24 @@ export async function POST(req: Request) {
 
             if (path === 'users') {
                 const isRepUser = !!(payload.isSalesRep || payload.role === 'مندوب' || (typeof payload.role === 'string' && payload.role.includes('مندوب')));
+                
+                // Guarantee user inherits creator's license or active system license
+                let userTheme = payload.themeSettings;
+                if (typeof userTheme === 'string') {
+                    try { userTheme = JSON.parse(userTheme); } catch { userTheme = {}; }
+                }
+                userTheme = { ...(userTheme || {}) };
+                if (!userTheme.licenseKey) {
+                    const licRes = await pool.request().query(`
+                        SELECT TOP 1 [Key] FROM dbo.Licenses 
+                        WHERE Status IN ('active', 'assigned') 
+                        ORDER BY CASE WHEN [Key] = 'SA-KEY-99ED28E7-023953BC' THEN 0 ELSE 1 END, CreatedAt DESC
+                    `);
+                    const fallbackKey = licRes.recordset[0]?.Key || 'SA-KEY-99ED28E7-023953BC';
+                    userTheme.licenseKey = fallbackKey;
+                    userTheme.licenseStatus = 'active';
+                }
+
                 await pool.request()
                     .input('Id', sql.NVarChar(64), id)
                     .input('LoginName', sql.NVarChar(100), payload.loginName || id)
@@ -1288,7 +1306,7 @@ export async function POST(req: Request) {
                     .input('CanCancelInvoice', sql.Bit, payload.canCancelInvoice ? 1 : 0)
                     .input('CanBypassScannerForReturn', sql.Bit, payload.canBypassScannerForReturn ? 1 : 0)
                     .input('IsDisabled', sql.Bit, payload.isDisabled ? 1 : 0)
-                    .input('ThemeSettings', sql.NVarChar(sql.MAX), jsonString(payload.themeSettings))
+                    .input('ThemeSettings', sql.NVarChar(sql.MAX), jsonString(userTheme))
                     .query(`
                         INSERT INTO dbo.Users (
                             Id, LoginName, Name, Password, Phone, Email, NationalId, SocialInsuranceNumber,
@@ -1634,6 +1652,26 @@ export async function POST(req: Request) {
                     .query(`
                         INSERT INTO dbo.PayrollRecords (Id, Date, Month, PaidFromAccountId, TotalAmount, DetailsJson)
                         VALUES (@Id, @Date, @Month, @PaidFromAccountId, @TotalAmount, @DetailsJson);
+                    `);
+                return NextResponse.json({ success: true, id });
+            }
+
+            if (path === 'licenses') {
+                await pool.request()
+                    .input('Id', sql.NVarChar(64), id)
+                    .input('Key', sql.NVarChar(255), payload.key || payload.Key || '')
+                    .input('StartDate', sql.DateTime2, payload.startDate ? parseDate(payload.startDate) : null)
+                    .input('EndDate', sql.DateTime2, payload.endDate ? parseDate(payload.endDate) : null)
+                    .input('Status', sql.NVarChar(50), payload.status || 'available')
+                    .input('MaxUsers', sql.Int, Number(payload.maxUsers) || 10)
+                    .input('EnabledModules', sql.NVarChar(sql.MAX), jsonString(payload.enabledModules))
+                    .input('AssignedWarehouseIds', sql.NVarChar(sql.MAX), jsonString(payload.assignedWarehouseIds))
+                    .input('AssignedTo', sql.NVarChar(255), payload.assignedTo || null)
+                    .input('BranchCode', sql.NVarChar(50), payload.branchCode || null)
+                    .input('BranchName', sql.NVarChar(255), payload.branchName || null)
+                    .query(`
+                        INSERT INTO dbo.Licenses (Id, [Key], StartDate, EndDate, Status, MaxUsers, EnabledModules, AssignedWarehouseIds, AssignedTo, BranchCode, BranchName, CreatedAt, UpdatedAt)
+                        VALUES (@Id, @Key, @StartDate, @EndDate, @Status, @MaxUsers, @EnabledModules, @AssignedWarehouseIds, @AssignedTo, @BranchCode, @BranchName, SYSUTCDATETIME(), SYSUTCDATETIME());
                     `);
                 return NextResponse.json({ success: true, id });
             }
@@ -2198,6 +2236,45 @@ export async function POST(req: Request) {
                     `);
                 return NextResponse.json({ success: true });
             }
+
+            if (path === 'licenses' && updateId) {
+                const fields: string[] = ['UpdatedAt = SYSUTCDATETIME()'];
+                const req = pool.request().input('Id', sql.NVarChar(64), String(updateId));
+                if (data.key !== undefined || data.Key !== undefined) {
+                    req.input('Key', sql.NVarChar(255), data.key || data.Key);
+                    fields.push('[Key] = @Key');
+                }
+                if (data.startDate !== undefined) {
+                    req.input('StartDate', sql.DateTime2, data.startDate ? parseDate(data.startDate) : null);
+                    fields.push('StartDate = @StartDate');
+                }
+                if (data.endDate !== undefined) {
+                    req.input('EndDate', sql.DateTime2, data.endDate ? parseDate(data.endDate) : null);
+                    fields.push('EndDate = @EndDate');
+                }
+                if (data.status !== undefined) {
+                    req.input('Status', sql.NVarChar(50), data.status);
+                    fields.push('Status = @Status');
+                }
+                if (data.maxUsers !== undefined) {
+                    req.input('MaxUsers', sql.Int, Number(data.maxUsers));
+                    fields.push('MaxUsers = @MaxUsers');
+                }
+                if (data.enabledModules !== undefined) {
+                    req.input('EnabledModules', sql.NVarChar(sql.MAX), jsonString(data.enabledModules));
+                    fields.push('EnabledModules = @EnabledModules');
+                }
+                if (data.assignedWarehouseIds !== undefined) {
+                    req.input('AssignedWarehouseIds', sql.NVarChar(sql.MAX), jsonString(data.assignedWarehouseIds));
+                    fields.push('AssignedWarehouseIds = @AssignedWarehouseIds');
+                }
+                if (data.assignedTo !== undefined) {
+                    req.input('AssignedTo', sql.NVarChar(255), data.assignedTo);
+                    fields.push('AssignedTo = @AssignedTo');
+                }
+                await req.query(`UPDATE dbo.Licenses SET ${fields.join(', ')} WHERE Id = @Id OR [Key] = @Id;`);
+                return NextResponse.json({ success: true, id: updateId });
+            }
         }
 
         // =====================================================================
@@ -2247,7 +2324,8 @@ export async function POST(req: Request) {
                     stockIssuesToReps: 'dbo.StockIssuesToReps',
                     stockReturnsFromReps: 'dbo.StockReturnsFromReps',
                     inventoryClosings: 'dbo.InventoryClosings',
-                    posTerminals: 'dbo.PosTerminals'
+                    posTerminals: 'dbo.PosTerminals',
+                    licenses: 'dbo.Licenses'
                 };
                 if (path === 'posTerminals' && await checkIsCentral()) {
                     return NextResponse.json({ 
@@ -2281,6 +2359,10 @@ export async function POST(req: Request) {
                             await tx.rollback();
                             throw error;
                         }
+                    } else if (path === 'licenses') {
+                        await pool.request()
+                            .input('Id', sql.NVarChar(64), String(removeId))
+                            .query(`DELETE FROM dbo.Licenses WHERE Id = @Id OR [Key] = @Id;`);
                     } else {
                         await pool.request()
                             .input('Id', sql.NVarChar(64), String(removeId))

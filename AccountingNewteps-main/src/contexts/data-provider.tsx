@@ -334,7 +334,7 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
             if (res.ok) {
                 const json = await res.json();
                 if (json.success) {
-                    if (path === 'settings') {
+                    if (path === 'settings' || path === 'licenses') {
                         setTimeout(() => refreshDataFromSqlServer?.(), 200);
                     }
                     return json.id || (action === 'add' ? generatedId : undefined);

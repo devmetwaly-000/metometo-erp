@@ -541,7 +541,7 @@ const UserForm = ({
 };
 
 export default function UsersPage() {
-  const { users, warehouses, allWarehouses, roles: rolesData, cashAccounts: cashAccountsData, loading, dbAction, licenses } = useData();
+  const { users, warehouses, allWarehouses, roles: rolesData, cashAccounts: cashAccountsData, loading, dbAction, licenses, settings } = useData();
   const { user } = useAuth();
   const { toast } = useToast();
   const { can } = usePermissions();
@@ -553,6 +553,14 @@ export default function UsersPage() {
   const [isEditOpen, setIsEditOpen] = useState(false);
   const [userToDelete, setUserToDelete] = useState<User | null>(null);
   const [isDeleteAlertOpen, setIsDeleteAlertOpen] = useState(false);
+
+  // Automatically determine the active license key of the creator or system
+  const activeCreatorLicenseKey = useMemo(() => {
+    return user?.themeSettings?.licenseKey 
+      || settings?.main?.general?.licenseKey 
+      || licenses?.find((l: any) => l.status === 'assigned' || l.status === 'active')?.key 
+      || 'SA-KEY-99ED28E7-023953BC';
+  }, [user?.themeSettings?.licenseKey, settings?.main?.general?.licenseKey, licenses]);
 
   useEffect(() => {
     if (!isEditOpen && !isDeleteAlertOpen) {
@@ -699,16 +707,18 @@ export default function UsersPage() {
             if (!can("add", moduleName)) return toast({ variant: "destructive", title: "غير مصرح به" });
             if (!userData.password || !userData.loginName) return toast({ variant: "destructive", title: "خطأ", description: "اسم الدخول وكلمة المرور مطلوبان." });
             
-            const creatorLicenseKey = user?.themeSettings?.licenseKey;
+            const userThemeSettings = {
+                ...(userData.themeSettings || {}),
+                theme: userData.themeSettings?.theme || 'dark',
+                licenseKey: activeCreatorLicenseKey,
+                licenseStatus: 'active'
+            };
+
             let userRecord: any = { 
                 ...userData, 
                 isSalesRep: willBeRep,
                 uid: `db_${Date.now()}`,
-                themeSettings: userData.themeSettings || { 
-                    theme: 'dark', 
-                    licenseKey: creatorLicenseKey || '', 
-                    licenseStatus: creatorLicenseKey ? 'active' : 'inactive' 
-                }
+                themeSettings: userThemeSettings
             };
 
             const newUserId = await dbAction("users", "add", userRecord) as string;
@@ -807,7 +817,7 @@ export default function UsersPage() {
                     warehouses={warehouses}
                     roles={roleNames}
                     licenses={licenses}
-                    currentLicenseKey={user?.themeSettings?.licenseKey}
+                    currentLicenseKey={activeCreatorLicenseKey}
                     />
                 )}
             </AddEntityDialog>
@@ -1034,7 +1044,7 @@ export default function UsersPage() {
               warehouses={warehouses}
               roles={roleNames}
               licenses={licenses}
-              currentLicenseKey={user?.themeSettings?.licenseKey}
+              currentLicenseKey={editingUser?.themeSettings?.licenseKey || activeCreatorLicenseKey}
             />
           )}
         </DialogContent>

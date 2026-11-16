@@ -640,6 +640,8 @@ export async function createAndInitializeDatabase(options: DbInitOptions): Promi
                 [Status] NVARCHAR(50) NOT NULL DEFAULT (N'active'),
                 [MaxUsers] INT NOT NULL DEFAULT ((10)),
                 [EnabledModules] NVARCHAR(MAX) NULL,
+                [AssignedWarehouseIds] NVARCHAR(MAX) NULL,
+                [AssignedTo] NVARCHAR(255) NULL,
                 [BranchCode] NVARCHAR(50) NULL,
                 [BranchName] NVARCHAR(255) NULL,
                 [SyncStatus] NVARCHAR(20) NULL DEFAULT ('synced'),

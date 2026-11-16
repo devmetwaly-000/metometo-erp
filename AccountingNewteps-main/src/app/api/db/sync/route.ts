@@ -401,7 +401,19 @@ export async function GET() {
                 paymentMethods: paymentMethodsRes.recordset.map(p => ({ ...p, id: p.Id, name: p.Name || p.name })),
                 partners: partnersRes.recordset.map(p => ({ ...p, id: p.Id, name: p.Name || p.name })),
                 employees: employeesRes.recordset.map(e => ({ ...e, id: e.Id, name: e.Name || e.name })),
-                licenses: licensesRes.recordset.map(lic => ({ ...lic, id: lic.Id })),
+                licenses: licensesRes.recordset.map(lic => ({
+                    ...lic,
+                    id: lic.Id,
+                    key: lic.Key,
+                    startDate: lic.StartDate ? new Date(lic.StartDate).toISOString() : null,
+                    endDate: lic.EndDate ? new Date(lic.EndDate).toISOString() : null,
+                    status: lic.Status || 'available',
+                    maxUsers: Number(lic.MaxUsers) || 10,
+                    enabledModules: parseJson(lic.EnabledModules, {}),
+                    assignedWarehouseIds: parseJson(lic.AssignedWarehouseIds, []),
+                    assignedTo: lic.AssignedTo || null,
+                    createdAt: lic.CreatedAt ? new Date(lic.CreatedAt).toISOString() : new Date().toISOString()
+                })),
                 deliveryStaff: deliveryStaffRes.recordset.map(d => ({ ...d, id: d.Id, name: d.Name || d.name })),
                 sellers: sellersRes.recordset.map(s => ({ ...s, id: s.Id, name: s.Name || s.name })),
                 itemGroups: itemGroupsRes.recordset.map(g => ({

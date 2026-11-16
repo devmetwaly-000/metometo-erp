@@ -710,7 +710,9 @@ BEGIN
         EndDate DATETIME2 NULL,
         Status NVARCHAR(50) NOT NULL DEFAULT N'active',
         MaxUsers INT NOT NULL DEFAULT 10,
-        EnabledModules NVARCHAR(MAX) NULL
+        EnabledModules NVARCHAR(MAX) NULL,
+        AssignedWarehouseIds NVARCHAR(MAX) NULL,
+        AssignedTo NVARCHAR(255) NULL
     );
 END
 GO
