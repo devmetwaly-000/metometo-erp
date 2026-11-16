@@ -3,6 +3,25 @@ import { getDbPool, sql } from '@/lib/db';
 import { logAuditEvent } from '@/lib/audit-logger';
 import { calculateInvoiceReturnTotals } from '@/lib/invoice-return-totals';
 import { logSystemError } from '@/lib/error-logger';
+import { getCentralConfig } from '@/lib/central-sync';
+
+async function getBranchInfo(pool: sql.ConnectionPool, explicitBranchCode?: string | null, explicitBranchName?: string | null) {
+    if (explicitBranchCode && explicitBranchName) {
+        return { branchCode: explicitBranchCode, branchName: explicitBranchName };
+    }
+    try {
+        const syncConfig = await getCentralConfig();
+        return {
+            branchCode: explicitBranchCode || syncConfig?.currentBranchCode || '900',
+            branchName: explicitBranchName || syncConfig?.currentBranchName || 'الفرع الرئيسي'
+        };
+    } catch {
+        return {
+            branchCode: explicitBranchCode || '900',
+            branchName: explicitBranchName || 'الفرع الرئيسي'
+        };
+    }
+}
 
 class ReturnValidationError extends Error {}
 
@@ -1222,6 +1241,7 @@ export async function POST(req: Request) {
             }
 
             if (path === 'warehouses') {
+                const branch = await getBranchInfo(pool, payload.branchCode || payload.code, payload.branchName || payload.name);
                 await pool.request()
                     .input('Id', sql.NVarChar(64), id)
                     .input('Code', sql.NVarChar(50), payload.code || null)
@@ -1232,9 +1252,11 @@ export async function POST(req: Request) {
                     .input('IsMain', sql.Bit, payload.isMain ? 1 : 0)
                     .input('IsClosed', sql.Bit, payload.isClosed ? 1 : 0)
                     .input('RepId', sql.NVarChar(64), payload.repId || null)
+                    .input('BranchCode', sql.NVarChar(50), branch.branchCode)
+                    .input('BranchName', sql.NVarChar(255), branch.branchName)
                     .query(`
-                        INSERT INTO dbo.Warehouses (Id, Code, Name, Address, WarehouseType, IsRepWarehouse, IsMain, IsClosed, RepId)
-                        VALUES (@Id, @Code, @Name, @Address, @WarehouseType, @IsRepWarehouse, @IsMain, @IsClosed, @RepId);
+                        INSERT INTO dbo.Warehouses (Id, Code, Name, Address, WarehouseType, IsRepWarehouse, IsMain, IsClosed, RepId, BranchCode, BranchName, SyncStatus, CreatedAt, UpdatedAt)
+                        VALUES (@Id, @Code, @Name, @Address, @WarehouseType, @IsRepWarehouse, @IsMain, @IsClosed, @RepId, @BranchCode, @BranchName, 'synced', SYSUTCDATETIME(), SYSUTCDATETIME());
                     `);
                 return NextResponse.json({ success: true, id });
             }
@@ -1342,6 +1364,7 @@ export async function POST(req: Request) {
                         error: "محظور: لا يمكن فتح يوم عمل كاشير أو تسليم عهدة في الإدارة المركزية. الكاشير مخصص لفروع البيع فقط." 
                     }, { status: 403 });
                 }
+                const branch = await getBranchInfo(pool, payload.branchCode, payload.branchName);
                 await pool.request()
                     .input('Id', sql.NVarChar(64), id)
                     .input('StartTime', sql.DateTime2, parseDate(payload.startTime))
@@ -1353,9 +1376,11 @@ export async function POST(req: Request) {
                     .input('IsClosed', sql.Bit, payload.isClosed ? 1 : 0)
                     .input('PosTerminalId', sql.NVarChar(64), payload.posTerminalId || null)
                     .input('CashierSessionsJson', sql.NVarChar(sql.MAX), payload.cashierSessions ? jsonString(payload.cashierSessions) : null)
+                    .input('BranchCode', sql.NVarChar(50), branch.branchCode)
+                    .input('BranchName', sql.NVarChar(255), branch.branchName)
                     .query(`
-                        INSERT INTO dbo.PosSessions (Id, StartTime, EndTime, OpenedBy, OpenedByName, ClosedBy, ClosedByName, IsClosed, PosTerminalId, CashierSessionsJson)
-                        VALUES (@Id, @StartTime, @EndTime, @OpenedBy, @OpenedByName, @ClosedBy, @ClosedByName, @IsClosed, @PosTerminalId, @CashierSessionsJson);
+                        INSERT INTO dbo.PosSessions (Id, StartTime, EndTime, OpenedBy, OpenedByName, ClosedBy, ClosedByName, IsClosed, PosTerminalId, CashierSessionsJson, BranchCode, BranchName, SyncStatus, CreatedAt, UpdatedAt)
+                        VALUES (@Id, @StartTime, @EndTime, @OpenedBy, @OpenedByName, @ClosedBy, @ClosedByName, @IsClosed, @PosTerminalId, @CashierSessionsJson, @BranchCode, @BranchName, 'synced', SYSUTCDATETIME(), SYSUTCDATETIME());
                     `);
                 return NextResponse.json({ success: true, id });
             }
@@ -1367,19 +1392,32 @@ export async function POST(req: Request) {
                         error: "محظور: لا يمكن إضافة أو تعريف أجهزة كاشير في الإدارة المركزية. نقاط البيع تُعرف وترتبط بفروع البيع الفعلية فقط." 
                     }, { status: 403 });
                 }
+                let branchCode = payload.branchCode || null;
+                let branchName = payload.branchName || null;
+                if (!branchCode && payload.warehouseId) {
+                    const whRes = await pool.request().input('WId', sql.NVarChar(64), payload.warehouseId).query('SELECT Code, Name FROM dbo.Warehouses WHERE Id = @WId');
+                    if (whRes.recordset[0]) {
+                        branchCode = whRes.recordset[0].Code;
+                        branchName = whRes.recordset[0].Name;
+                    }
+                }
+                const branch = await getBranchInfo(pool, branchCode, branchName);
+
                 await pool.request()
                     .input('Id', sql.NVarChar(64), id)
-                    .input('Code', sql.NVarChar(50), payload.code ? String(payload.code) : null)
+                    .input('Code', sql.NVarChar(50), payload.code ? String(payload.code).trim() : null)
                     .input('Name', sql.NVarChar(255), payload.name || 'نقطة بيع')
                     .input('WarehouseId', sql.NVarChar(64), payload.warehouseId || null)
+                    .input('BranchCode', sql.NVarChar(50), branch.branchCode)
+                    .input('BranchName', sql.NVarChar(255), branch.branchName)
                     .input('PosPrinterType', sql.NVarChar(50), payload.posPrinterType || 'system')
                     .input('PosPrinterAddress', sql.NVarChar(255), payload.posPrinterAddress || null)
                     .input('EnableKitchenPrinter', sql.Bit, payload.enableKitchenPrinter ? 1 : 0)
                     .input('KitchenPrinterType', sql.NVarChar(50), payload.kitchenPrinterType || 'system')
                     .input('KitchenPrinterAddress', sql.NVarChar(255), payload.kitchenPrinterAddress || null)
                     .query(`
-                        INSERT INTO dbo.PosTerminals (Id, Code, Name, WarehouseId, PosPrinterType, PosPrinterAddress, EnableKitchenPrinter, KitchenPrinterType, KitchenPrinterAddress)
-                        VALUES (@Id, @Code, @Name, @WarehouseId, @PosPrinterType, @PosPrinterAddress, @EnableKitchenPrinter, @KitchenPrinterType, @KitchenPrinterAddress);
+                        INSERT INTO dbo.PosTerminals (Id, Code, Name, WarehouseId, BranchCode, BranchName, PosPrinterType, PosPrinterAddress, EnableKitchenPrinter, KitchenPrinterType, KitchenPrinterAddress, CreatedAt, UpdatedAt, SyncStatus)
+                        VALUES (@Id, @Code, @Name, @WarehouseId, @BranchCode, @BranchName, @PosPrinterType, @PosPrinterAddress, @EnableKitchenPrinter, @KitchenPrinterType, @KitchenPrinterAddress, SYSUTCDATETIME(), SYSUTCDATETIME(), 'synced');
                     `);
                 return NextResponse.json({ success: true, id });
             }
@@ -1985,7 +2023,8 @@ export async function POST(req: Request) {
                                 ClosedByName = COALESCE(@ClosedByName, ClosedByName),
                                 IsClosed = COALESCE(@IsClosed, IsClosed),
                                 CashierSessionsJson = COALESCE(@CashierSessionsJson, CashierSessionsJson),
-                                ClosingStatementJson = COALESCE(@ClosingStatementJson, ClosingStatementJson)
+                                ClosingStatementJson = COALESCE(@ClosingStatementJson, ClosingStatementJson),
+                                UpdatedAt = SYSUTCDATETIME()
                             WHERE Id = @Id;
                         ', N'@Id NVARCHAR(64), @EndTime DATETIME2, @ClosedBy NVARCHAR(64), @ClosedByName NVARCHAR(255), @IsClosed BIT, @CashierSessionsJson NVARCHAR(MAX), @ClosingStatementJson NVARCHAR(MAX)',
                         @Id, @EndTime, @ClosedBy, @ClosedByName, @IsClosed, @CashierSessionsJson, @ClosingStatementJson;
@@ -2000,11 +2039,24 @@ export async function POST(req: Request) {
                         error: "محظور: لا يمكن تعديل أجهزة كاشير في الإدارة المركزية. نقاط البيع تُدار من فروع البيع الفعلية فقط." 
                     }, { status: 403 });
                 }
+                let branchCode = data.branchCode || null;
+                let branchName = data.branchName || null;
+                if (!branchCode && data.warehouseId) {
+                    const whRes = await pool.request().input('WId', sql.NVarChar(64), data.warehouseId).query('SELECT Code, Name FROM dbo.Warehouses WHERE Id = @WId');
+                    if (whRes.recordset[0]) {
+                        branchCode = whRes.recordset[0].Code;
+                        branchName = whRes.recordset[0].Name;
+                    }
+                }
+                const branch = await getBranchInfo(pool, branchCode, branchName);
+
                 await pool.request()
                     .input('Id', sql.NVarChar(64), updateId)
-                    .input('Code', sql.NVarChar(50), data.code !== undefined ? String(data.code) : null)
+                    .input('Code', sql.NVarChar(50), data.code !== undefined ? String(data.code).trim() : null)
                     .input('Name', sql.NVarChar(255), data.name || null)
                     .input('WarehouseId', sql.NVarChar(64), data.warehouseId || null)
+                    .input('BranchCode', sql.NVarChar(50), branch.branchCode)
+                    .input('BranchName', sql.NVarChar(255), branch.branchName)
                     .input('PosPrinterType', sql.NVarChar(50), data.posPrinterType || null)
                     .input('PosPrinterAddress', sql.NVarChar(255), data.posPrinterAddress || null)
                     .input('EnableKitchenPrinter', sql.Bit, data.enableKitchenPrinter !== undefined ? (data.enableKitchenPrinter ? 1 : 0) : null)
@@ -2016,11 +2068,14 @@ export async function POST(req: Request) {
                             Code = COALESCE(@Code, Code),
                             Name = COALESCE(@Name, Name),
                             WarehouseId = COALESCE(@WarehouseId, WarehouseId),
+                            BranchCode = COALESCE(@BranchCode, BranchCode),
+                            BranchName = COALESCE(@BranchName, BranchName),
                             PosPrinterType = COALESCE(@PosPrinterType, PosPrinterType),
                             PosPrinterAddress = COALESCE(@PosPrinterAddress, PosPrinterAddress),
                             EnableKitchenPrinter = COALESCE(@EnableKitchenPrinter, EnableKitchenPrinter),
                             KitchenPrinterType = COALESCE(@KitchenPrinterType, KitchenPrinterType),
-                            KitchenPrinterAddress = COALESCE(@KitchenPrinterAddress, KitchenPrinterAddress)
+                            KitchenPrinterAddress = COALESCE(@KitchenPrinterAddress, KitchenPrinterAddress),
+                            UpdatedAt = SYSUTCDATETIME()
                         WHERE Id = @Id;
                     `);
                 return NextResponse.json({ success: true });

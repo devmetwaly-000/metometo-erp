@@ -177,8 +177,10 @@ const TerminalForm = ({ terminal, onSave, onClose, warehouses, allTerminals, sys
         }
     }
     
+    const termId = terminal?.id || (terminal as any)?.Id;
     const isCodeDuplicate = allTerminals.some(
-        (t: any) => String(t.code || t.Code) === String(formData.code) && (t.id || t.Id) !== (terminal?.id || (terminal as any)?.Id)
+        (t: any) => String(t.code || t.Code || '').trim().toLowerCase() === String(formData.code).trim().toLowerCase() && 
+                    String(t.id || t.Id || '').trim() !== String(termId || '').trim()
     );
 
     if (isCodeDuplicate) {
@@ -186,7 +188,7 @@ const TerminalForm = ({ terminal, onSave, onClose, warehouses, allTerminals, sys
         return;
     }
 
-    onSave({ ...formData, id: terminal?.id });
+    onSave({ ...formData, id: termId });
     onClose();
   };
 
@@ -317,7 +319,7 @@ const TerminalForm = ({ terminal, onSave, onClose, warehouses, allTerminals, sys
 
 
 export default function PosTerminalsPage() {
-  const { posTerminals, warehouses, dbAction, loading, isCentral } = useData();
+  const { posTerminals, warehouses, allWarehouses, dbAction, loading, isCentral } = useData();
   const { user } = useAuth();
   const { toast } = useToast();
 
@@ -325,9 +327,13 @@ export default function PosTerminalsPage() {
   const [editingTerminal, setEditingTerminal] = useState<PosTerminal | null>(null);
   const [terminalToDelete, setTerminalToDelete] = useState<PosTerminal | null>(null);
   
+  const allWarehouseList = useMemo(() => {
+    return (allWarehouses && allWarehouses.length > 0) ? allWarehouses : (warehouses || []);
+  }, [allWarehouses, warehouses]);
+
   const authorizedWarehouses = useMemo(() => {
     // نقاط البيع (الكاشيرات) ترتبط بكافة الفروع والمخازن المتاحة للبيع، وتستبعد فقط عهد المناديب والمخازن المغلقة
-    const salesBranches = (warehouses || [])
+    const salesBranches = (allWarehouseList || [])
       .filter((w: any) => 
         !w.isRepWarehouse && 
         !w.repId && 
@@ -345,9 +351,9 @@ export default function PosTerminalsPage() {
       );
     const wIds = user?.warehouseIds || [];
     if (wIds.includes('all') || user?.role === 'مسؤول' || wIds.length === 0) return salesBranches;
-    const permitted = salesBranches.filter((w: any) => wIds.includes(w.id));
+    const permitted = salesBranches.filter((w: any) => wIds.includes(w.id || w.Id));
     return permitted.length > 0 ? permitted : salesBranches;
-  }, [warehouses, user]);
+  }, [allWarehouseList, user]);
 
   const [systemPrinters, setSystemPrinters] = useState<Array<{ deviceId?: string, name: string }>>([]);
   
@@ -365,10 +371,13 @@ export default function PosTerminalsPage() {
       return;
     }
     try {
+      const selectedWh = allWarehouseList.find((w: any) => String(w.id || w.Id).trim() === String(data.warehouseId).trim());
       const payload = {
         name: data.name,
         warehouseId: data.warehouseId,
         code: data.code,
+        branchCode: selectedWh?.code || selectedWh?.Code || null,
+        branchName: selectedWh?.name || selectedWh?.Name || null,
         posPrinterType: data.posPrinterType || 'system',
         posPrinterAddress: data.posPrinterAddress || '',
         enableKitchenPrinter: data.enableKitchenPrinter || false,
@@ -399,7 +408,8 @@ export default function PosTerminalsPage() {
   
   const getWarehouseName = (id: string) => {
     if (!id) return 'غير محدد';
-    const found = warehouses.find((w: Warehouse) => w.id === id || (w as any).Id === id);
+    const cleanId = String(id).trim();
+    const found = allWarehouseList.find((w: any) => String(w.id || w.Id || '').trim() === cleanId);
     return found?.name || (found as any)?.Name || 'غير محدد';
   };
 
@@ -476,9 +486,13 @@ export default function PosTerminalsPage() {
                   <TableBody>
                     {posTerminals && posTerminals.length > 0 ? posTerminals.map((terminal: any, index: number) => (
                       <TableRow key={terminal.id || terminal.Id}>
-                        <TableCell className="font-mono">{terminal.code || terminal.Code || '-'}</TableCell>
-                        <TableCell className="font-medium">{terminal.name || terminal.Name || '-'}</TableCell>
-                        <TableCell>{getWarehouseName(terminal.warehouseId || terminal.WarehouseId)}</TableCell>
+                        <TableCell className="font-mono font-bold text-foreground">{String(terminal.code || terminal.Code || '-').trim() || '-'}</TableCell>
+                        <TableCell className="font-medium text-foreground">{String(terminal.name || terminal.Name || '-').trim() || '-'}</TableCell>
+                        <TableCell>
+                          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-semibold bg-muted/80 text-foreground border border-border/50">
+                            {getWarehouseName(terminal.warehouseId || terminal.WarehouseId)}
+                          </span>
+                        </TableCell>
                         <TableCell className="text-center">
                           {isCentral ? (
                             <span className="text-[11px] text-muted-foreground font-medium px-2 py-1 rounded bg-muted">
