@@ -571,6 +571,14 @@ export default function CentralSyncSettingsPage() {
     // Update direction of a single table in DB
     const handleUpdateTableDirection = async (tableName: string, newDir: SyncDirection) => {
         setUpdatingDirTable(tableName);
+        // Optimistically update matrix state immediately
+        setSyncMatrix(prev => {
+            if (!prev) return prev;
+            return {
+                ...prev,
+                tables: prev.tables.map(t => t.tableName === tableName ? { ...t, direction: newDir } : t)
+            };
+        });
         try {
             const res = await fetch('/api/sync/central', {
                 method: 'POST',
@@ -587,17 +595,11 @@ export default function CentralSyncSettingsPage() {
                     title: "تم حفظ اتجاه المزامنة بنجاح",
                     description: `تم تعيين اتجاه جدول "${tableName}" إلى "${newDir}".`
                 });
-                setSyncMatrix(prev => {
-                    if (!prev) return prev;
-                    return {
-                        ...prev,
-                        tables: prev.tables.map(t => t.tableName === tableName ? { ...t, direction: newDir } : t)
-                    };
-                });
             } else {
                 throw new Error(data.error);
             }
         } catch (err: any) {
+            await handleRefreshMatrix();
             toast({
                 title: "فشل حفظ اتجاه المزامنة",
                 description: err.message,
@@ -1242,7 +1244,7 @@ export default function CentralSyncSettingsPage() {
                                             <TableRow className="border-b">
                                                 <TableHead className="w-10 text-center font-bold">#</TableHead>
                                                 <TableHead className="min-w-[190px] font-bold">اسم الجدول والقسم</TableHead>
-                                                <TableHead className="text-center min-w-[100px] font-bold">الاتجاه</TableHead>
+                                                <TableHead className="text-center min-w-[155px] font-bold">اتجاه المزامنة</TableHead>
                                                 <TableHead className="text-center min-w-[125px] font-bold">آخر تعديل بالفرع</TableHead>
                                                 <TableHead className="text-center min-w-[125px] font-bold">آخر مزامنة للإدارة</TableHead>
                                                 <TableHead className="text-center min-w-[90px] font-bold text-foreground">معلق بالفرع</TableHead>
@@ -1277,7 +1279,54 @@ export default function CentralSyncSettingsPage() {
                                                             </div>
                                                         </TableCell>
                                                         <TableCell className="text-center">
-                                                            {renderDirectionBadge(t.direction)}
+                                                            <Select
+                                                                value={t.direction}
+                                                                disabled={updatingDirTable === t.tableName}
+                                                                onValueChange={(newVal: SyncDirection) => handleUpdateTableDirection(t.tableName, newVal)}
+                                                            >
+                                                                <SelectTrigger className={cn(
+                                                                    "h-7 text-[11px] font-bold w-[145px] mx-auto border shadow-xs transition-colors",
+                                                                    t.direction === 'push' && "border-amber-500/40 bg-amber-500/10 text-foreground dark:text-foreground",
+                                                                    t.direction === 'pull' && "border-sky-500/40 bg-sky-500/10 text-foreground dark:text-foreground",
+                                                                    t.direction === 'bidirectional' && "border-teal-500/40 bg-teal-500/10 text-teal-700 dark:text-teal-300",
+                                                                    t.direction === 'disabled' && "border-rose-500/40 bg-rose-500/10 text-rose-700 dark:text-rose-400"
+                                                                )}>
+                                                                    {updatingDirTable === t.tableName ? (
+                                                                        <div className="flex items-center justify-center gap-1 text-[10px]">
+                                                                            <Loader2 className="h-3 w-3 animate-spin text-teal-600" />
+                                                                            <span>جاري التحديث...</span>
+                                                                        </div>
+                                                                    ) : (
+                                                                        <SelectValue />
+                                                                    )}
+                                                                </SelectTrigger>
+                                                                <SelectContent>
+                                                                    <SelectItem value="push" className="text-xs font-bold text-foreground dark:text-foreground">
+                                                                        <div className="flex items-center gap-1.5">
+                                                                            <ArrowUpRight className="h-3.5 w-3.5" />
+                                                                            <span>⬆️ رفع للإدارة (Push)</span>
+                                                                        </div>
+                                                                    </SelectItem>
+                                                                    <SelectItem value="pull" className="text-xs font-bold text-foreground dark:text-foreground">
+                                                                        <div className="flex items-center gap-1.5">
+                                                                            <ArrowDownLeft className="h-3.5 w-3.5" />
+                                                                            <span>⬇️ سحب للفرع (Pull)</span>
+                                                                        </div>
+                                                                    </SelectItem>
+                                                                    <SelectItem value="bidirectional" className="text-xs font-bold text-teal-700 dark:text-teal-300">
+                                                                        <div className="flex items-center gap-1.5">
+                                                                            <ArrowLeftRight className="h-3.5 w-3.5" />
+                                                                            <span>🔁 تبادلي (Bidirectional)</span>
+                                                                        </div>
+                                                                    </SelectItem>
+                                                                    <SelectItem value="disabled" className="text-xs font-bold text-rose-700 dark:text-rose-400">
+                                                                        <div className="flex items-center gap-1.5">
+                                                                            <PauseCircle className="h-3.5 w-3.5" />
+                                                                            <span>⏸️ إيقاف المزامنة (Disabled)</span>
+                                                                        </div>
+                                                                    </SelectItem>
+                                                                </SelectContent>
+                                                            </Select>
                                                         </TableCell>
                                                         <TableCell className="text-center">
                                                             {formatTimestamp(t.lastLocalModified)}
@@ -1615,53 +1664,54 @@ export default function CentralSyncSettingsPage() {
                                                         {/* 4. Direction Selector (Saves directly to DB) */}
                                                         <TableCell className="text-center">
                                                             <div className="flex items-center justify-center gap-1.5">
-                                                                {isUpdating ? (
-                                                                    <div className="flex items-center gap-1.5 text-xs text-muted-foreground font-semibold">
-                                                                        <Loader2 className="h-4 w-4 animate-spin text-teal-600" />
-                                                                        <span>جاري الحفظ...</span>
-                                                                    </div>
-                                                                ) : (
-                                                                    <Select
-                                                                        value={t.direction}
-                                                                        onValueChange={(newVal: SyncDirection) => handleUpdateTableDirection(t.tableName, newVal)}
-                                                                    >
-                                                                        <SelectTrigger className={cn(
-                                                                            "h-8 text-xs font-bold w-[165px] border shadow-xs transition-colors",
-                                                                            t.direction === 'push' && "border-amber-500/40 bg-amber-500/10 text-foreground dark:text-foreground",
-                                                                            t.direction === 'pull' && "border-sky-500/40 bg-sky-500/10 text-foreground dark:text-foreground",
-                                                                            t.direction === 'bidirectional' && "border-teal-500/40 bg-teal-500/10 text-teal-700 dark:text-teal-300",
-                                                                            t.direction === 'disabled' && "border-rose-500/40 bg-rose-500/10 text-rose-700 dark:text-rose-400"
-                                                                        )}>
+                                                                <Select
+                                                                    value={t.direction}
+                                                                    disabled={isUpdating}
+                                                                    onValueChange={(newVal: SyncDirection) => handleUpdateTableDirection(t.tableName, newVal)}
+                                                                >
+                                                                    <SelectTrigger className={cn(
+                                                                        "h-8 text-xs font-bold w-[165px] border shadow-xs transition-colors",
+                                                                        t.direction === 'push' && "border-amber-500/40 bg-amber-500/10 text-foreground dark:text-foreground",
+                                                                        t.direction === 'pull' && "border-sky-500/40 bg-sky-500/10 text-foreground dark:text-foreground",
+                                                                        t.direction === 'bidirectional' && "border-teal-500/40 bg-teal-500/10 text-teal-700 dark:text-teal-300",
+                                                                        t.direction === 'disabled' && "border-rose-500/40 bg-rose-500/10 text-rose-700 dark:text-rose-400"
+                                                                    )}>
+                                                                        {isUpdating ? (
+                                                                            <div className="flex items-center justify-center gap-1 text-[11px]">
+                                                                                <Loader2 className="h-3.5 w-3.5 animate-spin text-teal-600" />
+                                                                                <span>جاري الحفظ...</span>
+                                                                            </div>
+                                                                        ) : (
                                                                             <SelectValue />
-                                                                        </SelectTrigger>
-                                                                        <SelectContent>
-                                                                            <SelectItem value="push" className="text-xs font-bold text-foreground dark:text-foreground">
-                                                                                <div className="flex items-center gap-1.5">
-                                                                                    <ArrowUpRight className="h-3.5 w-3.5" />
-                                                                                    <span>⬆️ رفع للإدارة (Push)</span>
-                                                                                </div>
-                                                                            </SelectItem>
-                                                                            <SelectItem value="pull" className="text-xs font-bold text-foreground dark:text-foreground">
-                                                                                <div className="flex items-center gap-1.5">
-                                                                                    <ArrowDownLeft className="h-3.5 w-3.5" />
-                                                                                    <span>⬇️ سحب للفرع (Pull)</span>
-                                                                                </div>
-                                                                            </SelectItem>
-                                                                            <SelectItem value="bidirectional" className="text-xs font-bold text-teal-700 dark:text-teal-300">
-                                                                                <div className="flex items-center gap-1.5">
-                                                                                    <ArrowLeftRight className="h-3.5 w-3.5" />
-                                                                                    <span>🔁 تبادلي (Bidirectional)</span>
-                                                                                </div>
-                                                                            </SelectItem>
-                                                                            <SelectItem value="disabled" className="text-xs font-bold text-rose-700 dark:text-rose-400">
-                                                                                <div className="flex items-center gap-1.5">
-                                                                                    <PauseCircle className="h-3.5 w-3.5" />
-                                                                                    <span>⏸️ إيقاف المزامنة (Disabled)</span>
-                                                                                </div>
-                                                                            </SelectItem>
-                                                                        </SelectContent>
-                                                                    </Select>
-                                                                )}
+                                                                        )}
+                                                                    </SelectTrigger>
+                                                                    <SelectContent>
+                                                                        <SelectItem value="push" className="text-xs font-bold text-foreground dark:text-foreground">
+                                                                            <div className="flex items-center gap-1.5">
+                                                                                <ArrowUpRight className="h-3.5 w-3.5" />
+                                                                                <span>⬆️ رفع للإدارة (Push)</span>
+                                                                            </div>
+                                                                        </SelectItem>
+                                                                        <SelectItem value="pull" className="text-xs font-bold text-foreground dark:text-foreground">
+                                                                            <div className="flex items-center gap-1.5">
+                                                                                <ArrowDownLeft className="h-3.5 w-3.5" />
+                                                                                <span>⬇️ سحب للفرع (Pull)</span>
+                                                                            </div>
+                                                                        </SelectItem>
+                                                                        <SelectItem value="bidirectional" className="text-xs font-bold text-teal-700 dark:text-teal-300">
+                                                                            <div className="flex items-center gap-1.5">
+                                                                                <ArrowLeftRight className="h-3.5 w-3.5" />
+                                                                                <span>🔁 تبادلي (Bidirectional)</span>
+                                                                            </div>
+                                                                        </SelectItem>
+                                                                        <SelectItem value="disabled" className="text-xs font-bold text-rose-700 dark:text-rose-400">
+                                                                            <div className="flex items-center gap-1.5">
+                                                                                <PauseCircle className="h-3.5 w-3.5" />
+                                                                                <span>⏸️ إيقاف المزامنة (Disabled)</span>
+                                                                            </div>
+                                                                        </SelectItem>
+                                                                    </SelectContent>
+                                                                </Select>
                                                             </div>
                                                         </TableCell>
 
