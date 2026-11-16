@@ -92,6 +92,7 @@ export async function GET(req: NextRequest) {
             items: items.map((i: any) => ({
                 id: i.id || i.itemId,
                 code: i.code || i.barcode || '',
+                barcode: i.barcode || i.code || '',
                 name: i.name || i.itemName || 'صنف',
                 qty: Number(i.qty || 1),
                 price: Number(i.price || 0),

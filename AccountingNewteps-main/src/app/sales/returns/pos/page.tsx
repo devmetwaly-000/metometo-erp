@@ -1,26 +1,25 @@
-
-
 "use client";
 
 import React, { useState, useMemo, useEffect, useRef } from 'react';
 import PageHeader from "@/components/page-header";
 import { Button } from "@/components/ui/button";
 import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-  CardFooter
+    Card,
+    CardContent,
+    CardDescription,
+    CardHeader,
+    CardTitle,
+    CardFooter
 } from "@/components/ui/card";
 import { useData } from '@/contexts/data-provider';
-import { Loader2, Search, Undo2, Save, Trash2, Info, ScanLine } from "lucide-react";
+import { Loader2, Search, Save, Info, ScanLine, RotateCcw, AlertTriangle, CheckCheck, Barcode as BarcodeIcon } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from '@/contexts/auth-context';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
+import { Badge } from "@/components/ui/badge";
 import { useRouter } from 'next/navigation';
 
 interface PosSale {
@@ -31,12 +30,14 @@ interface PosSale {
   cashierName: string;
   warehouseId?: string;
   posTerminalId?: string;
-  items: { id: string; name: string; qty: number; price: number; cost?: number; }[];
+  items: { id: string; code?: string; barcode?: string; name: string; qty: number; price: number; cost?: number; }[];
   total: number;
   invoiceCounter?: number;
 }
 interface PosReturnItem {
   id: string; // original item id
+  code?: string;
+  barcode?: string;
   name: string;
   qty: number;
   price: number;
@@ -60,9 +61,11 @@ export default function PosReturnPage() {
     const [isSearching, setIsSearching] = useState(false);
 
     const itemScanRef = useRef<HTMLInputElement>(null);
-    
-    // Permission check for return mode
-    const canBypassScanner = user?.canBypassScannerForReturn === true;
+
+    // User Permission checks
+    const isManager = user?.role === 'مسؤول' || user?.id === 'superadmin' || user?.id === 'admin';
+    const canProcessReturn = isManager || user?.canProcessReturn === true;
+    const canBypassScanner = isManager || user?.canBypassScannerForReturn === true;
 
     const handleSearch = async () => {
         const rawInput = barcodeInput.trim();
@@ -127,7 +130,7 @@ export default function PosReturnPage() {
         if (invoiceToFind) {
             setFoundInvoice(invoiceToFind);
             const previousReturnsForInvoice = (posReturns || []).filter((pr: any) => pr.originalInvoiceId === invoiceToFind!.id || pr.originalInvoiceNumber === invoiceToFind!.invoiceNumber);
-            
+
             const returnedQuantities = new Map<string, number>();
             previousReturnsForInvoice.forEach((pr: any) => {
                 (pr.items || []).forEach((item: any) => {
@@ -135,15 +138,24 @@ export default function PosReturnPage() {
                 });
             });
 
-            if (canBypassScanner) {
-                setReturnedItems((invoiceToFind.items || []).map((item: any) => ({
-                    ...item, 
-                    maxQty: Number(item.qty || 1), 
+            // Map all items resolving barcode accurately
+            const invoiceItems: PosReturnItem[] = (invoiceToFind.items || []).map((item: any) => {
+                const master = (allItems || []).find((m: any) => m.id === item.id || m.code === item.code);
+                const resolvedBarcode = item.barcode || item.code || master?.barcode || master?.code || '';
+                return {
+                    ...item,
+                    barcode: resolvedBarcode,
+                    code: item.code || master?.code || resolvedBarcode,
+                    maxQty: Number(item.qty || 1),
                     previouslyReturned: returnedQuantities.get(item.id) || 0,
-                    total: 0, 
-                    qty: 0, 
-                    cost: Number(item.cost || item.price || 0) 
-                })));
+                    total: 0,
+                    qty: 0,
+                    cost: Number(item.cost || item.price || 0)
+                };
+            });
+
+            if (canBypassScanner) {
+                setReturnedItems(invoiceItems);
             } else {
                 setReturnedItems([]);
                 setTimeout(() => itemScanRef.current?.focus(), 100);
@@ -155,7 +167,7 @@ export default function PosReturnPage() {
             setReturnedItems([]);
         }
     };
-    
+
     const handleQtyChange = (id: string, newQty: number) => {
         setReturnedItems(prev => prev.map(item => {
             if (item.id === id) {
@@ -166,17 +178,36 @@ export default function PosReturnPage() {
             return item;
         }));
     };
-    
+
+    const handleSelectAllReturnQty = () => {
+        setReturnedItems(prev => prev.map(item => {
+            const maxReturnable = Math.max(0, item.maxQty - item.previouslyReturned);
+            return {
+                ...item,
+                qty: maxReturnable,
+                total: maxReturnable * item.price
+            };
+        }));
+    };
+
+    const handleResetReturnQty = () => {
+        setReturnedItems(prev => prev.map(item => ({
+            ...item,
+            qty: 0,
+            total: 0
+        })));
+    };
+
     const handleItemScan = (e: React.FormEvent) => {
         e.preventDefault();
         const itemCode = scanInput.trim();
         if (!itemCode || !foundInvoice) return;
 
         const itemInInvoice = foundInvoice.items.find(i => {
-            const master = allItems.find((m: any) => m.id === i.id);
+            const master = (allItems || []).find((m: any) => m.id === i.id);
             return i.code === itemCode || (i as any).barcode === itemCode || master?.code === itemCode || master?.barcode === itemCode || i.id === itemCode;
         });
-        
+
         if (!itemInInvoice) {
             toast({ variant: 'destructive', title: 'خطأ', description: 'هذا الصنف غير موجود في الفاتورة الأصلية.' });
             setScanInput('');
@@ -193,11 +224,14 @@ export default function PosReturnPage() {
         const maxReturnable = itemInInvoice.qty - previouslyReturned;
 
         if (qtyInCart >= maxReturnable) {
-             toast({ variant: 'destructive', title: 'تنبيه', description: 'لقد وصلت للحد الأقصى للإرجاع من هذا الصنف.' });
-             setScanInput('');
-             return;
+            toast({ variant: 'destructive', title: 'تنبيه', description: 'لقد وصلت للحد الأقصى للإرجاع من هذا الصنف.' });
+            setScanInput('');
+            return;
         }
-        
+
+        const master = (allItems || []).find((m: any) => m.id === itemInInvoice.id);
+        const resolvedBarcode = itemInInvoice.barcode || itemInInvoice.code || master?.barcode || master?.code || '';
+
         // Add or increment the item in the return cart
         const existingItemIndex = returnedItems.findIndex(i => i.id === itemInInvoice.id);
         if (existingItemIndex > -1) {
@@ -208,6 +242,8 @@ export default function PosReturnPage() {
         } else {
             setReturnedItems(prev => [...prev, {
                 ...itemInInvoice,
+                barcode: resolvedBarcode,
+                code: itemInInvoice.code || master?.code || resolvedBarcode,
                 qty: 1,
                 total: itemInInvoice.price,
                 maxQty: itemInInvoice.qty,
@@ -218,13 +254,18 @@ export default function PosReturnPage() {
         setScanInput('');
     };
 
-    React.useEffect(() => {
+    useEffect(() => {
         const total = returnedItems.reduce((sum, item) => sum + item.total, 0);
         setReturnTotal(total);
     }, [returnedItems]);
 
 
     const handleSaveReturn = async () => {
+        if (!canProcessReturn) {
+            toast({ variant: "destructive", title: "غير مصرح", description: "ليس لديك صلاحية إجراء عمليات المرتجع في نقاط البيع." });
+            return;
+        }
+
         if (!foundInvoice || returnTotal <= 0) {
             toast({ variant: "destructive", title: "خطأ", description: "لا توجد أصناف أو قيمة للمرتجع." });
             return;
@@ -240,7 +281,7 @@ export default function PosReturnPage() {
             const receiptNumber = `م-ن-${await getNextId('posReturn')}`;
             const date = new Date();
             const dateString = date.toISOString().split('T')[0]; // YYYY-MM-DD
-            
+
             const returnData = {
                 date: date.toISOString(),
                 receiptNumber,
@@ -248,14 +289,13 @@ export default function PosReturnPage() {
                 originalInvoiceNumber: foundInvoice.invoiceNumber,
                 cashierId: user?.id,
                 cashierName: user?.name,
-                items: itemsToReturn.map(({maxQty, previouslyReturned, ...rest}) => rest),
+                items: itemsToReturn.map(({ maxQty, previouslyReturned, ...rest }) => rest),
                 total: returnTotal,
                 warehouseId: foundInvoice.warehouseId,
             };
 
-            // Save to the new structure
-            const newReturnRef = await dbAction(`posReturns/${dateString}`, 'add', returnData);
-            
+            await dbAction(`posReturns/${dateString}`, 'add', returnData);
+
             toast({ title: 'تم الحفظ بنجاح', description: `تم تسجيل مرتجع بقيمة ${returnTotal.toLocaleString()}` });
             router.push('/pos');
 
@@ -269,22 +309,32 @@ export default function PosReturnPage() {
     return (
         <>
             <PageHeader title="مرتجع نقاط البيع" />
-            <main className="flex flex-1 flex-col gap-4 p-4 md:gap-8 md:p-6">
+            <main className="flex flex-1 flex-col gap-4 p-4 md:gap-8 md:p-6 max-w-7xl mx-auto w-full">
+                {!canProcessReturn && (
+                    <Alert variant="destructive" className="border-destructive/40 bg-destructive/10">
+                        <AlertTriangle className="h-4 w-4" />
+                        <AlertTitle className="font-bold">غير مصرح بإجراء المرتجعات</AlertTitle>
+                        <AlertDescription>
+                            حسابك الحالي لا يمتلك صلاحية &quot;إجراء عمليات المرتجع&quot;. يرجى مراجعة مسؤول النظام لمنحك هذه الصلاحية.
+                        </AlertDescription>
+                    </Alert>
+                )}
+
                 <Card>
                     <CardHeader>
-                        <CardTitle>البحث عن الفاتورة الأصلية</CardTitle>
+                        <CardTitle className="text-base font-bold">البحث عن الفاتورة الأصلية</CardTitle>
                     </CardHeader>
                     <CardContent>
                         <form onSubmit={(e) => { e.preventDefault(); handleSearch(); }} className="flex items-end gap-2">
-                             <div className="space-y-2 flex-1">
+                            <div className="space-y-2 flex-1">
                                 <Label htmlFor="invoiceNumber">رقم فاتورة الكاشير أو الباركود</Label>
-                                <Input 
-                                    id="invoiceNumber" 
+                                <Input
+                                    id="invoiceNumber"
                                     dir="ltr"
                                     className="font-mono text-left tracking-wide"
-                                    value={barcodeInput} 
-                                    onChange={e => setBarcodeInput(e.target.value)} 
-                                    placeholder="مثال: C1-10-161126-1 أو 1-C1-10-161126 أو امسح الباركود..." 
+                                    value={barcodeInput}
+                                    onChange={e => setBarcodeInput(e.target.value)}
+                                    placeholder="مثال: C1-10-161126-1 أو 1-C1-10-161126 أو امسح الباركود..."
                                     autoFocus
                                 />
                             </div>
@@ -295,31 +345,116 @@ export default function PosReturnPage() {
                         </form>
                     </CardContent>
                 </Card>
-                
+
                 {foundInvoice && (
                     <Card>
-                        <CardHeader>
-                            <CardTitle>تفاصيل الفاتورة #{foundInvoice.invoiceNumber}</CardTitle>
-                             <CardDescription>
-                                تاريخ: {new Date(foundInvoice.date).toLocaleString('ar-EG')} | الكاشير: {foundInvoice.cashierName} | الإجمالي: {foundInvoice.total.toLocaleString()} ج.م
-                            </CardDescription>
+                        <CardHeader className="border-b pb-4">
+                            <div className="flex flex-col md:flex-row md:items-center justify-between gap-2">
+                                <div>
+                                    <CardTitle className="flex items-center gap-2">
+                                        <span>تفاصيل الفاتورة</span>
+                                        <Badge variant="outline" className="font-mono text-sm px-2 py-0.5 border-primary/40 text-primary">
+                                            #{foundInvoice.invoiceNumber}
+                                        </Badge>
+                                    </CardTitle>
+                                    <CardDescription className="mt-1">
+                                        تاريخ الفاتورة: {new Date(foundInvoice.date).toLocaleString('ar-EG')} | الكاشير: {foundInvoice.cashierName || '---'} | الإجمالي: {foundInvoice.total.toLocaleString()} ج.م
+                                    </CardDescription>
+                                </div>
+                                <div>
+                                    {canBypassScanner ? (
+                                        <Badge className="bg-emerald-600 text-white gap-1.5 text-xs">
+                                            <CheckCheck className="h-3.5 w-3.5" />
+                                            صلاحية مدير: إرجاع فاتورة كاملة
+                                        </Badge>
+                                    ) : (
+                                        <Badge variant="secondary" className="gap-1.5 text-xs">
+                                            <ScanLine className="h-3.5 w-3.5 text-muted-foreground" />
+                                            نمط الكاشير: إلزام مسح الباركود
+                                        </Badge>
+                                    )}
+                                </div>
+                            </div>
                         </CardHeader>
-                        <CardContent>
+                        <CardContent className="pt-4 space-y-4">
                             {canBypassScanner ? (
-                                 <div className="space-y-4">
-                                    <Label>تحديد الأصناف والكميات المرتجعة</Label>
+                                 <div className="space-y-3">
+                                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                                        <div>
+                                            <Label className="font-bold text-sm">تحديد الأصناف والكميات المرتجعة</Label>
+                                            <p className="text-xs text-muted-foreground">يمكنك إدخال الكميات يدوياً أو استخدام الأزرار السريعة لإرجاع الفاتورة كاملة</p>
+                                        </div>
+                                        <div className="flex gap-2 shrink-0">
+                                            <Button 
+                                                type="button" 
+                                                variant="outline" 
+                                                size="sm" 
+                                                onClick={handleSelectAllReturnQty} 
+                                                className="gap-1.5 text-xs text-primary border-primary/40 hover:bg-primary/10"
+                                            >
+                                                <RotateCcw className="h-3.5 w-3.5" />
+                                                إرجاع الفاتورة كاملة
+                                            </Button>
+                                            <Button 
+                                                type="button" 
+                                                variant="ghost" 
+                                                size="sm" 
+                                                onClick={handleResetReturnQty} 
+                                                className="text-xs text-muted-foreground hover:text-destructive"
+                                            >
+                                                تصفير الكميات
+                                            </Button>
+                                        </div>
+                                    </div>
+
                                     <div className="w-full overflow-auto border rounded-lg">
                                         <Table>
-                                            <TableHeader><TableRow><TableHead>الصنف</TableHead><TableHead className="text-center">الكمية المباعة</TableHead><TableHead className="text-center">مرتجعات سابقة</TableHead><TableHead className="text-center">الكمية المرتجعة</TableHead><TableHead className="text-center">السعر</TableHead><TableHead className="text-center">إجمالي المرتجع</TableHead></TableRow></TableHeader>
+                                            <TableHeader>
+                                                <TableRow className="bg-muted/40">
+                                                    <TableHead className="text-right">الصنف</TableHead>
+                                                    <TableHead className="text-center w-36">الباركود</TableHead>
+                                                    <TableHead className="text-center w-28">الكمية المباعة</TableHead>
+                                                    <TableHead className="text-center w-28">مرتجعات سابقة</TableHead>
+                                                    <TableHead className="text-center w-32">الكمية المرتجعة</TableHead>
+                                                    <TableHead className="text-center w-28">السعر</TableHead>
+                                                    <TableHead className="text-center w-32">إجمالي المرتجع</TableHead>
+                                                </TableRow>
+                                            </TableHeader>
                                             <TableBody>
                                                 {returnedItems.map(item => (
-                                                    <TableRow key={item.id}>
-                                                        <TableCell>{item.name}</TableCell>
+                                                    <TableRow key={item.id} className={item.qty > 0 ? "bg-primary/5" : ""}>
+                                                        <TableCell className="text-right font-medium">
+                                                            <div>{item.name}</div>
+                                                            {item.code && item.code !== item.barcode && (
+                                                                <div className="text-[11px] text-muted-foreground font-mono">كود: {item.code}</div>
+                                                            )}
+                                                        </TableCell>
+                                                        <TableCell className="text-center font-mono text-xs">
+                                                            {item.barcode ? (
+                                                                <Badge variant="outline" className="font-mono text-xs gap-1 border-muted-foreground/30">
+                                                                    <BarcodeIcon className="h-3 w-3 text-muted-foreground" />
+                                                                    {item.barcode}
+                                                                </Badge>
+                                                            ) : (
+                                                                <span className="text-muted-foreground text-xs">---</span>
+                                                            )}
+                                                        </TableCell>
                                                         <TableCell className="text-center">{item.maxQty}</TableCell>
                                                         <TableCell className="text-center text-muted-foreground">{item.previouslyReturned}</TableCell>
-                                                        <TableCell className="text-center w-32"><Input type="number" value={item.qty} onChange={(e) => handleQtyChange(item.id, Number(e.target.value))} className="text-center" max={item.maxQty - item.previouslyReturned} min={0} /></TableCell>
+                                                        <TableCell className="text-center">
+                                                            <Input 
+                                                                type="number" 
+                                                                value={item.qty} 
+                                                                onChange={(e) => handleQtyChange(item.id, Number(e.target.value))} 
+                                                                className="text-center font-bold h-9 mx-auto max-w-[100px]" 
+                                                                max={item.maxQty - item.previouslyReturned} 
+                                                                min={0} 
+                                                            />
+                                                        </TableCell>
                                                         <TableCell className="text-center">{item.price.toLocaleString()}</TableCell>
-                                                        <TableCell className="text-center font-semibold">{item.total.toLocaleString()}</TableCell>
+                                                        <TableCell className="text-center font-semibold text-destructive">
+                                                            {item.total.toLocaleString()} ج.م
+                                                        </TableCell>
                                                     </TableRow>
                                                 ))}
                                             </TableBody>
@@ -328,48 +463,88 @@ export default function PosReturnPage() {
                                 </div>
                             ) : (
                                 <div className="grid md:grid-cols-2 gap-6">
-                                     <div>
-                                        <form onSubmit={handleItemScan}>
-                                            <Label htmlFor='scan-item'>مسح باركود الصنف</Label>
-                                             <div className="flex gap-2">
-                                                <Input ref={itemScanRef} id="scan-item" value={scanInput} onChange={e => setScanInput(e.target.value)} placeholder="امسح الباركود هنا..." />
-                                                <Button type="submit" variant="outline"><ScanLine className="h-4 w-4" /></Button>
+                                    <div>
+                                        <form onSubmit={handleItemScan} className="space-y-2">
+                                            <Label htmlFor='scan-item' className="font-semibold text-sm">مسح باركود الصنف للإرجاع</Label>
+                                            <div className="flex gap-2">
+                                                <Input 
+                                                    ref={itemScanRef} 
+                                                    id="scan-item" 
+                                                    dir="ltr"
+                                                    className="font-mono text-left"
+                                                    value={scanInput} 
+                                                    onChange={e => setScanInput(e.target.value)} 
+                                                    placeholder="امسح باركود الصنف المرتجع هنا..." 
+                                                />
+                                                <Button type="submit" variant="outline" className="gap-1.5">
+                                                    <ScanLine className="h-4 w-4" />
+                                                    مسح
+                                                </Button>
                                             </div>
+                                            <p className="text-xs text-muted-foreground">
+                                                وفقاً لصلاحيات الكاشير، يجب تمرير وقراءة باركود الصنف فعلياً لإضافته لسلة المرتجع.
+                                            </p>
                                         </form>
                                     </div>
                                     <div>
-                                        <Label>الأصناف المرتجعة</Label>
-                                        <div className="w-full overflow-auto border rounded-lg h-48">
-                                             <Table>
-                                                <TableHeader><TableRow><TableHead>الصنف</TableHead><TableHead className="text-center">الكمية</TableHead><TableHead className="text-center">الإجمالي</TableHead></TableRow></TableHeader>
+                                        <Label className="font-semibold text-sm">الأصناف المرتجعة بالسلة</Label>
+                                        <div className="w-full overflow-auto border rounded-lg h-56 mt-2">
+                                            <Table>
+                                                <TableHeader>
+                                                    <TableRow className="bg-muted/40">
+                                                        <TableHead className="text-right">الصنف</TableHead>
+                                                        <TableHead className="text-center">الباركود</TableHead>
+                                                        <TableHead className="text-center">الكمية</TableHead>
+                                                        <TableHead className="text-center">الإجمالي</TableHead>
+                                                    </TableRow>
+                                                </TableHeader>
                                                 <TableBody>
                                                     {returnedItems.map(item => (
                                                         <TableRow key={item.id}>
-                                                            <TableCell>{item.name}</TableCell>
-                                                            <TableCell className="text-center">{item.qty}</TableCell>
-                                                            <TableCell className="text-center">{item.total.toLocaleString()}</TableCell>
+                                                            <TableCell className="text-right font-medium">{item.name}</TableCell>
+                                                            <TableCell className="text-center font-mono text-xs">
+                                                                <Badge variant="outline" className="font-mono text-[11px]">
+                                                                    {item.barcode || item.code || '---'}
+                                                                </Badge>
+                                                            </TableCell>
+                                                            <TableCell className="text-center font-bold">{item.qty}</TableCell>
+                                                            <TableCell className="text-center font-semibold text-destructive">{item.total.toLocaleString()} ج.م</TableCell>
                                                         </TableRow>
                                                     ))}
-                                                     {returnedItems.length === 0 && <TableRow><TableCell colSpan={3} className="text-center text-muted-foreground p-4">لم يتم إضافة أصناف بعد</TableCell></TableRow>}
+                                                     {returnedItems.length === 0 && (
+                                                        <TableRow>
+                                                            <TableCell colSpan={4} className="text-center text-muted-foreground p-6">
+                                                                لم يتم مسح أي أصناف بعد. يرجى مسح باركود الصنف أعلاه.
+                                                            </TableCell>
+                                                        </TableRow>
+                                                     )}
                                                 </TableBody>
                                             </Table>
                                         </div>
                                     </div>
                                 </div>
                             )}
-                             <Alert className="mt-4">
-                                <Info className="h-4 w-4" />
-                                <AlertTitle>التأثير المحاسبي والمخزني</AlertTitle>
-                                <AlertDescription>
-                                    عند الحفظ، سيتم زيادة رصيد الأصناف المرتجعة في المخزن.
+
+                            <Alert className="mt-4 bg-muted/30">
+                                <Info className="h-4 w-4 text-primary" />
+                                <AlertTitle className="font-bold">التأثير المحاسبي والمخزني</AlertTitle>
+                                <AlertDescription className="text-xs text-muted-foreground">
+                                    عند تأكيد الحفظ، يتم استرداد الأصناف المرتجعة وزيادة رصيدها المخزني مباشرة في الفرع، وخصم قيمة المرتجع من يومية المبيعات.
                                 </AlertDescription>
                             </Alert>
                         </CardContent>
-                         <CardFooter className="flex justify-between items-center">
-                            <p className="text-xl font-bold">إجمالي قيمة المرتجع: <span className="text-destructive">{returnTotal.toLocaleString()} ج.م</span></p>
-                            <Button size="lg" onClick={handleSaveReturn} disabled={returnTotal <= 0}>
-                                <Save className="ml-2 h-4 w-4" />
-                                حفظ المرتجع
+                        <CardFooter className="flex flex-col sm:flex-row justify-between items-center gap-4 border-t pt-4">
+                            <p className="text-xl font-bold">
+                                إجمالي قيمة المرتجع: <span className="text-destructive font-mono mr-1">{returnTotal.toLocaleString()} ج.م</span>
+                            </p>
+                            <Button 
+                                size="lg" 
+                                onClick={handleSaveReturn} 
+                                disabled={returnTotal <= 0 || !canProcessReturn}
+                                className="px-8 font-bold gap-2"
+                            >
+                                <Save className="h-4 w-4" />
+                                حفظ وتأكيد المرتجع
                             </Button>
                         </CardFooter>
                     </Card>
