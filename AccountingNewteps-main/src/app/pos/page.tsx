@@ -200,6 +200,7 @@ const PaymentDialog = ({ onAddPayment, totalDue, paymentMethods }: { onAddPaymen
          <UIDialogContent onKeyDown={handleKeyDown} className="sm:max-w-2xl md:max-w-3xl">
             <UIDialogHeader>
                 <UIDialogTitle>إضافة طريقة دفع</UIDialogTitle>
+                <DialogDescription className="sr-only">نافذة إضافة وتحديد طريقة الدفع</DialogDescription>
             </UIDialogHeader>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="flex flex-col gap-2">
@@ -545,6 +546,7 @@ const DeliveryPersonDialog = ({ onSelect, onOpenChange }: { onSelect: (id: strin
         <UIDialogContent>
             <UIDialogHeader>
                 <UIDialogTitle>اختر الطيار المسؤول</UIDialogTitle>
+                <DialogDescription className="sr-only">تحديد مسؤول توصيل الطلب</DialogDescription>
             </UIDialogHeader>
             <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4 py-4">
                 {deliveryStaff.map((staff: any) => (
@@ -639,6 +641,7 @@ const HeldInvoicesDialog = ({ onRetrieve, onClose }: { onRetrieve: (invoice: Hel
         <UIDialogContent className="sm:max-w-3xl">
              <UIDialogHeader>
                 <UIDialogTitle>الفواتير المعلقة (بدون طاولة)</UIDialogTitle>
+                <DialogDescription>قائمة الفواتير المحفوظة مؤقتاً للرجوع إليها واستكمال البيع.</DialogDescription>
              </UIDialogHeader>
              {loading ? <Loader2 className="animate-spin mx-auto"/> : (
              <div className="max-h-96 overflow-y-auto">
@@ -670,6 +673,7 @@ const HeldInvoicesDialog = ({ onRetrieve, onClose }: { onRetrieve: (invoice: Hel
                                 <UIDialogContent>
                                     <UIDialogHeader>
                                         <UIDialogTitle>أصناف الفاتورة المعلقة</UIDialogTitle>
+                                        <DialogDescription className="sr-only">عرض تفاصيل وبنود الفاتورة المعلقة</DialogDescription>
                                     </UIDialogHeader>
                                     <Table>
                                         <TableHeader><TableRow><TableHead>الصنف</TableHead><TableHead>الكمية</TableHead><TableHead>السعر</TableHead><TableHead>الإجمالي</TableHead></TableRow></TableHeader>
@@ -799,6 +803,7 @@ const SecondaryUnitDialog = ({ item, onSelectUnit, onClose }: { item: any, onSel
          <UIDialogContent>
             <UIDialogHeader>
                 <UIDialogTitle>اختر الوحدة والكمية لـ: {item.name}</UIDialogTitle>
+                <DialogDescription className="sr-only">تحديد وحدة وكمية الصنف</DialogDescription>
             </UIDialogHeader>
             <div className="space-y-4 py-4">
                 <div className="space-y-2">
@@ -890,6 +895,7 @@ const QuantityEditDialog = ({ item, onConfirm, onClose }: { item: PosItem, onCon
         <UIDialogContent className="sm:max-w-sm">
             <UIDialogHeader>
                 <UIDialogTitle>تعديل الكمية: {item.name}</UIDialogTitle>
+                <DialogDescription className="sr-only">تعديل كمية الصنف في السلة</DialogDescription>
             </UIDialogHeader>
             <div className="grid gap-4 py-4">
                 <div className="flex items-center gap-4">

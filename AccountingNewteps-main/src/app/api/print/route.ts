@@ -1,34 +1,30 @@
 import { NextRequest, NextResponse } from 'next/server';
-import Printer from 'pdf-to-printer';
+import * as pdfToPrinter from 'pdf-to-printer';
 import PDFDocument from 'pdfkit';
 import os from 'os';
 import fs from 'fs';
 import path from 'path';
 import ArabicReshaper from 'arabic-reshaper';
+import { logSystemError } from '@/lib/error-logger';
 
 function processText(text: string): string {
   try {
     if (!text) return '';
     
     // Split text into segments of Arabic and non-Arabic
-    // Arabic range: \u0600-\u06FF, \u0750-\u077F, \u08A0-\u08FF, \uFB50-\uFDFF, \uFE70-\uFEFF
     const arabicRegex = /([\u0600-\u06FF\u0750-\u077F\u08A0-\u08FF\uFB50-\uFDFF\uFE70-\uFEFF]+)/g;
     
-    // Check if there is any Arabic text
     if (!arabicRegex.test(text)) return text;
 
     const parts = text.split(arabicRegex);
     const processedParts = parts.map(part => {
       if (arabicRegex.test(part)) {
-        // Reshape Arabic part
         const reshaped = ArabicReshaper.convertArabic(part);
-        // Reverse for PDFKit LTR rendering
         return reshaped.split('').reverse().join('');
       }
       return part;
     });
 
-    // Reverse the order of parts to handle mixed content RTL flow
     return processedParts.reverse().join('');
   } catch (e) {
     return text;
@@ -36,21 +32,24 @@ function processText(text: string): string {
 }
 
 export async function POST(req: NextRequest) {
+  let filePath = '';
+  let printerName = '';
+  let title = 'POS Receipt';
+  let lines: Array<{ left?: string; right?: string }> = [];
+
   try {
     const body = await req.json();
-    const printerName: string | undefined = body?.printer;
-    const title: string = body?.content?.title || 'POS Receipt';
-    const lines: Array<{ left?: string; right?: string }> = body?.content?.lines || [];
+    printerName = (body?.printer || '').trim();
+    title = body?.content?.title || 'POS Receipt';
+    lines = body?.content?.lines || [];
     const footer: string = body?.content?.footer || '';
 
     if (!printerName) {
-      return NextResponse.json({ error: 'Printer name is required' }, { status: 400 });
+      return NextResponse.json({ ok: false, error: 'اسم الطابعة مطلوب' }, { status: 400 });
     }
 
-    const cleanPrinterName = printerName.trim();
-
     const tmpDir = os.tmpdir();
-    const filePath = path.join(tmpDir, `pos-print-${Date.now()}.pdf`);
+    filePath = path.join(tmpDir, `pos-print-${Date.now()}-${Math.random().toString(36).slice(2, 6)}.pdf`);
 
     // Use a system font (Arial) to support Arabic
     let fontPath = 'Helvetica';
@@ -62,8 +61,6 @@ export async function POST(req: NextRequest) {
     }
 
     const width = body?.options?.width || '80mm';
-    
-    // Convert width to points (1mm = 2.835pt)
     let pageWidth = 227; // 80mm default
     if (typeof width === 'number') {
         pageWidth = width;
@@ -74,7 +71,7 @@ export async function POST(req: NextRequest) {
     }
 
     const doc = new PDFDocument({ 
-      size: [pageWidth, 1000], // Long strip
+      size: [pageWidth, 1000],
       margin: 10,
       font: fontPath
     });
@@ -82,17 +79,13 @@ export async function POST(req: NextRequest) {
     const stream = fs.createWriteStream(filePath);
     doc.pipe(stream);
 
-    // Adjust font sizes for receipt
     const titleSize = pageWidth > 300 ? 18 : 10; 
-    const textSize = pageWidth > 300 ? 12 : 9; // Standard thermal font size
+    const textSize = pageWidth > 300 ? 12 : 9;
 
-    // Print Title
     doc.fontSize(titleSize).text(processText(title), { align: 'center' });
     doc.moveDown(0.5);
-    
     doc.fontSize(textSize);
 
-    // Process Lines
     for (const ln of lines) {
       const leftRaw = ln.left || '';
       const rightRaw = ln.right || '';
@@ -104,39 +97,22 @@ export async function POST(req: NextRequest) {
       const contentWidth = pageWidth - (margin * 2);
       const startY = doc.y;
 
-      // Layout Logic - STRICT LTR COLUMNS
-      // Left content always on Left. Right content always on Right.
-      // This prevents zig-zag alignment when mixing Arabic/English lines.
-      
-      // 1. Single Column (only left or only right)
       if (!rightRaw && leftRaw) {
-        // Full width Left
         doc.text(leftText, margin, startY, { width: contentWidth, align: 'left' });
       } else if (!leftRaw && rightRaw) {
-        // Full width Right
         doc.text(rightText, margin, startY, { width: contentWidth, align: 'right' });
       } else {
-        // 2. Two Columns
-        // Left Column (65% width) - usually Item Name
         const col1Width = contentWidth * 0.65;
-        // Right Column (35% width) - usually Price/Value
         const col2Width = contentWidth * 0.35;
 
-        // Print Left Content (Align Left)
         doc.text(leftText, margin, startY, { width: col1Width, align: 'left' });
         const yAfterLeft = doc.y;
 
-        // Print Right Content (Align Right)
-        // X = margin + col1Width
         doc.text(rightText, margin + col1Width, startY, { width: col2Width, align: 'right' });
         const yAfterRight = doc.y;
 
-        // Set Y to max height to prevent overlap with next line
         doc.y = Math.max(yAfterLeft, yAfterRight);
       }
-      
-      // Add a tiny buffer if needed
-      // doc.moveDown(0.1); 
     }
 
     if (footer) {
@@ -151,19 +127,55 @@ export async function POST(req: NextRequest) {
       stream.on('error', (err) => reject(err));
     });
 
+    // Detect virtual PDF / XPS printers
+    const lowerPrinter = printerName.toLowerCase();
+    const isVirtualPrinter = lowerPrinter.includes('print to pdf') || lowerPrinter.includes('xps') || lowerPrinter.includes('onenote');
+
+    if (isVirtualPrinter) {
+      // In automated background printing, virtual PDF printers cannot prompt for file path.
+      // We simulate successful print without hanging or erroring out.
+      return NextResponse.json({ 
+        ok: true, 
+        simulated: true, 
+        printer: printerName,
+        message: 'تم تجهيز الإيصال بنجاح (محاكاة طابعة افتراضية).'
+      });
+    }
+
+    const printFunction = (pdfToPrinter as any)?.print || (pdfToPrinter as any)?.default?.print || (pdfToPrinter as any)?.default;
+    if (typeof printFunction !== 'function') {
+      throw new Error("دالة الطباعة غير مهيأة (pdf-to-printer function is unavailable).");
+    }
+
     const sumatraPath = path.join(process.cwd(), 'public', 'SumatraPDF-3.4.6-32.exe');
-    
-    const printOptions: any = { printer: cleanPrinterName };
+    const printOptions: any = { printer: printerName };
     if (fs.existsSync(sumatraPath)) {
       printOptions.sumatraPdfPath = sumatraPath;
     }
 
-    await Printer.print(filePath, printOptions);
+    await printFunction(filePath, printOptions);
 
-    fs.unlink(filePath, () => {});
-
-    return NextResponse.json({ ok: true });
+    return NextResponse.json({ ok: true, printer: printerName });
   } catch (e: any) {
-    return NextResponse.json({ error: e?.message || 'Failed to print' }, { status: 500 });
+    const errorMessage = e?.message || 'فشل إرسال أمر الطباعة';
+    console.error('Print route error:', errorMessage);
+    
+    await logSystemError({
+      source: 'Server:api/print',
+      action: 'print_receipt',
+      errorMessage,
+      errorStack: e?.stack || null,
+      requestPayload: { printer: printerName, title, linesCount: lines.length }
+    }).catch(() => {});
+
+    return NextResponse.json({ 
+      ok: false, 
+      error: errorMessage, 
+      printer: printerName 
+    }, { status: 200 });
+  } finally {
+    if (filePath && fs.existsSync(filePath)) {
+      fs.unlink(filePath, () => {});
+    }
   }
 }
