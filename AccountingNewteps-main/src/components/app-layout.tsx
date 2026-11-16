@@ -932,7 +932,8 @@ export function AppLayoutContent({ children }: { children: React.ReactNode }) {
   }, [isCentral]);
 
   const isHubLayout = desktopLayout === 'modern_hub';
-  const showHeader = pathname !== '/pos';
+  const isPosScreen = pathname === '/pos';
+  const showHeader = !isPosScreen;
 
   const handleCloseTab = (e: React.MouseEvent, href: string) => {
       e.stopPropagation();
@@ -981,7 +982,7 @@ export function AppLayoutContent({ children }: { children: React.ReactNode }) {
 
   return (
     <>
-      {desktopLayout === 'sidebar' && (
+      {desktopLayout === 'sidebar' && !isPosScreen && (
         <Sidebar side="right">
           <SidebarHeader className="p-0 gap-0">
               <div className="flex flex-col w-full px-3 py-2.5 border-b gap-2">
@@ -1087,10 +1088,14 @@ export function AppLayoutContent({ children }: { children: React.ReactNode }) {
         </Sidebar>
       )}
 
-      <MobileSidebar />
+      {!isPosScreen && <MobileSidebar />}
 
-      <SidebarInset className="h-screen max-h-screen overflow-hidden flex flex-col">
-         <div className="md:hidden fixed z-50">
+      <SidebarInset className={cn(
+        "h-screen max-h-screen overflow-hidden flex flex-col",
+        isPosScreen && "w-full min-w-full m-0 p-0"
+      )}>
+         {!isPosScreen && (
+           <div className="md:hidden fixed z-50">
             <SidebarTrigger className={cn(
                 "rounded-full w-14 h-14 shadow-lg bg-primary text-primary-foreground hover:bg-primary/90",
                 {
@@ -1102,7 +1107,8 @@ export function AppLayoutContent({ children }: { children: React.ReactNode }) {
                     'top-1/2 left-4 -translate-y-1/2': fabPosition === 'middle-left',
                 }
             )} />
-        </div>
+           </div>
+         )}
         
         {showHeader && (
             <header className="flex h-14 items-center justify-between gap-4 border-b bg-background px-4 shrink-0 sticky top-0 z-30">

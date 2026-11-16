@@ -49,6 +49,15 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
     if (settings?.main?.general?.desktopLayout === 'modern_hub' && pathname === '/') {
         return <ModernNavHub navStructure={navStructure} />;
     }
+
+    // شاشة الكاشير (/pos): تعمل بملء الشاشة وتُخفي القائمة الجانبية تماماً
+    if (pathname === '/pos') {
+        return (
+            <div className="h-screen w-full overflow-hidden bg-background">
+                {children}
+            </div>
+        );
+    }
     
     return (
         <SidebarProvider>
