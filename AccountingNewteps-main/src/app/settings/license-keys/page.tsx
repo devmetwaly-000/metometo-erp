@@ -492,7 +492,7 @@ export default function LicenseKeysPage() {
     }, [licenses]);
     
     const getStatusBadge = (license: License) => {
-        if (license.status === 'assigned') {
+        if (license.status === 'assigned' || license.status === 'active') {
             const now = new Date();
             const endDate = license.endDate ? new Date(license.endDate) : null;
             if (endDate && now > endDate) {

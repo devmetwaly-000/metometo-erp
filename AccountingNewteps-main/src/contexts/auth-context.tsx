@@ -178,13 +178,19 @@ export const AuthProvider: React.FC<{ children: ReactNode, initialUsers?: any[],
             if (foundUser && !foundUser.isDisabled) {
                 
                 let userData = { ...foundUser };
-                const licenseKey = userData.themeSettings?.licenseKey;
-                const license = initialLicenses?.find((lic: any) => lic.key === licenseKey);
+                const licenseKey = (userData.themeSettings?.licenseKey || '').trim().toLowerCase();
+                const license = initialLicenses?.find((lic: any) => (lic.key || '').trim().toLowerCase() === licenseKey);
+
+                if (!userData.themeSettings) {
+                    userData.themeSettings = {};
+                }
 
                 if (license) {
                     const endDate = license.endDate ? new Date(license.endDate) : null;
                     if (endDate && new Date() > endDate) {
                         userData.themeSettings.licenseStatus = 'expired';
+                    } else {
+                        userData.themeSettings.licenseStatus = 'active';
                     }
                 } else if (licenseKey) {
                     // If there's a key but no matching license, it's inactive

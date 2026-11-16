@@ -251,20 +251,26 @@ export const PermissionsProvider: React.FC<{ children: React.ReactNode }> = ({ c
 
 
   const can = useCallback((action: Action, module: Module | string): boolean => {
-    if (user?.id === 'superadmin') return true;
+    if (user?.id === 'superadmin' || user?.id === 'admin_master') return true;
     if (!user) return false;
     
     // License check
-    const currentLicenseKey = user?.themeSettings?.licenseKey;
-    const license = licenses.find((lic: any) => lic.key === currentLicenseKey);
+    const currentLicenseKey = (user?.themeSettings?.licenseKey || '').trim().toLowerCase();
+    const license = licenses?.find((lic: any) => (lic.key || '').trim().toLowerCase() === currentLicenseKey);
     
-    if (!license || license.status !== 'assigned' || (license.endDate && new Date() > new Date(license.endDate))) {
+    const isLicenseExpired = !!(license?.endDate && new Date() > new Date(license.endDate));
+    const isLicenseInactive = license ? (license.status === 'inactive' || license.status === 'expired' || license.status === 'suspended') : true;
+
+    // A license is valid if it exists, is not expired, and is not explicitly inactive/suspended
+    const isLicenseValid = license && !isLicenseInactive && !isLicenseExpired;
+
+    if (!isLicenseValid) {
         // Allow access only to essential settings if license is invalid
         return ['settings_general', 'settings_sync', 'settings_theme', 'settings_printers', 'settings_receiptDesigner', 'settings_licenses'].includes(module);
     }
     
     // If license has defined modules, check if the current module is enabled
-    if (license.enabledModules && license.enabledModules[module] === false) {
+    if (license.enabledModules && typeof license.enabledModules === 'object' && license.enabledModules[module] === false) {
         return false;
     }
 
