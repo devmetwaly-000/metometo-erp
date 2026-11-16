@@ -350,8 +350,22 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
                 setTimeout(() => refreshDataFromSqlServer?.(), 1000);
                 throw new Error(message);
             }
-        } catch (err) {
+        } catch (err: any) {
             console.error(`dbAction network error for path ${path}:`, err);
+            try {
+                fetch('/api/system/log-error', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        source: 'Client:dbAction',
+                        action: `${path}/${action}`,
+                        errorMessage: err?.message || String(err),
+                        errorStack: err?.stack || null,
+                        requestPayload: payload,
+                        endpoint: '/api/db/action'
+                    })
+                }).catch(() => {});
+            } catch {}
             setTimeout(() => refreshDataFromSqlServer?.(), 1000);
             throw err;
         }

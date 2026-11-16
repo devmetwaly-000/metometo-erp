@@ -1609,6 +1609,31 @@ export async function createAndInitializeDatabase(options: DbInitOptions): Promi
                 CONSTRAINT [PK_AuditTrailLogs] PRIMARY KEY CLUSTERED ([Id])
             );`,
 
+            `IF NOT EXISTS (SELECT * FROM sys.tables WHERE name = 'SystemErrorLogs')
+            CREATE TABLE dbo.[SystemErrorLogs] (
+                [Id] NVARCHAR(64) NOT NULL,
+                [Timestamp] DATETIME2 NOT NULL DEFAULT (sysutcdatetime()),
+                [Source] NVARCHAR(100) NOT NULL,
+                [Action] NVARCHAR(100) NULL,
+                [Endpoint] NVARCHAR(255) NULL,
+                [ErrorMessage] NVARCHAR(MAX) NOT NULL,
+                [ErrorStack] NVARCHAR(MAX) NULL,
+                [ErrorCode] NVARCHAR(50) NULL,
+                [StatusCode] INT NULL DEFAULT ((500)),
+                [RequestPayload] NVARCHAR(MAX) NULL,
+                [UserId] NVARCHAR(64) NULL,
+                [UserName] NVARCHAR(255) NULL,
+                [BranchCode] NVARCHAR(50) NULL,
+                [WarehouseId] NVARCHAR(64) NULL,
+                [IpAddress] NVARCHAR(50) NULL,
+                [UserAgent] NVARCHAR(500) NULL,
+                [IsResolved] BIT NOT NULL DEFAULT ((0)),
+                [ResolutionNotes] NVARCHAR(MAX) NULL,
+                [CreatedAt] DATETIME2 NOT NULL DEFAULT (sysutcdatetime()),
+                [RowVersion] ROWVERSION,
+                CONSTRAINT [PK_SystemErrorLogs] PRIMARY KEY CLUSTERED ([Id])
+            );`,
+
             `IF NOT EXISTS (SELECT * FROM sys.tables WHERE name = 'GeneralLedgerEntries')
             CREATE TABLE dbo.[GeneralLedgerEntries] (
                 [Id] NVARCHAR(64) NOT NULL,
@@ -2752,6 +2777,8 @@ export async function createAndInitializeDatabase(options: DbInitOptions): Promi
              CREATE NONCLUSTERED INDEX IX_GeneralLedgerEntries_Source ON dbo.GeneralLedgerEntries (SourceType, SourceId, Date DESC);`,
             `IF NOT EXISTS (SELECT * FROM sys.indexes WHERE name = 'IX_AuditTrailLogs_Timestamp' AND object_id = OBJECT_ID('dbo.AuditTrailLogs'))
              CREATE NONCLUSTERED INDEX IX_AuditTrailLogs_Timestamp ON dbo.AuditTrailLogs (Timestamp DESC, Entity, Action);`,
+            `IF NOT EXISTS (SELECT * FROM sys.indexes WHERE name = 'IX_SystemErrorLogs_Timestamp' AND object_id = OBJECT_ID('dbo.SystemErrorLogs'))
+             CREATE NONCLUSTERED INDEX IX_SystemErrorLogs_Timestamp ON dbo.SystemErrorLogs (Timestamp DESC, Source, Action);`,
             `IF NOT EXISTS (SELECT * FROM sys.indexes WHERE name = 'IX_ManufacturingOrders_Status' AND object_id = OBJECT_ID('dbo.ManufacturingOrders'))
              CREATE NONCLUSTERED INDEX IX_ManufacturingOrders_Status ON dbo.ManufacturingOrders (Status, CreatedAt DESC);`
         ];

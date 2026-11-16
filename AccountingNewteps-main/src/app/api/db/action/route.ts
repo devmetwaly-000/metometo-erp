@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { getDbPool, sql } from '@/lib/db';
 import { logAuditEvent } from '@/lib/audit-logger';
 import { calculateInvoiceReturnTotals } from '@/lib/invoice-return-totals';
+import { logSystemError } from '@/lib/error-logger';
 
 class ReturnValidationError extends Error {}
 
@@ -261,8 +262,9 @@ async function ensureRepWarehouseAndAccount(pool: sql.ConnectionPool, userId: st
 }
 
 export async function POST(req: Request) {
+    let body: any = null;
     try {
-        const body = await req.json();
+        body = await req.json();
         const { path: rawPath, action, payload, counterName, startFrom } = body;
         const pool = await getDbPool();
 
@@ -2384,6 +2386,23 @@ export async function POST(req: Request) {
         return NextResponse.json({ success: true, message: 'Processed' });
     } catch (error: any) {
         console.error('Error in /api/db/action:', error);
+
+        // Safely log error into dbo.SystemErrorLogs table in SQL Server
+        await logSystemError({
+            source: 'API:db/action',
+            action: body?.action ? `${body?.path}/${body?.action}` : (body?.path || 'unknown'),
+            endpoint: '/api/db/action',
+            errorMessage: error.message || 'Error in /api/db/action',
+            errorStack: error.stack,
+            errorCode: error.number || error.code || 500,
+            statusCode: error instanceof ReturnValidationError ? 400 : 500,
+            requestPayload: body,
+            userId: body?.payload?.userId || body?.payload?.createdById || null,
+            userName: body?.payload?.userName || body?.payload?.createdByName || null,
+            warehouseId: body?.payload?.warehouseId || null,
+            branchCode: body?.payload?.branchCode || null
+        });
+
         return NextResponse.json({ success: false, error: error.message }, { status: error instanceof ReturnValidationError ? 400 : 500 });
     }
 }

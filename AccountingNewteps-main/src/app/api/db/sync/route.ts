@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getDbPool } from '@/lib/db';
+import { logSystemError } from '@/lib/error-logger';
 
 export const dynamic = 'force-dynamic';
 
@@ -848,6 +849,17 @@ export async function GET() {
         });
     } catch (error: any) {
         console.error('Error in /api/db/sync:', error);
+
+        await logSystemError({
+            source: 'API:db/sync',
+            action: 'GET',
+            endpoint: '/api/db/sync',
+            errorMessage: error.message || 'Error in /api/db/sync',
+            errorStack: error.stack,
+            errorCode: error.number || error.code || 500,
+            statusCode: 500
+        });
+
         return NextResponse.json({
             success: false,
             error: error.message,
