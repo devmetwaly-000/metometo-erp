@@ -95,6 +95,23 @@ const PWALifecycle = () => {
 
   useEffect(() => {
     if (typeof window !== 'undefined' && 'serviceWorker' in navigator) {
+      // Auto-heal Workbox bad precaching / stale build cache errors
+      const handleUnhandledRejection = (event: PromiseRejectionEvent) => {
+        const reasonStr = String(event?.reason?.message || event?.reason || '');
+        if (reasonStr.includes('bad-precaching-response') || reasonStr.includes('_buildManifest.js')) {
+          console.warn('[PWA] Stale service worker cache detected. Purging old registrations...');
+          navigator.serviceWorker.getRegistrations().then(regs => {
+            regs.forEach(r => void r.unregister());
+          });
+          if ('caches' in window) {
+            caches.keys().then(names => {
+              names.forEach(name => void caches.delete(name));
+            });
+          }
+        }
+      };
+      window.addEventListener('unhandledrejection', handleUnhandledRejection);
+
       if ((window as any).workbox !== undefined) {
         const wb = (window as any).workbox;
 
@@ -129,6 +146,10 @@ const PWALifecycle = () => {
             console.warn('PWA Service Worker registration warning:', error);
           });
       }
+
+      return () => {
+        window.removeEventListener('unhandledrejection', handleUnhandledRejection);
+      };
     }
   }, [toast]);
 
