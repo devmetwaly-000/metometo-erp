@@ -1,8 +1,9 @@
 
 "use client"
 
-// استيراد الخطاف المخصص `useToast` لإدارة حالة الإشعارات
-import { useToast } from "@/hooks/use-toast"
+import * as React from "react"
+// استيراد الخطاف المخصص `useToast` ودالة تعيين مدة الإشعار الافتراضية
+import { useToast, setDefaultToastDuration } from "@/hooks/use-toast"
 // استيراد مكونات واجهة المستخدم الخاصة بالإشعارات
 import {
   Toast,
@@ -12,19 +13,40 @@ import {
   ToastTitle,
   ToastViewport,
 } from "@/components/ui/toast"
+import { useData } from "@/contexts/data-provider"
 
-// تعريف مكون `Toaster` الذي سيكون مسؤولاً عن عرض جميع الإشعارات
+// تعريف مكون `Toaster` الذي سيكون مسؤولاً عن عرض جميع الإشعارات وفق المدة المحددة في الإعدادات
 export function Toaster() {
   // الحصول على قائمة الإشعارات الحالية من الخطاف `useToast`
   const { toasts } = useToast()
+  
+  let settings: any = null;
+  try {
+    const data = useData();
+    settings = data?.settings;
+  } catch {}
+
+  const generalSettings = settings?.main?.general || settings?.general || {};
+  const rawDuration = generalSettings?.toastDuration;
+  const parsedSeconds = typeof rawDuration === 'number' ? rawDuration : parseFloat(rawDuration);
+  const durationMs = (!isNaN(parsedSeconds) && parsedSeconds > 0)
+    ? Math.round(parsedSeconds * 1000)
+    : (typeof window !== 'undefined' && localStorage.getItem('app_toast_duration')
+        ? Number(localStorage.getItem('app_toast_duration'))
+        : 2500);
+
+  // مزامنة مدة الإشعار المحددة في الإعدادات مع محرك الإشعارات
+  React.useEffect(() => {
+    setDefaultToastDuration(durationMs);
+  }, [durationMs]);
 
   return (
-    // `ToastProvider` هو المكون الجذري الذي يجب أن يلتف حول الإشعارات
-    <ToastProvider>
+    // `ToastProvider` هو المكون الجذري الذي يلتف حول الإشعارات ويتحكم بمدة بقائها
+    <ToastProvider duration={durationMs}>
       {/* المرور على مصفوفة الإشعارات وعرض كل واحد منها */}
-      {toasts.map(function ({ id, title, description, action, ...props }) {
+      {toasts.map(function ({ id, title, description, action, duration, ...props }) {
         return (
-          <Toast key={id} {...props}>
+          <Toast key={id} duration={duration || durationMs} {...props}>
             <div className="grid gap-1">
               {/* عرض العنوان إذا كان موجودًا */}
               {title && <ToastTitle>{title}</ToastTitle>}

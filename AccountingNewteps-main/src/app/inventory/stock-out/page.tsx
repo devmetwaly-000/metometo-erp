@@ -196,7 +196,7 @@ export default function StockOutListPage() {
                                 <Button variant="ghost" size="icon" onClick={() => {
                                     setTimeout(() => router.push(`/inventory/stock-out/${record.id}`), 150);
                                 }} title="عرض وتفاصيل">
-                                    <Eye className="h-4 w-4 text-blue-500" />
+                                    <Eye className="h-4 w-4 text-foreground" />
                                 </Button>
                                 <Button variant="ghost" size="icon" onClick={() => {
                                     setTimeout(() => router.push(`/inventory/stock-out/${record.id}`), 150);

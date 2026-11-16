@@ -268,7 +268,7 @@ export default function InventoryAdjustmentsReportPage() {
             onClick={() => window.print()}
             className="gap-1.5 text-xs font-semibold h-8"
           >
-            <Printer className="h-3.5 w-3.5 text-sky-600 dark:text-sky-400" />
+            <Printer className="h-3.5 w-3.5 text-foreground dark:text-foreground" />
             طباعة التقرير
           </Button>
         </div>
@@ -297,11 +297,11 @@ export default function InventoryAdjustmentsReportPage() {
           <CardHeader className="p-3.5 pb-1">
             <CardTitle className="text-xs font-medium text-muted-foreground flex items-center justify-between">
               <span>تكلفة التالف والإعدامات</span>
-              <Trash2 className="h-4 w-4 text-amber-600 dark:text-amber-400" />
+              <Trash2 className="h-4 w-4 text-foreground dark:text-foreground" />
             </CardTitle>
           </CardHeader>
           <CardContent className="p-3.5 pt-0">
-            <div className="text-2xl font-bold font-mono text-amber-700 dark:text-amber-400">
+            <div className="text-2xl font-bold font-mono text-foreground dark:text-foreground">
               {summary.totalDamagedCost.toLocaleString("ar-EG", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ج.م
             </div>
             <p className="text-[11px] text-muted-foreground mt-0.5">
@@ -331,7 +331,7 @@ export default function InventoryAdjustmentsReportPage() {
           <CardHeader className="p-3.5 pb-1">
             <CardTitle className="text-xs font-medium text-muted-foreground flex items-center justify-between">
               <span>صافي الفارق المالي للتسويات</span>
-              <Scale className="h-4 w-4 text-blue-600 dark:text-blue-400" />
+              <Scale className="h-4 w-4 text-foreground dark:text-foreground" />
             </CardTitle>
           </CardHeader>
           <CardContent className="p-3.5 pt-0">
@@ -441,7 +441,7 @@ export default function InventoryAdjustmentsReportPage() {
                   <TableHead>السبب / البيان</TableHead>
                   <TableHead className="text-center font-mono">الأصناف</TableHead>
                   <TableHead className="text-left font-mono text-rose-600">تكلفة العجز</TableHead>
-                  <TableHead className="text-left font-mono text-amber-600">تكلفة التالف</TableHead>
+                  <TableHead className="text-left font-mono text-foreground">تكلفة التالف</TableHead>
                   <TableHead className="text-left font-mono text-emerald-600">قيمة الزيادة</TableHead>
                   <TableHead className="text-left font-mono font-bold">صافي الأثر</TableHead>
                   <TableHead className="w-20 text-center no-print">التفاصيل</TableHead>
@@ -484,7 +484,7 @@ export default function InventoryAdjustmentsReportPage() {
                           <TableCell className="text-left font-mono text-rose-600 dark:text-rose-400 font-semibold">
                             {adj.shortageCost > 0 ? adj.shortageCost.toLocaleString("ar-EG", { minimumFractionDigits: 2 }) : "-"}
                           </TableCell>
-                          <TableCell className="text-left font-mono text-amber-600 dark:text-amber-400 font-semibold">
+                          <TableCell className="text-left font-mono text-foreground dark:text-foreground font-semibold">
                             {adj.damagedCost > 0 ? adj.damagedCost.toLocaleString("ar-EG", { minimumFractionDigits: 2 }) : "-"}
                           </TableCell>
                           <TableCell className="text-left font-mono text-emerald-600 dark:text-emerald-400 font-semibold">
@@ -583,7 +583,7 @@ export default function InventoryAdjustmentsReportPage() {
                   <TableCell className="text-left font-mono text-sm font-black text-rose-600">
                     {summary.totalShortageCost.toLocaleString("ar-EG", { minimumFractionDigits: 2 })} ج.م
                   </TableCell>
-                  <TableCell className="text-left font-mono text-sm font-black text-amber-600">
+                  <TableCell className="text-left font-mono text-sm font-black text-foreground">
                     {summary.totalDamagedCost.toLocaleString("ar-EG", { minimumFractionDigits: 2 })} ج.م
                   </TableCell>
                   <TableCell className="text-left font-mono text-sm font-black text-emerald-600">

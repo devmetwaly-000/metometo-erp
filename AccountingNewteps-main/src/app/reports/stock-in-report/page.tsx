@@ -219,7 +219,7 @@ export default function StockInReportPage() {
                                                 <span className="hidden md:block text-muted-foreground">المستلم: {warehouses.find((w:any) => w.id === record.warehouseId)?.name}</span>
                                                 <span className="hidden md:block text-muted-foreground">بواسطة: {record.createdByName}</span>
                                                 <span className="text-left rtl:text-right">
-                                                    <Badge variant={record.status === 'completed' ? 'default' : 'outline'} className={record.status !== 'completed' ? 'border-amber-500 text-amber-500' : 'bg-green-600'}>
+                                                    <Badge variant={record.status === 'completed' ? 'default' : 'outline'} className={record.status !== 'completed' ? 'border-amber-500 text-foreground' : 'bg-green-600'}>
                                                         {record.status === 'completed' ? <CheckCircle className="ml-1 h-3 w-3"/> : <Clock className="ml-1 h-3 w-3"/>}
                                                         {record.status === 'completed' ? 'تم التسكين' : 'معلق'}
                                                     </Badge>

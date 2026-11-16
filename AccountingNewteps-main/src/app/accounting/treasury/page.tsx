@@ -139,8 +139,8 @@ export default function TreasuryPage() {
     const getAccountTypeIcon = (accountId: string) => {
         const account = rawCashAccounts.find((acc: CashAccount) => acc.id === accountId);
         if (!account) return null;
-        if (isRepCustodyAccount(account)) return <User className="h-4 w-4 text-amber-500" />;
-        if (account.type === 'bank') return <Landmark className="h-4 w-4 text-blue-500" />;
+        if (isRepCustodyAccount(account)) return <User className="h-4 w-4 text-foreground" />;
+        if (account.type === 'bank') return <Landmark className="h-4 w-4 text-foreground" />;
         return <Wallet className="h-4 w-4 text-green-500" />;
     };
 
@@ -202,7 +202,7 @@ export default function TreasuryPage() {
                                  <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                                      <div>
                                          <CardTitle className="text-sm font-medium">{acc.name}</CardTitle>
-                                         {isRep && <span className="text-[10px] text-amber-600 font-semibold">عهدة مندوب</span>}
+                                         {isRep && <span className="text-[10px] text-foreground font-semibold">عهدة مندوب</span>}
                                      </div>
                                      {getAccountTypeIcon(acc.id)}
                                  </CardHeader>

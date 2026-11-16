@@ -20,7 +20,7 @@ export function SyncIndicator() {
             <Tooltip>
                 <TooltipTrigger asChild>
                     <Link href="/settings/sync">
-                        <Button variant="ghost" size="sm" className={`relative ${!isOnline ? 'text-destructive' : 'text-orange-500'}`}>
+                        <Button variant="ghost" size="sm" className={`relative ${!isOnline ? 'text-destructive' : 'text-foreground'}`}>
                             {isOnline ? (
                                 <RefreshCw className={`h-4 w-4 ${syncQueueCount > 0 ? 'animate-spin' : ''}`} />
                             ) : (

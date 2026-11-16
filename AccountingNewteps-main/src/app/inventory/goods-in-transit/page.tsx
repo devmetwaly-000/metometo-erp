@@ -365,7 +365,7 @@ export default function GoodsInTransitPage() {
                     : 'وضع البضاعة بالطريق: الفواتير تنتظر الاستلام اليدوي قبل دخول المخزن.'}
                 </CardDescription>
             </div>
-            <Badge variant="outline" className={purchaseWorkflow === 'direct' ? 'border-emerald-500 text-emerald-700 bg-emerald-50' : 'border-amber-500 text-amber-700 bg-amber-50'}>
+            <Badge variant="outline" className={purchaseWorkflow === 'direct' ? 'border-emerald-500 text-emerald-700 bg-emerald-50' : 'border-amber-500 text-foreground bg-amber-50'}>
                 {purchaseWorkflow === 'direct' ? '⚡ استلام مباشر' : '🚛 بضاعة بالطريق'}
             </Badge>
           </CardHeader>

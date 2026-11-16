@@ -415,7 +415,7 @@ export default function ExpensesPage() {
                                                 <p className="text-sm text-muted-foreground mb-3 bg-muted/30 p-2 rounded italic">"{expense.description}"</p>
                                                 <div className="flex justify-between items-center pt-3 border-t">
                                                     <div className="flex items-center gap-2">
-                                                        <Badge variant={expense.status === 'pending' ? 'outline' : 'default'} className={cn("text-[10px] px-2 h-5", expense.status === 'pending' ? "text-amber-600 border-amber-600" : "bg-green-600")}>
+                                                        <Badge variant={expense.status === 'pending' ? 'outline' : 'default'} className={cn("text-[10px] px-2 h-5", expense.status === 'pending' ? "text-foreground border-amber-600" : "bg-green-600")}>
                                                             {expense.status === 'pending' ? 'مستحق (لم يدفع)' : 'مدفوع'}
                                                         </Badge>
                                                         <span className="text-[10px] text-muted-foreground flex items-center gap-1">
@@ -472,7 +472,7 @@ export default function ExpensesPage() {
                                                     </TableCell>
                                                     <TableCell className="max-w-[200px] truncate text-xs" title={expense.description}>{expense.description}</TableCell>
                                                     <TableCell>
-                                                        <Badge variant={expense.status === 'pending' ? 'outline' : 'default'} className={cn("text-[10px]", expense.status === 'pending' ? "text-amber-600 border-amber-600" : "bg-green-600")}>
+                                                        <Badge variant={expense.status === 'pending' ? 'outline' : 'default'} className={cn("text-[10px]", expense.status === 'pending' ? "text-foreground border-amber-600" : "bg-green-600")}>
                                                             {expense.status === 'pending' ? 'مستحق' : 'مدفوع'}
                                                         </Badge>
                                                     </TableCell>

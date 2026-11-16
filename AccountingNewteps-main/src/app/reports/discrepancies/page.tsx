@@ -265,7 +265,7 @@ export default function DiscrepancyReportPage() {
            <TabsContent value="purchases">
             <Card>
               <CardHeader>
-                <CardTitle className="flex items-center gap-2 text-amber-600">
+                <CardTitle className="flex items-center gap-2 text-foreground">
                     <AlertTriangle />
                     فواتير شراء لم يتم استلامها بالكامل
                 </CardTitle>

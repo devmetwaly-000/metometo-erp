@@ -7,6 +7,7 @@ import {
     getTablesSyncMatrix,
     updateTableSyncDirection,
     updateTableSyncDirectionsBulk,
+    updateTableSyncDirectionsByCategory,
     resetTableSyncDirections
 } from '@/lib/central-sync';
 import { createAndInitializeDatabase } from '@/lib/database-init';
@@ -268,7 +269,7 @@ export async function POST(req: Request) {
         // 7. تحديث اتجاه مزامنة جدول محدد
         if (action === 'update-direction') {
             const { tableName, direction } = body;
-            if (!tableName || !direction) {
+            if (!tableName || !['push', 'pull', 'bidirectional', 'disabled'].includes(direction)) {
                 return NextResponse.json({ success: false, error: 'اسم الجدول والاتجاه مطلوبان.' }, { status: 400 });
             }
             const res = await updateTableSyncDirection(tableName, direction);
@@ -284,19 +285,13 @@ export async function POST(req: Request) {
         if (action === 'update-directions-bulk') {
             const { category, direction, updates } = body;
             if (category && direction) {
-                const pool = await getDbPool();
-                const sqlMod = await import('mssql');
-                await pool.request()
-                    .input('Category', sqlMod.default.NVarChar(100), category)
-                    .input('Direction', sqlMod.default.NVarChar(50), direction)
-                    .query(`
-                        UPDATE dbo.SyncTrackingMatrix 
-                        SET SyncDirection = @Direction, UpdatedAt = SYSUTCDATETIME()
-                        WHERE Category = @Category;
-                    `);
+                if (!['push', 'pull', 'bidirectional', 'disabled'].includes(direction)) {
+                    return NextResponse.json({ success: false, error: 'اتجاه المزامنة غير صالح.' }, { status: 400 });
+                }
+                const result = await updateTableSyncDirectionsByCategory(category, direction);
                 return NextResponse.json({
                     success: true,
-                    message: `تم تحديث اتجاه مزامنة جميع جداول قسم "${category}" إلى "${direction}" بنجاح.`
+                    message: `تم تحديث اتجاه مزامنة ${result.updatedCount} جدولاً في قسم "${category}" إلى "${direction}" بنجاح.`
                 });
             }
             if (Array.isArray(updates) && updates.length > 0) {

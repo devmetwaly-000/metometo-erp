@@ -23,7 +23,7 @@ import {
 import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
-import { useToast } from "@/hooks/use-toast";
+import { useToast, setDefaultToastDuration } from "@/hooks/use-toast";
 import { Loader2, Bell, BellRing, Image as ImageIcon, Database, CheckCircle2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useData } from "@/contexts/data-provider";
@@ -108,7 +108,7 @@ const DEFAULT_WIDTHS = {
 export default function SettingsPage() {
     const { toast } = useToast();
     const { notificationsEnabled, toggleNotifications } = useNotifications();
-    const { settings: allData, licenses, dbAction, loading: dataLoading } = useData();
+    const { settings: allData, licenses, dbAction, loading: dataLoading, retryDatabaseConnection } = useData();
     const [settings, setSettings] = useState<Settings | null>(null);
     const [loading, setLoading] = useState(true);
 
@@ -201,6 +201,22 @@ export default function SettingsPage() {
         if (!settings) return;
         try {
             await dbAction('settings', 'update', { id: 'main', data: settings });
+            if (typeof window !== 'undefined') {
+                if (settings.general?.toastDuration) {
+                    const durMs = Math.round(Number(settings.general.toastDuration) * 1000);
+                    setDefaultToastDuration(durMs);
+                    try { localStorage.setItem('app_toast_duration', String(durMs)); } catch {}
+                }
+                if (settings.posSettings) {
+                    try {
+                        localStorage.setItem('app_pos_settings', JSON.stringify(settings.posSettings));
+                        window.dispatchEvent(new CustomEvent('app_pos_settings_updated', { detail: settings.posSettings }));
+                    } catch {}
+                }
+            }
+            if (retryDatabaseConnection) {
+                void retryDatabaseConnection();
+            }
             toast({
                 title: "تم الحفظ بنجاح",
                 description: "تم تحديث وحفظ كافة الإعدادات بنجاح.",
@@ -414,8 +430,45 @@ export default function SettingsPage() {
                       </Select>
                     </div>
                     <div className="space-y-2">
-                      <Label htmlFor="toast-duration">مدة ظهور الإشعارات (بالثواني)</Label>
-                      <Input id="toast-duration" type="number" placeholder="5" value={settings.general.toastDuration || 5} onChange={e => handleGeneralChange('toastDuration', parseFloat(e.target.value))} step="0.1" />
+                      <div className="flex items-center justify-between">
+                        <Label htmlFor="toast-duration">مدة ظهور الإشعارات (بالثواني)</Label>
+                        <Button 
+                          type="button" 
+                          variant="ghost" 
+                          size="sm" 
+                          className="h-6 px-2 text-xs text-primary hover:text-primary hover:bg-primary/10"
+                          onClick={() => {
+                            const sec = Number(settings.general.toastDuration) || 5;
+                            setDefaultToastDuration(sec * 1000);
+                            toast({
+                              title: "تجربة مدة الإشعار",
+                              description: `سيختفي هذا الإشعار تلقائياً بعد ${sec} ثوانٍ بالضبط.`,
+                              duration: sec * 1000,
+                            });
+                          }}
+                        >
+                          تجربة الإشعار
+                        </Button>
+                      </div>
+                      <Input 
+                        id="toast-duration" 
+                        type="number" 
+                        min="0.5"
+                        max="60"
+                        step="0.5"
+                        placeholder="5" 
+                        value={settings.general.toastDuration ?? 5} 
+                        onChange={e => {
+                          const val = parseFloat(e.target.value);
+                          const safeVal = isNaN(val) ? 2 : Math.max(0.5, val);
+                          handleGeneralChange('toastDuration', safeVal);
+                          const durMs = Math.round(safeVal * 1000);
+                          setDefaultToastDuration(durMs);
+                          if (typeof window !== 'undefined') {
+                            try { localStorage.setItem('app_toast_duration', String(durMs)); } catch {}
+                          }
+                        }} 
+                      />
                     </div>
                     <div className="space-y-2">
                       <Label htmlFor="inner-tab-height">ارتفاع التبويبات الداخلية</Label>

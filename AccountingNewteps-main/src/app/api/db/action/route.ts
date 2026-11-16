@@ -25,7 +25,61 @@ async function validateAndNormalizeReturn(
     const returnTable = kind === 'sales' ? 'dbo.SalesReturns' : 'dbo.PurchaseReturns';
     const paymentTable = kind === 'sales' ? 'dbo.CustomerPayments' : 'dbo.SupplierPayments';
     const invoiceId = String(payload?.originalInvoiceId || '');
-    if (!invoiceId) throw new ReturnValidationError('يجب ربط المرتجع بفاتورته الأصلية.');
+    if (!invoiceId) {
+        if (kind === 'purchase' && payload?.isUnlinked) {
+            if (!payload.supplierId) throw new ReturnValidationError('يجب تحديد المورد للمرتجع غير المرتبط.');
+            if (!payload.warehouseId) throw new ReturnValidationError('يجب تحديد المخزن للمرتجع غير المرتبط.');
+            const requestedItems = Array.isArray(payload.items) ? payload.items : [];
+            if (!requestedItems.length) throw new ReturnValidationError('يجب إضافة صنف واحد على الأقل للمرتجع.');
+
+            const trustedItems = requestedItems.filter((item: any) => Number(item.qty) > 0).map((item: any) => {
+                const qty = Number(item.qty);
+                const price = Number(item.price) || 0;
+                const avgCost = Number(item.avgCost != null ? item.avgCost : (item.cost != null ? item.cost : price)) || 0;
+                const total = Number((qty * price).toFixed(4));
+                const inventoryTotal = Number((qty * avgCost).toFixed(4));
+                const variance = Number((total - inventoryTotal).toFixed(4));
+                return {
+                    ...item,
+                    id: String(item.id || item.itemId || ''),
+                    itemId: String(item.id || item.itemId || ''),
+                    name: String(item.name || item.itemName || 'صنف مرتجع'),
+                    qty,
+                    price,
+                    cost: price,
+                    avgCost,
+                    total,
+                    inventoryTotal,
+                    variance,
+                    unit: item.unit || 'قطعة'
+                };
+            });
+            if (!trustedItems.length) throw new ReturnValidationError('أدخل كمية موجبة لصنف واحد على الأقل.');
+
+            const subtotal = Number(trustedItems.reduce((s: number, i: any) => s + i.total, 0).toFixed(4));
+            const totalInventoryCost = Number(trustedItems.reduce((s: number, i: any) => s + i.inventoryTotal, 0).toFixed(4));
+            const priceVariance = Number((subtotal - totalInventoryCost).toFixed(4));
+            const tax = Number(payload.tax) || 0;
+            const total = Number((subtotal + tax).toFixed(4));
+            const paidAmount = Number(payload.paidAmount) || 0;
+
+            if (paidAmount > total + 0.01) {
+                throw new ReturnValidationError('المبلغ النقدي المسترد لا يمكن أن يتجاوز إجمالي المرتجع.');
+            }
+
+            payload.items = trustedItems;
+            payload.subtotal = subtotal;
+            payload.discount = 0;
+            payload.tax = tax;
+            payload.total = total;
+            payload.paidAmount = paidAmount;
+            payload.totalInventoryCost = totalInventoryCost;
+            payload.priceVariance = priceVariance;
+            payload.isUnlinked = true;
+            return;
+        }
+        throw new ReturnValidationError('يجب ربط المرتجع بفاتورته الأصلية.');
+    }
 
     const invoiceResult = await new sql.Request(tx)
         .input('InvoiceId', sql.NVarChar(64), invoiceId)
@@ -217,36 +271,24 @@ export async function POST(req: Request) {
             const name = counterName || 'default';
             const initial = Number(startFrom) || 1;
 
-            const tx = new sql.Transaction(pool);
-            await tx.begin();
-            try {
-                const reqTx = new sql.Request(tx);
-                reqTx.input('Name', sql.NVarChar(100), name);
-                reqTx.input('Initial', sql.BigInt, initial);
+            const res = await pool.request()
+                .input('Name', sql.NVarChar(100), name)
+                .input('Initial', sql.BigInt, initial)
+                .query(`
+                    DECLARE @Result TABLE (Val BIGINT);
+                    MERGE dbo.Counters WITH (HOLDLOCK) AS target
+                    USING (SELECT @Name AS Name) AS source
+                    ON (target.Name = source.Name)
+                    WHEN MATCHED THEN
+                        UPDATE SET CurrentValue = target.CurrentValue + 1
+                    WHEN NOT MATCHED THEN
+                        INSERT (Name, CurrentValue) VALUES (source.Name, @Initial)
+                    OUTPUT INSERTED.CurrentValue INTO @Result;
+                    SELECT Val AS CurrentValue FROM @Result;
+                `);
 
-                const checkRes = await reqTx.query('SELECT CurrentValue FROM dbo.Counters WHERE Name = @Name');
-                let nextVal = initial;
-
-                if (checkRes.recordset.length === 0) {
-                    await reqTx.query('INSERT INTO dbo.Counters (Name, CurrentValue) VALUES (@Name, @Initial)');
-                } else {
-                    const updateRes = await reqTx.query(`
-                        DECLARE @Out TABLE (Val BIGINT);
-                        UPDATE dbo.Counters
-                        SET CurrentValue = CurrentValue + 1
-                        OUTPUT INSERTED.CurrentValue INTO @Out
-                        WHERE Name = @Name;
-                        SELECT Val as CurrentValue FROM @Out;
-                    `);
-                    nextVal = Number(updateRes.recordset[0].CurrentValue);
-                }
-
-                await tx.commit();
-                return NextResponse.json({ success: true, nextId: nextVal });
-            } catch (err) {
-                await tx.rollback();
-                throw err;
-            }
+            const nextVal = Number(res.recordset[0]?.CurrentValue) || initial;
+            return NextResponse.json({ success: true, nextId: nextVal });
         }
 
         // Clean collection path
@@ -580,6 +622,9 @@ export async function POST(req: Request) {
                     IF COL_LENGTH('dbo.PurchaseReturns', 'SupplierName') IS NULL ALTER TABLE dbo.PurchaseReturns ADD SupplierName NVARCHAR(255) NULL;
                     IF COL_LENGTH('dbo.PurchaseReturns', 'Discount') IS NULL ALTER TABLE dbo.PurchaseReturns ADD Discount DECIMAL(18,4) NOT NULL CONSTRAINT DF_PurchaseReturns_Discount DEFAULT ((0));
                     IF COL_LENGTH('dbo.PurchaseReturns', 'Tax') IS NULL ALTER TABLE dbo.PurchaseReturns ADD Tax DECIMAL(18,4) NOT NULL CONSTRAINT DF_PurchaseReturns_Tax DEFAULT ((0));
+                    IF COL_LENGTH('dbo.PurchaseReturns', 'IsUnlinked') IS NULL ALTER TABLE dbo.PurchaseReturns ADD IsUnlinked BIT NOT NULL CONSTRAINT DF_PurchaseReturns_IsUnlinked DEFAULT ((0));
+                    IF COL_LENGTH('dbo.PurchaseReturns', 'TotalInventoryCost') IS NULL ALTER TABLE dbo.PurchaseReturns ADD TotalInventoryCost DECIMAL(18,4) NULL;
+                    IF COL_LENGTH('dbo.PurchaseReturns', 'PriceVariance') IS NULL ALTER TABLE dbo.PurchaseReturns ADD PriceVariance DECIMAL(18,4) NULL;
                 `);
                 const tx = new sql.Transaction(pool);
                 await tx.begin();
@@ -602,16 +647,21 @@ export async function POST(req: Request) {
                         .input('PaidToAccountId', sql.NVarChar(64), payload.paidToAccountId || null)
                         .input('SupplierName', sql.NVarChar(255), payload.supplierName || null)
                         .input('Notes', sql.NVarChar(sql.MAX), payload.notes || null)
-                        .input('ItemsJson', sql.NVarChar(sql.MAX), jsonString(payload.items));
+                        .input('ItemsJson', sql.NVarChar(sql.MAX), jsonString(payload.items))
+                        .input('IsUnlinked', sql.Bit, payload.isUnlinked ? 1 : 0)
+                        .input('TotalInventoryCost', sql.Decimal(18, 4), payload.totalInventoryCost != null ? Number(payload.totalInventoryCost) : null)
+                        .input('PriceVariance', sql.Decimal(18, 4), payload.priceVariance != null ? Number(payload.priceVariance) : null);
 
                     await reqTx.query(`
                         INSERT INTO dbo.PurchaseReturns (
                             Id, ReceiptNumber, OriginalInvoiceId, Date, SupplierId, WarehouseId,
-                            CreatedById, CreatedByName, Subtotal, Discount, Tax, Total, PaidAmount, PaidToAccountId, SupplierName, Notes, ItemsJson
+                            CreatedById, CreatedByName, Subtotal, Discount, Tax, Total, PaidAmount, PaidToAccountId, SupplierName, Notes, ItemsJson,
+                            IsUnlinked, TotalInventoryCost, PriceVariance
                         )
                         VALUES (
                             @Id, @ReceiptNumber, @OriginalInvoiceId, @Date, @SupplierId, @WarehouseId,
-                            @CreatedById, @CreatedByName, @Subtotal, @Discount, @Tax, @Total, @PaidAmount, @PaidToAccountId, @SupplierName, @Notes, @ItemsJson
+                            @CreatedById, @CreatedByName, @Subtotal, @Discount, @Tax, @Total, @PaidAmount, @PaidToAccountId, @SupplierName, @Notes, @ItemsJson,
+                            @IsUnlinked, @TotalInventoryCost, @PriceVariance
                         );
                     `);
 
@@ -891,9 +941,29 @@ export async function POST(req: Request) {
                     .input('ItemsJson', sql.NVarChar(sql.MAX), jsonString(payload.items))
                     .input('RequisitionId', sql.NVarChar(64), payload.requisitionId || null)
                     .input('ToWarehouseId', sql.NVarChar(64), payload.toWarehouseId || null)
+                    .input('ShippingCost', sql.Decimal(18, 4), Number(payload.shippingCost) || 0)
+                    .input('ExpensesJson', sql.NVarChar(sql.MAX), jsonString(payload.expenses || payload.expensesJson))
+                    .input('ShippingPaidBy', sql.NVarChar(50), payload.shippingPaidBy || null)
+                    .input('ShippingPaidFromAccountId', sql.NVarChar(64), payload.shippingPaidFromAccountId || null)
+                    .input('ShippingTreatment', sql.NVarChar(50), payload.shippingTreatment || 'capitalized')
+                    .input('CarrierName', sql.NVarChar(255), payload.carrierName || null)
+                    .input('TrackingNumber', sql.NVarChar(100), payload.trackingNumber || null)
+                    .input('ExpenseId', sql.NVarChar(64), payload.expenseId || null)
+                    .input('TotalGoodsValue', sql.Decimal(18, 4), Number(payload.totalGoodsValue) || 0)
+                    .input('TotalTransferredValue', sql.Decimal(18, 4), Number(payload.totalTransferredValue) || 0)
                     .query(`
-                        INSERT INTO dbo.StockOutRecords (Id, ReceiptNumber, Date, WarehouseId, SourceId, SaleInvoiceId, Reason, Status, CreatedById, CreatedByName, Notes, ItemsJson, RequisitionId, ToWarehouseId)
-                        VALUES (@Id, @ReceiptNumber, @Date, @WarehouseId, @SourceId, @SaleInvoiceId, @Reason, @Status, @CreatedById, @CreatedByName, @Notes, @ItemsJson, @RequisitionId, @ToWarehouseId);
+                        INSERT INTO dbo.StockOutRecords (
+                            Id, ReceiptNumber, Date, WarehouseId, SourceId, SaleInvoiceId, Reason, Status,
+                            CreatedById, CreatedByName, Notes, ItemsJson, RequisitionId, ToWarehouseId,
+                            ShippingCost, ExpensesJson, ShippingPaidBy, ShippingPaidFromAccountId, ShippingTreatment,
+                            CarrierName, TrackingNumber, ExpenseId, TotalGoodsValue, TotalTransferredValue
+                        )
+                        VALUES (
+                            @Id, @ReceiptNumber, @Date, @WarehouseId, @SourceId, @SaleInvoiceId, @Reason, @Status,
+                            @CreatedById, @CreatedByName, @Notes, @ItemsJson, @RequisitionId, @ToWarehouseId,
+                            @ShippingCost, @ExpensesJson, @ShippingPaidBy, @ShippingPaidFromAccountId, @ShippingTreatment,
+                            @CarrierName, @TrackingNumber, @ExpenseId, @TotalGoodsValue, @TotalTransferredValue
+                        );
                     `);
                 return NextResponse.json({ success: true, id });
             }
@@ -911,18 +981,23 @@ export async function POST(req: Request) {
                     .input('ShippingCost', sql.Decimal(18, 4), Number(payload.shippingCost) || 0)
                     .input('ShippingPaidBy', sql.NVarChar(50), payload.shippingPaidBy || 'source')
                     .input('ShippingPaidFromAccountId', sql.NVarChar(64), payload.shippingPaidFromAccountId || null)
-                    .input('ShippingTreatment', sql.NVarChar(50), payload.shippingTreatment || 'expense')
+                    .input('ShippingTreatment', sql.NVarChar(50), payload.shippingTreatment || 'capitalized')
                     .input('CarrierName', sql.NVarChar(255), payload.carrierName || null)
                     .input('TrackingNumber', sql.NVarChar(100), payload.trackingNumber || null)
                     .input('ExpenseId', sql.NVarChar(64), payload.expenseId || null)
+                    .input('ExpensesJson', sql.NVarChar(sql.MAX), jsonString(payload.expenses || payload.expensesJson))
+                    .input('TotalGoodsValue', sql.Decimal(18, 4), Number(payload.totalGoodsValue) || 0)
+                    .input('TotalTransferredValue', sql.Decimal(18, 4), Number(payload.totalTransferredValue) || 0)
                     .query(`
                         INSERT INTO dbo.StockTransferRecords (
                             Id, ReceiptNumber, Date, FromWarehouseId, ToWarehouseId, Status, Notes, ItemsJson,
-                            ShippingCost, ShippingPaidBy, ShippingPaidFromAccountId, ShippingTreatment, CarrierName, TrackingNumber, ExpenseId
+                            ShippingCost, ShippingPaidBy, ShippingPaidFromAccountId, ShippingTreatment, CarrierName, TrackingNumber, ExpenseId,
+                            ExpensesJson, TotalGoodsValue, TotalTransferredValue
                         )
                         VALUES (
                             @Id, @ReceiptNumber, @Date, @FromWarehouseId, @ToWarehouseId, @Status, @Notes, @ItemsJson,
-                            @ShippingCost, @ShippingPaidBy, @ShippingPaidFromAccountId, @ShippingTreatment, @CarrierName, @TrackingNumber, @ExpenseId
+                            @ShippingCost, @ShippingPaidBy, @ShippingPaidFromAccountId, @ShippingTreatment, @CarrierName, @TrackingNumber, @ExpenseId,
+                            @ExpensesJson, @TotalGoodsValue, @TotalTransferredValue
                         );
                     `);
                 return NextResponse.json({ success: true, id });

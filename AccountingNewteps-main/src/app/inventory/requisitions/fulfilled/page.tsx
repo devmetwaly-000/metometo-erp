@@ -84,26 +84,59 @@ const FulfilledItemsDialog = ({ requisition, allItems }: { requisition: Requisit
 
 
 export default function FulfilledRequisitionsPage() {
-  const { requisitions, warehouses, items, loading } = useData();
+  const { requisitions, stockOutRecords, warehouses, items, loading } = useData();
   const router = useRouter();
   const [selectedRequisition, setSelectedRequisition] = useState<Requisition | null>(null);
 
   const fulfilledRequisitions = useMemo(() => {
     if (loading) return [];
-    return requisitions
+    const mainWarehouseIds = new Set(warehouses.filter((w: any) => w.isMain || w.warehouseType === 'warehouse').map((w: any) => w.id));
+
+    const reqRows = (requisitions || [])
         .filter((req: Requisition) => req.status === 'fulfilled')
         .map((req: Requisition) => {
-            const fromWarehouse = warehouses.find((w: any) => w.id === req.fromWarehouseId); // Requester
-            const toWarehouse = warehouses.find((w: any) => w.id === req.toWarehouseId); // Source
+            const fromWarehouse = warehouses.find((w: any) => w.id === req.fromWarehouseId);
+            const toWarehouse = warehouses.find((w: any) => w.id === req.toWarehouseId);
             return {
                 ...req,
                 fromWarehouseName: fromWarehouse?.name || 'فرع غير معروف',
                 requesterIsMain: fromWarehouse?.isMain || false,
                 toWarehouseName: toWarehouse?.name || 'مخزن غير معروف',
-            }
+                docBadge: 'طلب فرع منفذ',
+            };
+        });
+
+    const soRows = (stockOutRecords || [])
+        .filter((so: any) => {
+            const sourceId = so.sourceId || so.warehouseId;
+            const st = so.status || so.Status;
+            return mainWarehouseIds.has(sourceId) && (!st || st === 'approved' || st === 'completed' || st === 'fulfilled');
         })
-        .sort((a,b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-  }, [requisitions, warehouses, loading]);
+        .map((so: any) => {
+            const sourceId = so.sourceId || so.warehouseId;
+            const toWarehouse = warehouses.find((w: any) => w.id === sourceId);
+            const destWarehouse = so.toWarehouseId ? warehouses.find((w: any) => w.id === so.toWarehouseId) : null;
+            return {
+                id: so.id,
+                requisitionNumber: so.receiptNumber || `إذ-خ-${so.id.slice(-6)}`,
+                requesterName: so.createdByName || 'مسؤول المخزن',
+                fromWarehouseId: so.toWarehouseId || '',
+                toWarehouseId: sourceId,
+                fromWarehouseName: destWarehouse?.name || so.reason || 'صرف مخزني',
+                toWarehouseName: toWarehouse?.name || 'مخزن لوجستي',
+                date: so.date,
+                items: (so.items || []).map((i: any) => ({
+                    itemId: i.id || i.itemId,
+                    name: i.name,
+                    quantity: Number(i.qty || i.quantity || 0),
+                })),
+                status: 'fulfilled' as const,
+                docBadge: 'إذن صرف لوجستي معتمد',
+            };
+        });
+
+    return [...soRows, ...reqRows].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+  }, [requisitions, stockOutRecords, warehouses, loading]);
 
   return (
     <>

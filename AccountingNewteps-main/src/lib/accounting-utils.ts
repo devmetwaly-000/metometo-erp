@@ -39,7 +39,7 @@ export const calculateAccountBalance = (account: any, allData: any): number => {
     salesInvoices.filter((s: any) => (s.status === 'approved' || s.status === 'completed' || !s.status) && s.paidToAccountId === account.id).forEach((s: any) => {
         if (s.id) processedSaleIds.add(s.id);
         const linkedPaymentsTotal = customerPayments.filter((p: any) => p.invoiceId === s.id).reduce((sum: number, p: any) => sum + (Number(p.amount) || 0), 0);
-        const initialCash = (Number(s.paidAmount) || 0) - linkedPaymentsTotal;
+        const initialCash = s.initialPaidAmount != null ? Number(s.initialPaidAmount) || 0 : (Number(s.paidAmount) || 0) - linkedPaymentsTotal;
         if (initialCash > 0) balance += initialCash;
     });
 
@@ -50,7 +50,7 @@ export const calculateAccountBalance = (account: any, allData: any): number => {
         if (targetId === account.id) {
             if (s.id) processedSaleIds.add(s.id);
             const linkedPaymentsTotal = customerPayments.filter((p: any) => p.invoiceId === s.id).reduce((sum: number, p: any) => sum + (Number(p.amount) || 0), 0);
-            const initialCash = (Number(s.paidAmount) || 0) - linkedPaymentsTotal;
+            const initialCash = s.initialPaidAmount != null ? Number(s.initialPaidAmount) || 0 : (Number(s.paidAmount) || 0) - linkedPaymentsTotal;
             if (initialCash > 0) balance += initialCash;
         }
     });
@@ -78,7 +78,7 @@ export const calculateAccountBalance = (account: any, allData: any): number => {
     // 10. نقدية مشتريات الفواتير (الجزء المدفوع لحظياً)
     purchaseInvoices.filter((p: any) => p.paidFromAccountId === account.id).forEach((p: any) => {
         const linkedPaymentsTotal = supplierPayments.filter((sp: any) => sp.invoiceId === p.id).reduce((sum: number, sp: any) => sum + (Number(sp.amount) || 0), 0);
-        const initialPaid = (Number(p.paidAmount) || 0) - linkedPaymentsTotal;
+        const initialPaid = p.initialPaidAmount != null ? Number(p.initialPaidAmount) || 0 : (Number(p.paidAmount) || 0) - linkedPaymentsTotal;
         if (initialPaid > 0) balance -= initialPaid;
     });
 
@@ -114,7 +114,25 @@ export const calculateAccountBalance = (account: any, allData: any): number => {
     // 17. توريدات المناديب (Outward from Rep Custody)
     repRemittances.filter((rem: any) => rem.fromAccountId === account.id).forEach((rem: any) => balance -= Number(rem.amount) || 0);
 
+    // 18. توزيعات الإكراميات (Gratuity Distributions)
+    gratuityDistributions.filter((gd: any) => gd.paidFromAccountId === account.id || gd.accountId === account.id).forEach((gd: any) => balance -= Number(gd.amount) || 0);
+
     return balance;
+};
+
+/**
+ * Purchase invoice totals are stored as subtotal - discount + tax. Older records
+ * can have a stale `total`, so prefer the component fields when they exist.
+ */
+export const getPurchaseInvoiceTotal = (invoice: any): number => {
+    if (!invoice) return 0;
+    const total = Number(invoice.total ?? invoice.Total) || 0;
+    const subtotalValue = invoice.subtotal ?? invoice.Subtotal;
+    if (subtotalValue === undefined || subtotalValue === null || subtotalValue === '') return total;
+    const subtotal = Number(subtotalValue) || 0;
+    const discount = Number(invoice.discount ?? invoice.Discount) || 0;
+    const tax = Number(invoice.tax ?? invoice.Tax) || 0;
+    return Math.max(0, subtotal - discount + tax);
 };
 
 /**

@@ -209,7 +209,7 @@ export default function InventoryValuationReportPage() {
             onClick={() => window.print()}
             className="gap-1.5 text-xs font-semibold h-8"
           >
-            <Printer className="h-3.5 w-3.5 text-sky-600 dark:text-sky-400" />
+            <Printer className="h-3.5 w-3.5 text-foreground dark:text-foreground" />
             طباعة التقرير
           </Button>
         </div>
@@ -221,11 +221,11 @@ export default function InventoryValuationReportPage() {
           <CardHeader className="p-3.5 pb-1">
             <CardTitle className="text-xs font-medium text-muted-foreground flex items-center justify-between">
               <span>قيمة المخزون (سعر التكلفة)</span>
-              <Boxes className="h-4 w-4 text-blue-600 dark:text-blue-400" />
+              <Boxes className="h-4 w-4 text-foreground dark:text-foreground" />
             </CardTitle>
           </CardHeader>
           <CardContent className="p-3.5 pt-0">
-            <div className="text-xl font-bold font-mono text-blue-700 dark:text-blue-400">
+            <div className="text-xl font-bold font-mono text-foreground dark:text-foreground">
               {summary.totalCostValuation.toLocaleString("ar-EG", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ج.م
             </div>
             <p className="text-[11px] text-muted-foreground mt-0.5">
@@ -238,11 +238,11 @@ export default function InventoryValuationReportPage() {
           <CardHeader className="p-3.5 pb-1">
             <CardTitle className="text-xs font-medium text-muted-foreground flex items-center justify-between">
               <span>قيمة المخزون (سعر البيع)</span>
-              <DollarSign className="h-4 w-4 text-indigo-600 dark:text-indigo-400" />
+              <DollarSign className="h-4 w-4 text-foreground dark:text-foreground" />
             </CardTitle>
           </CardHeader>
           <CardContent className="p-3.5 pt-0">
-            <div className="text-xl font-bold font-mono text-indigo-700 dark:text-indigo-400">
+            <div className="text-xl font-bold font-mono text-foreground dark:text-foreground">
               {summary.totalRetailValuation.toLocaleString("ar-EG", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ج.م
             </div>
             <p className="text-[11px] text-muted-foreground mt-0.5">
@@ -272,11 +272,11 @@ export default function InventoryValuationReportPage() {
           <CardHeader className="p-3.5 pb-1">
             <CardTitle className="text-xs font-medium text-muted-foreground flex items-center justify-between">
               <span>نواقص وحد إعادة الطلب</span>
-              <AlertTriangle className="h-4 w-4 text-amber-600 dark:text-amber-400" />
+              <AlertTriangle className="h-4 w-4 text-foreground dark:text-foreground" />
             </CardTitle>
           </CardHeader>
           <CardContent className="p-3.5 pt-0">
-            <div className="text-xl font-bold font-mono text-amber-700 dark:text-amber-400">
+            <div className="text-xl font-bold font-mono text-foreground dark:text-foreground">
               {summary.reorderCount} صنف
             </div>
             <p className="text-[11px] text-muted-foreground mt-0.5">
@@ -426,7 +426,7 @@ export default function InventoryValuationReportPage() {
                       </TableCell>
                       <TableCell className="text-center">
                         {r.health === "reorder" && (
-                          <Badge variant="outline" className="text-[10px] bg-amber-500/10 text-amber-600 border-amber-300">
+                          <Badge variant="outline" className="text-[10px] bg-amber-500/10 text-foreground border-amber-300">
                             حد الطلب
                           </Badge>
                         )}
@@ -452,10 +452,10 @@ export default function InventoryValuationReportPage() {
                       <TableCell className="text-left font-mono">
                         {r.price.toLocaleString("ar-EG", { minimumFractionDigits: 2 })}
                       </TableCell>
-                      <TableCell className="text-left font-mono font-bold text-blue-700 dark:text-blue-400">
+                      <TableCell className="text-left font-mono font-bold text-foreground dark:text-foreground">
                         {r.totalCost.toLocaleString("ar-EG", { minimumFractionDigits: 2 })}
                       </TableCell>
-                      <TableCell className="text-left font-mono font-bold text-indigo-700 dark:text-indigo-400">
+                      <TableCell className="text-left font-mono font-bold text-foreground dark:text-foreground">
                         {r.totalRetail.toLocaleString("ar-EG", { minimumFractionDigits: 2 })}
                       </TableCell>
                       <TableCell className="text-left font-mono font-bold text-emerald-700 dark:text-emerald-400">
@@ -470,10 +470,10 @@ export default function InventoryValuationReportPage() {
                   <TableCell colSpan={9} className="text-right">
                     إجمالي تقييم الأصناف المعروضة:
                   </TableCell>
-                  <TableCell className="text-left font-mono text-sm font-black text-blue-700 dark:text-blue-400">
+                  <TableCell className="text-left font-mono text-sm font-black text-foreground dark:text-foreground">
                     {summary.totalCostValuation.toLocaleString("ar-EG", { minimumFractionDigits: 2 })} ج.م
                   </TableCell>
-                  <TableCell className="text-left font-mono text-sm font-black text-indigo-700 dark:text-indigo-400">
+                  <TableCell className="text-left font-mono text-sm font-black text-foreground dark:text-foreground">
                     {summary.totalRetailValuation.toLocaleString("ar-EG", { minimumFractionDigits: 2 })} ج.م
                   </TableCell>
                   <TableCell className="text-left font-mono text-sm font-black text-emerald-700 dark:text-emerald-400">

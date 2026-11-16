@@ -401,7 +401,7 @@ export default function VatReportPage() {
                                     <span className="font-mono font-medium">{formatCurrency(reportData.posVatAmount)}</span>
                                 </div>
                                 {reportData.salesReturnVat > 0 && (
-                                    <div className="flex justify-between text-amber-600">
+                                    <div className="flex justify-between text-foreground">
                                         <span>يخصم: مردودات مبيعات:</span>
                                         <span className="font-mono font-medium">- {formatCurrency(reportData.salesReturnVat)}</span>
                                     </div>
@@ -411,16 +411,15 @@ export default function VatReportPage() {
                     </Card>
 
                     {/* Input Tax */}
-                    <Card className="border-emerald-200/60 dark:border-emerald-950/40 relative overflow-hidden">
-                        <div className="absolute top-0 right-0 h-1.5 w-full bg-emerald-500" />
+                    <Card className="relative overflow-hidden">
                         <CardHeader className="flex flex-row items-center justify-between pb-2">
                             <CardTitle className="text-sm font-semibold text-muted-foreground">
                                 ضريبة المدخلات (القابلة للخصم)
                             </CardTitle>
-                            <ArrowDownRight className="h-5 w-5 text-emerald-500" />
+                            <ArrowDownRight className="h-5 w-5 text-muted-foreground" />
                         </CardHeader>
                         <CardContent>
-                            <div className="text-3xl font-extrabold text-emerald-600 dark:text-emerald-400">
+                            <div className="text-3xl font-extrabold text-foreground">
                                 {formatCurrency(reportData.totalInputTax)}
                             </div>
                             <div className="mt-3 text-xs space-y-1 text-muted-foreground border-t pt-2">
@@ -443,20 +442,15 @@ export default function VatReportPage() {
                     </Card>
 
                     {/* Net Tax Liability */}
-                    <Card className={`relative overflow-hidden ${
-                        reportData.isPayable 
-                            ? "border-red-300 bg-red-50/50 dark:bg-red-950/20 dark:border-red-800" 
-                            : "border-emerald-300 bg-emerald-50/50 dark:bg-emerald-950/20 dark:border-emerald-800"
-                    }`}>
-                        <div className={`absolute top-0 right-0 h-1.5 w-full ${reportData.isPayable ? 'bg-red-600' : 'bg-emerald-600'}`} />
+                    <Card className="relative overflow-hidden border">
                         <CardHeader className="flex flex-row items-center justify-between pb-2">
                             <CardTitle className="text-sm font-semibold">
                                 {reportData.isPayable ? "صافي الضريبة واجبة السداد لمصلحة الضرائب" : "صافي الرصيد الدائن المرحل للفترة التالية"}
                             </CardTitle>
-                            <Calculator className="h-5 w-5" />
+                            <Calculator className="h-5 w-5 text-muted-foreground" />
                         </CardHeader>
                         <CardContent>
-                            <div className={`text-3xl font-extrabold ${reportData.isPayable ? 'text-red-700 dark:text-red-300' : 'text-emerald-700 dark:text-emerald-300'}`}>
+                            <div className={`text-3xl font-extrabold ${reportData.isPayable ? 'text-[#CD5C5C]' : 'text-foreground'}`}>
                                 {formatCurrency(Math.abs(reportData.netPayableOrCredit))}
                             </div>
                             <div className="mt-3 text-xs space-y-1 text-muted-foreground border-t pt-2">
@@ -465,7 +459,7 @@ export default function VatReportPage() {
                                     <span className="font-mono font-medium">{formatCurrency(reportData.grossLiability)}</span>
                                 </div>
                                 {previousCreditBalance > 0 && (
-                                    <div className="flex justify-between text-blue-600">
+                                    <div className="flex justify-between text-foreground">
                                         <span>يخصم: رصيد دائن سابق:</span>
                                         <span className="font-mono font-medium">- {formatCurrency(previousCreditBalance)}</span>
                                     </div>
@@ -531,7 +525,7 @@ export default function VatReportPage() {
                                             <TableCell className="text-right">مبيعات التجزئة ونقاط البيع للمستهلك النهائي (B2C)</TableCell>
                                             <TableCell className="text-center font-mono font-medium">{formatCurrency(reportData.posTaxableAmount)}</TableCell>
                                             <TableCell className="text-center"><Badge variant="outline">{vatRate}%</Badge></TableCell>
-                                            <TableCell className="text-center font-mono font-bold text-red-600">{formatCurrency(reportData.posVatAmount)}</TableCell>
+                                            <TableCell className="text-center font-mono font-bold text-foreground">{formatCurrency(reportData.posVatAmount)}</TableCell>
                                         </TableRow>
                                         <TableRow>
                                             <TableCell className="text-right font-medium">3</TableCell>
@@ -540,12 +534,12 @@ export default function VatReportPage() {
                                             <TableCell className="text-center"><Badge variant="outline">0% / معفى</Badge></TableCell>
                                             <TableCell className="text-center font-mono">{formatCurrency(0)}</TableCell>
                                         </TableRow>
-                                        <TableRow className="text-amber-700 dark:text-amber-400 bg-amber-50/40 dark:bg-amber-950/20">
+                                        <TableRow className="text-foreground bg-muted/20">
                                             <TableCell className="text-right font-medium">4</TableCell>
                                             <TableCell className="text-right">يخصم: إشعارات دائنة معتمدة (مردودات مبيعات)</TableCell>
                                             <TableCell className="text-center font-mono font-medium">({formatCurrency(reportData.salesReturnTaxable)})</TableCell>
                                             <TableCell className="text-center"><Badge variant="outline">{vatRate}%</Badge></TableCell>
-                                            <TableCell className="text-center font-mono font-bold">({formatCurrency(reportData.salesReturnVat)})</TableCell>
+                                            <TableCell className="text-center font-mono font-bold text-[#CD5C5C]">({formatCurrency(reportData.salesReturnVat)})</TableCell>
                                         </TableRow>
                                         <TableRow className="bg-muted/60 font-bold border-t-2">
                                             <TableCell colSpan={2} className="text-right text-foreground">
@@ -553,7 +547,7 @@ export default function VatReportPage() {
                                             </TableCell>
                                             <TableCell className="text-center font-mono text-base">{formatCurrency(reportData.netSalesTaxable)}</TableCell>
                                             <TableCell className="text-center">-</TableCell>
-                                            <TableCell className="text-center font-mono text-base text-red-600">{formatCurrency(reportData.totalOutputTax)}</TableCell>
+                                            <TableCell className="text-center font-mono text-base text-foreground">{formatCurrency(reportData.totalOutputTax)}</TableCell>
                                         </TableRow>
                                     </TableBody>
                                 </Table>
@@ -585,28 +579,28 @@ export default function VatReportPage() {
                                             <TableCell className="text-right">مشتريات بضائع وسلع محلية بغرض البيع أو التصنيع</TableCell>
                                             <TableCell className="text-center font-mono font-medium">{formatCurrency(reportData.purchasesTaxableGoods)}</TableCell>
                                             <TableCell className="text-center"><Badge variant="outline">{vatRate}%</Badge></TableCell>
-                                            <TableCell className="text-center font-mono font-bold text-emerald-600">{formatCurrency(reportData.purchasesTaxGoods)}</TableCell>
+                                            <TableCell className="text-center font-mono font-bold text-foreground">{formatCurrency(reportData.purchasesTaxGoods)}</TableCell>
                                         </TableRow>
                                         <TableRow>
                                             <TableCell className="text-right font-medium">2</TableCell>
                                             <TableCell className="text-right">آلات ومعدات وأصول رأسمالية مستخدمة في النشاط</TableCell>
                                             <TableCell className="text-center font-mono font-medium">{formatCurrency(reportData.purchasesTaxableAssets)}</TableCell>
                                             <TableCell className="text-center"><Badge variant="outline">5% / عامة</Badge></TableCell>
-                                            <TableCell className="text-center font-mono font-bold text-emerald-600">{formatCurrency(reportData.purchasesTaxAssets)}</TableCell>
+                                            <TableCell className="text-center font-mono font-bold text-foreground">{formatCurrency(reportData.purchasesTaxAssets)}</TableCell>
                                         </TableRow>
                                         <TableRow>
                                             <TableCell className="text-right font-medium">3</TableCell>
                                             <TableCell className="text-right">مصروفات عمومية وخدمات تشغيلية مؤيدة بفواتير ضريبية إلكترونية</TableCell>
                                             <TableCell className="text-center font-mono font-medium">{formatCurrency(reportData.expensesTaxable)}</TableCell>
                                             <TableCell className="text-center"><Badge variant="outline">{vatRate}%</Badge></TableCell>
-                                            <TableCell className="text-center font-mono font-bold text-emerald-600">{formatCurrency(reportData.expensesTax)}</TableCell>
+                                            <TableCell className="text-center font-mono font-bold text-foreground">{formatCurrency(reportData.expensesTax)}</TableCell>
                                         </TableRow>
-                                        <TableRow className="text-amber-700 dark:text-amber-400 bg-amber-50/40 dark:bg-amber-950/20">
+                                        <TableRow className="text-foreground bg-muted/20">
                                             <TableCell className="text-right font-medium">4</TableCell>
                                             <TableCell className="text-right">يخصم: إشعارات مدينة (مردودات مشتريات للموردين)</TableCell>
                                             <TableCell className="text-center font-mono font-medium">({formatCurrency(reportData.purchasesReturnTaxable)})</TableCell>
                                             <TableCell className="text-center"><Badge variant="outline">{vatRate}%</Badge></TableCell>
-                                            <TableCell className="text-center font-mono font-bold">({formatCurrency(reportData.purchasesReturnTax)})</TableCell>
+                                            <TableCell className="text-center font-mono font-bold text-[#CD5C5C]">({formatCurrency(reportData.purchasesReturnTax)})</TableCell>
                                         </TableRow>
                                         <TableRow className="bg-muted/60 font-bold border-t-2">
                                             <TableCell colSpan={2} className="text-right text-foreground">
@@ -614,7 +608,7 @@ export default function VatReportPage() {
                                             </TableCell>
                                             <TableCell className="text-center font-mono text-base">{formatCurrency(reportData.netPurchasesTaxable)}</TableCell>
                                             <TableCell className="text-center">-</TableCell>
-                                            <TableCell className="text-center font-mono text-base text-emerald-600">{formatCurrency(reportData.totalInputTax)}</TableCell>
+                                            <TableCell className="text-center font-mono text-base text-foreground">{formatCurrency(reportData.totalInputTax)}</TableCell>
                                         </TableRow>
                                     </TableBody>
                                 </Table>
@@ -634,11 +628,11 @@ export default function VatReportPage() {
                                     <TableBody>
                                         <TableRow>
                                             <TableCell className="text-right font-medium w-2/3">إجمالي ضريبة المخرجات المستحقة عن الفترة (أ)</TableCell>
-                                            <TableCell className="text-center font-mono font-bold text-red-600">{formatCurrency(reportData.totalOutputTax)}</TableCell>
+                                            <TableCell className="text-center font-mono font-bold text-foreground">{formatCurrency(reportData.totalOutputTax)}</TableCell>
                                         </TableRow>
                                         <TableRow>
                                             <TableCell className="text-right font-medium">يخصم: إجمالي ضريبة المدخلات القابلة للخصم (ب)</TableCell>
-                                            <TableCell className="text-center font-mono font-bold text-emerald-600">({formatCurrency(reportData.totalInputTax)})</TableCell>
+                                            <TableCell className="text-center font-mono font-bold text-[#CD5C5C]">({formatCurrency(reportData.totalInputTax)})</TableCell>
                                         </TableRow>
                                         <TableRow className="bg-muted/30">
                                             <TableCell className="text-right font-semibold">فارق الضريبة عن معاملات الفترة الحالية</TableCell>
@@ -646,9 +640,9 @@ export default function VatReportPage() {
                                         </TableRow>
                                         <TableRow>
                                             <TableCell className="text-right font-medium">يخصم: رصيد دائن سابق مُرحل من الإقرار السابق</TableCell>
-                                            <TableCell className="text-center font-mono font-bold text-blue-600">({formatCurrency(previousCreditBalance)})</TableCell>
+                                            <TableCell className="text-center font-mono font-bold text-[#CD5C5C]">({formatCurrency(previousCreditBalance)})</TableCell>
                                         </TableRow>
-                                        <TableRow className={`text-lg font-extrabold ${reportData.isPayable ? 'bg-red-100/80 dark:bg-red-950/60 text-red-700 dark:text-red-300' : 'bg-emerald-100/80 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300'}`}>
+                                        <TableRow className={`text-lg font-extrabold ${reportData.isPayable ? 'bg-destructive/10 text-[#CD5C5C]' : 'bg-muted/40 text-foreground'}`}>
                                             <TableCell className="text-right">
                                                 {reportData.isPayable ? "الصافي النهائي: ضريبة واجبة السداد لمصلحة الضرائب" : "الصافي النهائي: رصيد دائن يرحل للفترة التالية أو يُسترد"}
                                             </TableCell>

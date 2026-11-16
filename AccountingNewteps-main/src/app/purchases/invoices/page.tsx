@@ -416,7 +416,7 @@ export default function PurchaseInvoicePage() {
       }
   }
 
-  const handleSaveInvoice = (updatePrices: boolean) => {
+  const handleSaveInvoice = async (updatePrices: boolean) => {
        if (!supplierId || !warehouseId || items.length === 0) {
             toast({ variant: 'destructive', title: 'بيانات ناقصة', description: 'يرجى اختيار المورد والمخزن وإضافة صنف واحد على الأقل.' });
             return;
@@ -436,18 +436,23 @@ export default function PurchaseInvoicePage() {
             inventorySections.some((s: any) => (s.mainWarehouseId || s.MainWarehouseId) === warehouseId) ||
             inventoryZones.some((z: any) => z.id === warehouseId)
         );
-        if (isLogisticsWarehouse) {
-            saveInvoiceAsync(updatePrices).then((stockInId) => {
-                toast({ 
-                    title: 'تم حفظ الفاتورة وإنشاء إذن التسكين', 
-                    description: 'يرجى الآن تحديد رقم الحاوية والكمية المراد تسكينها في كل حاوية.' 
+        try {
+            const stockInId = await saveInvoiceAsync(updatePrices);
+            if (isLogisticsWarehouse) {
+                toast({
+                    title: 'تم حفظ الفاتورة وإنشاء إذن التسكين',
+                    description: 'يرجى الآن تحديد رقم الحاوية والكمية المراد تسكينها في كل حاوية.'
                 });
                 router.push(stockInId ? `/inventory/stock-in?stockInId=${stockInId}` : '/inventory/stock-in');
-            });
-        } else {
-            saveInvoiceAsync(updatePrices);
-            toast({ title: 'جاري الحفظ...', description: `سيتم حفظ فاتورة الشراء في الخلفية.` });
-            router.push('/purchases/invoices/list');
+            } else {
+                toast({ title: 'تم حفظ فاتورة الشراء واستلام البضاعة بنجاح' });
+                router.push('/purchases/invoices/list');
+            }
+        } catch (error) {
+            console.error('Failed to save purchase invoice:', error);
+            toast({ variant: 'destructive', title: 'فشل الحفظ', description: 'لم يتم حفظ فاتورة الشراء أو إذن الاستلام. تحقق من اتصال الخدمة بقاعدة البيانات ثم أعد المحاولة.' });
+        } finally {
+            setIsSaving(false);
         }
   }
 
@@ -461,9 +466,16 @@ export default function PurchaseInvoicePage() {
         
         const invoiceItems = items.map(item => {
             const baseUnitCost = item.cost / item.conversionFactor;
+            const discountedBase = Math.max(0, subtotal - discount);
+            const discountFactor = subtotal > 0 ? discountedBase / subtotal : 1;
+            const taxRatio = discountedBase > 0 ? Math.max(0, tax) / discountedBase : 0;
+            const inventoryCostFactor = settings?.main?.financial?.inventoryCostIncludesTax
+                ? (isTaxIncluded ? 1 : 1 + taxRatio)
+                : (isTaxIncluded ? Math.max(0, 1 - taxRatio) : 1);
             return {
                 id: item.itemId, name: item.name, code: item.code,
                 qty: item.qty * item.conversionFactor, cost: baseUnitCost,
+                inventoryCost: baseUnitCost * discountFactor * inventoryCostFactor,
                 sellingPrice: item.sellingPrice, total: item.total,
                 originalUnit: item.originalUnit, originalQty: item.qty,
                 conversionFactor: item.conversionFactor, expiryDate: item.expiryDate || null,
@@ -502,7 +514,7 @@ export default function PurchaseInvoicePage() {
         if (updatePrices) {
             for (const item of invoiceItems) {
                 const masterItem = allItems.find((i:any) => i.id === item.id);
-                let finalCost = item.cost;
+                let finalCost = item.inventoryCost;
 
                 if (inventoryValuationMethod === 'average' && masterItem) {
                     const currentCost = masterItem.cost || 0;
@@ -515,7 +527,7 @@ export default function PurchaseInvoicePage() {
 
                     const totalNewStock = totalCurrentStock + item.qty;
                     if (totalNewStock > 0) {
-                        finalCost = ((totalCurrentStock * currentCost) + (item.qty * item.cost)) / totalNewStock;
+                        finalCost = ((totalCurrentStock * currentCost) + (item.qty * item.inventoryCost)) / totalNewStock;
                     }
                 }
 
@@ -537,7 +549,7 @@ export default function PurchaseInvoicePage() {
             const createdStockInId = await dbAction('stockInRecords', 'add', {
                 warehouseId: warehouseId, 
                 date: finalInvoiceDate.toISOString(),
-                items: invoiceItems.map(item => ({ itemId: item.id, name: item.name, qty: item.qty, cost: item.cost, expiryDate: item.expiryDate })),
+                items: invoiceItems.map(item => ({ itemId: item.id, name: item.name, qty: item.qty, cost: item.inventoryCost, expiryDate: item.expiryDate })),
                 reason: 'purchase', 
                 notes: `استلام ${isLogisticsWarehouse ? 'لوجستي بانتظار التسكين' : 'مباشر'} من فاتورة شراء رقم ${invoiceData.invoiceNumber}`,
                 receiptNumber: `إذ-د-${await getNextId('stockIn')}`,
@@ -550,6 +562,7 @@ export default function PurchaseInvoicePage() {
         
     } catch (error) {
         console.error("Failed to save purchase invoice in background:", error);
+        throw error;
     }
   }
   

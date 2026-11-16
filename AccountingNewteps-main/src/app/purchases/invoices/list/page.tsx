@@ -20,7 +20,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { PlusCircle, Loader2, MoreHorizontal, FileText, Undo2, Printer, FileSearch, Eye, Edit, CheckCircle, MessageCircle, Tag, Percent, CheckSquare, X, ArrowUpDown } from "lucide-react";
+import { PlusCircle, Loader2, MoreHorizontal, FileText, Undo2, Printer, FileSearch, Eye, Edit, CheckCircle, MessageCircle, Tag, Percent, CheckSquare, X, ArrowUpDown, Trash2 } from "lucide-react";
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import {
@@ -108,6 +108,41 @@ export default function PurchaseInvoicesListPage() {
   const [discountNotes, setDiscountNotes] = useState('');
   const [isSubmittingDiscount, setIsSubmittingDiscount] = useState(false);
 
+  // Void Invoice States
+  const [voidInvoice, setVoidInvoice] = useState<any | null>(null);
+  const [isDeletingInvoice, setIsDeletingInvoice] = useState(false);
+
+  const handleVoidInvoice = async () => {
+    if (!voidInvoice) return;
+    setIsDeletingInvoice(true);
+    try {
+        const res = await fetch('/api/accounting/void-invoice', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                invoiceId: voidInvoice.id,
+                invoiceType: 'purchase',
+                userId: null,
+                userName: 'مستخدم النظام'
+            })
+        });
+        const data = await res.json();
+        if (data.success) {
+            toast({ title: 'تم الحذف بنجاح ✅', description: data.message });
+            setVoidInvoice(null);
+            // تحديث البيانات
+            if ((window as any).__reloadData) (window as any).__reloadData();
+            else window.location.reload();
+        } else {
+            toast({ variant: 'destructive', title: 'فشل الحذف', description: data.message });
+        }
+    } catch (e: any) {
+        toast({ variant: 'destructive', title: 'خطأ', description: e.message });
+    } finally {
+        setIsDeletingInvoice(false);
+    }
+  };
+
   // Aggressive Cleanup for Pointer Events and Scroll
   useEffect(() => {
     const cleanup = () => {
@@ -166,7 +201,9 @@ export default function PurchaseInvoicesListPage() {
   }, [warehouses, inventoryClosings]);
 
   const receivedInvoiceIds = useMemo(() => {
-    return new Set(stockInRecords.filter((rec: any) => rec.purchaseInvoiceId).map((rec: any) => rec.purchaseInvoiceId));
+    return new Set(stockInRecords
+      .filter((rec: any) => rec.purchaseInvoiceId && String(rec.status || '').toLowerCase() !== 'cancelled')
+      .map((rec: any) => rec.purchaseInvoiceId));
   }, [stockInRecords]);
 
   const filteredInvoices = useMemo(() => {
@@ -174,7 +211,9 @@ export default function PurchaseInvoicesListPage() {
         const lastClosingDate = lastClosingDates.get(invoice.warehouseId);
         const isLocked = lastClosingDate && new Date(invoice.date) <= lastClosingDate;
         const isReceived = receivedInvoiceIds.has(invoice.id);
-        const linkedStockIn = stockInRecords.find((rec: any) => rec.purchaseInvoiceId === invoice.id);
+        const linkedStockIn = stockInRecords.find((rec: any) =>
+            rec.purchaseInvoiceId === invoice.id && String(rec.status || '').toLowerCase() !== 'cancelled'
+        );
         const isPendingPutAway = linkedStockIn && (
             linkedStockIn.status === 'pending_putaway' ||
             (!Array.isArray(linkedStockIn.allocations) || linkedStockIn.allocations.length === 0) &&
@@ -471,7 +510,7 @@ export default function PurchaseInvoicesListPage() {
                                         <Button
                                             size="sm"
                                             variant="outline"
-                                            className="h-7 text-[11px] gap-1 border-amber-500 text-amber-700 dark:text-amber-400 bg-amber-500/10 hover:bg-amber-500/20 font-bold"
+                                            className="h-7 text-[11px] gap-1 border-amber-500 text-foreground dark:text-foreground bg-amber-500/10 hover:bg-amber-500/20 font-bold"
                                             onClick={() => router.push(`/inventory/stock-in?stockInId=${invoice.linkedStockInId}`)}
                                         >
                                             بانتظار التسكين (توزيع الحاويات)
@@ -479,7 +518,7 @@ export default function PurchaseInvoicesListPage() {
                                     ) : invoice.isReceived ? (
                                         <Badge variant="default" className="bg-green-600 text-[11px]"><CheckCircle className="h-3 w-3 ml-1"/> تم الاستلام</Badge>
                                     ) : (
-                                        <Badge variant="outline" className="text-amber-600 border-amber-200 text-[11px]"><FileText className="h-3 w-3 ml-1"/> لم تستلم</Badge>
+                                        <Badge variant="outline" className="text-foreground border-amber-200 text-[11px]"><FileText className="h-3 w-3 ml-1"/> لم تستلم</Badge>
                                     )}
                                 </TableCell>
                                 <TableCell className="text-center">
@@ -506,7 +545,7 @@ export default function PurchaseInvoicesListPage() {
                                                 setSelectedInvoice(invoice);
                                                 setTimeout(() => setIsItemsOpen(true), 150);
                                             }}>
-                                                <Eye className="ml-2 h-4 w-4 text-blue-500" /> عرض الأصناف
+                                                <Eye className="ml-2 h-4 w-4 text-foreground" /> عرض الأصناف
                                             </DropdownMenuItem>
 
                                             <DropdownMenuItem onSelect={() => {
@@ -532,7 +571,14 @@ export default function PurchaseInvoicesListPage() {
                                                 <FileSearch className="ml-2 h-4 w-4" /> كشف حساب المورد
                                             </DropdownMenuItem>
                                             <DropdownMenuItem onClick={() => router.push(`/purchases/returns/new?invoiceId=${invoice.id}`)} disabled={invoice.isLocked}>
-                                                <Undo2 className="ml-2 h-4 w-4 text-amber-600" /> إجراء مرتجع
+                                                <Undo2 className="ml-2 h-4 w-4 text-foreground" /> إجراء مرتجع
+                                            </DropdownMenuItem>
+                                            <DropdownMenuSeparator />
+                                            <DropdownMenuItem
+                                                className="text-destructive focus:text-destructive focus:bg-destructive/10"
+                                                onSelect={() => setVoidInvoice(invoice)}
+                                            >
+                                                <Trash2 className="ml-2 h-4 w-4" /> حذف مع إلغاء الأثر المحاسبي
                                             </DropdownMenuItem>
                                         </DropdownMenuContent>
                                     </DropdownMenu>
@@ -695,6 +741,49 @@ export default function PurchaseInvoicesListPage() {
             </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Dialog تأكيد حذف الفاتورة مع إلغاء الأثر المحاسبي */}
+      {voidInvoice && (
+        <Dialog open onOpenChange={() => setVoidInvoice(null)}>
+          <DialogContent className="max-w-md" dir="rtl">
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2 text-destructive">
+                <Trash2 className="h-5 w-5" />
+                حذف فاتورة مشتريات مع إلغاء الأثر المحاسبي
+              </DialogTitle>
+              <DialogDescription className="text-right space-y-2 pt-2">
+                <p>أنت على وشك حذف الفاتورة:</p>
+                <div className="p-3 rounded-lg bg-muted text-sm space-y-1">
+                  <p><strong>رقم الفاتورة:</strong> {voidInvoice.invoiceNumber}</p>
+                  <p><strong>المورد:</strong> {voidInvoice.supplierName}</p>
+                  <p><strong>الإجمالي:</strong> {Number(voidInvoice.total).toLocaleString('ar-EG', { minimumFractionDigits: 2 })} ج.م</p>
+                </div>
+                <div className="p-3 rounded-lg bg-destructive/10 border border-destructive/20 text-destructive text-xs font-medium">
+                  ⚠️ سيتم حذف:
+                  <ul className="list-disc list-inside mt-1 space-y-0.5">
+                    <li>الفاتورة وجميع بنودها</li>
+                    <li>سجل الاستلام المرتبط بها</li>
+                    <li>القيد المحاسبي المرحَّل (إن وجد)</li>
+                  </ul>
+                  <p className="mt-2 font-bold">هذا الإجراء لا يمكن التراجع عنه!</p>
+                </div>
+              </DialogDescription>
+            </DialogHeader>
+            <DialogFooter className="flex gap-2 justify-end">
+              <Button variant="outline" onClick={() => setVoidInvoice(null)} disabled={isDeletingInvoice}>إلغاء</Button>
+              <Button
+                variant="destructive"
+                onClick={handleVoidInvoice}
+                disabled={isDeletingInvoice}
+                className="gap-1.5"
+              >
+                {isDeletingInvoice ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
+                {isDeletingInvoice ? 'جارٍ الحذف...' : 'نعم، احذف مع إلغاء الأثر'}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      )}
     </>
   );
 }

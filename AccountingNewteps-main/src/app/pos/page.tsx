@@ -286,63 +286,247 @@ const SellerSelectionDialog = ({ onSelectSeller, warehouseId }: { onSelectSeller
     )
 }
 
-const StockQueryDialog = ({ onOpenChange, ...allDataContext }: { onOpenChange: (open: boolean) => void;[key: string]: any }) => {
+const normalizeArabic = (text: string): string => {
+    if (!text) return "";
+    return text
+        .toLowerCase()
+        .replace(/[أإآ]/g, "ا")
+        .replace(/ة/g, "ه")
+        .replace(/ى/g, "ي")
+        .replace(/[\u064B-\u065F]/g, "")
+        .trim();
+};
+
+const matchesArabicSearch = (text: string | undefined, query: string): boolean => {
+    const normQuery = normalizeArabic(query);
+    if (!normQuery) return true;
+    if (!text) return false;
+    const normText = normalizeArabic(text);
+    const words = normQuery.split(/\s+/).filter(Boolean);
+    return words.every((w) => normText.includes(w));
+};
+
+interface StockQueryItemResult {
+    item: any;
+    totalStock: number;
+    branches: { warehouseName: string; stock: number; price: number }[];
+}
+
+const StockQueryDialog = ({ 
+    onOpenChange, 
+    onAddToCart, 
+    ...allDataContext 
+}: { 
+    onOpenChange: (open: boolean) => void; 
+    onAddToCart?: (item: any) => void; 
+    [key: string]: any 
+}) => {
     const { items: allItems, warehouses, inventorySections } = allDataContext;
     const [searchTerm, setSearchTerm] = useState('');
-    const [queryResult, setQueryResult] = useState<{itemName: string, results: {warehouseName: string, stock: number, price: number}[]} | null>(null);
+    const [selectedItemId, setSelectedItemId] = useState<string | null>(null);
 
-    const handleSearch = () => {
-        if (!searchTerm) return;
-        
-        const itemMaster = allItems.find((i: any) => i.name.toLowerCase().includes(searchTerm.toLowerCase()) || i.code === searchTerm);
-        if (!itemMaster) {
-            setQueryResult({ itemName: 'لم يتم العثور على الصنف', results: [] });
-            return;
-        }
+    const allWarehouses = useMemo(() => {
+        return [...(warehouses || []), ...(inventorySections || []).map((s: any) => ({ ...s, isSection: true }))];
+    }, [warehouses, inventorySections]);
 
-        const results: {warehouseName: string, stock: number, price: number}[] = [];
-        
-        const allWarehouses = [...warehouses, ...inventorySections.map((s:any) => ({...s, isSection: true}))]
+    // Live search of matching items as user types
+    const matchingItems: StockQueryItemResult[] = useMemo(() => {
+        const query = normalizeArabic(searchTerm);
+        if (!query) return [];
 
-        allWarehouses.forEach((warehouse: any) => {
-            const currentStock = calculateStockForItemInWarehouse(itemMaster.id, warehouse.id, allDataContext);
-            
-            if (currentStock > 0) {
-                results.push({ warehouseName: warehouse.name, stock: currentStock, price: itemMaster.price || 0 });
-            }
+        const words = query.split(/\s+/).filter(Boolean);
+
+        const filtered = (allItems || []).filter((item: any) => {
+            const normName = normalizeArabic(String(item.name ?? item.Name ?? ''));
+            const normCode = String(item.code ?? item.Code ?? '').toLowerCase();
+            const normBarcode = String(item.barcode ?? item.Barcode ?? '').toLowerCase();
+
+            const nameMatches = words.every(w => normName.includes(w));
+            const codeMatches = normCode.includes(query) || normBarcode.includes(query);
+
+            return nameMatches || codeMatches;
         });
-        
-        setQueryResult({ itemName: itemMaster.name, results });
-    };
+
+        return filtered.map((item: any) => {
+            const branches: { warehouseName: string; stock: number; price: number }[] = [];
+            let totalStock = 0;
+
+            allWarehouses.forEach((w: any) => {
+                const stock = calculateStockForItemInWarehouse(item.id, w.id, allDataContext);
+                if (stock > 0) {
+                    branches.push({ warehouseName: w.name, stock, price: item.price || 0 });
+                    totalStock += stock;
+                }
+            });
+
+            return { item, totalStock, branches };
+        });
+    }, [searchTerm, allItems, allWarehouses, allDataContext]);
+
+    // Auto-select first item if current selected item is not in matching items
+    useEffect(() => {
+        if (matchingItems.length > 0) {
+            if (!selectedItemId || !matchingItems.some(m => m.item.id === selectedItemId)) {
+                setSelectedItemId(matchingItems[0].item.id);
+            }
+        } else {
+            setSelectedItemId(null);
+        }
+    }, [matchingItems, selectedItemId]);
+
+    const activeItemResult = useMemo(() => {
+        return matchingItems.find(m => m.item.id === selectedItemId) || matchingItems[0] || null;
+    }, [matchingItems, selectedItemId]);
 
     return (
-         <UIDialogContent className="sm:max-w-lg">
+         <UIDialogContent className="sm:max-w-2xl max-h-[85vh] flex flex-col">
             <UIDialogHeader>
-                <UIDialogTitle>الاستعلام عن أرصدة الأصناف</UIDialogTitle>
+                <UIDialogTitle className="flex items-center gap-2">
+                    <Boxes className="h-5 w-5 text-primary" />
+                    الاستعلام عن أرصدة الأصناف
+                </UIDialogTitle>
+                <DialogDescription>
+                    ابحث بجزء من اسم الصنف أو الباركود لمعاينة الأرصدة في كافة الفروع والمخازن.
+                </DialogDescription>
             </UIDialogHeader>
-            <form onSubmit={e => {e.preventDefault(); handleSearch()}} className="flex gap-2">
-                <Input placeholder="أدخل اسم الصنف أو الباركود..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)} />
-                <Button type="submit"><Search className="ml-2 h-4 w-4"/> بحث</Button>
-            </form>
-            {queryResult && (
-                <div>
-                    <h4 className="font-semibold mb-2">نتائج البحث عن: {queryResult.itemName}</h4>
-                    <div className="max-h-64 overflow-y-auto border rounded-md">
-                        <Table>
-                            <TableHeader><TableRow><TableHead>الفرع</TableHead><TableHead className="text-center">الكمية المتاحة</TableHead><TableHead className="text-center">السعر</TableHead></TableRow></TableHeader>
-                            <TableBody>
-                                {queryResult.results.length > 0 ? queryResult.results.map(r => (
-                                    <TableRow key={r.warehouseName}>
-                                        <TableCell>{r.warehouseName}</TableCell>
-                                        <TableCell className="text-center"><Badge>{r.stock}</Badge></TableCell>
-                                        <TableCell className="text-center">{r.price.toLocaleString()}</TableCell>
-                                    </TableRow>
-                                )) : <TableRow><TableCell colSpan={3} className="text-center text-muted-foreground p-4">لا توجد أرصدة متاحة لهذا الصنف في أي فرع.</TableCell></TableRow>}
-                            </TableBody>
-                        </Table>
-                    </div>
+            <div className="flex gap-2">
+                <div className="relative flex-1">
+                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                    <Input 
+                        placeholder="أدخل جزءاً من اسم الصنف أو الكود (مثال: شيك)..." 
+                        value={searchTerm} 
+                        onChange={e => setSearchTerm(e.target.value)} 
+                        autoFocus
+                        className="pl-9 text-base"
+                    />
                 </div>
-            )}
+                {searchTerm && (
+                    <Button variant="ghost" size="sm" onClick={() => setSearchTerm('')}>
+                        مسح
+                    </Button>
+                )}
+            </div>
+
+            {/* Results display */}
+            <div className="flex-1 overflow-y-auto space-y-3 pt-1">
+                {searchTerm.trim() ? (
+                    matchingItems.length === 0 ? (
+                        <div className="text-center py-8 text-muted-foreground border-2 border-dashed rounded-lg">
+                            <p className="font-semibold">لم يتم العثور على أي صنف يحتوي على "{searchTerm}"</p>
+                            <p className="text-xs text-muted-foreground mt-1">تأكد من كتابة الاسم أو جرب كلمة بحث أخرى</p>
+                        </div>
+                    ) : (
+                        <div className="space-y-3">
+                            {/* Matching items selector when multiple items found */}
+                            <div>
+                                <div className="flex items-center justify-between text-xs text-muted-foreground mb-1.5 px-0.5">
+                                    <span className="font-bold text-foreground">
+                                        الأصناف المطابقة ({matchingItems.length}):
+                                    </span>
+                                    <span>اضغط على أي صنف لمعاينة تفاصيل فروعه</span>
+                                </div>
+                                <div className="flex flex-wrap gap-1.5 max-h-36 overflow-y-auto p-1.5 bg-muted/40 rounded-lg border">
+                                    {matchingItems.map(m => {
+                                        const isSelected = m.item.id === activeItemResult?.item.id;
+                                        return (
+                                            <Button
+                                                key={m.item.id}
+                                                size="sm"
+                                                variant={isSelected ? "default" : "outline"}
+                                                className={cn(
+                                                    "h-auto py-1 px-2.5 text-xs flex items-center gap-2 rounded-md transition-all",
+                                                    isSelected ? "shadow-sm font-bold" : "hover:bg-muted"
+                                                )}
+                                                onClick={() => setSelectedItemId(m.item.id)}
+                                            >
+                                                <span>{m.item.name}</span>
+                                                <Badge 
+                                                    variant={m.totalStock > 0 ? "secondary" : "destructive"} 
+                                                    className={cn("text-[10px] px-1.5 py-0 h-4 font-mono", isSelected ? "bg-primary-foreground text-primary" : "")}
+                                                >
+                                                    {m.totalStock > 0 ? `${m.totalStock} متاح` : 'نفد'}
+                                                </Badge>
+                                            </Button>
+                                        );
+                                    })}
+                                </div>
+                            </div>
+
+                            {/* Details of currently active item */}
+                            {activeItemResult && (
+                                <div className="border rounded-lg p-3 bg-card space-y-3">
+                                    <div className="flex items-center justify-between border-b pb-2">
+                                        <div>
+                                            <h4 className="font-bold text-base text-foreground flex items-center gap-2">
+                                                {activeItemResult.item.name}
+                                                <Badge variant="outline" className="font-mono text-xs font-normal">
+                                                    كود: {activeItemResult.item.code || '-'}
+                                                </Badge>
+                                            </h4>
+                                            <p className="text-xs text-muted-foreground mt-0.5">
+                                                السعر: <span className="font-bold text-foreground font-mono">{activeItemResult.item.price?.toLocaleString()} ج.م</span> | إجمالي الرصيد: <span className={cn("font-bold font-mono", activeItemResult.totalStock > 0 ? "text-green-600" : "text-destructive")}>{activeItemResult.totalStock}</span>
+                                            </p>
+                                        </div>
+                                        {onAddToCart && (
+                                            <Button 
+                                                size="sm" 
+                                                className="gap-1 font-bold"
+                                                onClick={() => {
+                                                    onAddToCart(activeItemResult.item);
+                                                    onOpenChange(false);
+                                                }}
+                                            >
+                                                <PlusCircle className="h-4 w-4" />
+                                                إضافة للسلة
+                                            </Button>
+                                        )}
+                                    </div>
+
+                                    <div className="max-h-52 overflow-y-auto border rounded-md">
+                                        <Table dir="rtl">
+                                            <TableHeader>
+                                                <TableRow className="bg-muted/50">
+                                                    <TableHead className="text-right">الفرع / المخزن</TableHead>
+                                                    <TableHead className="text-center">الكمية المتاحة</TableHead>
+                                                    <TableHead className="text-center">السعر</TableHead>
+                                                </TableRow>
+                                            </TableHeader>
+                                            <TableBody>
+                                                {activeItemResult.branches.length > 0 ? (
+                                                    activeItemResult.branches.map(r => (
+                                                        <TableRow key={r.warehouseName}>
+                                                            <TableCell className="font-medium text-right">{r.warehouseName}</TableCell>
+                                                            <TableCell className="text-center">
+                                                                <Badge className="bg-green-600/90 text-white font-mono px-2">
+                                                                    {r.stock}
+                                                                </Badge>
+                                                            </TableCell>
+                                                            <TableCell className="text-center font-mono font-semibold">
+                                                                {r.price.toLocaleString()}
+                                                            </TableCell>
+                                                        </TableRow>
+                                                    ))
+                                                ) : (
+                                                    <TableRow>
+                                                        <TableCell colSpan={3} className="text-center text-muted-foreground p-4">
+                                                            لا توجد أرصدة متاحة لهذا الصنف في أي فرع حالياً.
+                                                        </TableCell>
+                                                    </TableRow>
+                                                )}
+                                            </TableBody>
+                                        </Table>
+                                    </div>
+                                </div>
+                            )}
+                        </div>
+                    )
+                ) : (
+                    <div className="text-center py-10 text-muted-foreground space-y-1">
+                        <Search className="h-8 w-8 mx-auto text-muted-foreground/30 mb-2" />
+                        <p className="text-sm">اكتب جزءاً من اسم الصنف لعرض كل الأصناف التي تحتوي عليه وأرصدتها فوراً.</p>
+                    </div>
+                )}
+            </div>
         </UIDialogContent>
     );
 };
@@ -824,6 +1008,49 @@ export default function PosPage() {
     const router = useRouter();
     const searchParams = useSearchParams();
 
+    // Server POS settings as source of truth
+    const serverPosSettings = useMemo(() => {
+        return settings?.main?.posSettings || settings?.posSettings || (allDataContext as any)?.allData?.main?.posSettings || {};
+    }, [settings, allDataContext]);
+
+    // Local cached settings for instant reactivity
+    const [localPosSettings, setLocalPosSettings] = useState<any>(null);
+
+    // Keep local cache synchronized when server settings update
+    useEffect(() => {
+        if (serverPosSettings && Object.keys(serverPosSettings).length > 0) {
+            setLocalPosSettings(serverPosSettings);
+            try {
+                localStorage.setItem('app_pos_settings', JSON.stringify(serverPosSettings));
+            } catch {}
+        }
+    }, [serverPosSettings]);
+
+    useEffect(() => {
+        if (typeof window !== 'undefined') {
+            try {
+                const cached = localStorage.getItem('app_pos_settings');
+                if (cached && !localPosSettings) setLocalPosSettings(JSON.parse(cached));
+            } catch {}
+            const handleUpdate = (e: any) => {
+                if (e.detail) {
+                    setLocalPosSettings(e.detail);
+                } else {
+                    try {
+                        const c = localStorage.getItem('app_pos_settings');
+                        if (c) setLocalPosSettings(JSON.parse(c));
+                    } catch {}
+                }
+            };
+            window.addEventListener('app_pos_settings_updated', handleUpdate);
+            window.addEventListener('storage', handleUpdate);
+            return () => {
+                window.removeEventListener('app_pos_settings_updated', handleUpdate);
+                window.removeEventListener('storage', handleUpdate);
+            };
+        }
+    }, []);
+
     // Enforce immediate redirect if Central HQ
     useEffect(() => {
         if (isCentral) {
@@ -836,9 +1063,24 @@ export default function PosPage() {
         }
     }, [isCentral, router, toast]);
     
-    const posSettings = useMemo(() => settings?.main?.posSettings || {}, [settings]);
-    const financialSettings = useMemo(() => settings?.main?.financial || {}, [settings]);
-    const companySettings = useMemo(() => settings?.main?.general || {}, [settings]);
+    const posSettings = useMemo(() => {
+        const base = serverPosSettings && Object.keys(serverPosSettings).length > 0 ? serverPosSettings : (localPosSettings || {});
+        const local = localPosSettings || {};
+        return {
+            ...base,
+            ...local,
+            cartColumns: {
+                ...(base?.cartColumns || {}),
+                ...(local?.cartColumns || {})
+            },
+            layout: {
+                ...(base?.layout || {}),
+                ...(local?.layout || {})
+            }
+        };
+    }, [serverPosSettings, localPosSettings]);
+    const financialSettings = useMemo(() => settings?.main?.financial || settings?.financial || (allDataContext as any)?.allData?.main?.financial || {}, [settings, allDataContext]);
+    const companySettings = useMemo(() => settings?.main?.general || settings?.general || (allDataContext as any)?.allData?.main?.general || {}, [settings, allDataContext]);
     
     const isClothingStore = useMemo(() => companySettings.isClothingStore || false, [companySettings]);
     const allowNegativeStock = useMemo(() => financialSettings.allowNegativeStock, [financialSettings]);
@@ -921,10 +1163,10 @@ export default function PosPage() {
     
     const [applyTax, setApplyTax] = useState(false);
     useEffect(() => {
-        if (settings?.main?.posSettings?.defaultApplyTax !== undefined) {
-            setApplyTax(settings.main.posSettings.defaultApplyTax);
+        if (posSettings?.defaultApplyTax !== undefined) {
+            setApplyTax(!!posSettings.defaultApplyTax);
         }
-    }, [settings?.main?.posSettings?.defaultApplyTax]);
+    }, [posSettings?.defaultApplyTax]);
 
     const vatRate = useMemo(() => settings?.main?.financial?.vatRate || 14, [settings?.main?.financial?.vatRate]);
     const [isTaxIncluded, setIsTaxIncluded] = useState(false);
@@ -1205,11 +1447,29 @@ export default function PosPage() {
             }));
     }, [warehouseForSession, allItems, calculatePotentialStock]);
     
+    const [explicitShowAll, setExplicitShowAll] = useState(false);
+    const [isSearchFocused, setIsSearchFocused] = useState(false);
+    
+    const matchingQuickItems = useMemo(() => {
+        if (!searchTerm.trim()) return [];
+        return availableItemsWithStock.filter((item: any) => 
+            matchesArabicSearch(item.name, searchTerm) || 
+            (item.code && item.code.toLowerCase().includes(searchTerm.toLowerCase())) ||
+            (item.barcode && item.barcode.toLowerCase().includes(searchTerm.toLowerCase()))
+        ).slice(0, 15);
+    }, [searchTerm, availableItemsWithStock]);
+
     const groupsToShow = useMemo(() => {
-        const categories = (itemCategories || [])
-            .filter((g: ItemCategory) => g.showOnPos)
+        let categories = (itemCategories || [])
+            .filter((g: ItemCategory) => g.showOnPos !== false && g.showOnPos != null ? g.showOnPos : true)
             .map((g: ItemCategory) => ({...g, type: 'category'}));
-        const customGroups = (itemGroups || []).filter((g: any) => g.showOnPos).map((g: any) => ({...g, type: 'group'}));
+        
+        // If no category has showOnPos explicitly checked, fallback to showing all active categories so sidebar is never blank
+        if (categories.length === 0 && itemCategories && itemCategories.length > 0) {
+            categories = itemCategories.map((g: ItemCategory) => ({...g, type: 'category'}));
+        }
+
+        const customGroups = (itemGroups || []).filter((g: any) => g.showOnPos !== false).map((g: any) => ({...g, type: 'group'}));
         return [...categories, ...customGroups];
     }, [itemCategories, itemGroups]);
 
@@ -1219,13 +1479,15 @@ export default function PosPage() {
 
         if (searchTerm) {
             return itemsToDisplay.filter((item: any) => 
-                item.name.toLowerCase().includes(searchTerm.toLowerCase()) || 
-                (item.code && item.code.includes(searchTerm))
+                matchesArabicSearch(item.name, searchTerm) || 
+                (item.code && item.code.toLowerCase().includes(searchTerm.toLowerCase())) ||
+                (item.barcode && item.barcode.toLowerCase().includes(searchTerm.toLowerCase()))
             );
         }
         
         if (activeGroupId === 'all') {
-            return posSettings.showAllItemsInitially ? itemsToDisplay : [];
+            const shouldShow = explicitShowAll || (posSettings.showAllItemsInitially !== false);
+            return shouldShow ? itemsToDisplay : [];
         }
 
         if (activeGroupType === 'category') {
@@ -1250,8 +1512,8 @@ export default function PosPage() {
              return itemsToDisplay.filter((item: any) => item.itemGroupId === activeGroupId);
         }
         
-        return [];
-    }, [availableItemsWithStock, searchTerm, activeGroupId, activeGroupType, posSettings.showAllItemsInitially, itemCategories, itemGroups, itemSubCategories1]);
+        return itemsToDisplay;
+    }, [availableItemsWithStock, searchTerm, activeGroupId, activeGroupType, posSettings.showAllItemsInitially, explicitShowAll, itemCategories, itemGroups, itemSubCategories1]);
     
     const addItemToCart = useCallback((itemToAdd: any, quantity: number = 1, unit?: any) => {
         if (!itemToAdd || !warehouseForSession) return;
@@ -1318,15 +1580,28 @@ export default function PosPage() {
                 if (matchedUnit) {
                     addItemToCart(item, 1, matchedUnit);
                     if (barcodeInputRef.current) barcodeInputRef.current.value = "";
+                    setSearchTerm('');
                     return;
                 }
             }
         }
     
-        let itemToAdd = availableItemsWithStock.find((item: any) => item.code === code);
+        let itemToAdd = availableItemsWithStock.find((item: any) => item.code === code || item.barcode === code);
         if (itemToAdd) {
             addItemToCart(itemToAdd, 1);
             if (barcodeInputRef.current) barcodeInputRef.current.value = "";
+            setSearchTerm('');
+            return;
+        }
+
+        // If user typed partial name and exactly 1 item matches:
+        if (matchingQuickItems.length === 1) {
+            addItemToCart(matchingQuickItems[0], 1);
+            if (barcodeInputRef.current) barcodeInputRef.current.value = "";
+            setSearchTerm('');
+            return;
+        } else if (matchingQuickItems.length > 1) {
+            // Keep matching items displayed so user can pick
             return;
         }
     
@@ -2019,9 +2294,9 @@ export default function PosPage() {
     if (isCentral) {
         return (
             <div className="flex h-screen w-full flex-col items-center justify-center bg-muted/40 p-4">
-                <Card className="w-full max-w-lg border-2 border-amber-500/40 shadow-xl">
+                <Card className="w-full max-w-lg border-2 border-border shadow-xl">
                     <CardHeader className="text-center pb-3">
-                        <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-2xl bg-amber-500/10 text-amber-600 mb-3 border border-amber-500/20">
+                        <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-2xl bg-muted text-foreground mb-3 border border-border">
                             <Building2 className="h-8 w-8" />
                         </div>
                         <CardTitle className="text-xl font-black text-foreground">
@@ -2032,8 +2307,8 @@ export default function PosPage() {
                         </CardDescription>
                     </CardHeader>
                     <CardContent className="space-y-4">
-                        <Alert className="border-amber-500/30 bg-amber-500/5 text-amber-900 dark:text-amber-200">
-                            <Ban className="h-5 w-5 text-amber-600" />
+                        <Alert className="border-border bg-muted/30 text-foreground">
+                            <Ban className="h-5 w-5 text-foreground" />
                             <AlertTitle className="font-bold mr-2">منع حركات البيع المباشرة في الإدارة</AlertTitle>
                             <AlertDescription className="text-xs leading-relaxed mr-2 mt-1">
                                 حركات الكاشير ونقاط البيع المباشرة، فتح الورديات، وتسليم العهد النقدية مصممة ومخصصة للعمل داخل فروع البيع الفعلية فقط.
@@ -2043,7 +2318,7 @@ export default function PosPage() {
                         <div className="p-3 bg-muted/60 rounded-lg text-xs space-y-1.5 text-muted-foreground border">
                             <div className="flex justify-between font-semibold text-foreground">
                                 <span>دور النظام الحالي:</span>
-                                <Badge className="bg-sky-600 hover:bg-sky-700 text-white font-bold text-[11px]">إدارة مركزية (Central HQ)</Badge>
+                                <Badge className="bg-primary hover:bg-primary/90 text-primary-foreground font-bold text-[11px]">إدارة مركزية (Central HQ)</Badge>
                             </div>
                             <div className="flex justify-between">
                                 <span>نطاق عمليات البيع:</span>
@@ -2091,7 +2366,7 @@ export default function PosPage() {
             <div className="flex h-screen w-full flex-col items-center justify-center bg-muted">
                 <Card className="w-full max-w-md">
                     <CardHeader>
-                        <CardTitle className='flex items-center gap-2 text-amber-600'><Ban /> الوردية مغلقة</CardTitle>
+                        <CardTitle className='flex items-center gap-2 text-foreground'><Ban /> الوردية مغلقة</CardTitle>
                     </CardHeader>
                     <CardContent>
                         <Alert>
@@ -2131,6 +2406,7 @@ export default function PosPage() {
 
     const { widthName = 35, widthBarcode = 20, widthPrice = 15, widthQty = 15, widthTotal = 15 } = posSettings.cartColumns || {};
     const { layout = 'cart-left', cartWidth = 40, itemsWidth = 60, groupsPosition = 'left', paymentPosition = 'bottom' } = posSettings.layout || {};
+    const isCartOnLeft = layout === 'cart-right' || layout === 'left';
 
     return (
         <>
@@ -2138,7 +2414,7 @@ export default function PosPage() {
             <SellerSelectionDialog onSelectSeller={onSellerSelected} warehouseId={warehouseForSession?.id || ''} />
         </Dialog>
         <Dialog open={isQueryModalOpen} onOpenChange={setIsQueryModalOpen}>
-            <StockQueryDialog onOpenChange={setIsQueryModalOpen} {...allDataContext} />
+            <StockQueryDialog onOpenChange={setIsQueryModalOpen} onAddToCart={(item: any) => addItemToCart(item, 1)} {...allDataContext} />
         </Dialog>
         <Dialog open={isHeldInvoicesOpen} onOpenChange={setIsHeldInvoicesOpen}>
             <HeldInvoicesDialog onClose={() => setIsHeldInvoicesOpen(false)} onRetrieve={handleRetrieveInvoice} />
@@ -2179,10 +2455,18 @@ export default function PosPage() {
             className="h-screen bg-background flex flex-col p-2 sm:p-4 gap-4 overflow-y-auto"
             onClick={handleScreenClick}
         >
-            <div className={cn("flex flex-1 flex-col md:flex-row gap-3 overflow-y-auto md:overflow-hidden",
-                layout === 'cart-right' ? 'md:flex-row-reverse' : ''
+            <div className={cn("flex flex-1 flex-col gap-3 overflow-y-auto md:overflow-hidden",
+                isCartOnLeft ? 'md:flex-row-reverse' : 'md:flex-row'
             )}>
-                <div className="w-full md:w-[var(--cart-width)] flex flex-col gap-4 md:overflow-hidden" style={{ '--cart-width': `${cartWidth}%` } as React.CSSProperties}>
+                <div 
+                    className="w-full pos-cart-panel flex flex-col gap-4 md:overflow-hidden" 
+                    style={{ 
+                        '--cart-width': `${cartWidth}%`,
+                        flex: `0 0 calc(${cartWidth}% - 0.5rem)`,
+                        maxWidth: `calc(${cartWidth}% - 0.5rem)`,
+                        width: `calc(${cartWidth}% - 0.5rem)`
+                    } as React.CSSProperties}
+                >
                     <Card className="flex-1 flex flex-col md:overflow-hidden">
                         <CardHeader className="shrink-0 p-3 flex-col gap-2">
                             <div className='flex items-center justify-between'>
@@ -2238,16 +2522,24 @@ export default function PosPage() {
                                 )}
                             </div>
                         </CardHeader>
-                        <ScrollArea className="flex-1 border-t border-b max-h-48 md:max-h-full">
-                            <Table>
+                        <ScrollArea dir="rtl" className="flex-1 border-t border-b max-h-48 md:max-h-full">
+                            <Table dir="rtl" className="table-fixed w-full">
+                                <colgroup>
+                                    <col style={{ width: `${widthName}%` }} />
+                                    {posSettings.cartColumns?.showBarcode && <col style={{ width: `${widthBarcode}%` }} />}
+                                    {posSettings.cartColumns?.showPrice && <col style={{ width: `${widthPrice}%` }} />}
+                                    <col style={{ width: `${widthQty}%` }} />
+                                    <col style={{ width: `${widthTotal}%` }} />
+                                    <col style={{ width: '40px' }} />
+                                </colgroup>
                                 <TableHeader>
                                     <TableRow>
-                                        <TableHead style={{ width: `${widthName}%` }}>الصنف</TableHead>
-                                        {posSettings.cartColumns?.showBarcode && <TableHead style={{ width: `${widthBarcode}%` }}>الباركود</TableHead>}
-                                        {posSettings.cartColumns?.showPrice && <TableHead className="text-center" style={{ width: `${widthPrice}%` }}>السعر</TableHead>}
-                                        <TableHead className="text-center" style={{ width: `${widthQty}%` }}>الكمية</TableHead>
-                                        <TableHead className="text-center" style={{ width: `${widthTotal}%` }}>الإجمالي</TableHead>
-                                        <TableHead></TableHead>
+                                        <TableHead style={{ width: `${widthName}%` }} className="text-right px-2 py-2">الصنف</TableHead>
+                                        {posSettings.cartColumns?.showBarcode && <TableHead style={{ width: `${widthBarcode}%` }} className="text-center px-1 py-2">الباركود</TableHead>}
+                                        {posSettings.cartColumns?.showPrice && <TableHead className="text-center px-1 py-2" style={{ width: `${widthPrice}%` }}>السعر</TableHead>}
+                                        <TableHead className="text-center px-1 py-2" style={{ width: `${widthQty}%` }}>الكمية</TableHead>
+                                        <TableHead className="text-center px-1 py-2" style={{ width: `${widthTotal}%` }}>الإجمالي</TableHead>
+                                        <TableHead style={{ width: '40px' }} className="w-10 p-1 text-center"></TableHead>
                                     </TableRow>
                                 </TableHeader>
                                 <TableBody>
@@ -2255,10 +2547,10 @@ export default function PosPage() {
                                         const lastPrice = getItemLastPrice(item.id);
                                         return (
                                         <TableRow key={item.uniqueId}>
-                                            <TableCell className='py-2'>
-                                                <div className="flex flex-col">
-                                                    <span>{item.name}</span>
-                                                    <div className="flex items-center gap-1">
+                                            <TableCell style={{ width: `${widthName}%` }} className='px-2 py-2 truncate text-right'>
+                                                <div className="flex flex-col overflow-hidden text-right">
+                                                    <span className="truncate font-medium">{item.name}</span>
+                                                    <div className="flex items-center gap-1 justify-start">
                                                         {item.discountApplied > 0 && <span className="inline-flex items-center rounded-full px-1.5 py-0.5 text-[10px] font-semibold bg-green-100 text-green-700"><Percent className="h-2 w-2 mr-0.5"/> خصم</span>}
                                                         {lastPrice !== null && (
                                                             <div className="flex items-center gap-0.5 text-[9px] text-primary font-bold">
@@ -2269,21 +2561,28 @@ export default function PosPage() {
                                                     </div>
                                                 </div>
                                             </TableCell>
-                                            {posSettings.cartColumns?.showBarcode && <TableCell className='py-2 text-xs text-muted-foreground font-mono'>{item.code}</TableCell>}
-                                            {posSettings.cartColumns?.showPrice && <TableCell className='py-2 text-center'>{item.price.toFixed(roundingPrecision)}</TableCell>}
-                                            <TableCell className='py-2'><Input type="number" value={item.qty} readOnly onClick={() => { setItemForQuantityUpdate(item); setIsQuantityEditDialogOpen(true); }} className="w-16 text-center mx-auto cursor-pointer focus:ring-2 focus:ring-primary" /></TableCell>
-                                            <TableCell className="text-center font-bold py-2">{item.total.toFixed(roundingPrecision)}</TableCell>
-                                            <TableCell className='py-2'>
+                                            {posSettings.cartColumns?.showBarcode && <TableCell style={{ width: `${widthBarcode}%` }} className='px-1 py-2 text-center text-xs text-muted-foreground font-mono truncate'>{item.code}</TableCell>}
+                                            {posSettings.cartColumns?.showPrice && <TableCell style={{ width: `${widthPrice}%` }} className='px-1 py-2 text-center font-mono'>{item.price.toFixed(roundingPrecision)}</TableCell>}
+                                            <TableCell style={{ width: `${widthQty}%` }} className='px-1 py-2 text-center'><Input type="number" value={item.qty} readOnly onClick={() => { setItemForQuantityUpdate(item); setIsQuantityEditDialogOpen(true); }} className="w-14 sm:w-16 h-8 text-center mx-auto cursor-pointer focus:ring-2 focus:ring-primary px-1" /></TableCell>
+                                            <TableCell style={{ width: `${widthTotal}%` }} className="px-1 py-2 text-center font-bold font-mono">{item.total.toFixed(roundingPrecision)}</TableCell>
+                                            <TableCell style={{ width: '40px' }} className='py-2 p-1 text-center w-10'>
                                                 {user?.canDeleteFromCart && (
-                                                    <Button variant="ghost" size="icon" onClick={() => updateQty(item.uniqueId, 0)}>
-                                                        <Trash2 className="h-4 w-4 text-destructive" />
+                                                    <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive mx-auto" onClick={() => updateQty(item.uniqueId, 0)}>
+                                                        <Trash2 className="h-4 w-4" />
                                                     </Button>
                                                 )}
                                             </TableCell>
                                         </TableRow>
                                     )})}
                                     {cart.length === 0 && (
-                                        <TableRow><TableCell colSpan={posSettings.cartColumns?.showBarcode && posSettings.cartColumns?.showPrice ? 6 : 4} className="text-center text-muted-foreground h-24">السلة فارغة</TableCell></TableRow>
+                                        <TableRow>
+                                            <TableCell colSpan={3 + (posSettings.cartColumns?.showBarcode ? 1 : 0) + (posSettings.cartColumns?.showPrice ? 1 : 0) + 1} className="text-center text-muted-foreground h-32 py-8">
+                                                <div className="flex flex-col items-center justify-center gap-2">
+                                                    <ShoppingCart className="h-8 w-8 text-muted-foreground/30" />
+                                                    <span>السلة فارغة</span>
+                                                </div>
+                                            </TableCell>
+                                        </TableRow>
                                     )}
                                 </TableBody>
                             </Table>
@@ -2294,7 +2593,15 @@ export default function PosPage() {
                     </Card>
                 </div>
                 
-                <div className={cn("flex-1 flex flex-col md:overflow-hidden gap-3", paymentPosition === 'top' ? 'md:flex-col-reverse' : '')} style={{ '--items-width': `${itemsWidth}%` } as React.CSSProperties}>
+                <div 
+                    className={cn("w-full pos-items-panel flex flex-col md:overflow-hidden gap-3", paymentPosition === 'top' ? 'flex-col-reverse' : '')} 
+                    style={{ 
+                        '--items-width': `${itemsWidth}%`,
+                        flex: `0 0 calc(${itemsWidth}% - 0.5rem)`,
+                        maxWidth: `calc(${itemsWidth}% - 0.5rem)`,
+                        width: `calc(${itemsWidth}% - 0.5rem)`
+                    } as React.CSSProperties}
+                >
                     <div className="shrink-0 flex items-center gap-2">
                         <Button variant="ghost" size="icon" className="h-12 w-12 shrink-0 hidden md:flex" onClick={() => router.push('/')}>
                             <Undo2 className="h-6 w-6" />
@@ -2305,11 +2612,67 @@ export default function PosPage() {
                                 <Input 
                                     ref={barcodeInputRef} 
                                     placeholder="امسح الباركود أو ابحث بالاسم..." 
-                                    className="h-12 text-lg pl-10" 
+                                    className="h-12 text-lg pl-10 pr-9" 
                                     onChange={(e: any) => setSearchTerm(e.target.value)} 
-                                    onFocus={(e: any) => e.target.select()}
+                                    onFocus={(e: any) => { e.target.select(); setIsSearchFocused(true); }}
+                                    onBlur={() => setTimeout(() => setIsSearchFocused(false), 250)}
                                     onKeyDown={handleInputKeyDown}
                                 />
+                                {searchTerm && (
+                                    <button
+                                        type="button"
+                                        aria-label="مسح البحث"
+                                        className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground text-sm font-bold p-1"
+                                        onClick={() => {
+                                            setSearchTerm('');
+                                            if (barcodeInputRef.current) barcodeInputRef.current.value = '';
+                                            barcodeInputRef.current?.focus();
+                                        }}
+                                    >
+                                        ✕
+                                    </button>
+                                )}
+
+                                {/* قائمة منبثقة تفاعلية بنتائج البحث أثناء الكتابة */}
+                                {isSearchFocused && searchTerm.trim().length > 0 && matchingQuickItems.length > 0 && (
+                                    <div className="absolute top-full left-0 right-0 mt-1 bg-popover border border-border shadow-2xl rounded-xl z-50 max-h-80 overflow-y-auto p-1.5 divide-y divide-border/40">
+                                        <div className="flex items-center justify-between px-2.5 py-1 text-xs text-muted-foreground">
+                                            <span className="font-semibold text-foreground">الأصناف المطابقة ({matchingQuickItems.length}):</span>
+                                            <span>اضغط على أي صنف لإضافته للسلة فوراً</span>
+                                        </div>
+                                        {matchingQuickItems.map((item: any) => (
+                                            <div
+                                                key={item.id}
+                                                className="flex items-center justify-between p-2 rounded-lg hover:bg-accent cursor-pointer transition-colors"
+                                                onMouseDown={(e) => {
+                                                    e.preventDefault(); // يمنع فقدان التركيز قبل التنفيذ
+                                                    addItemToCart(item, 1);
+                                                    setSearchTerm('');
+                                                    if (barcodeInputRef.current) barcodeInputRef.current.value = '';
+                                                    barcodeInputRef.current?.focus();
+                                                }}
+                                            >
+                                                <div className="flex flex-col text-right">
+                                                    <span className="font-bold text-sm text-foreground">{item.name}</span>
+                                                    <div className="flex items-center gap-2 mt-0.5">
+                                                        {item.code && <span className="text-[11px] text-muted-foreground font-mono">كود: {item.code}</span>}
+                                                        {item.barcode && item.barcode !== item.code && <span className="text-[11px] text-muted-foreground font-mono">باركود: {item.barcode}</span>}
+                                                    </div>
+                                                </div>
+                                                <div className="flex items-center gap-2.5">
+                                                    <span className="font-bold font-mono text-sm">{item.price?.toLocaleString()} ج.م</span>
+                                                    <Badge variant={item.stock > 0 ? "secondary" : "destructive"} className="font-mono text-xs">
+                                                        {item.stock > 0 ? `${item.stock} متاح` : 'نفد'}
+                                                    </Badge>
+                                                    <Button size="sm" variant="default" className="h-7 px-2.5 text-xs font-bold gap-1">
+                                                        <PlusCircle className="h-3.5 w-3.5" />
+                                                        إضافة
+                                                    </Button>
+                                                </div>
+                                            </div>
+                                        ))}
+                                    </div>
+                                )}
                             </div>
                         </form>
                         <Button variant="outline" size="icon" className="h-12 w-12 shrink-0" onClick={() => setIsQueryModalOpen(true)}>
@@ -2321,7 +2684,7 @@ export default function PosPage() {
                          <div className="p-2 border-b shrink-0 md:hidden">
                            <ScrollArea>
                                 <div className="flex flex-row-reverse gap-2">
-                                     <Button size="lg" variant={activeGroupId === 'all' ? 'secondary' : 'ghost'} onClick={() => { setActiveGroupId('all'); setActiveGroupType('all'); setSearchTerm(''); }} className="h-14 shrink-0">
+                                     <Button size="lg" variant={activeGroupId === 'all' ? 'secondary' : 'ghost'} onClick={() => { setActiveGroupId('all'); setActiveGroupType('all'); setSearchTerm(''); setExplicitShowAll(true); }} className="h-14 shrink-0">
                                         <Grip className="ml-2 h-5 w-5" /> كل الأصناف
                                     </Button>
                                     {groupsToShow.map((group: any) => (
@@ -2337,13 +2700,13 @@ export default function PosPage() {
                         
                          <div className="flex-1 flex flex-row gap-3 overflow-hidden">
                             <div className={cn("hidden md:flex flex-col w-56 shrink-0",
-                                groupsPosition === 'right' ? 'order-last' : ''
+                                groupsPosition === 'left' ? 'order-2' : 'order-1'
                             )}>
                                 <Card className="flex-1 flex flex-col">
                                  <CardHeader className="p-2 border-b"><CardTitle className="text-base text-center">المجموعات</CardTitle></CardHeader>
-                                 <ScrollArea className="flex-1">
+                                 <ScrollArea dir="rtl" className="flex-1">
                                      <div className="p-2 grid grid-cols-2 gap-2">
-                                         <Button variant={activeGroupId === 'all' ? 'secondary' : 'outline'} onClick={() => { setActiveGroupId('all'); setActiveGroupType('all'); setSearchTerm(''); }} className="h-16 flex-col gap-1 text-xs">
+                                         <Button variant={activeGroupId === 'all' ? 'secondary' : 'outline'} onClick={() => { setActiveGroupId('all'); setActiveGroupType('all'); setSearchTerm(''); setExplicitShowAll(true); }} className="h-16 flex-col gap-1 text-xs">
                                              <Grip className="h-5 w-5" /> كل الأصناف
                                          </Button>
                                          {groupsToShow.map((group: any) => (
@@ -2359,33 +2722,59 @@ export default function PosPage() {
                                  </ScrollArea>
                                 </Card>
                             </div>
-                            <ScrollArea className="flex-1 min-h-[20vh] md:min-h-0">
-                                <div className="p-1 grid grid-cols-3 sm:grid-cols-4 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-2">
-                                    {itemsToShow.map((item: any) => (
-                                        <button
-                                            key={item.id}
-                                            onClick={() => handleShortClick(item)}
-                                            onMouseDown={() => handleLongPressStart(item)}
-                                            onMouseUp={handlePressEnd}
-                                            onTouchStart={() => handleLongPressStart(item)}
-                                            onTouchEnd={handlePressEnd}
-                                            disabled={!allowNegativeStock && item.stock <= 0}
-                                            className={cn(
-                                                "aspect-square flex flex-col items-center justify-center gap-1 rounded-lg text-card-foreground shadow-sm hover:bg-accent focus:ring-2 ring-primary transition-all p-1 relative",
-                                                !allowNegativeStock && item.stock <= 0 ? 'bg-red-500/10 cursor-not-allowed' : 'bg-green-500/5 hover:bg-green-500/10'
-                                            )}
+                            <ScrollArea dir="rtl" className={cn("flex-1 min-h-[20vh] md:min-h-0",
+                                groupsPosition === 'left' ? 'order-1' : 'order-2'
+                            )}>
+                                {itemsToShow.length === 0 ? (
+                                    <div className="flex flex-col items-center justify-center p-8 text-center text-muted-foreground border-2 border-dashed rounded-xl m-3 min-h-[240px]">
+                                        <Boxes className="h-10 w-10 text-muted-foreground/40 mb-2" />
+                                        <h4 className="font-bold text-foreground text-sm mb-1">لا توجد أصناف معروضة حالياً</h4>
+                                        <p className="text-xs text-muted-foreground mb-4 max-w-xs">
+                                            {searchTerm ? `لم يتم العثور على أصناف تطابق "${searchTerm}"` : 'اضغط على الزر أدناه لعرض كل الأصناف أو اختر مجموعة من القائمة'}
+                                        </p>
+                                        <Button 
+                                            variant="secondary" 
+                                            size="sm" 
+                                            onClick={() => { 
+                                                setActiveGroupId('all'); 
+                                                setActiveGroupType('all'); 
+                                                setSearchTerm(''); 
+                                                setExplicitShowAll(true); 
+                                            }}
+                                            className="gap-2 font-bold"
                                         >
-                                            {posSettings.showItemStock && !allowNegativeStock && (
-                                                 <div className={cn("absolute top-1 right-1", item.stock > 0 ? "bg-green-600 text-white" : "bg-destructive text-destructive-foreground","rounded-full px-2 py-0.5 text-xs font-semibold")}>
-                                                    {item.itemType === 'manufactured' && <ComponentIcon className="h-3 w-3 -ml-1 inline-block mr-1" />}
-                                                    <span>{item.stock}</span>
-                                                </div>
-                                            )}
-                                            
-                                            <p className="text-xs font-semibold text-center leading-tight px-1 flex-grow flex items-center">{item.name}</p>
-                                        </button>
-                                    ))}
-                                </div>
+                                            <Grip className="h-4 w-4" />
+                                            عرض كل الأصناف ({availableItemsWithStock.length})
+                                        </Button>
+                                    </div>
+                                ) : (
+                                    <div className="p-1 grid grid-cols-3 sm:grid-cols-4 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-2">
+                                        {itemsToShow.map((item: any) => (
+                                            <button
+                                                key={item.id}
+                                                onClick={() => handleShortClick(item)}
+                                                onMouseDown={() => handleLongPressStart(item)}
+                                                onMouseUp={handlePressEnd}
+                                                onTouchStart={() => handleLongPressStart(item)}
+                                                onTouchEnd={handlePressEnd}
+                                                disabled={!allowNegativeStock && item.stock <= 0}
+                                                className={cn(
+                                                    "aspect-square flex flex-col items-center justify-center gap-1 rounded-lg text-card-foreground shadow-sm hover:bg-accent focus:ring-2 ring-primary transition-all p-1 relative",
+                                                    !allowNegativeStock && item.stock <= 0 ? 'bg-red-500/10 cursor-not-allowed' : 'bg-green-500/5 hover:bg-green-500/10'
+                                                )}
+                                            >
+                                                {posSettings.showItemStock !== false && (
+                                                     <div className={cn("absolute top-1 right-1", item.stock > 0 ? "bg-green-600 text-white" : (allowNegativeStock ? "bg-amber-600 text-white" : "bg-destructive text-destructive-foreground"), "rounded-full px-2 py-0.5 text-xs font-semibold")}>
+                                                        {item.itemType === 'manufactured' && <ComponentIcon className="h-3 w-3 -ml-1 inline-block mr-1" />}
+                                                        <span>{item.stock}</span>
+                                                     </div>
+                                                )}
+                                                
+                                                <p className="text-xs font-semibold text-center leading-tight px-1 flex-grow flex items-center">{item.name}</p>
+                                            </button>
+                                        ))}
+                                    </div>
+                                )}
                             </ScrollArea>
                          </div>
                     </div>

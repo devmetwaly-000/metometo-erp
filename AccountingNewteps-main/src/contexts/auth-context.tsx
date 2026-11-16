@@ -131,6 +131,14 @@ export const AuthProvider: React.FC<{ children: ReactNode, initialUsers?: any[],
     const signOut = async () => {
         setUser(null);
         localStorage.removeItem('authUser'); // Clear persisted user
+        try {
+            Object.keys(localStorage).forEach(k => {
+                if (k.startsWith('app_open_tabs_')) localStorage.removeItem(k);
+            });
+            Object.keys(sessionStorage).forEach(k => {
+                if (k.startsWith('app_open_tabs_')) sessionStorage.removeItem(k);
+            });
+        } catch {}
         document.documentElement.className = 'dark';
         document.documentElement.style.cssText = '';
     };

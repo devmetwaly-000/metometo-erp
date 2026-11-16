@@ -505,7 +505,7 @@ function BulkCategoryUpdateDialog({
                         {/* إحصائيات سريعة للشواغر */}
                         <div className="flex items-center gap-2 pt-1 flex-wrap">
                             {emptyStats.noSection > 0 ? (
-                                <Badge variant="outline" className="text-[10px] bg-amber-500/10 text-amber-700 border-amber-500/30 gap-1">
+                                <Badge variant="outline" className="text-[10px] bg-amber-500/10 text-foreground border-amber-500/30 gap-1">
                                     <AlertTriangle className="h-3 w-3" />
                                     {emptyStats.noSection} صنف بلا قسم
                                 </Badge>
@@ -516,13 +516,13 @@ function BulkCategoryUpdateDialog({
                                 </Badge>
                             )}
                             {emptyStats.noCategory > 0 && (
-                                <Badge variant="outline" className="text-[10px] bg-amber-500/10 text-amber-700 border-amber-500/30 gap-1">
+                                <Badge variant="outline" className="text-[10px] bg-amber-500/10 text-foreground border-amber-500/30 gap-1">
                                     <AlertTriangle className="h-3 w-3" />
                                     {emptyStats.noCategory} صنف بلا فئة
                                 </Badge>
                             )}
                             {emptyStats.noGroup > 0 && (
-                                <Badge variant="outline" className="text-[10px] bg-amber-500/10 text-amber-700 border-amber-500/30 gap-1">
+                                <Badge variant="outline" className="text-[10px] bg-amber-500/10 text-foreground border-amber-500/30 gap-1">
                                     <AlertTriangle className="h-3 w-3" />
                                     {emptyStats.noGroup} صنف بلا مجموعة
                                 </Badge>
@@ -1918,6 +1918,8 @@ export default function ItemsPage() {
     const [isBulkCategoryOpen, setIsBulkCategoryOpen] = useState(false);
     const [isBulkUpdating, setIsBulkUpdating] = useState(false);
     const [isMatrixOpen, setIsMatrixOpen] = useState(false);
+    const [isAddItemOpen, setIsAddItemOpen] = useState(false);
+    const [isCreatingDemoItems, setIsCreatingDemoItems] = useState(false);
     const [editingItem, setEditingItem] = useState<any>(null);
     const [isEditOpen, setIsEditOpen] = useState(false);
     const [isDeleteAlertOpen, setIsDeleteAlertOpen] = useState(false);
@@ -1925,6 +1927,15 @@ export default function ItemsPage() {
     const [currentPage, setCurrentPage] = useState(1);
     const [pageSize, setPageSize] = useState(50);
     const router = useRouter();
+    useEffect(() => {
+        const url = new URL(window.location.href);
+        if (url.searchParams.get('newGood') !== '1') return;
+
+        setIsAddItemOpen(true);
+        url.searchParams.delete('newGood');
+        window.history.replaceState(null, '', `${url.pathname}${url.search}${url.hash}`);
+    }, []);
+    const hasActiveItems = useMemo(() => allItems.some((item: any) => !item.isDisabled), [allItems]);
 
     const [filters, setFilters] = useState({
         sectionId: '',
@@ -2109,6 +2120,41 @@ export default function ItemsPage() {
              toast({ variant: "destructive", title: "خطأ في الحفظ", description: "فشل حفظ بيانات الصنف." });
         }
     };
+
+    const handleCreateDemoItems = async () => {
+        if (hasActiveItems || isCreatingDemoItems || !can("add", moduleName)) return;
+        setIsCreatingDemoItems(true);
+        const demoItems: Array<Omit<Item, 'id' | 'code'>> = [
+            { name: 'تجريبي - خامة 1', baseUnit: 'kilo', itemType: 'raw_material', cost: 10, price: 0, reorderPoint: 0 },
+            { name: 'تجريبي - خامة 2', baseUnit: 'kilo', itemType: 'raw_material', cost: 15, price: 0, reorderPoint: 0 },
+            { name: 'تجريبي - منتج تصنيع داخلي 1', baseUnit: 'piece', itemType: 'manufactured', cost: 0, price: 0, reorderPoint: 0 },
+            { name: 'تجريبي - منتج تصنيع داخلي 2', baseUnit: 'piece', itemType: 'manufactured', cost: 0, price: 0, reorderPoint: 0 },
+            { name: 'تجريبي - منتج عادي 1', baseUnit: 'piece', itemType: 'standard', cost: 0, price: 0, reorderPoint: 0 },
+            { name: 'تجريبي - منتج عادي 2', baseUnit: 'piece', itemType: 'standard', cost: 0, price: 0, reorderPoint: 0 },
+        ];
+
+        try {
+            for (const item of demoItems) {
+                let code: string;
+                if (item.itemType === 'raw_material') {
+                    const nextId = await getNextId('rawMaterialCode', 1000);
+                    if (nextId == null) throw new Error('تعذر إنشاء كود الخامة');
+                    code = `RAW-${nextId}`;
+                } else {
+                    const prefix = settings?.main?.financial?.standardItemBarcodePrefix || '25';
+                    const nextId = await getNextId('standardItemCode', 1);
+                    if (nextId == null) throw new Error('تعذر إنشاء كود الصنف');
+                    code = `${prefix}${String(nextId).padStart(10, '0')}0`;
+                }
+                await dbAction('items', 'add', { ...item, code });
+            }
+            toast({ title: 'تم إنشاء الأصناف التجريبية', description: 'أُضيف صنفان خامات، وصنفان للتصنيع الداخلي، وصنفان عاديان.' });
+        } catch {
+            toast({ variant: 'destructive', title: 'تعذر إكمال الإضافة', description: 'راجع قائمة الأصناف؛ قد يكون بعضها أُضيف قبل حدوث الخطأ.' });
+        } finally {
+            setIsCreatingDemoItems(false);
+        }
+    };
     
     const handleSaveMatrix = async (itemsToCreate: any[]) => {
         setIsMatrixOpen(false);
@@ -2212,6 +2258,8 @@ export default function ItemsPage() {
              <AddEntityDialog
                 title="إضافة صنف جديد"
                 description="أدخل بيانات الصنف الأساسية والتصنيفات."
+                open={isAddItemOpen}
+                onOpenChange={setIsAddItemOpen}
                 triggerButton={
                     <Button size="sm" className="gap-1">
                     <PlusCircle className="h-4 w-4" />
@@ -2225,6 +2273,20 @@ export default function ItemsPage() {
       </PageHeader>
 
       <main className="flex flex-1 flex-col gap-4 p-4 md:gap-8 md:p-6">
+        {!hasActiveItems && (
+          <Card className="border-dashed border-primary/40 bg-primary/5">
+            <CardContent className="flex flex-col items-center gap-3 py-6 text-center">
+              <CardTitle className="text-base">لا توجد أصناف فعّالة مسجلة</CardTitle>
+              <CardDescription>يمكنك إضافة مجموعة تجريبية من 6 أصناف للبدء، دون إنشاء أرصدة مخزنية.</CardDescription>
+              <Button onClick={handleCreateDemoItems} disabled={dataLoading || isCreatingDemoItems || hasActiveItems || !can("add", moduleName)} className="gap-2">
+                {isCreatingDemoItems ? <Loader2 className="h-4 w-4 animate-spin" /> : <PlusCircle className="h-4 w-4" />}
+                {dataLoading ? 'جارٍ تحميل الأصناف...' : isCreatingDemoItems ? 'جارٍ إنشاء الأصناف...' : 'إضافة 6 أصناف تجريبية'}
+              </Button>
+              {!dataLoading && !can("add", moduleName) && <p className="text-xs text-destructive">يلزم منحك صلاحية إضافة الأصناف لاستخدام هذا الزر.</p>}
+              <p className="text-xs text-muted-foreground">2 خامات · 2 تصنيع داخلي · 2 منتج عادي</p>
+            </CardContent>
+          </Card>
+        )}
         <Card>
             <CardHeader>
                 <CardTitle>فلترة الأصناف</CardTitle>

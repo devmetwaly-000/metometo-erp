@@ -314,7 +314,7 @@ export default function PurchasesReportPage() {
             onClick={() => window.print()}
             className="gap-1.5 text-xs font-semibold h-8"
           >
-            <Printer className="h-3.5 w-3.5 text-sky-600 dark:text-sky-400" />
+            <Printer className="h-3.5 w-3.5 text-foreground dark:text-foreground" />
             طباعة التقرير
           </Button>
         </div>
@@ -326,11 +326,11 @@ export default function PurchasesReportPage() {
           <CardHeader className="p-3.5 pb-1">
             <CardTitle className="text-xs font-medium text-muted-foreground flex items-center justify-between">
               <span>إجمالي المشتريات</span>
-              <ShoppingCart className="h-4 w-4 text-blue-600 dark:text-blue-400" />
+              <ShoppingCart className="h-4 w-4 text-foreground dark:text-foreground" />
             </CardTitle>
           </CardHeader>
           <CardContent className="p-3.5 pt-0">
-            <div className="text-xl font-bold font-mono text-blue-700 dark:text-blue-400">
+            <div className="text-xl font-bold font-mono text-foreground dark:text-foreground">
               {summary.totalPurchases.toLocaleString("ar-EG", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ج.م
             </div>
             <p className="text-[11px] text-muted-foreground mt-0.5">
@@ -360,11 +360,11 @@ export default function PurchasesReportPage() {
           <CardHeader className="p-3.5 pb-1">
             <CardTitle className="text-xs font-medium text-muted-foreground flex items-center justify-between">
               <span>المتبقي الآجل (مديونية)</span>
-              <Clock className="h-4 w-4 text-amber-600 dark:text-amber-400" />
+              <Clock className="h-4 w-4 text-foreground dark:text-foreground" />
             </CardTitle>
           </CardHeader>
           <CardContent className="p-3.5 pt-0">
-            <div className="text-xl font-bold font-mono text-amber-700 dark:text-amber-400">
+            <div className="text-xl font-bold font-mono text-foreground dark:text-foreground">
               {summary.totalRemaining.toLocaleString("ar-EG", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ج.م
             </div>
             <p className="text-[11px] text-muted-foreground mt-0.5">
@@ -394,11 +394,11 @@ export default function PurchasesReportPage() {
           <CardHeader className="p-3.5 pb-1">
             <CardTitle className="text-xs font-medium text-muted-foreground flex items-center justify-between">
               <span>صافي المشتريات الفعلي</span>
-              <PackageCheck className="h-4 w-4 text-indigo-600 dark:text-indigo-400" />
+              <PackageCheck className="h-4 w-4 text-foreground dark:text-foreground" />
             </CardTitle>
           </CardHeader>
           <CardContent className="p-3.5 pt-0">
-            <div className="text-xl font-bold font-mono text-indigo-700 dark:text-indigo-400">
+            <div className="text-xl font-bold font-mono text-foreground dark:text-foreground">
               {summary.netPurchases.toLocaleString("ar-EG", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ج.م
             </div>
             <p className="text-[11px] text-muted-foreground mt-0.5">
@@ -567,7 +567,7 @@ export default function PurchasesReportPage() {
                                 مردود مشتريات
                               </Badge>
                             ) : (
-                              <Badge variant="outline" className="text-[10px] bg-blue-500/10 text-blue-600 border-blue-300">
+                              <Badge variant="outline" className="text-[10px] bg-blue-500/10 text-foreground border-blue-300">
                                 فاتورة شراء
                               </Badge>
                             )}
@@ -594,7 +594,7 @@ export default function PurchasesReportPage() {
                           </TableCell>
                           <TableCell className="text-left font-mono font-semibold">
                             {r.remaining > 0 ? (
-                              <span className="text-amber-600 dark:text-amber-400">
+                              <span className="text-foreground dark:text-foreground">
                                 {r.remaining.toLocaleString("ar-EG", { minimumFractionDigits: 2 })}
                               </span>
                             ) : (
@@ -694,7 +694,7 @@ export default function PurchasesReportPage() {
                   <TableCell className="text-left font-mono text-sm font-black text-emerald-600 dark:text-emerald-400">
                     {summary.totalPaid.toLocaleString("ar-EG", { minimumFractionDigits: 2 })} ج.م
                   </TableCell>
-                  <TableCell className="text-left font-mono text-sm font-black text-amber-600 dark:text-amber-400">
+                  <TableCell className="text-left font-mono text-sm font-black text-foreground dark:text-foreground">
                     {summary.totalRemaining.toLocaleString("ar-EG", { minimumFractionDigits: 2 })} ج.م
                   </TableCell>
                   <TableCell colSpan={2}></TableCell>
@@ -737,7 +737,7 @@ export default function PurchasesReportPage() {
                 </div>
                 <div>
                   <span className="text-muted-foreground block text-[11px]">المتبقي الآجل:</span>
-                  <span className="font-bold font-mono text-amber-600">{selectedDocForModal.remaining.toLocaleString()} ج.م</span>
+                  <span className="font-bold font-mono text-foreground">{selectedDocForModal.remaining.toLocaleString()} ج.م</span>
                 </div>
               </div>
 

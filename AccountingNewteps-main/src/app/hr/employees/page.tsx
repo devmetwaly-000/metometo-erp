@@ -366,10 +366,10 @@ export default function EmployeesManagementPage() {
 
                 <Card className="border-blue-500/30 bg-blue-50/10">
                     <CardHeader className="pb-2">
-                        <CardTitle className="text-sm font-medium text-blue-600">كتلة الرواتب الأساسية الشهرية</CardTitle>
+                        <CardTitle className="text-sm font-medium text-foreground">كتلة الرواتب الأساسية الشهرية</CardTitle>
                     </CardHeader>
                     <CardContent>
-                        <div className="text-2xl font-bold text-blue-600">{kpis.totalMonthlyBasic.toLocaleString('ar-EG')} ج.م</div>
+                        <div className="text-2xl font-bold text-foreground">{kpis.totalMonthlyBasic.toLocaleString('ar-EG')} ج.م</div>
                         <p className="text-xs text-muted-foreground mt-1">قبل البدلات والخصومات</p>
                     </CardContent>
                 </Card>
@@ -384,12 +384,12 @@ export default function EmployeesManagementPage() {
                     </CardContent>
                 </Card>
 
-                <Card className="border-purple-500/30 bg-purple-50/10">
+                <Card className="border-border bg-card">
                     <CardHeader className="pb-2">
-                        <CardTitle className="text-sm font-medium text-purple-600">متوسط راتب الموظف</CardTitle>
+                        <CardTitle className="text-sm font-medium text-foreground">متوسط راتب الموظف</CardTitle>
                     </CardHeader>
                     <CardContent>
-                        <div className="text-2xl font-bold text-purple-600">{Math.round(kpis.avgSalary).toLocaleString('ar-EG')} ج.م</div>
+                        <div className="text-2xl font-bold text-foreground">{Math.round(kpis.avgSalary).toLocaleString('ar-EG')} ج.م</div>
                         <p className="text-xs text-muted-foreground mt-1">شهرياً للموظف النشط</p>
                     </CardContent>
                 </Card>
@@ -445,7 +445,7 @@ export default function EmployeesManagementPage() {
                             <Button 
                                 size="sm" 
                                 variant={statusFilter === 'suspended' ? 'default' : 'ghost'} 
-                                className="h-7 text-xs px-2 text-amber-600"
+                                className="h-7 text-xs px-2 text-foreground"
                                 onClick={() => setStatusFilter('suspended')}
                             >
                                 موقوف
@@ -534,7 +534,7 @@ export default function EmployeesManagementPage() {
                                                 <TableCell>
                                                     <div className="flex flex-wrap gap-1 mb-1">
                                                         {offDays.map(d => (
-                                                            <Badge key={d} variant="secondary" className="text-[10px] px-1.5 py-0 bg-amber-500/15 text-amber-700 dark:text-amber-300 border-amber-500/30">
+                                                            <Badge key={d} variant="secondary" className="text-[10px] px-1.5 py-0 bg-amber-500/15 text-foreground dark:text-foreground border-amber-500/30">
                                                                 {d}
                                                             </Badge>
                                                         ))}
@@ -547,7 +547,7 @@ export default function EmployeesManagementPage() {
                                                 <TableCell className="text-xs">{emp.hiringDate}</TableCell>
                                                 <TableCell>
                                                     {emp.status === 'active' && <Badge className="bg-green-600">نشط</Badge>}
-                                                    {emp.status === 'suspended' && <Badge variant="secondary" className="text-amber-600">موقوف</Badge>}
+                                                    {emp.status === 'suspended' && <Badge variant="secondary" className="text-foreground">موقوف</Badge>}
                                                     {emp.status === 'terminated' && <Badge variant="destructive">منتهي</Badge>}
                                                 </TableCell>
                                                 <TableCell className="text-center">
@@ -566,7 +566,7 @@ export default function EmployeesManagementPage() {
                                                             onClick={() => handleOpenEdit(emp)}
                                                             title="تعديل البيانات"
                                                         >
-                                                            <Edit className="h-4 w-4 text-blue-600" />
+                                                            <Edit className="h-4 w-4 text-foreground" />
                                                         </Button>
                                                         <Button 
                                                             variant="ghost" 
@@ -884,7 +884,7 @@ export default function EmployeesManagementPage() {
                                     <div className="text-muted-foreground">{selectedEmployee.jobTitle} — {selectedEmployee.department}</div>
                                     <div>
                                         {selectedEmployee.status === 'active' && <Badge className="bg-green-600 text-[10px]">نشط في الخدمة</Badge>}
-                                        {selectedEmployee.status === 'suspended' && <Badge variant="secondary" className="text-amber-600 text-[10px]">موقوف مؤقتاً</Badge>}
+                                        {selectedEmployee.status === 'suspended' && <Badge variant="secondary" className="text-foreground text-[10px]">موقوف مؤقتاً</Badge>}
                                         {selectedEmployee.status === 'terminated' && <Badge variant="destructive" className="text-[10px]">منتهي الخدمة</Badge>}
                                     </div>
                                 </div>
@@ -911,7 +911,7 @@ export default function EmployeesManagementPage() {
 
                             {/* Vacation & Off Days Info */}
                             <div className="p-3 border rounded-lg space-y-1.5 bg-amber-500/5 border-amber-500/20">
-                                <div className="font-bold text-amber-700 dark:text-amber-400 flex items-center gap-1.5 mb-1">
+                                <div className="font-bold text-foreground dark:text-foreground flex items-center gap-1.5 mb-1">
                                     <Palmtree className="h-4 w-4" />
                                     بيانات الإجازات والراحة الأسبوعية
                                 </div>

@@ -36,7 +36,6 @@ pnpm-debug.log*
 .vercel
 
 # typescript
-*.tsbuildinfo
 next-env.d.ts
 
 # Netlify
@@ -50,3 +49,8 @@ database-debug.log
 firestore-debug.log
 /logs/
 storage-debug.log
+
+# failed Next.js build output
+/.next-failed-build/
+/.next-current/
+*.tsbuildinfo

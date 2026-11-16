@@ -158,10 +158,8 @@ async function startNextServer() {
 
         writeLog('جاري بدء تشغيل خادم Next.js على البورت 9002...');
 
-        // مسار الإنتاج: .next-current أو .next
-        const buildDir = (fs.existsSync(path.join(APP_DIR, '.next-current', 'BUILD_ID'))) 
-            ? path.join(APP_DIR, '.next-current') 
-            : path.join(APP_DIR, '.next');
+        // مسار الإنتاج: .next
+        const buildDir = path.join(APP_DIR, '.next');
         const hasProductionBuild = fs.existsSync(buildDir) && fs.existsSync(path.join(buildDir, 'BUILD_ID'));
         const standaloneServer = path.join(buildDir, 'standalone', 'server.js');
         const useStandalone = hasProductionBuild && fs.existsSync(standaloneServer);

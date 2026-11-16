@@ -11,7 +11,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow, TableFooter } from "@/components/ui/table";
 import { useData } from "@/contexts/data-provider";
 import { Loader2, Filter, PackageMinus } from "lucide-react";
 import { Input } from '@/components/ui/input';
@@ -45,11 +45,13 @@ interface ReportRow {
     itemName: string;
     sectionName: string;
     quantity: number;
+    unitCost: number;
+    totalCost: number;
     userName?: string;
 }
 
 export default function StockOutReportPage() {
-    const { stockOutRecords, warehouses, inventorySections, loading } = useData();
+    const { stockOutRecords, warehouses, inventorySections, items, loading } = useData();
     const { user } = useAuth();
     const [filters, setFilters] = useState({
         warehouseId: 'all',
@@ -89,19 +91,31 @@ export default function StockOutReportPage() {
     const reportData: ReportRow[] = useMemo(() => {
         if (loading) return [];
         
+        const itemsCostMap = new Map<string, number>();
+        (items || []).forEach((it: any) => {
+            itemsCostMap.set(it.id, Number(it.cost || it.Cost || 0));
+            if (it.name) itemsCostMap.set(it.name, Number(it.cost || it.Cost || 0));
+        });
+
         // Flatten the data: one row per item in each stock out record
         const flattenedData = stockOutRecords.flatMap((record: StockOutRecord) =>
-            record.items.map(item => ({
-                logId: `${record.id}-${item.id}-${item.sectionId}`,
-                date: record.date,
-                receiptNumber: record.receiptNumber,
-                sourceId: record.sourceId, // Main warehouse ID
-                itemName: item.name,
-                sectionId: item.sectionId,
-                quantity: item.qty,
-                userName: record.createdByName,
-                reason: record.reason,
-            }))
+            record.items.map(item => {
+                const unitCost = itemsCostMap.get(item.id) || itemsCostMap.get(item.name) || 0;
+                const totalCost = Number(item.qty || 1) * unitCost;
+                return {
+                    logId: `${record.id}-${item.id}-${item.sectionId}`,
+                    date: record.date,
+                    receiptNumber: record.receiptNumber,
+                    sourceId: record.sourceId, // Main warehouse ID
+                    itemName: item.name,
+                    sectionId: item.sectionId,
+                    quantity: item.qty,
+                    unitCost,
+                    totalCost,
+                    userName: record.createdByName,
+                    reason: record.reason,
+                };
+            })
         );
 
         return flattenedData
@@ -180,10 +194,38 @@ export default function StockOutReportPage() {
                         </div>
                     </CardContent>
                 </Card>
+
+                {/* Summary KPI Cards */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <Card className="border shadow-sm">
+                        <CardContent className="p-4 flex items-center justify-between">
+                            <div>
+                                <p className="text-xs text-muted-foreground font-semibold">إجمالي الكميات المسحوبة / المنصرفة</p>
+                                <p className="text-2xl font-black text-foreground mt-1">
+                                    {reportData.reduce((s, r) => s + r.quantity, 0).toLocaleString()} <span className="text-xs font-normal">قطعة</span>
+                                </p>
+                            </div>
+                            <PackageMinus className="h-8 w-8 text-muted-foreground" />
+                        </CardContent>
+                    </Card>
+
+                    <Card className="border shadow-sm">
+                        <CardContent className="p-4 flex items-center justify-between">
+                            <div>
+                                <p className="text-xs text-muted-foreground font-semibold">إجمالي تكلفة البضاعة المنصرفة</p>
+                                <p className="text-2xl font-black text-foreground mt-1">
+                                    {reportData.reduce((s, r) => s + r.totalCost, 0).toLocaleString(undefined, { minimumFractionDigits: 2 })} <span className="text-xs font-normal">ج.م</span>
+                                </p>
+                            </div>
+                            <PackageMinus className="h-8 w-8 text-foreground" />
+                        </CardContent>
+                    </Card>
+                </div>
+
                  <Card>
                     <CardHeader>
-                        <CardTitle>سجل عمليات السحب</CardTitle>
-                        <CardDescription>عرض تفصيلي لجميع الأصناف المسحوبة من الأقسام الداخلية للمخازن (لا يشمل مبيعات الفروع).</CardDescription>
+                        <CardTitle>سجل عمليات السحب وتكاليفها</CardTitle>
+                        <CardDescription>عرض تفصيلي لجميع الأصناف المسحوبة من الأقسام الداخلية للمخازن مسعرة بسعر التكلفة.</CardDescription>
                     </CardHeader>
                     <CardContent>
                         {loading ? (
@@ -198,31 +240,48 @@ export default function StockOutReportPage() {
                                             <TableHead>الصنف</TableHead>
                                             <TableHead>القسم المسحوب منه</TableHead>
                                             <TableHead className="text-center">الكمية</TableHead>
+                                            <TableHead className="text-center">سعر التكلفة</TableHead>
+                                            <TableHead className="text-center font-bold">إجمالي التكلفة</TableHead>
                                             <TableHead>المستخدم</TableHead>
                                         </TableRow>
                                     </TableHeader>
                                     <TableBody>
                                         {reportData.length > 0 ? reportData.map((log) => (
                                             <TableRow key={log.logId}>
-                                                <TableCell>{new Date(log.date).toLocaleDateString('ar-EG')}</TableCell>
+                                                <TableCell className="text-xs">{new Date(log.date).toLocaleDateString('ar-EG')}</TableCell>
                                                 <TableCell>
-                                                    <Link href={`/inventory/stock-out/${log.logId.split('-')[0]}`} className="font-mono hover:underline text-primary">
+                                                    <Link href={`/inventory/stock-out/${log.logId.split('-')[0]}`} className="font-mono hover:underline text-primary text-xs">
                                                         {log.receiptNumber}
                                                     </Link>
                                                 </TableCell>
-                                                <TableCell>{log.itemName}</TableCell>
-                                                <TableCell className="font-semibold">{log.sectionName}</TableCell>
-                                                <TableCell className="text-center font-bold">{log.quantity}</TableCell>
-                                                <TableCell>{log.userName}</TableCell>
+                                                <TableCell className="text-xs font-semibold">{log.itemName}</TableCell>
+                                                <TableCell className="text-xs">{log.sectionName}</TableCell>
+                                                <TableCell className="text-center font-bold text-xs">{log.quantity}</TableCell>
+                                                <TableCell className="text-center font-mono text-xs">{log.unitCost.toLocaleString(undefined, { minimumFractionDigits: 2 })} ج.م</TableCell>
+                                                <TableCell className="text-center font-mono font-bold text-xs text-foreground">{log.totalCost.toLocaleString(undefined, { minimumFractionDigits: 2 })} ج.م</TableCell>
+                                                <TableCell className="text-xs text-muted-foreground">{log.userName}</TableCell>
                                             </TableRow>
                                         )) : (
                                             <TableRow>
-                                                <TableCell colSpan={6} className="text-center py-10 text-muted-foreground">
+                                                <TableCell colSpan={8} className="text-center py-10 text-muted-foreground">
                                                     لا توجد بيانات تطابق الفلاتر المحددة.
                                                 </TableCell>
                                             </TableRow>
                                         )}
                                     </TableBody>
+                                    <TableFooter className="bg-muted/40 font-black">
+                                        <TableRow>
+                                            <TableCell colSpan={4} className="text-right text-xs">الإجمالي العام:</TableCell>
+                                            <TableCell className="text-center font-bold text-xs">
+                                                {reportData.reduce((s, r) => s + r.quantity, 0).toLocaleString()}
+                                            </TableCell>
+                                            <TableCell></TableCell>
+                                            <TableCell className="text-center font-bold text-xs text-foreground">
+                                                {reportData.reduce((s, r) => s + r.totalCost, 0).toLocaleString(undefined, { minimumFractionDigits: 2 })} ج.م
+                                            </TableCell>
+                                            <TableCell></TableCell>
+                                        </TableRow>
+                                    </TableFooter>
                                 </Table>
                             </div>
                         )}

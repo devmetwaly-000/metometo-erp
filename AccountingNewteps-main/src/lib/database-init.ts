@@ -60,6 +60,17 @@ export async function createAndInitializeDatabase(options: DbInitOptions): Promi
             BEGIN
                 CREATE DATABASE [${cleanDbName}] COLLATE Arabic_100_CI_AS;
             END;
+
+            -- تفعيل عزل لقطة القراءة الملتزمة (RCSI) لدعم التزامن العالي لـ 200 جهاز وموبايل
+            IF EXISTS (SELECT 1 FROM sys.databases WHERE name = N'${cleanDbName}' AND is_read_committed_snapshot_on = 0)
+            BEGIN
+                ALTER DATABASE [${cleanDbName}] SET READ_COMMITTED_SNAPSHOT ON WITH ROLLBACK AFTER 5 SECONDS;
+            END;
+
+            IF EXISTS (SELECT 1 FROM sys.databases WHERE name = N'${cleanDbName}' AND snapshot_isolation_state = 0)
+            BEGIN
+                ALTER DATABASE [${cleanDbName}] SET ALLOW_SNAPSHOT_ISOLATION ON;
+            END;
         `);
 
         await masterPool.close();
@@ -1312,6 +1323,16 @@ export async function createAndInitializeDatabase(options: DbInitOptions): Promi
                 [ItemsJson] NVARCHAR(MAX) NULL,
                 [RequisitionId] NVARCHAR(64) NULL,
                 [ToWarehouseId] NVARCHAR(64) NULL,
+                [ShippingCost] DECIMAL(18,4) NOT NULL DEFAULT ((0)),
+                [ExpensesJson] NVARCHAR(MAX) NULL,
+                [ShippingPaidBy] NVARCHAR(50) NULL,
+                [ShippingPaidFromAccountId] NVARCHAR(64) NULL,
+                [ShippingTreatment] NVARCHAR(50) NULL DEFAULT ('capitalized'),
+                [CarrierName] NVARCHAR(255) NULL,
+                [TrackingNumber] NVARCHAR(100) NULL,
+                [ExpenseId] NVARCHAR(64) NULL,
+                [TotalGoodsValue] DECIMAL(18,4) NOT NULL DEFAULT ((0)),
+                [TotalTransferredValue] DECIMAL(18,4) NOT NULL DEFAULT ((0)),
                 [CreatedAt] DATETIME2 NOT NULL DEFAULT (sysutcdatetime()),
                 [BranchCode] NVARCHAR(50) NULL,
                 [BranchName] NVARCHAR(255) NULL,
@@ -1362,6 +1383,9 @@ export async function createAndInitializeDatabase(options: DbInitOptions): Promi
                 [CarrierName] NVARCHAR(255) NULL,
                 [TrackingNumber] NVARCHAR(100) NULL,
                 [ExpenseId] NVARCHAR(64) NULL,
+                [ExpensesJson] NVARCHAR(MAX) NULL,
+                [TotalGoodsValue] DECIMAL(18,4) NOT NULL DEFAULT ((0)),
+                [TotalTransferredValue] DECIMAL(18,4) NOT NULL DEFAULT ((0)),
                 [CreatedAt] DATETIME2 NOT NULL DEFAULT (sysutcdatetime()),
                 [BranchCode] NVARCHAR(50) NULL,
                 [BranchName] NVARCHAR(255) NULL,
@@ -1705,6 +1729,12 @@ export async function createAndInitializeDatabase(options: DbInitOptions): Promi
                 ALTER TABLE dbo.PurchaseReturns ADD [SupplierName] NVARCHAR(255) NULL;`,
             `IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('dbo.PurchaseReturns') AND name = 'Tax')
                 ALTER TABLE dbo.PurchaseReturns ADD [Tax] DECIMAL(18,4) NOT NULL CONSTRAINT DF_PurchaseReturns_Tax DEFAULT ((0));`,
+            `IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('dbo.PurchaseReturns') AND name = 'IsUnlinked')
+                ALTER TABLE dbo.PurchaseReturns ADD [IsUnlinked] BIT NOT NULL CONSTRAINT DF_PurchaseReturns_IsUnlinked DEFAULT ((0));`,
+            `IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('dbo.PurchaseReturns') AND name = 'TotalInventoryCost')
+                ALTER TABLE dbo.PurchaseReturns ADD [TotalInventoryCost] DECIMAL(18,4) NULL;`,
+            `IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('dbo.PurchaseReturns') AND name = 'PriceVariance')
+                ALTER TABLE dbo.PurchaseReturns ADD [PriceVariance] DECIMAL(18,4) NULL;`,
 
             // StockInRecords: Logistics Container Put-Away Allocations & Transfers
             `IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('dbo.StockInRecords') AND name = 'AllocationsJson')
@@ -1912,7 +1942,34 @@ export async function createAndInitializeDatabase(options: DbInitOptions): Promi
             `IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('dbo.StockTransferRecords') AND name = 'TrackingNumber')
                 ALTER TABLE dbo.StockTransferRecords ADD [TrackingNumber] NVARCHAR(100) NULL;`,
             `IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('dbo.StockTransferRecords') AND name = 'ExpenseId')
-                ALTER TABLE dbo.StockTransferRecords ADD [ExpenseId] NVARCHAR(64) NULL;`
+                ALTER TABLE dbo.StockTransferRecords ADD [ExpenseId] NVARCHAR(64) NULL;`,
+            `IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('dbo.StockTransferRecords') AND name = 'ExpensesJson')
+                ALTER TABLE dbo.StockTransferRecords ADD [ExpensesJson] NVARCHAR(MAX) NULL;`,
+            `IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('dbo.StockTransferRecords') AND name = 'TotalGoodsValue')
+                ALTER TABLE dbo.StockTransferRecords ADD [TotalGoodsValue] DECIMAL(18,4) NOT NULL CONSTRAINT DF_StockTransferRecords_TotalGoodsValue DEFAULT ((0));`,
+            `IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('dbo.StockTransferRecords') AND name = 'TotalTransferredValue')
+                ALTER TABLE dbo.StockTransferRecords ADD [TotalTransferredValue] DECIMAL(18,4) NOT NULL CONSTRAINT DF_StockTransferRecords_TotalTransferredValue DEFAULT ((0));`,
+
+            `IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('dbo.StockOutRecords') AND name = 'ShippingCost')
+                ALTER TABLE dbo.StockOutRecords ADD [ShippingCost] DECIMAL(18,4) NOT NULL CONSTRAINT DF_StockOutRecords_ShippingCost DEFAULT ((0));`,
+            `IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('dbo.StockOutRecords') AND name = 'ExpensesJson')
+                ALTER TABLE dbo.StockOutRecords ADD [ExpensesJson] NVARCHAR(MAX) NULL;`,
+            `IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('dbo.StockOutRecords') AND name = 'ShippingPaidBy')
+                ALTER TABLE dbo.StockOutRecords ADD [ShippingPaidBy] NVARCHAR(50) NULL;`,
+            `IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('dbo.StockOutRecords') AND name = 'ShippingPaidFromAccountId')
+                ALTER TABLE dbo.StockOutRecords ADD [ShippingPaidFromAccountId] NVARCHAR(64) NULL;`,
+            `IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('dbo.StockOutRecords') AND name = 'ShippingTreatment')
+                ALTER TABLE dbo.StockOutRecords ADD [ShippingTreatment] NVARCHAR(50) NULL CONSTRAINT DF_StockOutRecords_ShippingTreatment DEFAULT ('capitalized');`,
+            `IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('dbo.StockOutRecords') AND name = 'CarrierName')
+                ALTER TABLE dbo.StockOutRecords ADD [CarrierName] NVARCHAR(255) NULL;`,
+            `IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('dbo.StockOutRecords') AND name = 'TrackingNumber')
+                ALTER TABLE dbo.StockOutRecords ADD [TrackingNumber] NVARCHAR(100) NULL;`,
+            `IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('dbo.StockOutRecords') AND name = 'ExpenseId')
+                ALTER TABLE dbo.StockOutRecords ADD [ExpenseId] NVARCHAR(64) NULL;`,
+            `IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('dbo.StockOutRecords') AND name = 'TotalGoodsValue')
+                ALTER TABLE dbo.StockOutRecords ADD [TotalGoodsValue] DECIMAL(18,4) NOT NULL CONSTRAINT DF_StockOutRecords_TotalGoodsValue DEFAULT ((0));`,
+            `IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('dbo.StockOutRecords') AND name = 'TotalTransferredValue')
+                ALTER TABLE dbo.StockOutRecords ADD [TotalTransferredValue] DECIMAL(18,4) NOT NULL CONSTRAINT DF_StockOutRecords_TotalTransferredValue DEFAULT ((0));`
         ];
 
         const schemaUpgradeErrors: string[] = [];

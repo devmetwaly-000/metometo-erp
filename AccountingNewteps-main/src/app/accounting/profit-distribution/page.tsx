@@ -256,11 +256,11 @@ export default function ProfitDistributionPage() {
                     <Card className="border-amber-200 bg-amber-50 dark:bg-amber-900/10">
                         <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                             <CardTitle className="text-sm font-medium">الأرباح المحتجزة (المتبقية)</CardTitle>
-                            <PieChart className="h-4 w-4 text-amber-600" />
+                            <PieChart className="h-4 w-4 text-foreground" />
                         </CardHeader>
                         <CardContent>
-                            <div className="text-2xl font-bold text-amber-700 dark:text-amber-400">{systemTotals.remaining.toLocaleString()} ج.م</div>
-                            <p className="text-xs text-amber-600/70 mt-1">أرباح جاهزة للتوزيع أو إعادة الاستثمار</p>
+                            <div className="text-2xl font-bold text-foreground dark:text-foreground">{systemTotals.remaining.toLocaleString()} ج.م</div>
+                            <p className="text-xs text-foreground/70 mt-1">أرباح جاهزة للتوزيع أو إعادة الاستثمار</p>
                         </CardContent>
                     </Card>
                 </div>

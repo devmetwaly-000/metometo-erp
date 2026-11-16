@@ -320,6 +320,7 @@ export const navStructure = [
         { type: 'link', href: '/accounting/exceptional-income', module: 'accounting_exceptionalIncome', title: 'الدخل الاستثنائي' },
         { type: 'link', href: '/accounting/treasury', module: 'accounting_treasury', title: 'حركة الخزينة' },
         { type: 'link', href: '/accounting/profit-distribution', module: 'accounting_profitDistribution', title: 'توزيعات الأرباح' },
+        { type: 'link', href: '/reports/financial-statements', module: 'reports_financialStatements', title: 'القوائم المالية (ميزانية / دخل / أرباح)' },
     ]},
     { type: 'collapsible', title: 'الموظفون والمبيعات', icon: <Users2 />, modules: ['users', 'sellers_data', 'partners_data', 'sales_issueToRep', 'sales_returnFromRep', 'sales_repInvoices', 'sales_repOperations', 'sales_remitFromRep'], children: [
       { type: 'link', href: '/users', module: 'users', title: 'المستخدمون والمناديب' },

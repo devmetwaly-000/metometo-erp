@@ -254,7 +254,7 @@ export default function StockTransfersReportPage() {
             onClick={() => window.print()}
             className="gap-1.5 text-xs font-semibold h-8"
           >
-            <Printer className="h-3.5 w-3.5 text-sky-600 dark:text-sky-400" />
+            <Printer className="h-3.5 w-3.5 text-foreground dark:text-foreground" />
             طباعة التقرير
           </Button>
         </div>
@@ -266,11 +266,11 @@ export default function StockTransfersReportPage() {
           <CardHeader className="p-3.5 pb-1">
             <CardTitle className="text-xs font-medium text-muted-foreground flex items-center justify-between">
               <span>إجمالي عمليات التحويل</span>
-              <ArrowRightLeft className="h-4 w-4 text-blue-600 dark:text-blue-400" />
+              <ArrowRightLeft className="h-4 w-4 text-foreground dark:text-foreground" />
             </CardTitle>
           </CardHeader>
           <CardContent className="p-3.5 pt-0">
-            <div className="text-2xl font-bold font-mono text-blue-700 dark:text-blue-400">
+            <div className="text-2xl font-bold font-mono text-foreground dark:text-foreground">
               {summary.totalTransfers}
             </div>
             <p className="text-[11px] text-muted-foreground mt-0.5">
@@ -283,11 +283,11 @@ export default function StockTransfersReportPage() {
           <CardHeader className="p-3.5 pb-1">
             <CardTitle className="text-xs font-medium text-muted-foreground flex items-center justify-between">
               <span>إجمالي الوحدات المحولة</span>
-              <Boxes className="h-4 w-4 text-indigo-600 dark:text-indigo-400" />
+              <Boxes className="h-4 w-4 text-foreground dark:text-foreground" />
             </CardTitle>
           </CardHeader>
           <CardContent className="p-3.5 pt-0">
-            <div className="text-2xl font-bold font-mono text-indigo-700 dark:text-indigo-400">
+            <div className="text-2xl font-bold font-mono text-foreground dark:text-foreground">
               {summary.totalQtyTransferred.toLocaleString()}
             </div>
             <p className="text-[11px] text-muted-foreground mt-0.5">
@@ -317,11 +317,11 @@ export default function StockTransfersReportPage() {
           <CardHeader className="p-3.5 pb-1">
             <CardTitle className="text-xs font-medium text-muted-foreground flex items-center justify-between">
               <span>بضاعة في الطريق / معلقة</span>
-              <Truck className="h-4 w-4 text-amber-600 dark:text-amber-400" />
+              <Truck className="h-4 w-4 text-foreground dark:text-foreground" />
             </CardTitle>
           </CardHeader>
           <CardContent className="p-3.5 pt-0">
-            <div className="text-2xl font-bold font-mono text-amber-700 dark:text-amber-400">
+            <div className="text-2xl font-bold font-mono text-foreground dark:text-foreground">
               {summary.inTransitCount}
             </div>
             <p className="text-[11px] text-muted-foreground mt-0.5">
@@ -334,11 +334,11 @@ export default function StockTransfersReportPage() {
           <CardHeader className="p-3.5 pb-1">
             <CardTitle className="text-xs font-medium text-muted-foreground flex items-center justify-between">
               <span>إجمالي مصاريف الشحن</span>
-              <Truck className="h-4 w-4 text-cyan-600 dark:text-cyan-400" />
+              <Truck className="h-4 w-4 text-foreground dark:text-foreground" />
             </CardTitle>
           </CardHeader>
           <CardContent className="p-3.5 pt-0">
-            <div className="text-2xl font-bold font-mono text-cyan-700 dark:text-cyan-400">
+            <div className="text-2xl font-bold font-mono text-foreground dark:text-foreground">
               {summary.totalShippingCost.toLocaleString()} ج.م
             </div>
             <p className="text-[11px] text-muted-foreground mt-0.5">
@@ -508,7 +508,7 @@ export default function StockTransfersReportPage() {
                                 مكتمل ومستلم
                               </Badge>
                             ) : (
-                              <Badge variant="outline" className="text-[10px] bg-amber-500/10 text-amber-600 border-amber-300">
+                              <Badge variant="outline" className="text-[10px] bg-amber-500/10 text-foreground border-amber-300">
                                 قيد النقل
                               </Badge>
                             )}
@@ -516,7 +516,7 @@ export default function StockTransfersReportPage() {
                           <TableCell className="text-center font-mono font-bold">
                             {tr.itemsCount} صنف
                           </TableCell>
-                          <TableCell className="text-center font-mono font-bold text-indigo-700 dark:text-indigo-400">
+                          <TableCell className="text-center font-mono font-bold text-foreground dark:text-foreground">
                             {tr.itemsTotalQty.toLocaleString()}
                           </TableCell>
                           <TableCell className="text-center font-mono">
@@ -609,7 +609,7 @@ export default function StockTransfersReportPage() {
                   <TableCell colSpan={7} className="text-right">
                     إجمالي نتائج التقرير:
                   </TableCell>
-                  <TableCell className="text-center font-mono text-sm font-black text-indigo-700 dark:text-indigo-400">
+                  <TableCell className="text-center font-mono text-sm font-black text-foreground dark:text-foreground">
                     {summary.totalQtyTransferred.toLocaleString()} قطعة
                   </TableCell>
                   <TableCell colSpan={2}></TableCell>

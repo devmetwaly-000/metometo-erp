@@ -19,6 +19,8 @@ interface AddEntityDialogProps {
   title: string; // عنوان الحوار
   description: string; // وصف قصير يظهر تحت العنوان
   children: React.ReactNode | ((props: { onClose: () => void }) => React.ReactNode);
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
 }
 
 // تعريف المكون كدالة وظيفية
@@ -27,13 +29,17 @@ export function AddEntityDialog({
   title,
   description,
   children,
+  open,
+  onOpenChange,
 }: AddEntityDialogProps) {
   // استخدام حالة (state) للتحكم في فتح وإغلاق الحوار برمجيًا
-  const [isOpen, setIsOpen] = React.useState(false);
+  const [internalOpen, setInternalOpen] = React.useState(false);
+  const isOpen = open ?? internalOpen;
+  const handleOpenChange = onOpenChange ?? setInternalOpen;
 
   return (
     // المكون الرئيسي للحوار من مكتبة Radix UI
-    <Dialog open={isOpen} onOpenChange={setIsOpen}>
+    <Dialog open={isOpen} onOpenChange={handleOpenChange}>
       {/* DialogTrigger يلتف حول الزر الذي يفتح الحوار */}
       <DialogTrigger asChild>{triggerButton}</DialogTrigger>
       {/* DialogContent هو المحتوى الفعلي الذي يظهر عند فتح الحوار */}
@@ -53,7 +59,7 @@ export function AddEntityDialog({
           <DialogDescription>{description}</DialogDescription>
         </DialogHeader>
         {/* عرض المحتوى الداخلي (الأطفال) وتمرير دالة الإغلاق إليهم */}
-        {typeof children === 'function' ? children({ onClose: () => setIsOpen(false) }) : children}
+        {typeof children === 'function' ? children({ onClose: () => handleOpenChange(false) }) : children}
       </DialogContent>
     </Dialog>
   );

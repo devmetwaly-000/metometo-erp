@@ -233,7 +233,7 @@ export default function ExpensesReportPage() {
             onClick={() => window.print()}
             className="gap-1.5 text-xs font-semibold h-8"
           >
-            <Printer className="h-3.5 w-3.5 text-sky-600 dark:text-sky-400" />
+            <Printer className="h-3.5 w-3.5 text-foreground dark:text-foreground" />
             طباعة التقرير
           </Button>
         </div>
@@ -262,11 +262,11 @@ export default function ExpensesReportPage() {
           <CardHeader className="p-3.5 pb-1">
             <CardTitle className="text-xs font-medium text-muted-foreground flex items-center justify-between">
               <span>أعلى بند استهلاك للمصروفات</span>
-              <TrendingUp className="h-4 w-4 text-amber-600 dark:text-amber-400" />
+              <TrendingUp className="h-4 w-4 text-foreground dark:text-foreground" />
             </CardTitle>
           </CardHeader>
           <CardContent className="p-3.5 pt-0">
-            <div className="text-lg font-bold truncate text-amber-700 dark:text-amber-400" title={summary.topCategoryName}>
+            <div className="text-lg font-bold truncate text-foreground dark:text-foreground" title={summary.topCategoryName}>
               {summary.topCategoryName}
             </div>
             <p className="text-[11px] font-mono text-muted-foreground mt-0.5">
@@ -279,11 +279,11 @@ export default function ExpensesReportPage() {
           <CardHeader className="p-3.5 pb-1">
             <CardTitle className="text-xs font-medium text-muted-foreground flex items-center justify-between">
               <span>متوسط الإنفاق اليومي</span>
-              <Calendar className="h-4 w-4 text-blue-600 dark:text-blue-400" />
+              <Calendar className="h-4 w-4 text-foreground dark:text-foreground" />
             </CardTitle>
           </CardHeader>
           <CardContent className="p-3.5 pt-0">
-            <div className="text-xl font-bold font-mono text-blue-700 dark:text-blue-400">
+            <div className="text-xl font-bold font-mono text-foreground dark:text-foreground">
               {summary.dailyAverage.toLocaleString("ar-EG", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ج.م
             </div>
             <p className="text-[11px] text-muted-foreground mt-0.5">

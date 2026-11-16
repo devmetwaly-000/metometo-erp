@@ -232,11 +232,11 @@ export default function GratuityManagementPage() {
                     <Card className="bg-blue-50 dark:bg-blue-950/20 border-blue-200">
                         <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                             <CardTitle className="text-xs font-bold uppercase tracking-wider">متوسط النسبة للفترة</CardTitle>
-                            <Percent className="h-4 w-4 text-blue-600" />
+                            <Percent className="h-4 w-4 text-foreground" />
                         </CardHeader>
                         <CardContent>
-                            <div className="text-2xl font-black text-blue-700 dark:text-blue-400">{reportStats.avgTipPercent.toFixed(2)}%</div>
-                            <p className="text-[10px] text-blue-600/70 mt-1">نسبة التيبس من إجمالي المبيعات</p>
+                            <div className="text-2xl font-black text-foreground dark:text-foreground">{reportStats.avgTipPercent.toFixed(2)}%</div>
+                            <p className="text-[10px] text-foreground/70 mt-1">نسبة التيبس من إجمالي المبيعات</p>
                         </CardContent>
                     </Card>
                     <Card className="bg-green-50 dark:bg-green-950/20 border-green-200">
@@ -251,12 +251,12 @@ export default function GratuityManagementPage() {
                     </Card>
                     <Card className="bg-amber-50 dark:bg-amber-950/20 border-amber-200 shadow-md">
                         <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                            <CardTitle className="text-xs font-black text-amber-800 dark:text-amber-400 uppercase tracking-widest">الرصيد المتاح حالياً</CardTitle>
-                            <ArrowDownCircle className="h-4 w-4 text-amber-600" />
+                            <CardTitle className="text-xs font-black text-foreground dark:text-foreground uppercase tracking-widest">الرصيد المتاح حالياً</CardTitle>
+                            <ArrowDownCircle className="h-4 w-4 text-foreground" />
                         </CardHeader>
                         <CardContent>
-                            <div className="text-3xl font-black text-amber-700 dark:text-amber-400">{currentFundBalance.toLocaleString()} ج.م</div>
-                            <p className="text-[10px] text-amber-600/70 mt-1">مبالغ بالخزينة بانتظار التوزيع</p>
+                            <div className="text-3xl font-black text-foreground dark:text-foreground">{currentFundBalance.toLocaleString()} ج.م</div>
+                            <p className="text-[10px] text-foreground/70 mt-1">مبالغ بالخزينة بانتظار التوزيع</p>
                         </CardContent>
                     </Card>
                 </div>

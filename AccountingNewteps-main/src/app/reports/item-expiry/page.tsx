@@ -134,7 +134,7 @@ export default function ItemExpiryReportPage() {
             <CardDescription>
               حدد المخزن وعدد الأيام المتبقية لعرض الأصناف التي ستنتهي صلاحيتها قريبًا أو انتهت بالفعل.
               <br/>
-              <span className="text-xs text-muted-foreground text-amber-600 font-semibold">
+              <span className="text-xs text-muted-foreground text-foreground font-semibold">
                 تنبيه: هذا التقرير يعتمد على تواريخ الصلاحية في فواتير الشراء. عمود "الرصيد الحالي" يوضح المخزون الفعلي المتاح الآن بغض النظر عن تاريخ الصلاحية.
               </span>
             </CardDescription>

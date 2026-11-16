@@ -117,7 +117,11 @@ export default function NewRequisitionPage() {
     // OUTGOING
     (salesInvoices || []).filter((s:any) => s.warehouseId === warehouseId && s.status === 'approved' && filterTransactions(s)).forEach((s: any) => s.items.forEach((i: any) => { if (i.id === itemId) stock -= i.qty; }));
     (posSales || []).filter((s: any) => s.warehouseId === warehouseId && filterTransactions(s)).forEach((s: any) => s.items.forEach((i: any) => { if (i.id === itemId) stock -= i.qty; }));
-    (stockOutRecords || []).filter((so:any) => so.sourceId === warehouseId && filterTransactions(so)).forEach((so: any) => so.items.forEach((i:any) => { if (i.id === itemId) stock -= i.qty; }));
+    (stockOutRecords || []).filter((so:any) => {
+        const st = so.status || so.Status;
+        const isDeducted = !st || st === 'approved' || st === 'completed' || st === 'fulfilled';
+        return isDeducted && (so.sourceId === warehouseId || so.warehouseId === warehouseId) && filterTransactions(so);
+    }).forEach((so: any) => so.items.forEach((i:any) => { if ((i.id || i.itemId) === itemId) stock -= (i.qty || i.quantity || 0); }));
     (stockTransferRecords || []).filter((t:any) => t.fromSourceId === warehouseId && filterTransactions(t)).forEach((t: any) => t.items.forEach((i: any) => { if (i.id === itemId) stock -= i.qty; }));
     (stockAdjustmentRecords || []).filter((adj:any) => adj.warehouseId === warehouseId && filterTransactions(adj)).forEach((adj: any) => adj.items.forEach((i: any) => { if (i.itemId === itemId && i.difference < 0) stock += i.difference; }));
     (purchaseReturns || []).filter((pr:any) => pr.warehouseId === warehouseId && filterTransactions(pr)).forEach((pr: any) => pr.items.forEach((i: any) => { if (i.id === itemId) stock -= i.qty; }));

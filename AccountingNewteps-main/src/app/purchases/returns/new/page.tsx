@@ -19,6 +19,7 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import { getGeneralCashAccounts } from "@/lib/accounting-utils";
+import { calculateInvoiceReturnTotals } from "@/lib/invoice-return-totals";
 
 interface ReturnItem {
   id: string; // original item id
@@ -28,6 +29,7 @@ interface ReturnItem {
   total: number;
   unit: string;
   uniqueId: string; // for list key
+  maxReturnQty: number;
 }
 
 export default function NewPurchaseReturnPage() {
@@ -63,6 +65,7 @@ export default function NewPurchaseReturnPage() {
   
   const [subtotal, setSubtotal] = useState(0);
   const [discount, setDiscount] = useState(0);
+  const [tax, setTax] = useState(0);
   const [total, setTotal] = useState(0);
   const [paidAmount, setPaidAmount] = useState(0); // Refund received in cash
   const [paidToAccountId, setPaidToAccountId] = useState("");
@@ -109,18 +112,26 @@ export default function NewPurchaseReturnPage() {
       if (invoice) {
         setSupplierId(invoice.supplierId);
         setWarehouseId(invoice.warehouseId);
+        const previousReturns = (purchaseReturns || []).filter((r: any) => String(r.originalInvoiceId) === String(selectedInvoiceId));
+        const prevReturnedByItem = new Map<string, number>();
+        previousReturns.forEach((r: any) => (r.items || []).forEach((it: any) => {
+          const key = String(it.id || it.itemId);
+          prevReturnedByItem.set(key, (prevReturnedByItem.get(key) || 0) + (Number(it.qty) || 0));
+        }));
         const invoiceItems = invoice.items.map((item: any, index: any) => {
           const itemCost = item.cost || 0;
+          const remaining = Math.max(0, Number(item.qty) - (prevReturnedByItem.get(String(item.id)) || 0));
           return {
             id: item.id,
             name: item.name,
-            qty: item.qty,
+            qty: remaining,
             price: itemCost, 
-            total: item.qty * itemCost,
+            total: remaining * itemCost,
             unit: availableItems.find((i: any) => i.id === item.id)?.unit || 'قطعة',
-            uniqueId: `${item.id}-${Date.now()}-${index}`
+            uniqueId: `${item.id}-${Date.now()}-${index}`,
+            maxReturnQty: remaining,
           }
-        });
+        }).filter((item: ReturnItem) => item.maxReturnQty > 0);
         setItems(invoiceItems);
       }
     } else {
@@ -128,13 +139,17 @@ export default function NewPurchaseReturnPage() {
         setSupplierId("");
         setWarehouseId("");
     }
-  }, [selectedInvoiceId, invoices, availableItems]);
+  }, [selectedInvoiceId, invoices, availableItems, purchaseReturns]);
   
   useEffect(() => {
     const newSubtotal = items.reduce((acc, item) => acc + item.total, 0);
+    const invoice = invoices.find((inv: any) => inv.id === selectedInvoiceId);
+    const returnTotals = calculateInvoiceReturnTotals(invoice, newSubtotal);
     setSubtotal(newSubtotal);
-    setTotal(newSubtotal - discount);
-  }, [items, discount]);
+    setDiscount(returnTotals.discount);
+    setTax(returnTotals.tax);
+    setTotal(returnTotals.total);
+  }, [items, selectedInvoiceId, invoices]);
 
   const currentSupplierBalance = useMemo(() => {
     if (!supplierId) return 0;
@@ -263,6 +278,7 @@ export default function NewPurchaseReturnPage() {
             })),
             subtotal,
             discount,
+            tax,
             total,
             paidAmount: Number(paidAmount) || 0,
             paidToAccountId: paidAmount > 0 ? paidToAccountId : null,
@@ -275,9 +291,9 @@ export default function NewPurchaseReturnPage() {
         await dbAction('purchaseReturns', 'add', returnData);
         toast({ title: 'تم الحفظ بنجاح', description: `تم حفظ مرتجع الشراء برقم: ${receiptNumber}` });
         router.push('/purchases/invoices/list');
-    } catch (error) {
+    } catch (error: any) {
         console.error("Failed to save purchase return:", error);
-        toast({ variant: "destructive", title: 'خطأ', description: 'فشل حفظ مرتجع الشراء.' });
+        toast({ variant: "destructive", title: 'تعذر حفظ المرتجع', description: error?.message || 'يرجى مراجعة الكمية والمبلغ المستلم.' });
     } finally {
         setIsSaving(false);
     }
@@ -337,7 +353,7 @@ export default function NewPurchaseReturnPage() {
                     <TableRow key={item.uniqueId}>
                     <TableCell>{item.name}</TableCell>
                     <TableCell className="text-center">{item.unit}</TableCell>
-                    <TableCell><Input type="number" value={item.qty} onChange={e => setItems(items.map(i => i.uniqueId === item.uniqueId ? {...i, qty: Number(e.target.value), total: Number(e.target.value) * i.price} : i))} className="text-center h-8" /></TableCell>
+                    <TableCell><Input type="number" min={0} max={item.maxReturnQty} step="0.0001" value={item.qty} onChange={e => setItems(items.map(i => { if (i.uniqueId !== item.uniqueId) return i; const qty = Math.max(0, Math.min(Number(e.target.value) || 0, i.maxReturnQty)); return {...i, qty, total: qty * i.price}; }))} className="text-center h-8" /></TableCell>
                     <TableCell className="text-center">ج.م {item.price.toFixed(2)}</TableCell>
                     <TableCell className="text-center">ج.م {item.total.toFixed(2)}</TableCell>
                     <TableCell className="text-center">
@@ -364,13 +380,29 @@ export default function NewPurchaseReturnPage() {
             </div>
             <div className="w-full md:max-w-sm space-y-4">
                 <div className="space-y-2">
+                    <div className="flex justify-between text-sm">
+                        <span>قيمة الأصناف المرتجعة</span>
+                        <span>ج.م {subtotal.toFixed(2)}</span>
+                    </div>
+                    {discount > 0 && (
+                        <div className="flex justify-between text-sm text-muted-foreground">
+                            <span>نصيب المرتجع من خصم الفاتورة</span>
+                            <span>- ج.م {discount.toFixed(2)}</span>
+                        </div>
+                    )}
+                    {tax > 0 && (
+                        <div className="flex justify-between text-sm text-muted-foreground">
+                            <span>{invoices.find((inv: any) => inv.id === selectedInvoiceId)?.isTaxIncluded ? 'الضريبة (ضمن السعر)' : 'ضريبة القيمة المضافة'}</span>
+                            <span>ج.م {tax.toFixed(2)}</span>
+                        </div>
+                    )}
                     <div className="flex justify-between font-bold text-base border-b pb-2">
                         <span>إجمالي قيمة المرتجع</span>
                         <span className="text-primary">ج.م {total.toFixed(2)}</span>
                     </div>
                     <div className="flex justify-between items-center pt-2">
                         <Label htmlFor="paidAmount" className="font-semibold">المبلغ المستلم نقداً</Label>
-                        <Input id="paidAmount" type="number" value={paidAmount} onFocus={e => e.target.select()} onChange={e => setPaidAmount(parseFloat(e.target.value) || 0)} className="h-10 text-lg w-32 text-left" />
+                        <Input id="paidAmount" type="number" min={0} max={total} step="0.01" value={paidAmount} onFocus={e => e.target.select()} onChange={e => setPaidAmount(Math.max(0, Math.min(parseFloat(e.target.value) || 0, total)))} className="h-10 text-lg w-32 text-left" />
                     </div>
                     {paidAmount > 0 && (
                         <div className="space-y-2 animate-in fade-in slide-in-from-top-1">

@@ -293,7 +293,7 @@ export default function SalesReturnsListPage() {
                                         setSelectedReturn(sreturn);
                                         setTimeout(() => setIsItemsOpen(true), 150);
                                     }}>
-                                        <Eye className="ml-2 h-4 w-4 text-blue-500"/> عرض الأصناف
+                                        <Eye className="ml-2 h-4 w-4 text-foreground"/> عرض الأصناف
                                     </DropdownMenuItem>
                                      <DropdownMenuItem onSelect={() => {
                                         setSelectedReturn(sreturn);

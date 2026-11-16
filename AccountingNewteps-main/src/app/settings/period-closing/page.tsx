@@ -260,7 +260,7 @@ export default function PeriodClosingPage() {
                                     "text-xs px-2.5 py-1.5 rounded flex items-center gap-1.5 font-medium mt-1",
                                     selectedDayStatus.isClosed 
                                         ? "bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border border-emerald-500/20" 
-                                        : "bg-amber-500/10 text-amber-700 dark:text-amber-400 border border-amber-500/20"
+                                        : "bg-amber-500/10 text-foreground dark:text-foreground border border-amber-500/20"
                                 )}>
                                     {selectedDayStatus.isClosed ? (
                                         <>
@@ -269,7 +269,7 @@ export default function PeriodClosingPage() {
                                         </>
                                     ) : (
                                         <>
-                                            <AlertTriangle className="h-4 w-4 shrink-0 text-amber-600 dark:text-amber-400" />
+                                            <AlertTriangle className="h-4 w-4 shrink-0 text-foreground dark:text-foreground" />
                                             <span>{selectedDayStatus.message} (يجب إقفال اليوم أولاً)</span>
                                         </>
                                     )}

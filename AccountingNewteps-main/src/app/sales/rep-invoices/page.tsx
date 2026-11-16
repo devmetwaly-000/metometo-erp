@@ -86,7 +86,7 @@ const InvoiceItemsDialog = ({ items, open, onOpenChange }: { items: any[], open:
                             <TableRow key={index}>
                                 <TableCell className="font-medium">{item.name}</TableCell>
                                 <TableCell className="text-center font-bold">{item.qty.toLocaleString()}</TableCell>
-                                <TableCell className="text-center text-blue-600">{item.price?.toLocaleString() || '-'}</TableCell>
+                                <TableCell className="text-center text-foreground">{item.price?.toLocaleString() || '-'}</TableCell>
                                 <TableCell className="text-center text-muted-foreground italic">{item.cost?.toLocaleString() || '-'}</TableCell>
                                 <TableCell className="text-center font-bold">{item.total?.toLocaleString() || '-'}</TableCell>
                                 <TableCell className="text-center text-green-600">
@@ -107,7 +107,7 @@ const InvoiceItemsDialog = ({ items, open, onOpenChange }: { items: any[], open:
                 إجمالي الأصناف: <span className="font-bold">{items?.length || 0}</span>
             </div>
             <div className="text-sm font-medium">
-                إجمالي الكمية: <span className="font-bold text-blue-600">{items?.reduce((acc, i) => acc + (i.qty || 0), 0).toLocaleString()}</span>
+                إجمالي الكمية: <span className="font-bold text-foreground">{items?.reduce((acc, i) => acc + (i.qty || 0), 0).toLocaleString()}</span>
             </div>
             <div className="text-sm font-medium">
                 إجمالي التكلفة: <span className="font-bold text-muted-foreground italic">{items?.reduce((acc, i) => acc + ((i.cost || 0) * i.qty), 0).toLocaleString()}</span>
@@ -238,12 +238,12 @@ export default function RepInvoicesPage() {
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <Card className="bg-blue-50 dark:bg-blue-900/20 border-blue-200 dark:border-blue-800">
                 <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                    <CardTitle className="text-sm font-medium text-blue-800 dark:text-blue-300">إجمالي القطع المباعة</CardTitle>
-                    <Package className="h-4 w-4 text-blue-600" />
+                    <CardTitle className="text-sm font-medium text-foreground dark:text-foreground">إجمالي القطع المباعة</CardTitle>
+                    <Package className="h-4 w-4 text-foreground" />
                 </CardHeader>
                 <CardContent>
-                    <div className="text-2xl font-bold text-blue-900 dark:text-blue-100">{summary.totalPieces.toLocaleString()} قطعة</div>
-                    <p className="text-xs text-blue-600 dark:text-blue-400 mt-1">بانتظار الاعتماد والتسليم</p>
+                    <div className="text-2xl font-bold text-foreground">{summary.totalPieces.toLocaleString()} قطعة</div>
+                    <p className="text-xs text-foreground dark:text-foreground mt-1">بانتظار الاعتماد والتسليم</p>
                 </CardContent>
             </Card>
             <Card className="bg-green-50 dark:bg-green-900/20 border-green-200 dark:border-green-800">
@@ -258,12 +258,12 @@ export default function RepInvoicesPage() {
             </Card>
             <Card className="bg-amber-50 dark:bg-amber-900/20 border-amber-200 dark:border-amber-800">
                 <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                    <CardTitle className="text-sm font-medium text-amber-800 dark:text-amber-300">إجمالي المديونيات الجديدة</CardTitle>
-                    <CreditCard className="h-4 w-4 text-amber-600" />
+                    <CardTitle className="text-sm font-medium text-foreground dark:text-foreground">إجمالي المديونيات الجديدة</CardTitle>
+                    <CreditCard className="h-4 w-4 text-foreground" />
                 </CardHeader>
                 <CardContent>
-                    <div className="text-2xl font-bold text-amber-900 dark:text-amber-100">{summary.totalDebts.toLocaleString()} ج.م</div>
-                    <p className="text-xs text-amber-600 dark:text-amber-400 mt-1">ستسجل على حسابات العملاء</p>
+                    <div className="text-2xl font-bold text-[#CD5C5C]">{summary.totalDebts.toLocaleString()} ج.م</div>
+                    <p className="text-xs text-foreground dark:text-foreground mt-1">ستسجل على حسابات العملاء</p>
                 </CardContent>
             </Card>
         </div>
@@ -336,7 +336,7 @@ export default function RepInvoicesPage() {
                           <TableCell>{getRepName(invoice.salesRepId)}</TableCell>
                           <TableCell>{new Date(invoice.date).toLocaleDateString('ar-EG')}</TableCell>
                           <TableCell>
-                            <Badge variant="outline" className="border-amber-500 text-amber-500">معلقة</Badge>
+                            <Badge variant="outline" className="border-amber-500 text-foreground">معلقة</Badge>
                           </TableCell>
                           <TableCell className="text-center">{invoice.total.toLocaleString(undefined, { minimumFractionDigits: 2 })}</TableCell>
                           <TableCell className="text-center">{invoice.paidAmount?.toLocaleString(undefined, { minimumFractionDigits: 2 })}</TableCell>
@@ -367,7 +367,7 @@ export default function RepInvoicesPage() {
                                             setSelectedInvoice(invoice); 
                                             setIsDetailsOpen(true); 
                                         }}>
-                                            <Eye className="ml-2 h-4 w-4 text-blue-500" />
+                                            <Eye className="ml-2 h-4 w-4 text-foreground" />
                                             عرض الأصناف
                                         </DropdownMenuItem>
                                         {can('approve', 'sales_repInvoices') && (

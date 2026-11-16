@@ -31,7 +31,6 @@ import {
   AlertCircle,
   Package,
   Search,
-  Sparkles,
   ArrowUpRight,
   ShieldAlert,
   Boxes
@@ -297,7 +296,7 @@ export default function FastSlowMovingReportPage() {
             onClick={() => window.print()}
             className="gap-1.5 text-xs font-semibold h-8"
           >
-            <Printer className="h-3.5 w-3.5 text-sky-600 dark:text-sky-400" />
+            <Printer className="h-3.5 w-3.5 text-foreground dark:text-foreground" />
             طباعة التقرير
           </Button>
         </div>
@@ -309,11 +308,11 @@ export default function FastSlowMovingReportPage() {
           <CardHeader className="p-3.5 pb-1">
             <CardTitle className="text-xs font-medium text-muted-foreground flex items-center justify-between">
               <span>مبيعات الأصناف السريعة</span>
-              <Flame className="h-4 w-4 text-amber-600 dark:text-amber-400" />
+              <Flame className="h-4 w-4 text-foreground dark:text-foreground" />
             </CardTitle>
           </CardHeader>
           <CardContent className="p-3.5 pt-0">
-            <div className="text-2xl font-bold font-mono text-amber-700 dark:text-amber-400">
+            <div className="text-2xl font-bold font-mono text-foreground dark:text-foreground">
               {summary.fastRevenue.toLocaleString("ar-EG", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ج.م
             </div>
             <p className="text-[11px] text-muted-foreground mt-0.5">
@@ -343,11 +342,11 @@ export default function FastSlowMovingReportPage() {
           <CardHeader className="p-3.5 pb-1">
             <CardTitle className="text-xs font-medium text-muted-foreground flex items-center justify-between">
               <span>الأصناف الراكدة (بدون مبيعات)</span>
-              <Snowflake className="h-4 w-4 text-blue-600 dark:text-blue-400" />
+              <Snowflake className="h-4 w-4 text-foreground dark:text-foreground" />
             </CardTitle>
           </CardHeader>
           <CardContent className="p-3.5 pt-0">
-            <div className="text-2xl font-bold font-mono text-blue-700 dark:text-blue-400">
+            <div className="text-2xl font-bold font-mono text-foreground dark:text-foreground">
               {summary.deadItemsCount} صنف
             </div>
             <p className="text-[11px] text-muted-foreground mt-0.5">
@@ -445,11 +444,11 @@ export default function FastSlowMovingReportPage() {
       <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
         <TabsList className="grid grid-cols-2 w-80 mb-2">
           <TabsTrigger value="fast" className="text-xs gap-1.5">
-            <Flame className="h-3.5 w-3.5 text-amber-500" />
+            <Flame className="h-3.5 w-3.5 text-foreground" />
             الأكثر مبيعاً وطلباً ({fastMovingList.length})
           </TabsTrigger>
           <TabsTrigger value="slow" className="text-xs gap-1.5">
-            <Snowflake className="h-3.5 w-3.5 text-blue-500" />
+            <Snowflake className="h-3.5 w-3.5 text-foreground" />
             الأصناف الراكدة والمجمدة ({slowMovingList.length})
           </TabsTrigger>
         </TabsList>
@@ -461,7 +460,7 @@ export default function FastSlowMovingReportPage() {
               <div className="flex items-center justify-between">
                 <div>
                   <CardTitle className="text-sm font-semibold flex items-center gap-1.5">
-                    <Flame className="h-4 w-4 text-amber-500" />
+                    <Flame className="h-4 w-4 text-foreground" />
                     <span>قائمة الأصناف الأكثر طلباً ومبيعاً</span>
                   </CardTitle>
                   <CardDescription className="text-xs text-muted-foreground">
@@ -515,7 +514,7 @@ export default function FastSlowMovingReportPage() {
                           <TableCell className="text-center text-muted-foreground text-[11px]">
                             {r.unit}
                           </TableCell>
-                          <TableCell className="text-center font-mono font-bold text-amber-700 dark:text-amber-400 text-sm">
+                          <TableCell className="text-center font-mono font-bold text-foreground dark:text-foreground text-sm">
                             {r.qtySold.toLocaleString()}
                           </TableCell>
                           <TableCell className="text-left font-mono font-bold text-foreground">
@@ -564,7 +563,7 @@ export default function FastSlowMovingReportPage() {
             <CardHeader className="p-4 pb-2 border-b">
               <div className="flex items-center justify-between">
                 <div>
-                  <CardTitle className="text-sm font-semibold flex items-center gap-1.5 text-blue-700 dark:text-blue-400">
+                  <CardTitle className="text-sm font-semibold flex items-center gap-1.5 text-foreground dark:text-foreground">
                     <Snowflake className="h-4 w-4" />
                     <span>قائمة الأصناف الراكدة والمجمدة في المخازن</span>
                   </CardTitle>
@@ -619,7 +618,7 @@ export default function FastSlowMovingReportPage() {
                           <TableCell className="text-center text-muted-foreground text-[11px]">
                             {r.unit}
                           </TableCell>
-                          <TableCell className="text-center font-mono font-bold text-blue-700 dark:text-blue-400 text-sm">
+                          <TableCell className="text-center font-mono font-bold text-foreground dark:text-foreground text-sm">
                             {r.currentStock.toLocaleString()}
                           </TableCell>
                           <TableCell className="text-left font-mono">
@@ -632,7 +631,7 @@ export default function FastSlowMovingReportPage() {
                             {r.retailValue.toLocaleString("ar-EG", { minimumFractionDigits: 2 })}
                           </TableCell>
                           <TableCell className="text-center">
-                            <Badge variant="outline" className="text-[10px] bg-amber-500/10 text-amber-700 border-amber-300">
+                            <Badge variant="outline" className="text-[10px] bg-amber-500/10 text-foreground border-amber-300">
                               تخفيض / عرض ترويجي
                             </Badge>
                           </TableCell>

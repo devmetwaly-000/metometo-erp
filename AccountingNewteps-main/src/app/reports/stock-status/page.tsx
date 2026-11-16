@@ -360,7 +360,7 @@ export default function StockStatusPage() {
                                             {item.isCalculatedStock && 
                                                 <Tooltip>
                                                     <TooltipTrigger asChild>
-                                                        <Component className="h-4 w-4 text-blue-500"/>
+                                                        <Component className="h-4 w-4 text-foreground"/>
                                                     </TooltipTrigger>
                                                     <TooltipContent>
                                                         <p>رصيد محسوب بناءً على المكونات المتاحة</p>

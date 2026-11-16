@@ -527,8 +527,8 @@ const WorkDayClosingStatementDialog = ({
                         })}
 
                         <div className="p-3 rounded-lg border bg-sky-500/5 border-sky-500/20 text-center">
-                            <div className="text-[11px] font-semibold text-sky-700 dark:text-sky-300">النقدية الموردة بالخزينة</div>
-                            <div className="text-lg font-black text-sky-700 dark:text-sky-300 mt-1">
+                            <div className="text-[11px] font-semibold text-foreground dark:text-foreground">النقدية الموردة بالخزينة</div>
+                            <div className="text-lg font-black text-foreground dark:text-foreground mt-1">
                                 {statement.totals.totalActualCash.toLocaleString()} <span className="text-[10px] font-normal">ج.م</span>
                             </div>
                             <div className="text-[10px] text-muted-foreground mt-0.5">
@@ -1044,7 +1044,7 @@ export default function PosSessionsPage() {
                 {isCentral && (
                     <Card className="border-sky-500/40 bg-sky-500/5 shadow-sm">
                         <CardContent className="p-4 flex items-center gap-3">
-                            <Building2 className="h-6 w-6 text-sky-600 shrink-0" />
+                            <Building2 className="h-6 w-6 text-foreground shrink-0" />
                             <div className="space-y-0.5 text-xs">
                                 <p className="font-bold text-sm text-foreground">وضع المراجعة والتدقيق المركزي (Central Review Mode)</p>
                                 <p className="text-muted-foreground">
@@ -1147,7 +1147,7 @@ export default function PosSessionsPage() {
                             <CardTitle className='flex items-center justify-center gap-2'>
                                 {isCentral ? (
                                     <>
-                                        <Building2 className="h-6 w-6 text-sky-600" />
+                                        <Building2 className="h-6 w-6 text-foreground" />
                                         وضع المراجعة والتدقيق المركزي (Central HQ)
                                     </>
                                 ) : (

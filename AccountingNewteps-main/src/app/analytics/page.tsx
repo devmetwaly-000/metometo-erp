@@ -325,20 +325,20 @@ export default function AnalyticsPage() {
                     <Card className="bg-amber-500/5 border-amber-500/20">
                         <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                             <CardTitle className="text-sm font-bold">نسبة الديون للمبيعات</CardTitle>
-                            <CreditCard className="h-4 w-4 text-amber-600" />
+                            <CreditCard className="h-4 w-4 text-foreground" />
                         </CardHeader>
                         <CardContent>
-                            <div className="text-2xl font-bold tracking-tight text-amber-600">{analytics.kpis.debtRatio.toFixed(1)}%</div>
+                            <div className="text-2xl font-bold tracking-tight text-foreground">{analytics.kpis.debtRatio.toFixed(1)}%</div>
                             <p className="text-[10px] text-muted-foreground mt-1">نسبة المديونية من إجمالي المبيعات</p>
                         </CardContent>
                     </Card>
                     <Card className="bg-blue-500/5 border-blue-500/20">
                         <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                             <CardTitle className="text-sm font-bold">هامش الربح</CardTitle>
-                            <Percent className="h-4 w-4 text-blue-600" />
+                            <Percent className="h-4 w-4 text-foreground" />
                         </CardHeader>
                         <CardContent>
-                            <div className="text-2xl font-bold tracking-tight text-blue-600">{analytics.kpis.grossMargin.toFixed(1)}%</div>
+                            <div className="text-2xl font-bold tracking-tight text-foreground">{analytics.kpis.grossMargin.toFixed(1)}%</div>
                             <p className="text-[10px] text-muted-foreground mt-1">من إجمالي قيمة المبيعات</p>
                         </CardContent>
                     </Card>

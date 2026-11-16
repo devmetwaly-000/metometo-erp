@@ -1,13 +1,89 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <defs>
+    <!-- Background Gradient -->
+    <linearGradient id="bgGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#090d16" />
+      <stop offset="50%" stop-color="#0f172a" />
+      <stop offset="100%" stop-color="#1e1b4b" />
+    </linearGradient>
 
-<svg width="512" height="512" viewBox="0 0 512 512" fill="none" xmlns="http://www.w3.org/2000/svg">
-  <rect width="512" height="512" rx="100" fill="#3b82f6"/>
-  <path d="M120 150H392L360 350H152L120 150Z" fill="white" fill-opacity="0.2"/>
-  <path d="M100 130L130 130L160 330H352L382 130H412" stroke="white" stroke-width="20" stroke-linecap="round" stroke-linejoin="round"/>
-  <circle cx="180" cy="410" r="25" fill="white"/>
-  <circle cx="332" cy="410" r="25" fill="white"/>
-  <rect x="200" y="190" width="10" height="100" rx="5" fill="white"/>
-  <rect x="230" y="190" width="25" height="100" rx="5" fill="white"/>
-  <rect x="275" y="190" width="10" height="100" rx="5" fill="white"/>
-  <rect x="305" y="190" width="5" height="100" rx="2.5" fill="white"/>
-  <path d="M380 380L420 420L490 320" stroke="#4ade80" stroke-width="30" stroke-linecap="round" stroke-linejoin="round"/>
+    <!-- Border Glow -->
+    <linearGradient id="borderGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#38bdf8" stop-opacity="0.8" />
+      <stop offset="50%" stop-color="#6366f1" stop-opacity="0.4" />
+      <stop offset="100%" stop-color="#10b981" stop-opacity="0.8" />
+    </linearGradient>
+
+    <!-- Cyan-Blue Pillar Gradient -->
+    <linearGradient id="cyanPillar" x1="0%" y1="100%" x2="50%" y2="0%">
+      <stop offset="0%" stop-color="#0284c7" />
+      <stop offset="50%" stop-color="#0ea5e9" />
+      <stop offset="100%" stop-color="#38bdf8" />
+    </linearGradient>
+
+    <!-- Emerald-Green Pillar Gradient -->
+    <linearGradient id="emeraldPillar" x1="50%" y1="100%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#059669" />
+      <stop offset="50%" stop-color="#10b981" />
+      <stop offset="100%" stop-color="#34d399" />
+    </linearGradient>
+
+    <!-- Gold Accent Gradient -->
+    <linearGradient id="goldGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#fbbf24" />
+      <stop offset="50%" stop-color="#f59e0b" />
+      <stop offset="100%" stop-color="#d97706" />
+    </linearGradient>
+
+    <!-- Subtle Glow Filter -->
+    <filter id="glow" x="-20%" y="-20%" width="140%" height="140%">
+      <feGaussianBlur stdDeviation="10" result="blur" />
+      <feComposite in="SourceGraphic" in2="blur" operator="over" />
+    </filter>
+
+    <radialGradient id="centerGlow" cx="50%" cy="45%" r="50%">
+      <stop offset="0%" stop-color="#38bdf8" stop-opacity="0.25" />
+      <stop offset="60%" stop-color="#6366f1" stop-opacity="0.08" />
+      <stop offset="100%" stop-color="#0f172a" stop-opacity="0" />
+    </radialGradient>
+  </defs>
+
+  <!-- Base App Background (Squircle / Rounded) -->
+  <rect width="512" height="512" rx="112" fill="url(#bgGrad)" />
+  <rect width="504" height="504" x="4" y="4" rx="108" fill="none" stroke="url(#borderGrad)" stroke-width="4" stroke-opacity="0.6" />
+
+  <!-- Center Ambient Radial Glow -->
+  <circle cx="256" cy="240" r="190" fill="url(#centerGlow)" />
+
+  <!-- Icon Geometry: High-Tech Modern ERP Balance / Growth Logo -->
+  <g transform="translate(0, -6)">
+    <!-- Base Balance Beam (Double-Entry Financial Equilibrium) -->
+    <rect x="136" y="360" width="240" height="14" rx="7" fill="#64748b" opacity="0.4" />
+    <rect x="156" y="356" width="200" height="12" rx="6" fill="url(#cyanPillar)" opacity="0.85" />
+    <circle cx="256" cy="362" r="10" fill="url(#goldGrad)" filter="url(#glow)" />
+
+    <!-- Left Pillar (Ascending / Debit / Assets) -->
+    <path d="M152 344 L152 230 C152 216 160 204 172 198 L218 174 C228 168 240 176 240 188 L240 344 Z" fill="url(#cyanPillar)" />
+    <!-- Left Pillar Accent Highlight -->
+    <path d="M152 230 L190 210 L190 344 L152 344 Z" fill="#ffffff" opacity="0.15" />
+
+    <!-- Right Pillar (Ascending / Credit / Growth) -->
+    <path d="M360 344 L360 170 C360 156 352 144 340 138 L294 114 C284 108 272 116 272 128 L272 344 Z" fill="url(#emeraldPillar)" />
+    <!-- Right Pillar Accent Highlight -->
+    <path d="M322 150 L360 170 L360 344 L322 344 Z" fill="#ffffff" opacity="0.18" />
+
+    <!-- Central Dynamic Balance Bridge (Connecting ERP & Accounting Core - Forms Stylized M) -->
+    <path d="M218 174 L256 226 L294 114 C298 106 308 106 312 114 L340 160 L272 260 L240 216 L184 246 Z" fill="url(#goldGrad)" opacity="0.95" />
+
+    <!-- Core Floating Crystal / Precision Node -->
+    <circle cx="256" cy="226" r="14" fill="#ffffff" filter="url(#glow)" />
+    <circle cx="256" cy="226" r="8" fill="url(#goldGrad)" />
+
+    <!-- Upward Trend Indicator Arrow (Growth / Profits) -->
+    <path d="M374 130 L406 130 C412 130 416 124 414 118 L400 86 C398 80 390 80 388 86 L374 118 C372 124 376 130 382 130 Z" fill="url(#emeraldPillar)" transform="rotate(40 394 108)" filter="url(#glow)" />
+
+    <!-- Subtle Brand Monogram "METO ERP" -->
+    <text x="256" y="420" text-anchor="middle" font-family="'Segoe UI', Roboto, -apple-system, sans-serif" font-weight="900" font-size="28" fill="#f8fafc" letter-spacing="6" opacity="0.95">METO ERP</text>
+    <text x="256" y="444" text-anchor="middle" font-family="'Segoe UI', Roboto, -apple-system, sans-serif" font-weight="600" font-size="13" fill="#38bdf8" letter-spacing="3" opacity="0.8">ACCOUNTING &amp; POS</text>
+  </g>
 </svg>

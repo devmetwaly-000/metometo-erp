@@ -441,7 +441,7 @@ export default function SalesInvoicesListPage() {
                             <TableCell>
                                 <div className="flex items-center gap-2">
                                     {invoice.isDelivery ? (
-                                        <Badge variant="outline" className="text-blue-600 border-blue-200 bg-blue-50/50"><Truck className="h-3 w-3 ml-1"/> دليفري</Badge>
+                                        <Badge variant="outline" className="text-foreground border-blue-200 bg-blue-50/50"><Truck className="h-3 w-3 ml-1"/> دليفري</Badge>
                                     ) : (
                                         <Badge variant="outline" className="text-muted-foreground"><FileText className="h-3 w-3 ml-1"/> {invoice.items?.length || 0} صنف</Badge>
                                     )}
@@ -490,7 +490,7 @@ export default function SalesInvoicesListPage() {
                                         <DropdownMenuItem onClick={() => { 
                                             setTimeout(() => setItemsModal({ open: true, items: invoice.items }), 150);
                                         }}>
-                                            <Eye className="ml-2 h-4 w-4 text-blue-500" />
+                                            <Eye className="ml-2 h-4 w-4 text-foreground" />
                                             عرض الأصناف
                                         </DropdownMenuItem>
                                         
@@ -524,7 +524,7 @@ export default function SalesInvoicesListPage() {
 
                                         <DropdownMenuSeparator />
                                         <DropdownMenuItem onClick={() => router.push(`/sales/returns/new?invoiceId=${invoice.id}`)} disabled={invoice.isLocked}>
-                                            <Undo2 className="ml-2 h-4 w-4 text-amber-600" />
+                                            <Undo2 className="ml-2 h-4 w-4 text-foreground" />
                                             إجراء مرتجع
                                         </DropdownMenuItem>
                                     </DropdownMenuContent>

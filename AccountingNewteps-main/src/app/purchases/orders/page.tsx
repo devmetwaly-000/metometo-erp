@@ -113,7 +113,7 @@ export default function PurchaseOrdersListPage() {
   
   const getStatusBadge = (status: string) => {
     switch (status) {
-        case 'pending': return <Badge variant="outline" className="text-amber-500 border-amber-500 flex items-center gap-1"><Clock className="h-3 w-3"/>معلق</Badge>;
+        case 'pending': return <Badge variant="outline" className="text-foreground border-amber-500 flex items-center gap-1"><Clock className="h-3 w-3"/>معلق</Badge>;
         case 'fulfilled': return <Badge variant="default" className="bg-green-600 flex items-center gap-1"><CheckCircle className="h-3 w-3"/>تم التحويل لفاتورة</Badge>;
         default: return <Badge variant="secondary">{status}</Badge>;
     }

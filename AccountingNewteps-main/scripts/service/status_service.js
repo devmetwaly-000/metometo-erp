@@ -14,11 +14,15 @@ const LOG_FILE = path.join(LOGS_DIR, 'pos_service.log');
 function checkHttp(port = 9002) {
     return new Promise(resolve => {
         const start = Date.now();
-        const req = http.get(`http://localhost:${port}`, { timeout: 2000 }, res => {
+        const req = http.get(`http://localhost:${port}`, { timeout: 10000 }, res => {
             resolve({ ok: true, statusCode: res.statusCode, latencyMs: Date.now() - start });
         });
         req.on('error', err => {
             resolve({ ok: false, error: err.message });
+        });
+        req.on('timeout', () => {
+            req.destroy();
+            resolve({ ok: false, error: 'انتهت مهلة الاتصال بالخادم' });
         });
     });
 }

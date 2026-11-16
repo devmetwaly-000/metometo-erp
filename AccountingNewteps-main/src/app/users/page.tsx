@@ -341,7 +341,7 @@ const UserForm = ({
       {/* أيام الإجازة الأسبوعية ورصيد الإجازات */}
       <div className="space-y-3 p-3.5 border rounded-lg bg-sky-500/5 border-sky-500/20">
         <div className="flex items-center justify-between">
-          <Label className="text-xs font-bold flex items-center gap-1.5 text-sky-700 dark:text-sky-400">
+          <Label className="text-xs font-bold flex items-center gap-1.5 text-foreground dark:text-foreground">
             <CalendarOff className="h-3.5 w-3.5" />
             أيام الإجازة الأسبوعية ورصيد الإجازات السنوية
           </Label>
@@ -883,8 +883,8 @@ export default function UsersPage() {
                           <div className="flex justify-between items-center pt-3">
                             <div className="flex gap-1">
                                {u.isSalesRep && <Badge variant="secondary" className="h-6 gap-1 px-2 border-green-500/20 bg-green-500/10 text-green-700 dark:text-green-400"><UserIcon className="h-3 w-3"/> مندوب</Badge>}
-                               {u.isCashier && <Badge variant="secondary" className="h-6 gap-1 px-2 border-blue-500/20 bg-blue-500/10 text-blue-700 dark:text-blue-400"><ShieldCheck className="h-3 w-3"/> كاشير</Badge>}
-                               {u.isDelivery && <Badge variant="secondary" className="h-6 gap-1 px-2 border-amber-500/20 bg-amber-500/10 text-amber-700 dark:text-amber-400"><Truck className="h-3 w-3"/> طيار</Badge>}
+                               {u.isCashier && <Badge variant="secondary" className="h-6 gap-1 px-2 border-blue-500/20 bg-blue-500/10 text-foreground dark:text-foreground"><ShieldCheck className="h-3 w-3"/> كاشير</Badge>}
+                               {u.isDelivery && <Badge variant="secondary" className="h-6 gap-1 px-2 border-amber-500/20 bg-amber-500/10 text-foreground dark:text-foreground"><Truck className="h-3 w-3"/> طيار</Badge>}
                             </div>
                             <div className="flex gap-2">
                                 <Button size="sm" variant="ghost" className="h-9 w-9 p-0 bg-muted/50 hover:bg-primary/10 hover:text-primary" onClick={() => handleEditClick(u)}><Edit className="h-4 w-4"/></Button>
@@ -946,12 +946,12 @@ export default function UsersPage() {
                               </TableCell>
                               <TableCell className="text-center">
                                 {u.isCashier && (
-                                  <CheckCircle className="h-5 w-5 text-blue-500 mx-auto" />
+                                  <CheckCircle className="h-5 w-5 text-foreground mx-auto" />
                                 )}
                               </TableCell>
                                <TableCell className="text-center">
                                 {u.isDelivery && (
-                                  <Truck className="h-5 w-5 text-amber-500 mx-auto" />
+                                  <Truck className="h-5 w-5 text-foreground mx-auto" />
                                 )}
                               </TableCell>
                               <TableCell className="text-center">

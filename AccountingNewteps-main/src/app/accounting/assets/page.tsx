@@ -500,7 +500,7 @@ export default function FixedAssetsPage() {
                                     </div>
                                     <div className="col-span-2 border-t pt-2">
                                         <span className="text-muted-foreground block">القيمة الدفترية الصافية:</span>
-                                        <span className="font-bold text-blue-600 text-sm">{formatCurrency(assetToDispose?.bookValue || 0)}</span>
+                                        <span className="font-bold text-foreground text-sm">{formatCurrency(assetToDispose?.bookValue || 0)}</span>
                                     </div>
                                 </div>
 
@@ -583,7 +583,7 @@ export default function FixedAssetsPage() {
                                     <TableCell>
                                         <span className={`px-2 py-1 rounded text-xs ${
                                             asset.status === 'active' ? 'bg-green-100 text-green-800' : 
-                                            asset.status === 'fully_depreciated' ? 'bg-yellow-100 text-yellow-800' : 
+                                            asset.status === 'fully_depreciated' ? 'bg-yellow-100 text-foreground' : 
                                             'bg-gray-100 text-gray-800'
                                         }`}>
                                             {asset.status === 'active' ? 'نشط' : 
@@ -596,7 +596,7 @@ export default function FixedAssetsPage() {
                                                 <Button 
                                                     variant="ghost" 
                                                     size="sm"
-                                                    className="text-amber-600 hover:text-amber-700 hover:bg-amber-50 h-8 px-2 text-xs"
+                                                    className="text-foreground hover:text-foreground hover:bg-amber-50 h-8 px-2 text-xs"
                                                     onClick={() => {
                                                         setAssetToDispose(asset);
                                                         setSaleProceeds(0);

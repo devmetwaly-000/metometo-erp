@@ -1,7 +1,7 @@
 
 "use client";
 
-import React, { useState, useMemo, useEffect, useCallback } from "react";
+import React, { useState, useMemo, useEffect, useCallback, useRef } from "react";
 import {
   SidebarProvider,
   Sidebar,
@@ -100,6 +100,8 @@ import {
   Archive,
   MapPin,
   HeartHandshake,
+  ChevronLeft,
+  ChevronRight,
   X
 } from "lucide-react";
 import Link from "next/link";
@@ -315,15 +317,15 @@ const NavSubLink = ({ href, children, module, innerTabHeightClass, innerTabHeigh
     }
 
     return (
-        <SidebarMenuSubItem className="my-0">
-            <SidebarMenuSubButton asChild isActive={isActive} style={{ minHeight: `${innerTabHeightPx}px` }} className={`h-auto ${innerTabHeightClass} px-2 text-xs leading-normal w-full`}>
+        <SidebarMenuSubItem className="my-0 p-0">
+            <SidebarMenuSubButton asChild isActive={isActive} style={{ minHeight: `${innerTabHeightPx}px` }} className={cn("h-auto w-full", innerTabHeightClass)}>
                 <Link 
                     href={href} 
                     prefetch={true}
                     onClick={() => setOpenMobile(false)}
                     className="flex items-center gap-1.5 w-full text-right"
                 >
-                    <span className="flex-1 text-right leading-normal break-words whitespace-normal text-xs font-medium">{children}</span>
+                    <span className="flex-1 text-right leading-tight break-words whitespace-normal font-medium">{children}</span>
                 </Link>
             </SidebarMenuSubButton>
         </SidebarMenuSubItem>
@@ -464,6 +466,7 @@ export const navStructure = [
             { type: 'link', href: '/reports/item-profit-loss', module: 'reports_itemProfitLoss', title: dictionary.nav.itemProfitLossReport },
             { type: 'link', href: '/reports/sales-by-category', module: 'reports_salesByCategory', title: dictionary.nav.salesByCategoryReport },
             { type: 'link', href: '/reports/recipe-reports', module: 'reports_recipe', title: dictionary.nav.manufacturingReports },
+            { type: 'link', href: '/reports/inventory-movements-cost', module: 'inventory_adjustment', title: "تقرير تكاليف الصرف والتحويلات والهوالك" },
             { type: 'link', href: '/reports/stock-transfers-report', module: 'inventory_transfer', title: "تقرير تحويلات المخازن بين الفروع" },
             { type: 'link', href: '/reports/inventory-adjustments-report', module: 'inventory_adjustment', title: "تسويات الجرد والعجز والإعدامات" },
             { type: 'link', href: '/reports/stock-in-report', module: 'inventory_stockIn', title: dictionary.nav.stockInReport },
@@ -509,7 +512,7 @@ const MobileSidebar = () => {
     const { settings } = useData();
     const [searchTerm, setSearchTerm] = useState('');
     const { openMobile, setOpenMobile } = useSidebar();
-    const configuredTabHeight = settings?.main?.general?.innerTabHeight || 'compact';
+    const configuredTabHeight = settings?.main?.general?.innerTabHeight || settings?.general?.innerTabHeight || 'compact';
     const innerTabHeightPx = configuredTabHeight === 'compact' ? 22 : configuredTabHeight === 'comfortable' ? 32 : 26;
     const innerTabHeightClass = configuredTabHeight === 'compact'
         ? 'min-h-[22px] py-0 px-2 text-[11.5px]'
@@ -623,32 +626,73 @@ export function AppLayoutContent({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
   const [offlineReadiness, setOfflineReadiness] = useState<number | null>(null);
+  const [systemMode, setSystemMode] = useState<'production' | 'development'>(
+    process.env.NODE_ENV === 'production' ? 'production' : 'development'
+  );
+
+  useEffect(() => {
+    fetch('/api/system/mode')
+      .then(res => res.json())
+      .then(data => {
+        if (data?.mode) setSystemMode(data.mode);
+      })
+      .catch(() => {});
+  }, []);
 
   const [openTabs, setOpenTabs] = useState<{title: string, href: string}[]>([]);
   const openTabsStorageKey = user?.id ? `app_open_tabs_${user.id}` : null;
   const [tabsLoadedFor, setTabsLoadedFor] = useState<string | null>(null);
+  const tabsContainerRef = useRef<HTMLDivElement>(null);
 
+  // حذف التبويبات فقط عند عمل Hard Refresh (Ctrl + F5 أو Ctrl + Shift + R)
   useEffect(() => {
-    if (!openTabsStorageKey) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      const isCtrlF5 = (e.ctrlKey || e.metaKey) && (e.key === 'F5' || e.keyCode === 116);
+      const isCtrlShiftR = (e.ctrlKey || e.metaKey) && e.shiftKey && (e.key === 'r' || e.key === 'R');
+      if (isCtrlF5 || isCtrlShiftR) {
+        if (openTabsStorageKey) {
+          try {
+            sessionStorage.removeItem(openTabsStorageKey);
+            localStorage.removeItem(openTabsStorageKey);
+          } catch {}
+        }
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [openTabsStorageKey]);
+
+  // استرجاع التبويبات من الـ sessionStorage (الريفريش العادي يحافظ عليها، وإغلاق المتصفح/اليوزر يفرغها)
+  useEffect(() => {
+    if (!openTabsStorageKey) {
+      setOpenTabs([]);
+      setTabsLoadedFor(null);
+      return;
+    }
 
     try {
-      const storedTabs = JSON.parse(localStorage.getItem(openTabsStorageKey) || '[]');
+      // إزالة التخزين القديم الدائم من localStorage إن وجد
+      try { localStorage.removeItem(openTabsStorageKey); } catch {}
+
+      const storedTabs = JSON.parse(sessionStorage.getItem(openTabsStorageKey) || '[]');
       const validTabs = Array.isArray(storedTabs)
         ? storedTabs.filter((tab): tab is { title: string; href: string } =>
             tab && typeof tab.title === 'string' && typeof tab.href === 'string' && tab.href.startsWith('/')
           )
         : [];
-      setOpenTabs(validTabs);
+      // الحد الأقصى 10 تبويبات دائماً
+      setOpenTabs(validTabs.slice(-10));
     } catch {
       setOpenTabs([]);
     }
     setTabsLoadedFor(openTabsStorageKey);
   }, [openTabsStorageKey]);
 
+  // حفظ التبويبات في sessionStorage بحد أقصى 10
   useEffect(() => {
     if (!openTabsStorageKey || tabsLoadedFor !== openTabsStorageKey) return;
     try {
-      localStorage.setItem(openTabsStorageKey, JSON.stringify(openTabs));
+      sessionStorage.setItem(openTabsStorageKey, JSON.stringify(openTabs.slice(-10)));
     } catch (error) {
       console.error('Failed to save open tabs', error);
     }
@@ -706,8 +750,18 @@ export function AppLayoutContent({ children }: { children: React.ReactNode }) {
         const title = findTitleForHref(pathname);
         if (title) {
             setOpenTabs(prev => {
-                if (prev.some(tab => tab.href === pathname)) return prev;
-                return [...prev, { title, href: pathname }];
+                const existingIndex = prev.findIndex(tab => tab.href === pathname);
+                if (existingIndex !== -1) {
+                    if (prev[existingIndex].title !== title) {
+                        const updated = [...prev];
+                        updated[existingIndex] = { title, href: pathname };
+                        return updated;
+                    }
+                    return prev;
+                }
+                const updated = [...prev, { title, href: pathname }];
+                // الحد الأقصى 10 تبويبات فقط — وعند فتح التبويب الحادي عشر يتم إغلاق التبويب الأول تلقائياً (FIFO)
+                return updated.length > 10 ? updated.slice(updated.length - 10) : updated;
             });
         }
     }
@@ -835,7 +889,7 @@ export function AppLayoutContent({ children }: { children: React.ReactNode }) {
     }
   };
   
-  const generalSettings = settings?.main?.general || {};
+  const generalSettings = settings?.main?.general || settings?.general || {};
   const fabPosition = generalSettings.mobileFabPosition || 'bottom-right';
   const desktopLayout = generalSettings.desktopLayout || 'sidebar';
   const innerTabHeight = generalSettings.innerTabHeight || 'compact';
@@ -895,6 +949,34 @@ export function AppLayoutContent({ children }: { children: React.ReactNode }) {
           return remaining;
       });
   };
+
+  const scrollTabs = (direction: 'left' | 'right') => {
+      if (tabsContainerRef.current) {
+          const scrollAmount = 240;
+          tabsContainerRef.current.scrollBy({
+              left: direction === 'left' ? -scrollAmount : scrollAmount,
+              behavior: 'smooth'
+          });
+      }
+  };
+
+  const handleTabsWheel = (e: React.WheelEvent<HTMLDivElement>) => {
+      if (tabsContainerRef.current && e.deltaY !== 0) {
+          tabsContainerRef.current.scrollBy({
+              left: e.deltaY,
+              behavior: 'smooth'
+          });
+      }
+  };
+
+  useEffect(() => {
+      if (tabsContainerRef.current) {
+          const activeEl = tabsContainerRef.current.querySelector('[data-active="true"]');
+          if (activeEl) {
+              activeEl.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'nearest' });
+          }
+      }
+  }, [pathname, openTabs]);
 
 
   return (
@@ -1079,6 +1161,28 @@ export function AppLayoutContent({ children }: { children: React.ReactNode }) {
                          </Tooltip>
                        </TooltipProvider>
                      )}
+                     {/* إشارة نمط التشغيل: Production أو Development بجانب أيقونة المزامنة */}
+                     <TooltipProvider>
+                       <Tooltip>
+                         <TooltipTrigger asChild>
+                           <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full border border-border bg-muted/40 text-[11px] font-mono select-none cursor-default transition-colors">
+                             <span className={cn(
+                               "h-2 w-2 rounded-full",
+                               systemMode === 'production' ? "bg-emerald-500 animate-pulse" : "bg-amber-500"
+                             )} />
+                             <span className="font-bold tracking-wider text-foreground">
+                               {systemMode === 'production' ? 'Production' : 'Development'}
+                             </span>
+                           </div>
+                         </TooltipTrigger>
+                         <TooltipContent side="bottom" className="text-xs max-w-xs text-center">
+                           {systemMode === 'production'
+                             ? 'نمط الإنتاج (Production Mode) — النظام مجمّع ومحسّن للفرع والأجهزة المتعددة.'
+                             : 'نمط التطوير (Development Mode) — وضع التعديل البرمجي والتحديث الحي.'}
+                         </TooltipContent>
+                       </Tooltip>
+                     </TooltipProvider>
+
                      <TooltipProvider>
                         <Tooltip>
                             <TooltipTrigger asChild>
@@ -1152,30 +1256,79 @@ export function AppLayoutContent({ children }: { children: React.ReactNode }) {
 
             {/* Taskbar / Open Tabs Bar */}
             {tabsLoadedFor === openTabsStorageKey && openTabs.length > 0 && pathname !== '/pos' && (
-                <div className="h-12 bg-card/95 backdrop-blur-md border-t flex items-center px-4 gap-2 overflow-x-auto shrink-0 z-40 sticky bottom-0 shadow-[0_-2px_10px_rgba(0,0,0,0.12)] no-print">
-                    {openTabs.map((tab) => (
-                        <Link 
-                            key={tab.href}
-                            href={tab.href}
-                            prefetch={true}
-                            className={cn(
-                                "flex items-center gap-2 px-3 py-1.5 rounded-t-lg text-sm font-medium transition-all cursor-pointer whitespace-nowrap border-b-2 border-transparent select-none",
-                                pathname === tab.href 
-                                    ? "bg-background text-primary border-primary shadow-sm" 
-                                    : "hover:bg-background/50 text-muted-foreground"
-                            )}
-                        >
-                            <span>{tab.title}</span>
-                            <span 
-                                role="button"
-                                tabIndex={0}
-                                onClick={(e) => handleCloseTab(e, tab.href)}
-                                className="hover:bg-muted p-0.5 rounded-full inline-flex items-center justify-center transition-colors"
-                            >
-                                <X className="h-3 w-3" />
-                            </span>
-                        </Link>
-                    ))}
+                <div className="h-11 bg-card/95 backdrop-blur-md border-t flex items-center px-2 gap-1.5 shrink-0 z-40 sticky bottom-0 shadow-[0_-2px_10px_rgba(0,0,0,0.12)] no-print select-none">
+                    {/* Scroll Right Button */}
+                    <button
+                        type="button"
+                        onClick={() => scrollTabs('right')}
+                        className="h-7 w-7 flex items-center justify-center rounded-md hover:bg-muted text-muted-foreground hover:text-foreground shrink-0 transition-colors"
+                        title="تمرير لليمين"
+                    >
+                        <ChevronRight className="h-4 w-4" />
+                    </button>
+
+                    {/* Scrollable Tabs Container */}
+                    <div 
+                        ref={tabsContainerRef}
+                        onWheel={handleTabsWheel}
+                        className="flex-1 flex items-center gap-1.5 overflow-x-auto scroll-smooth scrollbar-thin scrollbar-thumb-muted-foreground/20 hover:scrollbar-thumb-muted-foreground/40 py-1"
+                        style={{ scrollbarWidth: 'thin' }}
+                    >
+                        {openTabs.map((tab) => {
+                            const isActive = pathname === tab.href;
+                            return (
+                                <Link 
+                                    key={tab.href}
+                                    href={tab.href}
+                                    prefetch={true}
+                                    data-active={isActive ? "true" : "false"}
+                                    className={cn(
+                                        "flex items-center gap-2 px-3 py-1 rounded-md text-xs font-medium transition-all cursor-pointer whitespace-nowrap border shrink-0 select-none",
+                                        isActive 
+                                            ? "bg-primary/10 text-primary border-primary/40 shadow-sm font-semibold" 
+                                            : "bg-muted/40 hover:bg-muted text-muted-foreground hover:text-foreground border-border/50"
+                                    )}
+                                >
+                                    <span className="truncate max-w-[170px]">{tab.title}</span>
+                                    <span 
+                                        role="button"
+                                        tabIndex={0}
+                                        onClick={(e) => handleCloseTab(e, tab.href)}
+                                        className="hover:bg-background/80 hover:text-destructive p-0.5 rounded-full inline-flex items-center justify-center transition-colors"
+                                        title="إغلاق التبويب"
+                                    >
+                                        <X className="h-3 w-3" />
+                                    </span>
+                                </Link>
+                            );
+                        })}
+                    </div>
+
+                    {/* Scroll Left Button */}
+                    <button
+                        type="button"
+                        onClick={() => scrollTabs('left')}
+                        className="h-7 w-7 flex items-center justify-center rounded-md hover:bg-muted text-muted-foreground hover:text-foreground shrink-0 transition-colors"
+                        title="تمرير لليسار"
+                    >
+                        <ChevronLeft className="h-4 w-4" />
+                    </button>
+
+                    {/* Quick Action: Clear All Tabs */}
+                    <button
+                        type="button"
+                        onClick={() => {
+                            setOpenTabs([]);
+                            if (openTabsStorageKey) {
+                                try { sessionStorage.removeItem(openTabsStorageKey); } catch {}
+                            }
+                        }}
+                        className="h-7 px-2 flex items-center gap-1 text-[11px] text-muted-foreground hover:text-destructive rounded-md hover:bg-muted shrink-0 transition-colors border border-transparent hover:border-border/40"
+                        title="إغلاق جميع النوافذ المفتوحة"
+                    >
+                        <X className="h-3 w-3" />
+                        <span className="hidden sm:inline">إغلاق الكل</span>
+                    </button>
                 </div>
             )}
         </div>

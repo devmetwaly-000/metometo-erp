@@ -1105,7 +1105,7 @@ export default function NewStockAdjustmentPage() {
             <div id="reader" className="w-full h-full" />
             {hasCameraPermission === false && (
               <div className="absolute inset-0 flex flex-col items-center justify-center bg-slate-950/95 p-5 text-center gap-3">
-                <Camera className="h-10 w-10 text-amber-400" />
+                <Camera className="h-10 w-10 text-foreground" />
                 <div className="space-y-1">
                   <p className="text-sm font-bold text-white">البث المباشر للكاميرا يتطلب إذن المتصفح أو التثبيت</p>
                   <p className="text-xs text-slate-300">
@@ -1322,7 +1322,7 @@ export default function NewStockAdjustmentPage() {
                   {/* إذا كان المخزن المختار مخزناً رئيسياً ويحتوي على أقسام/حاويات داخلية */}
                   {isSelectedMainWarehouse && warehouseInternalSections.length > 0 && (
                     <div className="pt-2 border-t flex flex-col sm:flex-row sm:items-center gap-3">
-                      <Label className="text-xs font-bold text-amber-600 shrink-0">
+                      <Label className="text-xs font-bold text-foreground shrink-0">
                         تحديد قسم / حاوية داخل المخزن الرئيسي (اختياري):
                       </Label>
                       <div className="w-full sm:w-80">
@@ -1353,7 +1353,7 @@ export default function NewStockAdjustmentPage() {
                 {/* القسم الثاني: تحديد نطاق الجرد التصنيفي (القسم السلعي / الفئة / المجموعة الفرعية) */}
                 <div className="p-3.5 rounded-xl border bg-sky-500/5 border-sky-500/20 space-y-3">
                   <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-                    <div className="flex items-center gap-2 text-sm font-bold text-sky-700 dark:text-sky-400">
+                    <div className="flex items-center gap-2 text-sm font-bold text-foreground dark:text-foreground">
                       <FolderTree className="h-4 w-4" />
                       <span>2. نطاق الجرد حسب القسم أو المجموعة الفرعية ({availableItems.length} صنف متاح)</span>
                     </div>
@@ -1819,7 +1819,7 @@ export default function NewStockAdjustmentPage() {
           </CardContent>
 
           <CardFooterUI className="flex flex-col md:flex-row justify-between gap-4 p-4 md:p-6 bg-muted/10 border-t">
-            <div className="flex items-center gap-2 text-amber-600 text-xs md:text-sm">
+            <div className="flex items-center gap-2 text-foreground text-xs md:text-sm">
               <AlertCircle className="h-4 w-4 shrink-0" />
               <span>
                 سيتم اعتماد فروقات الجرد للنطاق المحدد ({scopeSummaryLabel}) وتحديث أرصدة المخزن فور الحفظ.

@@ -11,7 +11,9 @@ export const usePosInvoiceCounter = (workDayId: string | undefined, terminalId: 
 
   const getFormattedInvoiceNumber = useCallback((count: number | string) => {
       const openWorkDay = posSessions.find((s: any) => s.id === workDayId);
-      const workDayDate = openWorkDay ? new Date(openWorkDay.startTime) : new Date();
+      const workDayDate = openWorkDay?.workDayDate 
+          ? new Date(openWorkDay.workDayDate) 
+          : (openWorkDay ? new Date(openWorkDay.startTime) : new Date());
       const datePart = `${String(workDayDate.getDate()).padStart(2, '0')}${String(workDayDate.getMonth() + 1).padStart(2, '0')}${String(workDayDate.getFullYear()).slice(-2)}`;
       
       return `${count}-${terminalCode || '0'}-${warehouseCode || '0'}-${datePart}`;

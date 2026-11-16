@@ -426,11 +426,11 @@ export default function PosItemGroupsPage() {
             <CardContent className="p-4 flex items-center justify-between">
               <div>
                 <p className="text-xs text-muted-foreground font-medium">الفئات المخزنية المعروضة</p>
-                <p className="text-2xl font-black text-blue-600 mt-1">
+                <p className="text-2xl font-black text-foreground mt-1">
                   {safeCategories.filter((c: any) => c.showOnPos !== false).length} / {safeCategories.length}
                 </p>
               </div>
-              <div className="h-10 w-10 rounded-xl bg-blue-500/15 flex items-center justify-center text-blue-600">
+              <div className="h-10 w-10 rounded-xl bg-blue-500/15 flex items-center justify-center text-foreground">
                 <FolderTree className="h-5 w-5" />
               </div>
             </CardContent>
@@ -440,11 +440,11 @@ export default function PosItemGroupsPage() {
             <CardContent className="p-4 flex items-center justify-between">
               <div>
                 <p className="text-xs text-muted-foreground font-medium">أصناف مربوطة بمجموعات كاشير</p>
-                <p className="text-2xl font-black text-amber-600 mt-1">
+                <p className="text-2xl font-black text-foreground mt-1">
                   {safeItems.filter((i: any) => !!i.itemGroupId).length}
                 </p>
               </div>
-              <div className="h-10 w-10 rounded-xl bg-amber-500/15 flex items-center justify-center text-amber-600">
+              <div className="h-10 w-10 rounded-xl bg-amber-500/15 flex items-center justify-center text-foreground">
                 <Package className="h-5 w-5" />
               </div>
             </CardContent>

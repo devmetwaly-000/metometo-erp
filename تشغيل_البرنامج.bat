@@ -1,39 +1,29 @@
-@echo off
-chcp 65001 > nul
-title تشغيل منظومة المحاسبة ونقاط البيع (Meto POS)
-cls
-echo ===================================================================
-echo     منظومة المحاسبة وإدارة الفروع ونقاط البيع (MultiBranch ERP)
-echo     محرك قاعدة البيانات: Microsoft SQL Server (MultiBranchPOS_DB)
-echo ===================================================================
-echo.
+﻿@echo off
+chcp 65001 >nul
+title تشغيل منظومة المحاسبة ونقاط البيع
+cd /d "%~dp0AccountingNewteps-main"
 
-cd /d "%~dp0"
-if exist "AccountingNewteps-main" cd "AccountingNewteps-main"
-
-:: 1. التحقق من تشغيل خدمة SQL Server
-sc query MSSQLSERVER | find "RUNNING" > nul
-if %ERRORLEVEL% NEQ 0 (
-    echo [تنبيه] جاري تشغيل خدمة SQL Server...
-    net start MSSQLSERVER > nul 2>&1
+if not exist "scripts\service\start_service_silent.vbs" (
+    echo تعذر العثور على ملفات تشغيل البرنامج.
+    pause
+    exit /b 1
 )
 
-:: 2. تشغيل خدمة المنظومة بالخلفية
-echo جاري إطلاق خدمة المنظومة بالخلفية...
-wscript "%~dp0\AccountingNewteps-main\scripts\service\start_service_silent.vbs"
+sc query MSSQLSERVER | find /I "RUNNING" >nul
+if errorlevel 1 (
+    echo جاري تشغيل خدمة قاعدة البيانات...
+    net start MSSQLSERVER
+)
 
-:: 3. فتح المتصفح تلقائياً
-echo جاري فتح المتصفح على http://localhost:9002 ...
-timeout /t 2 /nobreak > nul
-start http://localhost:9002
+echo جاري تشغيل البرنامج...
+wscript.exe "%~dp0AccountingNewteps-main\scripts\service\start_service_silent.vbs"
+echo في انتظار جاهزية البرنامج...
+powershell -NoProfile -Command "$deadline=(Get-Date).AddSeconds(60); while ((Get-Date) -lt $deadline) { $client=New-Object Net.Sockets.TcpClient; try { $client.Connect('127.0.0.1',9002); $client.Close(); exit 0 } catch { $client.Close(); Start-Sleep -Milliseconds 500 } }; exit 1"
+if errorlevel 1 (
+    echo تعذر الاتصال بالبرنامج. راجع تشغيل قاعدة البيانات وسجل الخدمة.
+    pause
+    exit /b 1
+)
 
-echo.
-echo ===================================================================
-echo   [✓] المنظومة تعمل الآن في الخلفية كخدمة دائمة!
-echo   بيانات الدخول لحساب المدير العام:
-echo   - اسم المستخدم: Admin
-echo   - كلمة المرور: 200300400
-echo ===================================================================
-echo.
-timeout /t 3 > nul
-exit
+start "" "http://localhost:9002"
+exit /b 0

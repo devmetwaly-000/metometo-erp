@@ -20,7 +20,7 @@ import {
 } from "@/components/ui/table";
 import { useData } from "@/contexts/data-provider";
 import { 
-  Loader2, Filter, Printer, Factory, Sparkles, TrendingUp, TrendingDown,
+  Loader2, Filter, Printer, Factory, TrendingUp, TrendingDown,
   AlertTriangle, CheckCircle2, XCircle, Package, ArrowUpRight, ArrowDownLeft,
   Trash2, ShoppingCart, ShoppingBag, Layers, Search, Eye, Scale, HelpCircle
 } from "lucide-react";
@@ -58,6 +58,7 @@ export default function ManufacturingFeasibilityReportPage() {
     posReturns, 
     purchaseInvoices, 
     purchaseReturns, 
+    stockInRecords,
     stockOutRecords, 
     stockAdjustmentRecords,
     items: allItems, 
@@ -161,9 +162,24 @@ export default function ManufacturingFeasibilityReportPage() {
     // أذون الصرف المخزني اليدوي (تالف، هالك، إعدام)
     (stockOutRecords || []).forEach((rec: any) => {
       if (!isDateInRange(rec.date) || !matchesWarehouse(rec.sourceId || rec.warehouseId)) return;
+      if (['draft', 'pending', 'cancelled', 'void'].includes(String(rec.status || '').toLowerCase())) return;
       const reason = (rec.reason || '').toLowerCase();
+      if (reason.includes('manufacturing_issue')) {
+        (rec.items || []).forEach((item: any) => {
+          const id = item.id || item.itemId;
+          const qty = Number(item.wasteQty || 0);
+          if (!id || qty <= 0) return;
+          const unitCost = Number(item.cost || itemsMap.get(id)?.cost || 0);
+          const existing = map.get(id) || { wasteQty: 0, wasteCost: 0, details: [] };
+          existing.wasteQty += qty;
+          existing.wasteCost += qty * unitCost;
+          existing.details.push({ date: rec.date, receiptNumber: rec.receiptNumber || 'صرف تصنيع', reason: 'هدر خامات تصنيع', qty, cost: qty * unitCost });
+          map.set(id, existing);
+        });
+        return;
+      }
       // نعتبر أي صرف للتلف أو الهالك أو الإعدام أو الاستخدام الداخلي كفقد تصنيعي
-      const isWaste = reason.includes('تالف') || reason.includes('هالك') || reason.includes('إعدام') || reason.includes('عجز') || reason.includes('damage') || reason.includes('waste') || true;
+      const isWaste = reason.includes('تالف') || reason.includes('هالك') || reason.includes('إعدام') || reason.includes('عجز') || reason.includes('damage') || reason.includes('waste');
       if (!isWaste) return;
 
       (rec.items || []).forEach((item: any) => {
@@ -287,14 +303,69 @@ export default function ManufacturingFeasibilityReportPage() {
 
     // خريطة لتجميع استهلاك المواد الخام التراكمي عبر كل المنتجات
     const rawMaterialConsumptionMap = new Map<string, { consumedQty: number; consumedCost: number; usedInProducts: string[] }>();
+    const actualProductionCostMap = new Map<string, { qty: number; cost: number; wasteCost: number; wasteQty: number; normalScrapQty: number; abnormalScrapQty: number; allocatedWasteCost: number; weightedAllocatedWastePerUnit: number; batches: any[] }>();
+    const actualMaterialCostByProduct = new Map<string, number>();
+    const actualIssueProductIds = new Set<string>();
+
+    (stockInRecords || []).forEach((record: any) => {
+      if (!isDateInRange(record.date) || !matchesWarehouse(record.warehouseId)) return;
+      const lines = record.items || [];
+      if (!String(record.reason || '').toLowerCase().includes('manufacturing_output') && !lines.some((line: any) => line.manufacturingOrderId && line.batchNumber)) return;
+      lines.forEach((line: any) => {
+        const itemId = String(line.itemId || line.id || '');
+        if (!itemId || !itemsMap.has(itemId)) return;
+        const qty = Number(line.qty || line.quantity || 0);
+        const unitCost = Number(line.cost || 0);
+        const batchNumber = line.batchNumber || record.batchNumber || '';
+        const data = actualProductionCostMap.get(itemId) || { qty: 0, cost: 0, wasteCost: 0, wasteQty: 0, normalScrapQty: 0, abnormalScrapQty: 0, allocatedWasteCost: 0, weightedAllocatedWastePerUnit: 0, batches: [] };
+        data.qty += qty;
+        data.cost += qty * unitCost;
+        data.wasteCost += Number(line.damagedCost || 0) + (line.wasteTreatment === 'expense' ? Number(line.wastedMaterialCost || 0) : 0);
+        data.wasteQty += Number(line.damagedQty || 0);
+        data.normalScrapQty += Number(line.normalScrapQty || 0);
+        data.abnormalScrapQty += Number(line.abnormalScrapQty || 0);
+        const allocatedWasteCost = Number(line.allocatedWasteCost || 0);
+        const allocatedWasteCostPerUnit = Number(line.allocatedWasteCostPerUnit || 0);
+        data.allocatedWasteCost += allocatedWasteCost;
+        data.weightedAllocatedWastePerUnit += allocatedWasteCostPerUnit * qty;
+        if (batchNumber) data.batches.push({ batchNumber, qty, unitCost, salePrice: Number(line.salePrice || 0), margin: line.manufacturingProfitMargin == null ? null : Number(line.manufacturingProfitMargin), normalScrapQty: Number(line.normalScrapQty || 0), abnormalScrapQty: Number(line.abnormalScrapQty || 0), normalScrapCost: Number(line.normalScrapCost || 0), allocatedWasteCost, allocatedWasteCostPerUnit, wasteTreatment: line.wasteTreatment, date: record.date });
+        actualProductionCostMap.set(itemId, data);
+      });
+    });
+
+    (stockOutRecords || []).forEach((record: any) => {
+      if (!String(record.reason || '').toLowerCase().includes('manufacturing_issue') || !isDateInRange(record.date) || !matchesWarehouse(record.sourceId || record.warehouseId)) return;
+      if (['draft', 'pending', 'cancelled', 'void'].includes(String(record.status || '').toLowerCase())) return;
+      (record.items || []).forEach((line: any) => {
+        const itemId = String(line.itemId || line.id || '');
+        const qty = Number(line.usedQty ?? Math.max(0, Number(line.qty || 0) - Number(line.wasteQty || 0) - Number(line.returnedQty || 0)));
+        if (!itemId || qty <= 0) return;
+        const unitCost = Number(line.cost || itemsMap.get(itemId)?.cost || 0);
+        if (line.productionItemId) {
+          const productId = String(line.productionItemId);
+          actualIssueProductIds.add(productId);
+          actualMaterialCostByProduct.set(productId, (actualMaterialCostByProduct.get(productId) || 0) + qty * unitCost);
+        }
+        const existing = rawMaterialConsumptionMap.get(itemId) || { consumedQty: 0, consumedCost: 0, usedInProducts: [] };
+        existing.consumedQty += qty;
+        existing.consumedCost += qty * unitCost;
+        if (line.productionItemId) {
+          const productName = itemsMap.get(String(line.productionItemId))?.name || String(line.productionItemId);
+          if (!existing.usedInProducts.includes(productName)) existing.usedInProducts.push(productName);
+        }
+        rawMaterialConsumptionMap.set(itemId, existing);
+      });
+    });
 
     // معالجة كل منتج مصنّع واحتساب تكاليف خاماته وأرباحه
     const productsAnalysis = manufacturedItems.map((prod: Item) => {
       const sales = productSalesMap.get(prod.id) || { soldQty: 0, salesRevenue: 0 };
       const waste = wasteMap.get(prod.id) || { wasteQty: 0, wasteCost: 0, details: [] };
+      const actualProduction = actualProductionCostMap.get(prod.id);
+      const actualUnitProductionCost = actualProduction && actualProduction.qty > 0 ? actualProduction.cost / actualProduction.qty : 0;
 
       // تحليل المكونات المستهلكة لإنتاج الكمية المباعة
-      let totalMaterialCostForSold = 0;
+      let totalMaterialCostForSold = actualUnitProductionCost > 0 ? sales.soldQty * actualUnitProductionCost : 0;
       const componentsBreakdown = (prod.components || []).map(comp => {
         const rawItem = itemsMap.get(comp.itemId);
         const unitRequired = Number(comp.quantity || 0);
@@ -302,10 +373,10 @@ export default function ManufacturingFeasibilityReportPage() {
         const rawUnitCost = Number(rawItem?.cost || 0);
         const totalRawCost = totalRawQtyUsed * rawUnitCost;
 
-        totalMaterialCostForSold += totalRawCost;
+        if (!actualUnitProductionCost) totalMaterialCostForSold += totalRawCost;
 
         // تسجيل الاستهلاك في الخريطة الشاملة للخامات
-        if (totalRawQtyUsed > 0) {
+        if (!actualIssueProductIds.has(prod.id) && totalRawQtyUsed > 0) {
           const rawExisting = rawMaterialConsumptionMap.get(comp.itemId) || { consumedQty: 0, consumedCost: 0, usedInProducts: [] };
           rawExisting.consumedQty += totalRawQtyUsed;
           rawExisting.consumedCost += totalRawCost;
@@ -328,8 +399,18 @@ export default function ManufacturingFeasibilityReportPage() {
       });
 
       // صافي ربح التصنيع = الإيراد - تكلفة الخامات المستهلكة - تكلفة إعدام المنتج النهائي
-      const netManufacturingProfit = sales.salesRevenue - totalMaterialCostForSold - waste.wasteCost;
+      const totalWasteCostForProduct = waste.wasteCost + (actualProduction?.wasteCost || 0);
+      const netManufacturingProfit = sales.salesRevenue - totalMaterialCostForSold - totalWasteCostForProduct;
       const marginPercentage = sales.salesRevenue > 0 ? (netManufacturingProfit / sales.salesRevenue) * 100 : 0;
+      const latestBatch = actualProduction?.batches[actualProduction.batches.length - 1];
+      const manufacturingProfitMargin = latestBatch
+        ? (latestBatch.margin ?? (Number(prod.price) > 0 ? (Number(prod.price) - actualUnitProductionCost) / Number(prod.price) * 100 : 0))
+        : 0;
+      const suggestedSalePrice = latestBatch?.salePrice > 0
+        ? latestBatch.salePrice
+        : actualUnitProductionCost > 0 && manufacturingProfitMargin < 100
+          ? actualUnitProductionCost / (1 - manufacturingProfitMargin / 100)
+          : 0;
 
       // تحديد مقياس الجدوى والاستمرارية
       let status: 'profitable' | 'review' | 'loss' = 'profitable';
@@ -337,7 +418,7 @@ export default function ManufacturingFeasibilityReportPage() {
       let statusBadgeClass = 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-400 border-emerald-500/30';
       let recommendation = 'صنف عالي الربحية وهامش ممتاز. يُوصى بزيادة إنتاجه وتطوير تسويقه.';
 
-      if (sales.salesRevenue === 0 && waste.wasteCost > 0) {
+      if (sales.salesRevenue === 0 && totalWasteCostForProduct > 0) {
         status = 'loss';
         statusLabel = 'هدر وتوالف دون مبيعات 🛑';
         statusBadgeClass = 'bg-rose-500/15 text-rose-700 dark:text-rose-400 border-rose-500/30';
@@ -350,7 +431,7 @@ export default function ManufacturingFeasibilityReportPage() {
       } else if (marginPercentage >= 8 && marginPercentage < 22) {
         status = 'review';
         statusLabel = 'يحتاج مراجعة تكاليف ⚠️';
-        statusBadgeClass = 'bg-amber-500/15 text-amber-700 dark:text-amber-400 border-amber-500/30';
+        statusBadgeClass = 'bg-amber-500/15 text-foreground dark:text-foreground border-amber-500/30';
         recommendation = 'هامش الربح ضعيف أو نسبة الهدر مرتفعة. راجع فواتير شراء الخامات وتفاوض على أسعار أقل أو قلل الهوالك.';
       }
 
@@ -362,8 +443,18 @@ export default function ManufacturingFeasibilityReportPage() {
         soldQty: sales.soldQty,
         salesRevenue: sales.salesRevenue,
         materialCost: totalMaterialCostForSold,
-        wasteQty: waste.wasteQty,
-        wasteCost: waste.wasteCost,
+        actualMaterialCost: actualMaterialCostByProduct.get(prod.id) || 0,
+        producedQty: actualProduction?.qty || 0,
+        actualProductionCost: actualProduction?.cost || 0,
+        wasteQty: waste.wasteQty + (actualProduction?.wasteQty || 0),
+        normalScrapQty: actualProduction?.normalScrapQty || 0,
+        abnormalScrapQty: actualProduction?.abnormalScrapQty || 0,
+        wasteCost: totalWasteCostForProduct,
+        allocatedWasteCost: actualProduction?.allocatedWasteCost || 0,
+        allocatedWasteCostPerUnit: actualProduction && actualProduction.qty > 0 ? actualProduction.weightedAllocatedWastePerUnit / actualProduction.qty : 0,
+        manufacturingProfitMargin,
+        suggestedSalePrice,
+        batchNumbers: Array.from(new Set((actualProduction?.batches || []).map((batch: any) => batch.batchNumber))).join('، '),
         netManufacturingProfit,
         marginPercentage,
         status,
@@ -424,7 +515,12 @@ export default function ManufacturingFeasibilityReportPage() {
     const totalPurchasedCost = rawMaterialsSummary.reduce((acc, r) => acc + r.netPurchasedCost, 0);
     const totalSalesRevenue = productsAnalysis.reduce((acc, p) => acc + p.salesRevenue, 0);
     const totalMaterialsConsumedCost = productsAnalysis.reduce((acc, p) => acc + p.materialCost, 0);
-    const totalWasteCost = productsAnalysis.reduce((acc, p) => acc + p.wasteCost, 0) + rawMaterialsSummary.reduce((acc, r) => acc + r.wasteCost, 0);
+    const manufacturingRawWasteExpensed = (stockOutRecords || []).reduce((sum: number, record: any) => {
+      if (!String(record.reason || '').toLowerCase().includes('manufacturing_issue') || !isDateInRange(record.date) || !matchesWarehouse(record.sourceId || record.warehouseId)) return sum;
+      if (['draft', 'pending', 'cancelled', 'void'].includes(String(record.status || '').toLowerCase())) return sum;
+      return sum + (record.items || []).reduce((lineSum: number, line: any) => lineSum + (line.wasteTreatment === 'expense' ? Number(line.wasteQty || 0) * Number(line.cost || 0) : 0), 0);
+    }, 0);
+    const totalWasteCost = productsAnalysis.reduce((acc, p) => acc + p.wasteCost, 0) + Math.max(0, rawMaterialsSummary.reduce((acc, r) => acc + r.wasteCost, 0) - manufacturingRawWasteExpensed);
     const totalNetManufacturingProfit = totalSalesRevenue - totalMaterialsConsumedCost - totalWasteCost;
     const overallMargin = totalSalesRevenue > 0 ? (totalNetManufacturingProfit / totalSalesRevenue) * 100 : 0;
 
@@ -444,7 +540,7 @@ export default function ManufacturingFeasibilityReportPage() {
         lossCount: productsAnalysis.filter(p => p.status === 'loss').length,
       }
     };
-  }, [allItems, itemsMap, salesInvoices, posSales, salesReturns, posReturns, rawMaterialPurchasesMap, wasteMap]);
+  }, [allItems, itemsMap, salesInvoices, posSales, salesReturns, posReturns, stockInRecords, stockOutRecords, rawMaterialPurchasesMap, wasteMap]);
 
   // تطبيق فلاتر البحث والجدوى على قائمة المنتجات المصنعة
   const filteredProducts = useMemo(() => {
@@ -482,7 +578,7 @@ export default function ManufacturingFeasibilityReportPage() {
       {/* 1. Header with Title and Global Action Buttons */}
       <PageHeader 
         title="تقرير جدوى وأرباح التصنيع ومقارنة الخامات بالمنتجات النهائية"
-        description="مقارنة شاملة بين مشتريات المواد الخام والمنتجات المباعة والإعدامات لتحديد أرباح التصنيع وقرار الاستمرارية لكل صنف."
+        description="تحليل تكلفة الإنتاج الفعلية والتشغيلات والهدر وسعر البيع وهامش الربح لكل منتج مصنع."
       >
         <div className="flex items-center gap-2 flex-wrap no-print">
           <Button 
@@ -491,7 +587,7 @@ export default function ManufacturingFeasibilityReportPage() {
             onClick={handlePrint} 
             className="gap-1.5 text-xs font-semibold h-8"
           >
-            <Printer className="h-3.5 w-3.5 text-sky-600" />
+            <Printer className="h-3.5 w-3.5 text-foreground" />
             طباعة التقرير
           </Button>
         </div>
@@ -556,9 +652,9 @@ export default function ManufacturingFeasibilityReportPage() {
           <div className="p-3.5 rounded-xl border bg-card shadow-xs space-y-1">
             <div className="flex items-center justify-between text-muted-foreground text-xs font-medium">
               <span>مشتريات الخامات</span>
-              <ShoppingCart className="h-4 w-4 text-sky-600" />
+              <ShoppingCart className="h-4 w-4 text-foreground" />
             </div>
-            <div className="text-lg font-black font-mono text-sky-700 dark:text-sky-400">
+            <div className="text-lg font-black font-mono text-foreground dark:text-foreground">
               {kpis.totalPurchasedCost.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
               <span className="text-[10px] mr-1 text-muted-foreground font-sans">ج.م</span>
             </div>
@@ -582,9 +678,9 @@ export default function ManufacturingFeasibilityReportPage() {
           <div className="p-3.5 rounded-xl border bg-card shadow-xs space-y-1">
             <div className="flex items-center justify-between text-muted-foreground text-xs font-medium">
               <span>الخامات المستهلكة</span>
-              <Layers className="h-4 w-4 text-amber-600" />
+              <Layers className="h-4 w-4 text-foreground" />
             </div>
-            <div className="text-lg font-black font-mono text-amber-700 dark:text-amber-400">
+            <div className="text-lg font-black font-mono text-foreground dark:text-foreground">
               {kpis.totalMaterialsConsumedCost.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
               <span className="text-[10px] mr-1 text-muted-foreground font-sans">ج.م</span>
             </div>
@@ -621,9 +717,9 @@ export default function ManufacturingFeasibilityReportPage() {
           <div className="p-3.5 rounded-xl border bg-card shadow-xs space-y-1">
             <div className="flex items-center justify-between text-muted-foreground text-xs font-medium">
               <span>متوسط هامش الربح</span>
-              <Scale className="h-4 w-4 text-teal-600" />
+              <Scale className="h-4 w-4 text-foreground" />
             </div>
-            <div className={cn("text-lg font-black font-mono", kpis.overallMargin >= 20 ? "text-emerald-600" : kpis.overallMargin >= 8 ? "text-amber-600" : "text-rose-600")}>
+            <div className={cn("text-lg font-black font-mono", kpis.overallMargin >= 20 ? "text-emerald-600" : kpis.overallMargin >= 8 ? "text-foreground" : "text-rose-600")}>
               %{kpis.overallMargin.toFixed(1)}
             </div>
             <p className="text-[10px] text-muted-foreground">نسبة العائد الصناعي الصافي</p>
@@ -639,7 +735,7 @@ export default function ManufacturingFeasibilityReportPage() {
                 تحليل أرباح وجدوى المنتجات المصنعة ({filteredProducts.length})
               </TabsTrigger>
               <TabsTrigger value="materials" className="gap-2 text-xs font-bold">
-                <Package className="h-4 w-4 text-sky-600" />
+                <Package className="h-4 w-4 text-foreground" />
                 مقارنة المواد الخام (المشترى vs المستهلك vs التالف) ({filteredRawMaterials.length})
               </TabsTrigger>
             </TabsList>
@@ -667,7 +763,7 @@ export default function ManufacturingFeasibilityReportPage() {
                 size="sm"
                 variant={filters.feasibilityFilter === 'review' ? 'default' : 'outline'}
                 onClick={() => handleFilterChange('feasibilityFilter', 'review')}
-                className="h-7 text-[11px] px-2 text-amber-700 dark:text-amber-400 border-amber-500/30"
+                className="h-7 text-[11px] px-2 text-foreground dark:text-foreground border-amber-500/30"
               >
                 مراجعة تكلفة ({kpis.reviewCount})
               </Button>
@@ -692,7 +788,7 @@ export default function ManufacturingFeasibilityReportPage() {
                     جدول ربحية المنتجات المصنعة ومقياس الاستمرار في الإنتاج
                   </CardTitle>
                   <CardDescription className="text-xs">
-                    مقارنة إيرادات المبيعات بتكلفة الخامات المستهلكة والتوالف المسجلة لبيان هامش الربح الفعلي وقرار الجدوى.
+                    تُستخدم تكاليف استلامات الإنتاج وأرقام تشغيلاتها عند توفرها، مع الرجوع لتكلفة المكونات للأصناف التي لا تملك تشغيلات مسجلة.
                   </CardDescription>
                 </div>
               </CardHeader>
@@ -716,10 +812,14 @@ export default function ManufacturingFeasibilityReportPage() {
                           <TableHead className="w-[50px] text-center">#</TableHead>
                           <TableHead className="min-w-[180px]">اسم الصنف المصنّع</TableHead>
                           <TableHead className="text-center font-mono">الكمية المباعة</TableHead>
+                          <TableHead className="text-center font-mono">الإنتاج الفعلي</TableHead>
                           <TableHead className="text-center font-mono">إجمالي الإيرادات</TableHead>
-                          <TableHead className="text-center font-mono">تكلفة الخامات المستهلكة</TableHead>
+                          <TableHead className="text-center font-mono">تكلفة التصنيع المباع</TableHead>
+                          <TableHead className="text-center font-mono">الخامات المستهلكة فعليًا</TableHead>
+                          <TableHead className="text-center font-mono">إجمالي تكلفة الإنتاج</TableHead>
                           <TableHead className="text-center font-mono">الإعدامات والتوالف</TableHead>
                           <TableHead className="text-center font-mono">صافي ربح التصنيع</TableHead>
+                          <TableHead className="text-center font-mono">هامش التصنيع المستهدف</TableHead>
                           <TableHead className="text-center font-mono">هامش الربح</TableHead>
                           <TableHead className="text-center min-w-[150px]">مقياس الاستمرارية والقرار</TableHead>
                           <TableHead className="text-center no-print w-[90px]">المكونات</TableHead>
@@ -731,17 +831,24 @@ export default function ManufacturingFeasibilityReportPage() {
                             <TableCell className="text-center font-mono text-muted-foreground">{idx + 1}</TableCell>
                             <TableCell>
                               <div className="font-bold text-foreground">{p.name}</div>
-                              <div className="text-[11px] font-mono text-muted-foreground">كود: {p.code} | سعر البيع: {p.price.toFixed(2)} ج.م</div>
+                              <div className="text-[11px] font-mono text-muted-foreground">كود: {p.code} | سعر البيع الحالي: {p.price.toFixed(2)} ج.م</div>
+                              {p.suggestedSalePrice > 0 && <div className="text-[11px] font-mono text-emerald-700">السعر المحسوب: {p.suggestedSalePrice.toFixed(2)} ج.م</div>}
+                              {p.allocatedWasteCost > 0 && <div className="text-[10px] font-mono text-foreground">الهدر الموزع: {p.allocatedWasteCost.toFixed(2)} ج.م | متوسط القطعة: {p.allocatedWasteCostPerUnit.toFixed(4)} ج.م</div>}
+                              <div className="text-[10px] font-mono text-primary">التشغيلات: {p.batchNumbers || 'لا توجد تشغيلات بالفترة'}</div>
+                              {(p.normalScrapQty > 0 || p.abnormalScrapQty > 0) && <div className="text-[10px] font-mono text-muted-foreground">هالك طبيعي: {p.normalScrapQty} | غير طبيعي: {p.abnormalScrapQty}</div>}
                             </TableCell>
                             <TableCell className="text-center font-mono font-bold">
                               {p.soldQty.toLocaleString()}
                             </TableCell>
+                            <TableCell className="text-center font-mono font-bold text-foreground">{p.producedQty.toLocaleString()}</TableCell>
                             <TableCell className="text-center font-mono font-bold text-foreground">
                               {p.salesRevenue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                             </TableCell>
-                            <TableCell className="text-center font-mono text-amber-700 dark:text-amber-400">
+                            <TableCell className="text-center font-mono text-foreground dark:text-foreground">
                               {p.materialCost.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                             </TableCell>
+                            <TableCell className="text-center font-mono text-foreground">{p.actualMaterialCost.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</TableCell>
+                            <TableCell className="text-center font-mono">{p.actualProductionCost.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</TableCell>
                             <TableCell className="text-center font-mono">
                               {p.wasteCost > 0 ? (
                                 <span className="text-rose-600 font-bold">
@@ -759,9 +866,10 @@ export default function ManufacturingFeasibilityReportPage() {
                                 {p.netManufacturingProfit.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                               </span>
                             </TableCell>
+                            <TableCell className="text-center font-mono">{p.manufacturingProfitMargin > 0 ? `%${p.manufacturingProfitMargin.toFixed(1)}` : '—'}</TableCell>
                             <TableCell className="text-center font-mono font-bold">
                               <span className={cn(
-                                p.marginPercentage >= 25 ? "text-emerald-600" : p.marginPercentage >= 8 ? "text-amber-600" : "text-rose-600"
+                                p.marginPercentage >= 25 ? "text-emerald-600" : p.marginPercentage >= 8 ? "text-foreground" : "text-rose-600"
                               )}>
                                 %{p.marginPercentage.toFixed(1)}
                               </span>
@@ -780,7 +888,7 @@ export default function ManufacturingFeasibilityReportPage() {
                               <Button
                                 size="sm"
                                 variant="ghost"
-                                className="h-7 px-2 text-xs gap-1 text-sky-700 dark:text-sky-300 hover:bg-sky-500/10"
+                                className="h-7 px-2 text-xs gap-1 text-foreground dark:text-foreground hover:bg-sky-500/10"
                                 onClick={() => setSelectedProductForModal(p)}
                                 title="عرض المواد الخام المكونة لهذا المنتج"
                               >
@@ -797,11 +905,20 @@ export default function ManufacturingFeasibilityReportPage() {
                           <TableCell className="text-center font-mono">
                             {filteredProducts.reduce((acc, p) => acc + p.soldQty, 0).toLocaleString()}
                           </TableCell>
+                          <TableCell className="text-center font-mono text-foreground">
+                            {filteredProducts.reduce((acc, p) => acc + p.producedQty, 0).toLocaleString()}
+                          </TableCell>
                           <TableCell className="text-center font-mono text-emerald-700 dark:text-emerald-400">
                             {filteredProducts.reduce((acc, p) => acc + p.salesRevenue, 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                           </TableCell>
-                          <TableCell className="text-center font-mono text-amber-700 dark:text-amber-400">
+                          <TableCell className="text-center font-mono text-foreground dark:text-foreground">
                             {filteredProducts.reduce((acc, p) => acc + p.materialCost, 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                          </TableCell>
+                          <TableCell className="text-center font-mono text-foreground">
+                            {filteredProducts.reduce((acc, p) => acc + p.actualMaterialCost, 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                          </TableCell>
+                          <TableCell className="text-center font-mono">
+                            {filteredProducts.reduce((acc, p) => acc + p.actualProductionCost, 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                           </TableCell>
                           <TableCell className="text-center font-mono text-rose-600">
                             {filteredProducts.reduce((acc, p) => acc + p.wasteCost, 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
@@ -809,7 +926,7 @@ export default function ManufacturingFeasibilityReportPage() {
                           <TableCell className="text-center font-mono text-emerald-700 dark:text-emerald-400">
                             {filteredProducts.reduce((acc, p) => acc + p.netManufacturingProfit, 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                           </TableCell>
-                          <TableCell className="text-center font-mono font-bold" colSpan={3}>
+                          <TableCell className="text-center font-mono font-bold" colSpan={4}>
                             متوسط الهامش: %{kpis.overallMargin.toFixed(1)}
                           </TableCell>
                         </TableRow>
@@ -826,7 +943,7 @@ export default function ManufacturingFeasibilityReportPage() {
             <Card className="border shadow-xs">
               <CardHeader className="py-3 px-4">
                 <CardTitle className="text-base font-bold flex items-center gap-2">
-                  <Package className="h-5 w-5 text-sky-600" />
+                  <Package className="h-5 w-5 text-foreground" />
                   مقارنة حركة المواد الخام: المشتريات مقابل الاستهلاك الفعلي والتوالف
                 </CardTitle>
                 <CardDescription className="text-xs">
@@ -872,10 +989,10 @@ export default function ManufacturingFeasibilityReportPage() {
                             </TableCell>
                             
                             {/* Purchases */}
-                            <TableCell className="text-center font-mono font-bold bg-sky-500/5 text-sky-800 dark:text-sky-300">
+                            <TableCell className="text-center font-mono font-bold bg-sky-500/5 text-foreground dark:text-foreground">
                               {r.netPurchasedQty.toFixed(2)}
                             </TableCell>
-                            <TableCell className="text-center font-mono font-bold bg-sky-500/5 text-sky-800 dark:text-sky-300">
+                            <TableCell className="text-center font-mono font-bold bg-sky-500/5 text-foreground dark:text-foreground">
                               {r.netPurchasedCost.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                             </TableCell>
 
@@ -907,7 +1024,7 @@ export default function ManufacturingFeasibilityReportPage() {
                             <TableCell className="text-center font-mono font-bold">
                               <span className={cn(
                                 "px-2 py-0.5 rounded",
-                                r.varianceQty >= 0 ? "bg-slate-500/10 text-foreground" : "bg-amber-500/15 text-amber-700 dark:text-amber-400"
+                                r.varianceQty >= 0 ? "bg-slate-500/10 text-foreground" : "bg-amber-500/15 text-foreground dark:text-foreground"
                               )}>
                                 {r.varianceQty.toFixed(2)} {r.unit}
                               </span>
@@ -934,7 +1051,7 @@ export default function ManufacturingFeasibilityReportPage() {
                         <TableRow>
                           <TableCell colSpan={2} className="text-right">الإجمالي العام لحركة المواد الخام</TableCell>
                           <TableCell className="text-center font-mono">-</TableCell>
-                          <TableCell className="text-center font-mono text-sky-800 dark:text-sky-300">
+                          <TableCell className="text-center font-mono text-foreground dark:text-foreground">
                             {filteredRawMaterials.reduce((acc, r) => acc + r.netPurchasedCost, 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                           </TableCell>
                           <TableCell className="text-center font-mono">-</TableCell>
@@ -982,7 +1099,7 @@ export default function ManufacturingFeasibilityReportPage() {
               </div>
               <div>
                 <span className="text-muted-foreground block text-[10px]">تكلفة خاماته المستهلكة:</span>
-                <span className="font-bold text-amber-600 text-sm">{selectedProductForModal?.materialCost?.toFixed(2)} ج.م</span>
+                <span className="font-bold text-foreground text-sm">{selectedProductForModal?.materialCost?.toFixed(2)} ج.م</span>
               </div>
             </div>
 

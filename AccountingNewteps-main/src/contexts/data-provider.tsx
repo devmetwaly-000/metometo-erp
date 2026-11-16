@@ -127,6 +127,12 @@ interface DataContextType {
 
     loading: boolean;
     isOnline: boolean;
+    databaseSetupRequired: boolean;
+    databaseName: string;
+    createLocalDatabase: () => Promise<void>;
+    retryDatabaseConnection: () => Promise<boolean>;
+    databaseSetupError: string | null;
+    isCreatingLocalDatabase: boolean;
     syncQueueCount: number;
     unreconciledDeliveryCount: number; 
     processSyncQueue: () => Promise<void>;
@@ -144,8 +150,13 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     const [allData, setAllData] = useState<any>({});
     const [isOnline, setIsOnline] = useState(true);
     const [isLoading, setIsLoading] = useState(true);
+    const [databaseSetupRequired, setDatabaseSetupRequired] = useState(false);
+    const [databaseName, setDatabaseName] = useState('MultiBranchPOS_DB');
+    const [databaseSetupError, setDatabaseSetupError] = useState<string | null>(null);
+    const [isCreatingLocalDatabase, setIsCreatingLocalDatabase] = useState(false);
 
-    const refreshDataFromSqlServer = useCallback(async () => {
+    const refreshDataFromSqlServer = useCallback(async (): Promise<boolean> => {
+        let connected = false;
         try {
             const res = await fetch('/api/db/sync', { cache: 'no-store' });
             if (res.ok) {
@@ -153,6 +164,20 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
                 if (json.success && json.data) {
                     setAllData(json.data);
                     await localforage.setItem(CACHE_KEY, json.data);
+                    setDatabaseSetupRequired(false);
+                    setDatabaseSetupError(null);
+                    setIsOnline(true);
+                    connected = true;
+                }
+            } else {
+                const json = await res.json().catch(() => null);
+                if (json?.code === 'LOCAL_DATABASE_MISSING') {
+                    setDatabaseName(json.database || 'MultiBranchPOS_DB');
+                    setDatabaseSetupRequired(true);
+                    setDatabaseSetupError(null);
+                    setIsOnline(false);
+                } else {
+                    throw new Error(json?.error || `تعذر الاتصال بقاعدة البيانات (${res.status})`);
                 }
             }
         } catch (error) {
@@ -164,14 +189,45 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         } finally {
             setIsLoading(false);
         }
+        return connected;
     }, []);
+
+    const createLocalDatabase = useCallback(async () => {
+        setIsCreatingLocalDatabase(true);
+        setDatabaseSetupError(null);
+        try {
+            const res = await fetch('/api/db/init', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({})
+            });
+            const result = await res.json().catch(() => null);
+            if (!res.ok || !result?.success) {
+                throw new Error(result?.error || result?.message || 'تعذر إنشاء قاعدة البيانات المحلية.');
+            }
+            const connected = await refreshDataFromSqlServer();
+            if (!connected) {
+                throw new Error('تم إنشاء القاعدة، لكن تعذر الاتصال بها. تحقق من خدمة SQL Server ثم أعد المحاولة.');
+            }
+        } catch (error: any) {
+            setDatabaseSetupError(error?.message || 'حدث خطأ أثناء إنشاء قاعدة البيانات المحلية.');
+            throw error;
+        } finally {
+            setIsCreatingLocalDatabase(false);
+        }
+    }, [refreshDataFromSqlServer]);
 
     useEffect(() => {
         let isMounted = true;
         const init = async () => {
             // First load from local storage cache for instant UI response
             try {
-                const cached = await localforage.getItem<any>(CACHE_KEY);
+                // IndexedDB/localforage can stall on a damaged or locked browser cache.
+                // Never let that prevent the live SQL sync from starting.
+                const cached = await Promise.race([
+                    localforage.getItem<any>(CACHE_KEY),
+                    new Promise<null>(resolve => setTimeout(() => resolve(null), 750))
+                ]);
                 if (isMounted && cached && Object.keys(cached).length > 0) {
                     setAllData(cached);
                     setIsLoading(false);
@@ -245,12 +301,20 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
                     const filtered = slice.filter((item: any) => item.id !== (payload.id || payload));
                     return { ...prev, [path]: filtered };
                 }
-            } else if (slice && typeof slice === 'object') {
+            } else if (path === 'settings' || (slice && typeof slice === 'object')) {
                 if (action === 'update' || action === 'add') {
-                    return {
+                    const targetKey = payload?.id || 'main';
+                    const dataObj = payload?.data || payload;
+                    const prevSettings = prev?.settings || {};
+                    const updatedTarget = { ...(prevSettings[targetKey] || {}), ...dataObj };
+                    const nextSettings = { ...prevSettings, [targetKey]: updatedTarget };
+                    const nextState = {
                         ...prev,
-                        [path]: { ...slice, ...(payload.id ? { [payload.id]: payload.data || payload } : payload) }
+                        settings: nextSettings,
+                        main: targetKey === 'main' ? { ...(prev.main || {}), ...dataObj } : prev.main
                     };
+                    try { localforage.setItem(CACHE_KEY, nextState); } catch {}
+                    return nextState;
                 }
             }
             return prev;
@@ -269,16 +333,29 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
             });
             if (res.ok) {
                 const json = await res.json();
-                if (json.success && json.id) {
-                    return json.id;
+                if (json.success) {
+                    if (path === 'settings') {
+                        setTimeout(() => refreshDataFromSqlServer?.(), 200);
+                    }
+                    return json.id || (action === 'add' ? generatedId : undefined);
                 }
+                const message = json.error || json.message || `فشل حفظ ${path}`;
+                console.error(`dbAction failed for ${path}/${action}:`, message);
+                setTimeout(() => refreshDataFromSqlServer?.(), 1000);
+                throw new Error(message);
+            } else {
+                const responseError = await res.json().catch(() => null);
+                const message = responseError?.error || responseError?.message || `تعذر حفظ البيانات (${res.status})`;
+                console.error(`dbAction HTTP error ${res.status} for ${path}/${action}:`, message);
+                setTimeout(() => refreshDataFromSqlServer?.(), 1000);
+                throw new Error(message);
             }
         } catch (err) {
-            console.error(`dbAction error for path ${path}:`, err);
+            console.error(`dbAction network error for path ${path}:`, err);
+            setTimeout(() => refreshDataFromSqlServer?.(), 1000);
+            throw err;
         }
-
-        return generatedId;
-    }, []);
+    }, [refreshDataFromSqlServer]);
 
     // Master Data Slices
     const allItems = useMemo(() => allData?.items || [], [allData?.items]);
@@ -391,9 +468,11 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
             }
         });
 
-        // 2. Subtract from stockOutRecords if sectionId is specified on items or sourceId
+        // 2. Subtract from stockOutRecords if sectionId is specified on items or sourceId (Only when approved/completed/dispatched)
         stockOutRecords.forEach((rec: any) => {
-            if (rec?.status === 'cancelled') return;
+            const st = rec?.status || rec?.Status;
+            const isDeducted = !st || st === 'approved' || st === 'completed' || st === 'fulfilled';
+            if (!isDeducted) return;
             const whId = rec.warehouseId || rec.sourceId;
             if (Array.isArray(rec.items)) {
                 rec.items.forEach((itm: any) => {
@@ -509,6 +588,12 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         dbAction, getNextId,
         loading: isLoading,
         isOnline,
+        databaseSetupRequired,
+        databaseName,
+        createLocalDatabase,
+        retryDatabaseConnection: refreshDataFromSqlServer,
+        databaseSetupError,
+        isCreatingLocalDatabase,
         syncQueueCount: 0,
         unreconciledDeliveryCount,
         processSyncQueue,

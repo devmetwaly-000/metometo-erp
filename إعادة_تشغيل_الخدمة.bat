@@ -1,22 +1,26 @@
-@echo off
-chcp 65001 > nul
-title إعادة تشغيل خدمة منظومة المحاسبة
-cls
-echo [1/3] إيقاف الخدمة الحالية...
-cd /d "%~dp0\AccountingNewteps-main"
+﻿@echo off
+chcp 65001 >nul
+title إعادة تشغيل منظومة المحاسبة
+cd /d "%~dp0AccountingNewteps-main"
+
+echo إيقاف النسخة الحالية...
 node scripts\service\stop_service.js
+if errorlevel 1 (
+    echo تعذر إيقاف الخدمة الحالية.
+    pause
+    exit /b 1
+)
 
-echo.
-echo [2/3] بدء تشغيل الخدمة مجدداً...
-wscript "%~dp0\AccountingNewteps-main\scripts\service\start_service_silent.vbs"
+echo تشغيل البرنامج...
+wscript.exe "%~dp0AccountingNewteps-main\scripts\service\start_service_silent.vbs"
+echo في انتظار جاهزية البرنامج...
+powershell -NoProfile -Command "$deadline=(Get-Date).AddSeconds(60); while ((Get-Date) -lt $deadline) { $client=New-Object Net.Sockets.TcpClient; try { $client.Connect('127.0.0.1',9002); $client.Close(); exit 0 } catch { $client.Close(); Start-Sleep -Milliseconds 500 } }; exit 1"
+if errorlevel 1 (
+    echo تعذر الاتصال بالبرنامج خلال دقيقة.
+    pause
+    exit /b 1
+)
 
-echo.
-echo [3/3] جاري فتح المنظومة في المتصفح...
-timeout /t 3 /nobreak > nul
-start http://localhost:9002
-
-echo.
-echo [✓] تمت إعادة التشغيل بنجاح!
-timeout /t 3 > nul
-exit
-
+start "" "http://localhost:9002"
+echo تمت إعادة تشغيل البرنامج بنجاح.
+pause

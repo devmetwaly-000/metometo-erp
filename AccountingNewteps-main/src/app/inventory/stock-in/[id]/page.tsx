@@ -147,7 +147,7 @@ export default function StockInDetailsPage() {
               <CardTitle>تفاصيل إذن دخول مخزني</CardTitle>
               {isMainWarehouse && (
                 record.status === 'pending_putaway' || !hasAllocations ? (
-                  <Badge variant="outline" className="border-amber-500 text-amber-600 gap-1 px-3 py-1">
+                  <Badge variant="outline" className="border-amber-500 text-foreground gap-1 px-3 py-1">
                     <Clock className="h-3.5 w-3.5" />
                     بانتظار التسكين في الحاويات
                   </Badge>
@@ -235,7 +235,7 @@ export default function StockInDetailsPage() {
                   </div>
                 ) : (
                   <div className="p-4 border border-dashed border-amber-500/50 rounded-lg bg-amber-500/10 flex items-center justify-between">
-                    <span className="text-sm font-medium text-amber-700 dark:text-amber-300">
+                    <span className="text-sm font-medium text-foreground dark:text-foreground">
                       لم يتم توزيع وتسكين أصناف هذا الإذن على الحاويات الداخلية حتى الآن.
                     </span>
                     <Button

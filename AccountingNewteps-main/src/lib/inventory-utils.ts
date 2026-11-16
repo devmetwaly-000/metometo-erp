@@ -63,9 +63,16 @@ export const calculateStockForItemInWarehouse = (
 
     // --- INCOMING (+) ---
     
-    // 1. Stock In (Purchases, Openings, Receipts)
+    // 1. Stock In (Purchases, Openings, Receipts) - فقط المستلمة فعلياً (approved/completed/received)
+    // استبعاد حالة in_transit (بالطريق) لأنها لم تصل للمستودع بعد
     (stockInRecords || [])
-        .filter((si: any) => (si.warehouseId === warehouseId || si.WarehouseId === warehouseId) && filterTransactions(si))
+        .filter((si: any) => {
+            const st = (si.status || si.Status || '').toLowerCase();
+            // نقبل: بدون status، approved، completed، received، done
+            // نرفض: in_transit، pending، draft
+            if (st === 'in_transit' || st === 'pending' || st === 'draft') return false;
+            return (si.warehouseId === warehouseId || si.WarehouseId === warehouseId) && filterTransactions(si);
+        })
         .forEach((si: any) => {
             (si.items || []).forEach((i: any) => {
                 if ((i.id || i.itemId || i.ItemId) === itemId) stock += getBaseQty(i);
@@ -145,9 +152,13 @@ export const calculateStockForItemInWarehouse = (
             });
         });
 
-    // 9. Manual Stock Out (Damaged, internal use, etc.)
+    // 9. Manual Stock Out (Damaged, internal use, etc.) - Only deduct approved/completed/dispatched stock-outs
     (stockOutRecords || [])
-        .filter((so: any) => (so.warehouseId === warehouseId || so.WarehouseId === warehouseId || so.sourceId === warehouseId || so.SourceId === warehouseId) && filterTransactions(so))
+        .filter((so: any) => {
+            const st = so.status || so.Status;
+            const isDeducted = !st || st === 'approved' || st === 'completed' || st === 'fulfilled';
+            return isDeducted && (so.warehouseId === warehouseId || so.WarehouseId === warehouseId || so.sourceId === warehouseId || so.SourceId === warehouseId) && filterTransactions(so);
+        })
         .forEach((so: any) => {
             (so.items || []).forEach((i: any) => {
                 if ((i.id || i.itemId || i.ItemId) === itemId) stock -= getBaseQty(i);

@@ -9,7 +9,8 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Textarea } from "@/components/ui/textarea";
-import { PlusCircle, Trash2, Save, Loader2 } from "lucide-react";
+import { PlusCircle, Trash2, Save, Loader2, Boxes, Clock, ArrowLeft } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
 import React, { useState, useMemo, useEffect, useCallback } from "react";
 import { useData } from "@/contexts/data-provider";
 import { useToast } from "@/hooks/use-toast";
@@ -112,16 +113,18 @@ export default function NewStockOutPage() {
 
     const authorizedBranches = useMemo(() => {
         const b = warehouses.filter((w: any) => !w.isMain && !w.isRepWarehouse && !w.repId);
-        if (user?.warehouseIds?.includes('all')) return b;
+        if (user?.role === 'مسؤول' || user?.warehouseIds?.includes('all')) return b;
         return b.filter((w: any) => user?.warehouseIds?.includes(w.id));
     }, [warehouses, user]);
 
-    // Effect to auto-select branch if user is assigned to only one
-    useEffect(() => {
-        if (authorizedBranches.length === 1) {
-            setBranchFilter(authorizedBranches[0].id);
-        }
-    }, [authorizedBranches]);
+    const selectedSourceWarehouse = useMemo(() => {
+        return [...warehouses, ...inventoryZones].find((w: any) => w.id === source);
+    }, [warehouses, inventoryZones, source]);
+
+    const isLogisticsWarehouse = useMemo(() => {
+        if (!selectedSourceWarehouse) return false;
+        return !!(selectedSourceWarehouse.isMain || selectedSourceWarehouse.warehouseType === 'warehouse');
+    }, [selectedSourceWarehouse]);
     
      const pendingRequisitionsForSource = useMemo(() => {
         if (!source || reason !== 'requisition' || !requisitions) return [];
@@ -173,7 +176,11 @@ export default function NewStockOutPage() {
         // OUTGOING
         (salesInvoices || []).filter((s:any) => s.warehouseId === warehouseId && s.status === 'approved' && filterTransactions(s)).forEach((s: any) => s.items.forEach((i: any) => { if (i.id === itemId) stock -= i.qty; }));
         (posSales || []).filter((s: any) => s.warehouseId === warehouseId && filterTransactions(s)).forEach((s: any) => s.items.forEach((i: any) => { if (i.id === itemId) stock -= i.qty; }));
-        (stockOutRecords || []).filter((so:any) => so.sourceId === warehouseId && filterTransactions(so)).forEach((so: any) => so.items.forEach((i:any) => { if (i.id === itemId) stock -= i.qty; }));
+        (stockOutRecords || []).filter((so:any) => {
+            const st = so.status || so.Status;
+            const isDeducted = !st || st === 'approved' || st === 'completed' || st === 'fulfilled';
+            return isDeducted && (so.sourceId === warehouseId || so.warehouseId === warehouseId) && filterTransactions(so);
+        }).forEach((so: any) => so.items.forEach((i:any) => { if ((i.id || i.itemId) === itemId) stock -= (i.qty || i.quantity || 0); }));
         (stockTransferRecords || []).filter((t:any) => t.fromSourceId === warehouseId && filterTransactions(t)).forEach((t: any) => t.items.forEach((i: any) => { if (i.id === itemId) stock -= i.qty; }));
         (stockAdjustmentRecords || []).filter((adj:any) => adj.warehouseId === warehouseId && filterTransactions(adj)).forEach((adj: any) => adj.items.forEach((i: any) => { if (i.itemId === itemId && i.difference < 0) stock += i.difference; }));
         (purchaseReturns || []).filter((pr:any) => pr.warehouseId === warehouseId && filterTransactions(pr)).forEach((pr: any) => pr.items.forEach((i: any) => { if (i.id === itemId) stock -= i.qty; }));
@@ -360,12 +367,19 @@ export default function NewStockOutPage() {
             now.getSeconds()
         );
 
+        const reqForSave = requisitions.find((r: any) => r.id === selectedRequisitionId);
+        const initialStatus = isLogisticsWarehouse ? 'pending_preparation' : 'approved';
+
         const record:any = {
+            warehouseId: source,
             sourceId: source,
             date: finalDate.toISOString(),
             items: itemsToSave,
             reason: reason === 'requisition' ? 'صرف لفرع آخر' : reason,
             requisitionId: reason === 'requisition' ? selectedRequisitionId : null,
+            requisitionNumber: reqForSave?.requisitionNumber || null,
+            toWarehouseId: reqForSave?.fromWarehouseId || null,
+            status: initialStatus,
             notes,
             receiptNumber: `إذ-خ-${nextId}`,
             createdById: user?.id,
@@ -376,13 +390,29 @@ export default function NewStockOutPage() {
         try {
             await dbAction('stockOutRecords', 'add', record);
             
-            // If it was based on a requisition, update the requisition status
-            if (reason === 'requisition' && selectedRequisitionId) {
-                await dbAction('requisitions', 'update', {id: selectedRequisitionId, data: {status: 'fulfilled'}});
-            }
+            if (isLogisticsWarehouse) {
+                // Keep requisition in preparation stage until dispatch is finalized
+                if (reason === 'requisition' && selectedRequisitionId) {
+                    await dbAction('requisitions', 'update', {
+                        id: selectedRequisitionId,
+                        data: { status: 'preparing', notes: `${reqForSave?.notes ? reqForSave.notes + ' | ' : ''}مرتبط بإذن صرف تحت التحضير رقم ${record.receiptNumber}` }
+                    });
+                }
 
-            toast({ title: "تم بنجاح", description: `تم تأكيد صرف المخزون بنجاح برقم إيصال: ${record.receiptNumber}`});
-            router.push('/inventory/movements');
+                toast({
+                    title: "تم تحويل إذن الصرف لمرحلة تحضير الطلبات 📦",
+                    description: `إذن الصرف رقم (${record.receiptNumber}) بحالة "بانتظار التحضير" ولن يُخصم الرصيد إلا بعد إتمام التحضير واعتماد الصرف النهائي.`
+                });
+                router.push('/inventory/requisitions/processing');
+            } else {
+                // Direct stock-out for non-logistics branch warehouses
+                if (reason === 'requisition' && selectedRequisitionId) {
+                    await dbAction('requisitions', 'update', {id: selectedRequisitionId, data: {status: 'fulfilled'}});
+                }
+
+                toast({ title: "تم بنجاح", description: `تم تأكيد صرف المخزون وخصم الرصيد بنجاح برقم إيصال: ${record.receiptNumber}`});
+                router.push('/inventory/movements');
+            }
         } catch(error) {
             toast({ variant: "destructive", title: "حدث خطأ", description: "فشل في حفظ إيصال الصرف. يرجى المحاولة مرة أخرى."});
             console.error("Failed to save stock out record:", error);
@@ -394,21 +424,25 @@ export default function NewStockOutPage() {
     const warehouseOptions = useMemo(() => {
         const combined = [...warehouses, ...inventoryZones].filter((w: any) => !w.isRepWarehouse);
         
-        // 1. Filter by User Authorized Branches first
+        // 1. Filter by User Authorized Branches first (always allow main/logistics warehouses or admin access)
         let filtered = combined;
-        if (!user?.warehouseIds?.includes('all')) {
-            filtered = combined.filter((w: any) => user?.warehouseIds?.includes(w.id));
+        if (user?.role !== 'مسؤول' && !user?.warehouseIds?.includes('all')) {
+            filtered = combined.filter((w: any) => user?.warehouseIds?.includes(w.id) || w.isMain || w.warehouseType === 'warehouse');
         }
 
-        // 2. Filter by Branch Filter if selected
+        // 2. Filter by Branch Filter if selected (keep main/logistics warehouses accessible when 'all' is selected)
         if (branchFilter !== 'all') {
             filtered = filtered.filter((w: any) => {
                 if (w.id === branchFilter) return true;
-                return (w as any).branchId === branchFilter;
+                if ((w as any).branchId === branchFilter) return true;
+                return false;
             });
         }
 
-        return filtered.map((w: any) => ({ value: w.id, label: w.name }));
+        return filtered.map((w: any) => ({
+            value: w.id,
+            label: (w.isMain || w.warehouseType === 'warehouse') ? `${w.name} (مخزن لوجستي رئيسي)` : w.name
+        }));
     }, [warehouses, inventoryZones, user, branchFilter]);
 
     const branchOptions = useMemo(() => {
@@ -443,7 +477,6 @@ export default function NewStockOutPage() {
                                 value={branchFilter}
                                 onValueChange={(v) => {setBranchFilter(v); setSource(''); setReason(''); setSelectedRequisitionId(''); setItems([])}}
                                 placeholder="فلترة حسب الفرع..."
-                                disabled={authorizedBranches.length === 1}
                             />
                         </div>
                         <div className="space-y-2">
@@ -478,6 +511,29 @@ export default function NewStockOutPage() {
                             <Input type="date" id="date" value={date} onChange={e => setDate(e.target.value)} />
                         </div>
                     </div>
+
+                    {isLogisticsWarehouse && (
+                        <div className="rounded-xl border border-amber-500/40 bg-amber-500/10 p-4 flex flex-col md:flex-row md:items-center justify-between gap-3">
+                            <div className="flex items-start gap-3">
+                                <div className="p-2 rounded-lg bg-amber-500/20 text-foreground dark:text-foreground mt-0.5">
+                                    <Boxes className="h-5 w-5" />
+                                </div>
+                                <div className="space-y-1">
+                                    <div className="flex items-center gap-2 flex-wrap">
+                                        <span className="font-bold text-foreground dark:text-foreground text-sm">
+                                            مسار الصرف من مخزن لوجستي ({selectedSourceWarehouse?.name})
+                                        </span>
+                                        <Badge variant="outline" className="border-amber-500/50 text-foreground dark:text-foreground bg-amber-500/10 text-xs">
+                                            لا يُخصم الرصيد فوراً
+                                        </Badge>
+                                    </div>
+                                    <p className="text-xs text-muted-foreground leading-relaxed">
+                                        عند حفظ إذن الصرف من المخزن اللوجستي، سيمر الإذن بمراحل <strong>(1. بانتظار التحضير ⬅ 2. جاري التحضير وتحديد الحاويات ⬅ 3. اعتماد الصرف النهائي)</strong> في شاشة <strong>تحضير وصرف الطلبات</strong>، ولن يتغير رصيد المخزن الفعلي إلا بعد إتمام مرحلة الصرف النهائي.
+                                    </p>
+                                </div>
+                            </div>
+                        </div>
+                    )}
 
                     {reason === 'requisition' && (
                         <div className="space-y-2 pt-4 border-t">
@@ -570,9 +626,9 @@ export default function NewStockOutPage() {
             )}
           </CardContent>
           <CardFooter className="flex justify-end no-print">
-            <Button size="lg" disabled={loading || isSaving} onClick={handleConfirm}>
-                 {isSaving ? <Loader2 className="ml-2 h-4 w-4 animate-spin" /> : <Save className="ml-2 h-4 w-4" />}
-                تأكيد الصرف
+            <Button size="lg" disabled={loading || isSaving} onClick={handleConfirm} className={isLogisticsWarehouse ? "bg-amber-600 hover:bg-amber-700 text-white" : ""}>
+                 {isSaving ? <Loader2 className="ml-2 h-4 w-4 animate-spin" /> : isLogisticsWarehouse ? <Clock className="ml-2 h-4 w-4" /> : <Save className="ml-2 h-4 w-4" />}
+                 {isLogisticsWarehouse ? "إرسال لمرحلة التحضير والصرف" : "تأكيد الصرف الفوري"}
             </Button>
           </CardFooter>
         </Card>

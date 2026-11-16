@@ -9,7 +9,7 @@ import {
     Warehouse, FileX, Undo2, Users, HandCoins, Building2, ShoppingBag, Coins, 
     TrendingDown, LayoutGrid, FileClock, Percent, Bike, UserRound, FileUp, FileDown, 
     History, AlertTriangle, FileText, Component as FileCog, ShoppingCart, ArrowRightLeft, 
-    Scale, Flame, DollarSign, Receipt, CreditCard, Users2, Boxes
+    Scale, Flame, DollarSign, Receipt, CreditCard, Users2, Boxes, Layers
 } from "lucide-react";
 import Link from 'next/link';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -89,6 +89,7 @@ const reportCategories = [
         name: "المخزون واللوجيستيك",
         value: "inventory",
         reports: [
+            { title: "تقرير تكاليف الصرف والتحويلات والهوالك", description: "الرقابة المالية على تكاليف أذون الصرف، البضاعة المحولة بين الفروع، وخسائر التوالف والإعدام.", href: "/reports/inventory-movements-cost", icon: <Layers />, module: "inventory_adjustment" },
             { title: "تقرير أرصدة المخازن", description: "عرض الأرصدة الحالية لجميع الأصناف في كل الفروع.", href: "/reports/stock-status", icon: <Warehouse />, module: "reports_stockStatus" },
             { title: "تقييم المخزون وحد إعادة الطلب", description: "تقييم البضاعة بسعر التكلفة والبيع وتنبيهات النواقص.", href: "/reports/inventory-valuation", icon: <Boxes />, module: "reports_stockStatus" },
             { title: "كارت الصنف التفصيلي", description: "تتبع كل الحركات (وارد وصادر) لصنف معين عبر المخازن.", href: "/reports/item-ledger", icon: <PackageSearch />, module: "reports_itemLedger" },

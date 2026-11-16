@@ -129,7 +129,7 @@ export default function StockTransferDetailsPage() {
                     </div>
                     <div>
                         <span className="text-muted-foreground block">المعالجة المحاسبية:</span>
-                        <Badge variant="outline" className={record.shippingTreatment === 'capitalized' ? 'bg-amber-500/10 text-amber-600 border-amber-300' : 'bg-blue-500/10 text-blue-600 border-blue-300'}>
+                        <Badge variant="outline" className={record.shippingTreatment === 'capitalized' ? 'bg-amber-500/10 text-foreground border-amber-300' : 'bg-blue-500/10 text-foreground border-blue-300'}>
                             {record.shippingTreatment === 'capitalized' ? 'مرسملة على المخزون' : 'مصروف نقل تشغيلي'}
                         </Badge>
                     </div>

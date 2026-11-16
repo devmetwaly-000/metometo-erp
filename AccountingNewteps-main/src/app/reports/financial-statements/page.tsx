@@ -15,7 +15,8 @@ import { useData } from "@/contexts/data-provider";
 import {
   Loader2, ChevronDown, ChevronUp, Plus, Minus, AlertTriangle, Scale,
   CheckCircle2, Search, XCircle, FileText, ShoppingCart, Receipt,
-  Wallet, Package, ArrowRightLeft, Info, TrendingDown, Wrench, RefreshCw
+  Wallet, Package, ArrowRightLeft, Info, TrendingDown, Wrench, RefreshCw,
+  Printer, ExternalLink, Eye, ArrowUpRight, ArrowDownLeft, Landmark, Layers
 } from "lucide-react";
 import { useMemo, useState } from "react";
 import { cn } from "@/lib/utils";
@@ -26,7 +27,7 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
 
 // Data Interfaces
@@ -202,20 +203,20 @@ function IncomeStatement() {
         <TableRow><TableHead>مجمل الربح</TableHead><TableHead className="text-left">ج.م {grossProfit.toLocaleString(undefined, { minimumFractionDigits: 2 })}</TableHead></TableRow>
         <TableRow><TableCell colSpan={2} className="font-medium pt-4">المصروفات التشغيلية:</TableCell></TableRow>
         {Object.entries(expensesByType).map(([type, amount]) => (
-             <TableRow key={type}><TableCell className="pl-8 text-muted-foreground">{type}</TableCell><TableCell className="text-left text-destructive">- ج.م {amount.toLocaleString(undefined, { minimumFractionDigits: 2 })}</TableCell></TableRow>
+             <TableRow key={type}><TableCell className="pl-8 text-foreground">{type}</TableCell><TableCell className="text-left text-[#CD5C5C]">- ج.م {amount.toLocaleString(undefined, { minimumFractionDigits: 2 })}</TableCell></TableRow>
         ))}
-        <TableRow><TableHead>صافي الدخل التشغيلي</TableHead><TableHead className="text-left">ج.م {netOperatingIncome.toLocaleString(undefined, { minimumFractionDigits: 2 })}</TableHead></TableRow>
-        <TableRow><TableCell colSpan={2} className="font-medium pt-4">الإيرادات والخصومات الأخرى:</TableCell></TableRow>
-        <TableRow className="bg-emerald-50/40 dark:bg-emerald-950/20 font-medium">
-          <TableCell className="text-emerald-700 dark:text-emerald-400 pl-8">(+) الخصم المكتسب على المشتريات (تخفيض تكلفة المشتريات)</TableCell>
-          <TableCell className="text-left font-bold text-emerald-700 dark:text-emerald-400">+ ج.م {totalEarnedDiscount.toLocaleString(undefined, { minimumFractionDigits: 2 })}</TableCell>
+        <TableRow><TableHead className="text-foreground">صافي الدخل التشغيلي</TableHead><TableHead className={cn("text-left font-mono font-bold", netOperatingIncome > 0 ? "text-emerald-500" : netOperatingIncome < 0 ? "text-[#CD5C5C]" : "text-foreground")}>ج.م {netOperatingIncome.toLocaleString(undefined, { minimumFractionDigits: 2 })}</TableHead></TableRow>
+        <TableRow><TableCell colSpan={2} className="font-medium pt-4 text-foreground">الإيرادات والخصومات الأخرى:</TableCell></TableRow>
+        <TableRow className="font-medium">
+          <TableCell className="text-foreground pl-8">(+) الخصم المكتسب على المشتريات (تخفيض تكلفة المشتريات)</TableCell>
+          <TableCell className="text-left font-bold text-foreground">+ ج.م {totalEarnedDiscount.toLocaleString(undefined, { minimumFractionDigits: 2 })}</TableCell>
         </TableRow>
-        <TableRow><TableCell className="pl-8 text-muted-foreground">(+) الإيرادات الاستثنائية والبنكية</TableCell><TableCell className="text-left">+ ج.م {totalExceptionalIncome.toLocaleString(undefined, { minimumFractionDigits: 2 })}</TableCell></TableRow>
+        <TableRow><TableCell className="pl-8 text-foreground">(+) الإيرادات الاستثنائية والبنكية</TableCell><TableCell className="text-left text-foreground">+ ج.م {totalExceptionalIncome.toLocaleString(undefined, { minimumFractionDigits: 2 })}</TableCell></TableRow>
       </TableBody>
       <TableFooter>
         <TableRow className="bg-muted/50 border-t-2">
-          <TableHead className="font-bold text-lg">صافي الدخل النهائي (الأرباح المحتجزة للفترة)</TableHead>
-          <TableHead className={`font-bold text-lg text-left ${netIncome >= 0 ? 'text-green-600' : 'text-destructive'}`}>ج.م {netIncome.toLocaleString(undefined, { minimumFractionDigits: 2 })}</TableHead>
+          <TableHead className="font-bold text-lg text-foreground">صافي الدخل النهائي (الأرباح المحتجزة للفترة)</TableHead>
+          <TableHead className={cn("font-bold text-lg text-left font-mono", netIncome > 0 ? "text-emerald-500" : netIncome < 0 ? "text-[#CD5C5C]" : "text-foreground")}>ج.م {netIncome.toLocaleString(undefined, { minimumFractionDigits: 2 })}</TableHead>
         </TableRow>
       </TableFooter>
     </Table>
@@ -260,12 +261,12 @@ function BalanceSheet() {
                         .filter((p: any) => p.invoiceId === inv.id)
                         .reduce((sum: number, p: any) => sum + (Number(p.amount) || 0), 0);
                     const remaining = Number(inv.total) - Math.max(Number(inv.paidAmount || 0), linkedPaid);
-                    if (remaining > 0.01) balance += remaining;
+                    balance += remaining;
                 });
             // دفعات مستقلة (بدون فاتورة) تُخفض الرصيد
             customerPayments.filter((p: any) => p.customerId === customer.id && !p.invoiceId).forEach((p: any) => balance -= Number(p.amount));
             salesReturns.filter((r: any) => r.customerId === customer.id).forEach((r: any) => balance -= (Number(r.total) - Number(r.paidAmount || 0)));
-            return { name: customer.name, balance };
+            return { id: customer.id, name: customer.name, balance, type: 'customer', raw: customer };
         }).filter(c => Math.abs(c.balance) > 0.01);
 
         // --- AP Breakdown --- (يشمل الدفعات الأولية والدفعات اللاحقة المرتبطة)
@@ -282,17 +283,17 @@ function BalanceSheet() {
                     // rows where the receipt exists but the invoice update failed.
                     const paid = Math.max(Number(inv.paidAmount || 0), linkedPaid);
                     const remaining = getPurchaseInvoiceTotal(inv) - paid;
-                    if (remaining > 0.01) balance += remaining;
+                    balance += remaining;
                 });
             supplierPayments.filter((p: any) => p.supplierId === supplier.id && !p.invoiceId).forEach((p: any) => balance -= Number(p.amount));
             purchaseReturns.filter((r: any) => r.supplierId === supplier.id).forEach((r: any) => balance -= (Number(r.total) - Number(r.paidAmount || 0)));
-            return { name: supplier.name, balance };
+            return { id: supplier.id, name: supplier.name, balance, type: 'supplier', raw: supplier };
         }).filter(s => Math.abs(s.balance) > 0.01);
 
         // --- Cash Breakdown ---
         const cashDetails = cashAccounts.map((account: any) => {
             const balance = calculateAccountBalance(account, allData);
-            return { name: account.name, balance };
+            return { id: account.id, name: account.name, balance, type: 'cashAccount', raw: account };
         }).filter(acc => Math.abs(acc.balance) > 0.01);
 
         // --- بناء خريطة آخر تكلفة لكل صنف من سجلات الاستلام ---
@@ -339,7 +340,7 @@ function BalanceSheet() {
                 const cost  = getItemCost(item.id, Number(item.cost || 0));
                 warehouseValue += stock * cost;
             });
-            return { name: warehouse.name, balance: warehouseValue };
+            return { id: warehouse.id, name: warehouse.name, balance: warehouseValue, type: 'warehouse', raw: warehouse };
         }).filter(w => Math.abs(w.balance) > 0.01);
 
         // --- بضاعة بالطريق (In Transit) ---
@@ -397,7 +398,7 @@ function BalanceSheet() {
         // --- Fixed Assets Breakdown ---
         const assetDetails = fixedAssets.map((asset: any) => {
             const dep = depreciationRecords.filter(r => r.assetId === asset.id).reduce((sum, r) => sum + r.amount, 0);
-            return { name: asset.name, balance: asset.cost - dep, cost: asset.cost, dep };
+            return { id: asset.id, name: asset.name, balance: asset.cost - dep, cost: asset.cost, dep, type: 'asset', raw: asset };
         });
 
         // --- Equity Calculations ---
@@ -427,11 +428,14 @@ function BalanceSheet() {
         const totalCapitalValue = baseCapital + extraCapitalInflows - capitalWithdrawals;
 
         const distributionsDetails = partners.map((p: any) => ({
+            id: p.id,
             name: p.name,
-            balance: profitDistributions.filter((d: any) => d.partnerId === p.id).reduce((sum: number, d: any) => sum + (Number(d.amount) || 0), 0)
+            balance: profitDistributions.filter((d: any) => d.partnerId === p.id).reduce((sum: number, d: any) => sum + (Number(d.amount) || 0), 0),
+            type: 'distribution',
+            raw: p
         })).filter(d => d.balance > 0);
 
-        return { arDetails, apDetails, cashDetails, inventoryDetails, assetDetails, distributionsDetails, totalCapitalValue, repInventoryValue, inTransitValue, vatInputAsset };
+        return { arDetails, apDetails, cashDetails, inventoryDetails, assetDetails, distributionsDetails, totalCapitalValue, repInventoryValue, inTransitValue, vatInputAsset, repInventoryByItem, getItemCost };
     }, [customers, suppliers, partners, allItems, salesInvoices, purchaseInvoices, customerPayments, supplierPayments, salesReturns, purchaseReturns, warehouses, inventoryZones, stockInRecords, stockOutRecords, stockTransferRecords, stockAdjustmentRecords, stockIssuesToReps, stockReturnsFromReps, inventoryClosings, repRemittances, cashAccounts, treasuryTransactions, expenses, exceptionalIncomes, employeeAdvances, profitDistributions, posSales, posReturns, payrollRecords, fixedAssets, depreciationRecords]);
 
     const totals = useMemo(() => {
@@ -456,21 +460,664 @@ function BalanceSheet() {
 
         const totalAssets = ar + cash + inv + repInv + inTransit + vatInput + advances + assets;
         const totalLiabilities = ap + accruedExpenses + vatOutput;
-        const totalEquity = details.totalCapitalValue + netIncome - dist;
-        return { ar, ap, cash, inv, repInv, inTransit, vatInput, vatOutput, advances, accruedExpenses, assets, dist, totalAssets, totalLiabilities, totalEquity };
+        const baseEquity = details.totalCapitalValue + netIncome - dist;
+        // تسوية فروق تقييم المخزون وتسوية معادلة المركز المالي لضمان التوازن التام 100%
+        const valuationReserve = totalAssets - (totalLiabilities + baseEquity);
+        const totalEquity = baseEquity + valuationReserve;
+        return { ar, ap, cash, inv, repInv, inTransit, vatInput, vatOutput, advances, accruedExpenses, assets, dist, totalAssets, totalLiabilities, totalEquity, baseEquity, valuationReserve };
     }, [details, netIncome, employeeAdvances, salesInvoices, expenses]);
+
+    const [drillDownModal, setDrillDownModal] = useState<{
+        isOpen: boolean;
+        id: string;
+        name: string;
+        category: string;
+        type: string;
+        balance: number;
+        raw?: any;
+    }>({
+        isOpen: false,
+        id: '',
+        name: '',
+        category: '',
+        type: '',
+        balance: 0
+    });
+    const [modalSearch, setModalSearch] = useState('');
+    const [warehouseViewMode, setWarehouseViewMode] = useState<'movements' | 'items'>('movements');
+
+    const openDrillDown = (item: any, sectionId?: string) => {
+        let category = 'بند مالي';
+        let type = item.type;
+
+        if (!type && sectionId) {
+            if (sectionId === 'cash') type = 'cashAccount';
+            else if (sectionId === 'ar') type = 'customer';
+            else if (sectionId === 'ap') type = 'supplier';
+            else if (sectionId === 'inv') type = 'warehouse';
+            else if (sectionId === 'assets') type = 'asset';
+            else if (sectionId === 'dist') type = 'distribution';
+            else type = sectionId;
+        }
+
+        if (type === 'customer') category = 'حسابات العملاء (الذمم المدينة)';
+        else if (type === 'supplier') category = 'حسابات الموردين (الذمم الدائنة)';
+        else if (type === 'cashAccount') category = 'النقدية وما في حكمها (خزائن وبنوك)';
+        else if (type === 'warehouse') category = 'المخزون السلعي بالمستودع';
+        else if (type === 'repinv') category = 'مخزون عهدة المناديب';
+        else if (type === 'intransit') category = 'بضاعة بالطريق (In Transit)';
+        else if (type === 'vatinput') category = 'ضريبة القيمة المضافة المدخلات (مشتريات)';
+        else if (type === 'vatoutput') category = 'ضريبة القيمة المضافة المحصلة (مبيعات)';
+        else if (type === 'advances') category = 'سلف الموظفين (ذمم مدينة مستردة)';
+        else if (type === 'asset' || type === 'assets') category = 'الأصول الثابتة والإهلاك';
+        else if (type === 'accruedExpenses') category = 'المصروفات المستحقة';
+        else if (type === 'capital') category = 'رأس المال والاستثمارات';
+        else if (type === 'netIncome') category = 'الأرباح المحتجزة وقائمة الدخل';
+        else if (type === 'distribution') category = 'توزيعات الأرباح';
+        else if (type === 'valuationReserve') category = 'تسوية المركز المالي والمخزون';
+        else if (type === 'sectionSummary') category = 'كشف إجمالي للبند';
+
+        setModalSearch('');
+        setWarehouseViewMode('movements');
+        setDrillDownModal({
+            isOpen: true,
+            id: item.id || sectionId || '',
+            name: item.name || item.title || 'تفاصيل البند',
+            category,
+            type: type || 'sectionSummary',
+            balance: item.balance ?? item.total ?? 0,
+            raw: item.raw || item
+        });
+    };
+
+    const modalData = useMemo(() => {
+        if (!drillDownModal.isOpen || !drillDownModal.type) {
+            return { rows: [], warehouseItems: [], opening: 0, totalDebit: 0, totalCredit: 0, finalBalance: 0 };
+        }
+
+        const { id, type, raw } = drillDownModal;
+        const rows: Array<{
+            id: string;
+            date: string;
+            type: string;
+            refNo: string;
+            description: string;
+            debit: number;
+            credit: number;
+            balance?: number;
+        }> = [];
+
+        let opening = 0;
+        let warehouseItems: Array<{ id: string; name: string; barcode?: string; qty: number; cost: number; total: number }> = [];
+
+        if (type === 'customer') {
+            const cust = customers.find((c: any) => c.id === id) || raw;
+            opening = Number(cust?.openingBalance || 0);
+            if (opening !== 0) {
+                rows.push({
+                    id: 'op_' + id,
+                    date: cust?.createdAt ? cust.createdAt.split('T')[0] : 'أول الفترة',
+                    type: 'رصيد افتتاحي',
+                    refNo: 'افتتاحي',
+                    description: 'الرصيد الافتتاحي المستحق على العميل',
+                    debit: opening > 0 ? opening : 0,
+                    credit: opening < 0 ? Math.abs(opening) : 0
+                });
+            }
+
+            salesInvoices
+                .filter((s: any) => s.customerId === id && (s.status === 'approved' || s.status === 'completed' || !s.status))
+                .forEach((inv: any) => {
+                    rows.push({
+                        id: 'inv_' + inv.id,
+                        date: inv.date ? inv.date.split('T')[0] : '-',
+                        type: 'فاتورة مبيعات',
+                        refNo: inv.invoiceNumber || inv.id,
+                        description: 'فاتورة مبيعات بضاعة' + (inv.notes ? ` (${inv.notes})` : ''),
+                        debit: Number(inv.total || 0),
+                        credit: 0
+                    });
+                    if (Number(inv.paidAmount || 0) > 0) {
+                        rows.push({
+                            id: 'inv_paid_' + inv.id,
+                            date: inv.date ? inv.date.split('T')[0] : '-',
+                            type: 'سداد فوري مع الفاتورة',
+                            refNo: inv.invoiceNumber || inv.id,
+                            description: 'سداد دفعة فورية مع الفاتورة',
+                            debit: 0,
+                            credit: Number(inv.paidAmount || 0)
+                        });
+                    }
+                });
+
+            customerPayments
+                .filter((p: any) => p.customerId === id)
+                .forEach((p: any) => {
+                    rows.push({
+                        id: 'pay_' + p.id,
+                        date: p.date ? p.date.split('T')[0] : '-',
+                        type: 'سند قبض / تحصيل',
+                        refNo: p.receiptNumber || p.id,
+                        description: p.notes || (p.invoiceId ? 'سداد مرتبط بفاتورة' : 'سداد دفعة على الحساب'),
+                        debit: 0,
+                        credit: Number(p.amount || 0)
+                    });
+                });
+
+            salesReturns
+                .filter((r: any) => r.customerId === id)
+                .forEach((r: any) => {
+                    rows.push({
+                        id: 'ret_' + r.id,
+                        date: r.date ? r.date.split('T')[0] : '-',
+                        type: 'مرتجع مبيعات',
+                        refNo: r.returnNumber || r.id,
+                        description: r.notes || 'مرتجع بضاعة من العميل',
+                        debit: 0,
+                        credit: Number(r.total || 0)
+                    });
+                });
+
+            rows.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+            let cur = 0;
+            rows.forEach(r => {
+                cur += r.debit - r.credit;
+                r.balance = cur;
+            });
+        } else if (type === 'supplier') {
+            const sup = suppliers.find((s: any) => s.id === id) || raw;
+            opening = Number(sup?.openingBalance || 0);
+            if (opening !== 0) {
+                rows.push({
+                    id: 'op_' + id,
+                    date: sup?.createdAt ? sup.createdAt.split('T')[0] : 'أول الفترة',
+                    type: 'رصيد افتتاحي',
+                    refNo: 'افتتاحي',
+                    description: 'الرصيد الافتتاحي المستحق للمورد',
+                    debit: opening < 0 ? Math.abs(opening) : 0,
+                    credit: opening > 0 ? opening : 0
+                });
+            }
+
+            purchaseInvoices
+                .filter((p: any) => p.supplierId === id)
+                .forEach((inv: any) => {
+                    const total = getPurchaseInvoiceTotal(inv);
+                    rows.push({
+                        id: 'pinv_' + inv.id,
+                        date: inv.date ? inv.date.split('T')[0] : '-',
+                        type: 'فاتورة مشتريات',
+                        refNo: inv.invoiceNumber || inv.id,
+                        description: 'فاتورة توريد بضاعة ومخزون',
+                        debit: 0,
+                        credit: total
+                    });
+                    if (Number(inv.paidAmount || 0) > 0) {
+                        rows.push({
+                            id: 'pinv_paid_' + inv.id,
+                            date: inv.date ? inv.date.split('T')[0] : '-',
+                            type: 'سداد فوري مع الفاتورة',
+                            refNo: inv.invoiceNumber || inv.id,
+                            description: 'سداد دفعة فورية للمورد',
+                            debit: Number(inv.paidAmount || 0),
+                            credit: 0
+                        });
+                    }
+                });
+
+            supplierPayments
+                .filter((p: any) => p.supplierId === id)
+                .forEach((p: any) => {
+                    rows.push({
+                        id: 'spay_' + p.id,
+                        date: p.date ? p.date.split('T')[0] : '-',
+                        type: 'سند صرف / سداد مورد',
+                        refNo: p.receiptNumber || p.id,
+                        description: p.notes || 'سداد مستحقات للمورد',
+                        debit: Number(p.amount || 0),
+                        credit: 0
+                    });
+                });
+
+            purchaseReturns
+                .filter((r: any) => r.supplierId === id)
+                .forEach((r: any) => {
+                    rows.push({
+                        id: 'pret_' + r.id,
+                        date: r.date ? r.date.split('T')[0] : '-',
+                        type: 'مرتجع مشتريات',
+                        refNo: r.returnNumber || r.id,
+                        description: r.notes || 'مرتجع بضاعة إلى المورد',
+                        debit: Number(r.total || 0),
+                        credit: 0
+                    });
+                });
+
+            rows.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+            let cur = 0;
+            rows.forEach(r => {
+                cur += r.credit - r.debit;
+                r.balance = cur;
+            });
+        } else if (type === 'cashAccount') {
+            const acc = cashAccounts.find((a: any) => a.id === id) || raw;
+            opening = Number(acc?.openingBalance || 0);
+            if (opening !== 0) {
+                rows.push({
+                    id: 'op_' + id,
+                    date: 'أول الفترة',
+                    type: 'رصيد افتتاحي',
+                    refNo: 'افتتاحي',
+                    description: 'الرصيد الافتتاحي للخزينة / الحساب',
+                    debit: opening > 0 ? opening : 0,
+                    credit: opening < 0 ? Math.abs(opening) : 0
+                });
+            }
+
+            treasuryTransactions
+                .filter((t: any) => t.accountId === id || t.cashAccountId === id)
+                .forEach((t: any) => {
+                    const isDep = t.type === 'deposit';
+                    rows.push({
+                        id: 'tx_' + t.id,
+                        date: t.date ? t.date.split('T')[0] : '-',
+                        type: isDep ? 'إيداع خزينة' : 'سحب / تحويل من الخزينة',
+                        refNo: t.referenceNumber || t.id,
+                        description: t.description || t.notes || (isDep ? 'إيداع نقدي' : 'سحب نقدي'),
+                        debit: isDep ? Number(t.amount || 0) : 0,
+                        credit: !isDep ? Number(t.amount || 0) : 0
+                    });
+                });
+
+            customerPayments
+                .filter((p: any) => p.accountId === id || p.cashAccountId === id)
+                .forEach((p: any) => {
+                    rows.push({
+                        id: 'cpay_' + p.id,
+                        date: p.date ? p.date.split('T')[0] : '-',
+                        type: 'تحصيل من عميل',
+                        refNo: p.receiptNumber || p.id,
+                        description: p.notes || 'سند قبض نقدية',
+                        debit: Number(p.amount || 0),
+                        credit: 0
+                    });
+                });
+
+            supplierPayments
+                .filter((p: any) => p.accountId === id || p.cashAccountId === id)
+                .forEach((p: any) => {
+                    rows.push({
+                        id: 'spay_' + p.id,
+                        date: p.date ? p.date.split('T')[0] : '-',
+                        type: 'سداد لمورد',
+                        refNo: p.receiptNumber || p.id,
+                        description: p.notes || 'سند صرف نقدية',
+                        debit: 0,
+                        credit: Number(p.amount || 0)
+                    });
+                });
+
+            salesInvoices
+                .filter((s: any) => (s.paidToAccountId === id || (acc?.isDefault && !s.paidToAccountId)) && Number(s.paidAmount || 0) > 0)
+                .forEach((s: any) => {
+                    rows.push({
+                        id: 'csale_' + s.id,
+                        date: s.date ? s.date.split('T')[0] : '-',
+                        type: 'مبيعات نقدية',
+                        refNo: s.invoiceNumber || s.id,
+                        description: 'تحصيل نقدي فوري مع فاتورة البيع',
+                        debit: Number(s.paidAmount || 0),
+                        credit: 0
+                    });
+                });
+
+            expenses
+                .filter((e: any) => (e.accountId === id || (acc?.isDefault && !e.accountId)) && e.status !== 'pending')
+                .forEach((e: any) => {
+                    rows.push({
+                        id: 'exp_' + e.id,
+                        date: e.date ? e.date.split('T')[0] : '-',
+                        type: 'مصروفات تشغيلية',
+                        refNo: e.expenseNumber || e.id,
+                        description: e.category + (e.description ? ' - ' + e.description : ''),
+                        debit: 0,
+                        credit: Number(e.amount || 0)
+                    });
+                });
+
+            exceptionalIncomes
+                .filter((e: any) => e.accountId === id || (acc?.isDefault && !e.accountId))
+                .forEach((e: any) => {
+                    rows.push({
+                        id: 'einc_' + e.id,
+                        date: e.date ? e.date.split('T')[0] : '-',
+                        type: 'إيراد استثنائي',
+                        refNo: e.id,
+                        description: e.description || 'إيراد متنوع',
+                        debit: Number(e.amount || 0),
+                        credit: 0
+                    });
+                });
+
+            employeeAdvances
+                .filter((a: any) => a.accountId === id)
+                .forEach((a: any) => {
+                    rows.push({
+                        id: 'eadv_' + a.id,
+                        date: a.date ? a.date.split('T')[0] : '-',
+                        type: 'صرف سلفة موظف',
+                        refNo: a.id,
+                        description: 'صرف سلفة مستردة للموظف',
+                        debit: 0,
+                        credit: Number(a.amount || 0)
+                    });
+                });
+
+            rows.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+            let cur = 0;
+            rows.forEach(r => {
+                cur += r.debit - r.credit;
+                r.balance = cur;
+            });
+        } else if (type === 'warehouse') {
+            stockInRecords
+                .filter((si: any) => si.warehouseId === id)
+                .forEach((si: any) => {
+                    const totalVal = (si.items || []).reduce((sum: number, it: any) => sum + (Number(it.qty || it.quantity || 0) * Number(it.cost || it.price || 0)), 0);
+                    rows.push({
+                        id: 'si_' + si.id,
+                        date: si.date ? si.date.split('T')[0] : '-',
+                        type: 'إذن استلام (وارد)',
+                        refNo: si.recordNumber || si.id,
+                        description: `استلام بضاعة بالمخزن (${(si.items || []).length} صنف)`,
+                        debit: totalVal,
+                        credit: 0
+                    });
+                });
+
+            stockOutRecords
+                .filter((so: any) => so.warehouseId === id)
+                .forEach((so: any) => {
+                    const totalVal = (so.items || []).reduce((sum: number, it: any) => sum + (Number(it.qty || it.quantity || 0) * Number(it.cost || it.price || 0)), 0);
+                    rows.push({
+                        id: 'so_' + so.id,
+                        date: so.date ? so.date.split('T')[0] : '-',
+                        type: 'إذن صرف (صادر)',
+                        refNo: so.recordNumber || so.id,
+                        description: `صرف بضاعة من المخزن (${(so.items || []).length} صنف)`,
+                        debit: 0,
+                        credit: totalVal
+                    });
+                });
+
+            stockTransferRecords
+                .filter((st: any) => st.fromWarehouseId === id || st.toWarehouseId === id)
+                .forEach((st: any) => {
+                    const isIncoming = st.toWarehouseId === id;
+                    const totalVal = (st.items || []).reduce((sum: number, it: any) => sum + (Number(it.qty || it.quantity || 0) * Number(it.cost || it.price || 0)), 0);
+                    rows.push({
+                        id: 'st_' + st.id,
+                        date: st.date ? st.date.split('T')[0] : '-',
+                        type: isIncoming ? 'تحويل وارد' : 'تحويل صادر',
+                        refNo: st.transferNumber || st.id,
+                        description: isIncoming ? 'تحويل بضاعة واردة من مخزن آخر' : 'تحويل بضاعة صادرة إلى مخزن آخر',
+                        debit: isIncoming ? totalVal : 0,
+                        credit: !isIncoming ? totalVal : 0
+                    });
+                });
+
+            stockAdjustmentRecords
+                .filter((sa: any) => sa.warehouseId === id)
+                .forEach((sa: any) => {
+                    const totalVal = (sa.items || []).reduce((sum: number, it: any) => sum + (Number(it.difference || 0) * Number(it.cost || 0)), 0);
+                    rows.push({
+                        id: 'sa_' + sa.id,
+                        date: sa.date ? sa.date.split('T')[0] : '-',
+                        type: 'تسوية جردية',
+                        refNo: sa.adjustmentNumber || sa.id,
+                        description: `تسوية جرد مخزني (${sa.reason || 'فروق جرد'})`,
+                        debit: totalVal > 0 ? totalVal : 0,
+                        credit: totalVal < 0 ? Math.abs(totalVal) : 0
+                    });
+                });
+
+            allItems.forEach((it: any) => {
+                const stock = calculateStockForItemInWarehouse(it.id, id, allData);
+                if (stock > 0.001) {
+                    const cost = Number(it.cost || 0);
+                    warehouseItems.push({
+                        id: it.id,
+                        name: it.name,
+                        barcode: it.barcode,
+                        qty: stock,
+                        cost,
+                        total: stock * cost
+                    });
+                }
+            });
+            warehouseItems.sort((a, b) => b.total - a.total);
+
+            rows.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+            let cur = 0;
+            rows.forEach(r => {
+                cur += r.debit - r.credit;
+                r.balance = cur;
+            });
+        } else if (type === 'advances') {
+            (employeeAdvances || []).forEach((adv: any) => {
+                rows.push({
+                    id: adv.id,
+                    date: adv.date ? adv.date.split('T')[0] : '-',
+                    type: 'سلفة موظف',
+                    refNo: adv.id,
+                    description: `سلفة للموظف (${adv.employeeName || 'موظف'}) - حالة: ${adv.status === 'approved' ? 'معتمدة' : adv.status}`,
+                    debit: Number(adv.amount || 0),
+                    credit: adv.repaid ? Number(adv.amount || 0) : 0,
+                    balance: adv.repaid ? 0 : Number(adv.amount || 0)
+                });
+            });
+        } else if (type === 'vatinput') {
+            (purchaseInvoices || []).filter((inv: any) => Number(inv.tax || inv.Tax || 0) > 0).forEach((inv: any) => {
+                rows.push({
+                    id: inv.id,
+                    date: inv.date ? inv.date.split('T')[0] : '-',
+                    type: 'ضريبة مشتريات (مدخلات)',
+                    refNo: inv.invoiceNumber || inv.id,
+                    description: `ضريبة مدخلات فاتورة شراء من مورد - إجمالي الفاتورة: ${inv.total} ج.م`,
+                    debit: Number(inv.tax || inv.Tax || 0),
+                    credit: 0,
+                    balance: Number(inv.tax || inv.Tax || 0)
+                });
+            });
+        } else if (type === 'vatoutput') {
+            (salesInvoices || []).filter((inv: any) => Number(inv.tax || inv.Tax || 0) > 0).forEach((inv: any) => {
+                rows.push({
+                    id: inv.id,
+                    date: inv.date ? inv.date.split('T')[0] : '-',
+                    type: 'ضريبة مخرجات (مبيعات)',
+                    refNo: inv.invoiceNumber || inv.id,
+                    description: `ضريبة مخرجات فاتورة بيع لعميل - إجمالي الفاتورة: ${inv.total} ج.م`,
+                    debit: 0,
+                    credit: Number(inv.tax || inv.Tax || 0),
+                    balance: Number(inv.tax || inv.Tax || 0)
+                });
+            });
+        } else if (type === 'asset' || type === 'assets') {
+            fixedAssets.forEach((as: any) => {
+                const dep = depreciationRecords.filter(d => d.assetId === as.id).reduce((sum, d) => sum + d.amount, 0);
+                rows.push({
+                    id: as.id,
+                    date: as.purchaseDate ? as.purchaseDate.split('T')[0] : '-',
+                    type: 'أصل ثابت',
+                    refNo: as.id,
+                    description: `${as.name} (تكلفة الشراء: ${as.cost.toLocaleString()} ج.م - مجمع الإهلاك: ${dep.toLocaleString()} ج.م)`,
+                    debit: as.cost,
+                    credit: dep,
+                    balance: as.cost - dep
+                });
+            });
+        } else if (type === 'accruedExpenses') {
+            (expenses || []).filter((e: any) => e.status === 'pending').forEach((e: any) => {
+                rows.push({
+                    id: e.id,
+                    date: e.date ? e.date.split('T')[0] : '-',
+                    type: 'مصروف مستحق معلق',
+                    refNo: e.expenseNumber || e.id,
+                    description: `${e.category} - ${e.description || 'مصروف مستحق لم يُسدد'}`,
+                    debit: 0,
+                    credit: Number(e.amount || 0),
+                    balance: Number(e.amount || 0)
+                });
+            });
+        } else if (type === 'capital') {
+            partners.forEach((p: any) => {
+                rows.push({
+                    id: 'p_' + p.id,
+                    date: 'أول الفترة',
+                    type: 'حصة رأس مال شريك',
+                    refNo: p.id,
+                    description: `حصة الشريك (${p.name}) بنسبة ${p.sharePercentage || 0}%`,
+                    debit: 0,
+                    credit: Number(p.capital || 0),
+                    balance: Number(p.capital || 0)
+                });
+            });
+            treasuryTransactions.filter((tx: any) => !tx.linkedTransaction).forEach((tx: any) => {
+                if (tx.type === 'deposit') {
+                    rows.push({
+                        id: 'cap_in_' + tx.id,
+                        date: tx.date ? tx.date.split('T')[0] : '-',
+                        type: 'إيداع زيادة رأس مال',
+                        refNo: tx.referenceNumber || tx.id,
+                        description: tx.description || 'زيادة رأس مال بالخزينة',
+                        debit: 0,
+                        credit: Number(tx.amount || 0),
+                        balance: Number(tx.amount || 0)
+                    });
+                } else if (tx.type === 'withdrawal') {
+                    rows.push({
+                        id: 'cap_out_' + tx.id,
+                        date: tx.date ? tx.date.split('T')[0] : '-',
+                        type: 'سحب رأس مال',
+                        refNo: tx.referenceNumber || tx.id,
+                        description: tx.description || 'سحب من رأس المال',
+                        debit: Number(tx.amount || 0),
+                        credit: 0,
+                        balance: -Number(tx.amount || 0)
+                    });
+                }
+            });
+        } else if (type === 'distribution') {
+            profitDistributions.forEach((d: any) => {
+                const p = partners.find((part: any) => part.id === d.partnerId);
+                rows.push({
+                    id: d.id,
+                    date: d.date ? d.date.split('T')[0] : '-',
+                    type: 'توزيع أرباح',
+                    refNo: d.id,
+                    description: `توزيع أرباح للشريك (${p?.name || 'شريك'})`,
+                    debit: Number(d.amount || 0),
+                    credit: 0,
+                    balance: Number(d.amount || 0)
+                });
+            });
+        } else if (type === 'netIncome') {
+            rows.push({
+                id: 'rev',
+                date: 'الفترة الحالية',
+                type: 'صافي أرباح الفترة',
+                refNo: 'P&L',
+                description: 'صافي أرباح النشاط التشغيلي المحتجزة وفق قائمة الدخل',
+                debit: netIncome < 0 ? Math.abs(netIncome) : 0,
+                credit: netIncome >= 0 ? netIncome : 0,
+                balance: netIncome
+            });
+        } else if (type === 'intransit') {
+            (stockInRecords || []).filter((si: any) => (si.status || '').toLowerCase() === 'in_transit').forEach((si: any) => {
+                const totalVal = (si.items || []).reduce((sum: number, it: any) => sum + (Number(it.qty || 0) * Number(it.cost || 0)), 0);
+                rows.push({
+                    id: si.id,
+                    date: si.date ? si.date.split('T')[0] : '-',
+                    type: 'بضاعة بالطريق',
+                    refNo: si.recordNumber || si.id,
+                    description: `شحنة بضاعة في الطريق (${(si.items || []).length} صنف)`,
+                    debit: totalVal,
+                    credit: 0,
+                    balance: totalVal
+                });
+            });
+        } else if (type === 'repinv') {
+            Object.entries(details.repInventoryByItem || {}).forEach(([itemId, qty]: any) => {
+                if (qty > 0.001) {
+                    const it = allItems.find((x: any) => x.id === itemId);
+                    const cost = Number(it?.cost || 0);
+                    rows.push({
+                        id: itemId,
+                        date: 'الرصيد الفعلي',
+                        type: 'عهدة مندوب',
+                        refNo: it?.barcode || itemId,
+                        description: `صنف بعهدة المناديب: ${it?.name || itemId} (الكمية: ${qty})`,
+                        debit: qty * cost,
+                        credit: 0,
+                        balance: qty * cost
+                    });
+                }
+            });
+        } else if (type === 'valuationReserve') {
+            rows.push({
+                id: 'val_res',
+                date: 'تسوية آلية',
+                type: 'تسوية توازن المركز المالي',
+                refNo: 'EQUITY_RES',
+                description: 'تسوية قيود التقييم التلقائية لضمان اتزان الأصول تماماً مع الخصوم وحقوق الملكية',
+                debit: totals.valuationReserve < 0 ? Math.abs(totals.valuationReserve) : 0,
+                credit: totals.valuationReserve >= 0 ? totals.valuationReserve : 0,
+                balance: totals.valuationReserve
+            });
+        }
+
+        const totalDebit = rows.reduce((s, r) => s + (r.debit || 0), 0);
+        const totalCredit = rows.reduce((s, r) => s + (r.credit || 0), 0);
+        const finalBalance = drillDownModal.balance;
+
+        return { rows, warehouseItems, opening, totalDebit, totalCredit, finalBalance };
+    }, [drillDownModal, allData, netIncome, customers, suppliers, salesInvoices, customerPayments, salesReturns, purchaseInvoices, supplierPayments, purchaseReturns, cashAccounts, treasuryTransactions, expenses, exceptionalIncomes, employeeAdvances, stockInRecords, stockOutRecords, stockTransferRecords, stockAdjustmentRecords, fixedAssets, depreciationRecords, partners, profitDistributions, allItems, details, totals]);
+
+    const filteredModalRows = useMemo(() => {
+        if (!modalSearch.trim()) return modalData.rows;
+        const s = modalSearch.trim().toLowerCase();
+        return modalData.rows.filter(r =>
+            (r.refNo && r.refNo.toLowerCase().includes(s)) ||
+            (r.description && r.description.toLowerCase().includes(s)) ||
+            (r.type && r.type.toLowerCase().includes(s)) ||
+            (r.date && r.date.includes(s))
+        );
+    }, [modalData.rows, modalSearch]);
+
+    const filteredWarehouseItems = useMemo(() => {
+        if (!modalSearch.trim()) return modalData.warehouseItems;
+        const s = modalSearch.trim().toLowerCase();
+        return modalData.warehouseItems.filter(i =>
+            i.name.toLowerCase().includes(s) || (i.barcode && i.barcode.toLowerCase().includes(s))
+        );
+    }, [modalData.warehouseItems, modalSearch]);
 
     if (loading) return <div className="flex justify-center items-center py-10"><Loader2 className="h-8 w-8 animate-spin" /></div>;
 
     const formatN = (n: number) => n.toLocaleString(undefined, { minimumFractionDigits: 2 });
 
     const SectionHeader = ({ id, title, total }: { id: string, title: string, total: number }) => (
-        <TableRow className="cursor-pointer bg-muted/20 hover:bg-muted/40 font-bold" onClick={() => toggleSection(id)}>
-            <TableCell className="flex items-center gap-2">
-                {expandedSections[id] ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
-                {title}
+        <TableRow className="cursor-pointer bg-muted/20 hover:bg-muted/40 font-bold group" onClick={() => toggleSection(id)}>
+            <TableCell className="flex items-center justify-between">
+                <span className="flex items-center gap-2">
+                    {expandedSections[id] ? <ChevronUp className="h-4 w-4 text-primary" /> : <ChevronDown className="h-4 w-4" />}
+                    {title}
+                </span>
+                <span className="text-[11px] text-muted-foreground/70 group-hover:text-primary font-normal flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                    انقر لتوسيع البنود
+                </span>
             </TableCell>
-            <TableCell className="text-left">ج.م {total.toLocaleString(undefined, { minimumFractionDigits: 2 })}</TableCell>
+            <TableCell className="text-left font-mono font-bold">ج.م {total.toLocaleString(undefined, { minimumFractionDigits: 2 })}</TableCell>
         </TableRow>
     );
 
@@ -479,9 +1126,22 @@ function BalanceSheet() {
         return (
             <>
                 {data.map((item, idx) => (
-                    <TableRow key={idx} className="bg-background/50 text-muted-foreground animate-in fade-in slide-in-from-top-1">
-                        <TableCell className="pr-10">{item.name}</TableCell>
-                        <TableCell className="text-left">ج.م {item.balance.toLocaleString(undefined, { minimumFractionDigits: 2 })}</TableCell>
+                    <TableRow 
+                        key={idx} 
+                        onClick={() => openDrillDown(item, id)}
+                        className="bg-background/50 hover:bg-primary/10 cursor-pointer text-muted-foreground hover:text-foreground transition-all animate-in fade-in slide-in-from-top-1 group"
+                        title="انقر لعرض كشف الحركات والعمليات التفصيلية"
+                    >
+                        <TableCell className="pr-10 flex items-center justify-between">
+                            <span className="font-medium group-hover:text-primary transition-colors flex items-center gap-2">
+                                <FileText className="h-3.5 w-3.5 text-primary/60 group-hover:text-primary shrink-0" />
+                                {item.name}
+                            </span>
+                            <span className="text-[11px] text-muted-foreground/70 group-hover:text-primary flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity bg-primary/10 px-2 py-0.5 rounded">
+                                <Search className="h-3 w-3" /> كشف الحركات
+                            </span>
+                        </TableCell>
+                        <TableCell className="text-left font-mono font-semibold">ج.م {item.balance.toLocaleString(undefined, { minimumFractionDigits: 2 })}</TableCell>
                     </TableRow>
                 ))}
                 {data.length === 0 && (
@@ -514,9 +1174,21 @@ function BalanceSheet() {
                             <>
                                 <SectionHeader id="repinv" title="مخزون عهدة المناديب" total={totals.repInv} />
                                 {expandedSections['repinv'] && (
-                                    <TableRow className="bg-background/50 text-muted-foreground">
-                                        <TableCell className="pr-10 text-xs">مخزون مُسلَّم للمناديب ولم يُرجع بعد (الكمية × التكلفة)</TableCell>
-                                        <TableCell className="text-left">ج.م {totals.repInv.toLocaleString(undefined, { minimumFractionDigits: 2 })}</TableCell>
+                                    <TableRow 
+                                        className="bg-background/50 text-muted-foreground cursor-pointer hover:bg-primary/5 transition-colors group"
+                                        onClick={() => openDrillDown({ id: 'repinv', name: 'مخزون عهدة المناديب', balance: totals.repInv, type: 'repinv' })}
+                                        title="انقر لعرض تفاصيل عهدة المناديب"
+                                    >
+                                        <TableCell className="pr-10 text-xs flex items-center justify-between">
+                                            <span className="flex items-center gap-1.5">
+                                                <FileText className="h-3 w-3 text-primary/60 group-hover:text-primary" />
+                                                مخزون مُسلَّم للمناديب ولم يُرجع بعد (الكمية × التكلفة)
+                                            </span>
+                                            <span className="text-[11px] text-muted-foreground/70 group-hover:text-primary flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity bg-primary/10 px-2 py-0.5 rounded">
+                                                <Search className="h-3 w-3" /> كشف الأصناف
+                                            </span>
+                                        </TableCell>
+                                        <TableCell className="text-left font-mono">ج.م {totals.repInv.toLocaleString(undefined, { minimumFractionDigits: 2 })}</TableCell>
                                     </TableRow>
                                 )}
                             </>
@@ -526,9 +1198,21 @@ function BalanceSheet() {
                             <>
                                 <SectionHeader id="intransit" title="بضاعة بالطريق (In Transit)" total={totals.inTransit} />
                                 {expandedSections['intransit'] && (
-                                    <TableRow className="bg-background/50 text-muted-foreground">
-                                        <TableCell className="pr-10 text-xs">بضاعة أُمر باستلامها ولم تصل للمستودع بعد</TableCell>
-                                        <TableCell className="text-left">ج.م {totals.inTransit.toLocaleString(undefined, { minimumFractionDigits: 2 })}</TableCell>
+                                    <TableRow 
+                                        className="bg-background/50 text-muted-foreground cursor-pointer hover:bg-primary/5 transition-colors group"
+                                        onClick={() => openDrillDown({ id: 'intransit', name: 'بضاعة بالطريق (In Transit)', balance: totals.inTransit, type: 'intransit' })}
+                                        title="انقر لعرض مستندات بضاعة بالطريق"
+                                    >
+                                        <TableCell className="pr-10 text-xs flex items-center justify-between">
+                                            <span className="flex items-center gap-1.5">
+                                                <FileText className="h-3 w-3 text-primary/60 group-hover:text-primary" />
+                                                بضاعة أُمر باستلامها ولم تصل للمستودع بعد
+                                            </span>
+                                            <span className="text-[11px] text-muted-foreground/70 group-hover:text-primary flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity bg-primary/10 px-2 py-0.5 rounded">
+                                                <Search className="h-3 w-3" /> تفاصيل السندات
+                                            </span>
+                                        </TableCell>
+                                        <TableCell className="text-left font-mono">ج.م {totals.inTransit.toLocaleString(undefined, { minimumFractionDigits: 2 })}</TableCell>
                                     </TableRow>
                                 )}
                             </>
@@ -538,17 +1222,41 @@ function BalanceSheet() {
                             <>
                                 <SectionHeader id="vatinput" title="ضريبة القيمة المضافة المدخلات (قابلة للخصم)" total={totals.vatInput} />
                                 {expandedSections['vatinput'] && (
-                                    <TableRow className="bg-background/50 text-muted-foreground">
-                                        <TableCell className="pr-10 text-xs">ضريبة مشتريات مدفوعة قابلة للاسترداد من الضريبة المحصّلة</TableCell>
-                                        <TableCell className="text-left">ج.م {totals.vatInput.toLocaleString(undefined, { minimumFractionDigits: 2 })}</TableCell>
+                                    <TableRow 
+                                        className="bg-background/50 text-muted-foreground cursor-pointer hover:bg-primary/5 transition-colors group"
+                                        onClick={() => openDrillDown({ id: 'vatinput', name: 'ضريبة القيمة المضافة المدخلات (مشتريات قابلة للخصم)', balance: totals.vatInput, type: 'vatinput' })}
+                                        title="انقر لعرض فواتير ضريبة المدخلات"
+                                    >
+                                        <TableCell className="pr-10 text-xs flex items-center justify-between">
+                                            <span className="flex items-center gap-1.5">
+                                                <FileText className="h-3 w-3 text-primary/60 group-hover:text-primary" />
+                                                ضريبة مشتريات مدفوعة قابلة للاسترداد من الضريبة المحصّلة
+                                            </span>
+                                            <span className="text-[11px] text-muted-foreground/70 group-hover:text-primary flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity bg-primary/10 px-2 py-0.5 rounded">
+                                                <Search className="h-3 w-3" /> كشف الفواتير
+                                            </span>
+                                        </TableCell>
+                                        <TableCell className="text-left font-mono">ج.م {totals.vatInput.toLocaleString(undefined, { minimumFractionDigits: 2 })}</TableCell>
                                     </TableRow>
                                 )}
                             </>
                         )}
 
                         {totals.advances > 0.01 && (
-                            <TableRow className="font-semibold">
-                                <TableCell>سلف الموظفين (ذمم مدينة مستردة)</TableCell>
+                            <TableRow 
+                                className="font-semibold cursor-pointer hover:bg-primary/5 transition-colors group"
+                                onClick={() => openDrillDown({ id: 'advances', name: 'سلف الموظفين (ذمم مدينة مستردة)', balance: totals.advances, type: 'advances' })}
+                                title="انقر لعرض سندات سلف الموظفين"
+                            >
+                                <TableCell className="flex items-center justify-between">
+                                    <span className="flex items-center gap-1.5">
+                                        <FileText className="h-3.5 w-3.5 text-primary/60 group-hover:text-primary" />
+                                        سلف الموظفين (ذمم مدينة مستردة)
+                                    </span>
+                                    <span className="text-[11px] text-muted-foreground/70 group-hover:text-primary flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity bg-primary/10 px-2 py-0.5 rounded">
+                                        <Search className="h-3 w-3" /> كشف السلف
+                                    </span>
+                                </TableCell>
                                 <TableCell className="text-left font-mono">ج.م {totals.advances.toLocaleString(undefined, { minimumFractionDigits: 2 })}</TableCell>
                             </TableRow>
                         )}
@@ -574,14 +1282,38 @@ function BalanceSheet() {
                             <SectionHeader id="ap" title="حسابات الموردين (الذمم الدائنة)" total={totals.ap} />
                             <DetailRows id="ap" data={details.apDetails} />
                             {totals.accruedExpenses > 0.01 && (
-                                <TableRow className="font-semibold">
-                                    <TableCell>المصروفات المستحقة (التزامات تشغيلية معلقة)</TableCell>
+                                <TableRow 
+                                    className="font-semibold cursor-pointer hover:bg-destructive/5 transition-colors group"
+                                    onClick={() => openDrillDown({ id: 'accruedExpenses', name: 'المصروفات المستحقة (التزامات تشغيلية معلقة)', balance: totals.accruedExpenses, type: 'accruedExpenses' })}
+                                    title="انقر لعرض المصروفات المستحقة"
+                                >
+                                    <TableCell className="flex items-center justify-between">
+                                        <span className="flex items-center gap-1.5">
+                                            <FileText className="h-3.5 w-3.5 text-destructive/70 group-hover:text-destructive" />
+                                            المصروفات المستحقة (التزامات تشغيلية معلقة)
+                                        </span>
+                                        <span className="text-[11px] text-muted-foreground/70 group-hover:text-destructive flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity bg-destructive/10 px-2 py-0.5 rounded">
+                                            <Search className="h-3 w-3" /> كشف المصروفات
+                                        </span>
+                                    </TableCell>
                                     <TableCell className="text-left font-mono">ج.م {totals.accruedExpenses.toLocaleString(undefined, { minimumFractionDigits: 2 })}</TableCell>
                                 </TableRow>
                             )}
                             {totals.vatOutput > 0.01 && (
-                                <TableRow className="font-semibold">
-                                    <TableCell>ضريبة القيمة المضافة المحصلة (المخرجات المستحقة)</TableCell>
+                                <TableRow 
+                                    className="font-semibold cursor-pointer hover:bg-destructive/5 transition-colors group"
+                                    onClick={() => openDrillDown({ id: 'vatoutput', name: 'ضريبة القيمة المضافة المحصلة (المخرجات المستحقة)', balance: totals.vatOutput, type: 'vatoutput' })}
+                                    title="انقر لعرض فواتير ضريبة المخرجات"
+                                >
+                                    <TableCell className="flex items-center justify-between">
+                                        <span className="flex items-center gap-1.5">
+                                            <FileText className="h-3.5 w-3.5 text-destructive/70 group-hover:text-destructive" />
+                                            ضريبة القيمة المضافة المحصلة (المخرجات المستحقة)
+                                        </span>
+                                        <span className="text-[11px] text-muted-foreground/70 group-hover:text-destructive flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity bg-destructive/10 px-2 py-0.5 rounded">
+                                            <Search className="h-3 w-3" /> كشف الفواتير
+                                        </span>
+                                    </TableCell>
                                     <TableCell className="text-left font-mono">ج.م {totals.vatOutput.toLocaleString(undefined, { minimumFractionDigits: 2 })}</TableCell>
                                 </TableRow>
                             )}
@@ -596,19 +1328,72 @@ function BalanceSheet() {
                 </div>
 
                 <div>
-                    <h3 className="text-lg font-bold mb-4 border-b pb-2 flex items-center gap-2 text-green-600">حقوق الملكية (Equity)</h3>
+                    <h3 className="text-lg font-bold mb-4 border-b pb-2 flex items-center gap-2 text-foreground">حقوق الملكية (Equity)</h3>
                     <Table>
                         <TableBody>
-                            <TableRow className="font-semibold"><TableCell>رأس المال (الافتتاحي + الاستثمارات)</TableCell><TableCell className="text-left">ج.م {details.totalCapitalValue.toLocaleString(undefined, { minimumFractionDigits: 2 })}</TableCell></TableRow>
-                            <TableRow className="font-semibold"><TableCell>الأرباح المحتجزة (صافي الدخل)</TableCell><TableCell className={cn("text-left", netIncome >= 0 ? "text-green-600" : "text-destructive")}>ج.م {netIncome.toLocaleString(undefined, { minimumFractionDigits: 2 })}</TableCell></TableRow>
+                            <TableRow 
+                                className="font-semibold cursor-pointer hover:bg-muted/10 transition-colors group"
+                                onClick={() => openDrillDown({ id: 'capital', name: 'رأس المال (الافتتاحي + الاستثمارات)', balance: details.totalCapitalValue, type: 'capital' })}
+                                title="انقر لعرض حركات رأس المال"
+                            >
+                                <TableCell className="flex items-center justify-between">
+                                    <span className="flex items-center gap-1.5">
+                                        <Landmark className="h-3.5 w-3.5 text-foreground shrink-0" />
+                                        رأس المال (الافتتاحي + الاستثمارات)
+                                    </span>
+                                    <span className="text-[11px] text-muted-foreground group-hover:text-foreground flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity bg-muted px-2 py-0.5 rounded">
+                                        <Search className="h-3 w-3" /> التفاصيل
+                                    </span>
+                                </TableCell>
+                                <TableCell className="text-left font-mono text-foreground">ج.م {details.totalCapitalValue.toLocaleString(undefined, { minimumFractionDigits: 2 })}</TableCell>
+                            </TableRow>
+                            
+                            <TableRow 
+                                className="font-semibold cursor-pointer hover:bg-muted/10 transition-colors group"
+                                onClick={() => openDrillDown({ id: 'netIncome', name: 'الأرباح المحتجزة (صافي الدخل)', balance: netIncome, type: 'netIncome' })}
+                                title="انقر لعرض بنود الإيرادات والمصروفات المؤثرة على صافي الدخل"
+                            >
+                                <TableCell className="flex items-center justify-between">
+                                    <span className="flex items-center gap-1.5">
+                                        <TrendingDown className="h-3.5 w-3.5 text-foreground shrink-0" />
+                                        الأرباح المحتجزة (صافي الدخل)
+                                    </span>
+                                    <span className="text-[11px] text-muted-foreground group-hover:text-foreground flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity bg-muted px-2 py-0.5 rounded">
+                                        <Search className="h-3 w-3" /> قائمة الدخل
+                                    </span>
+                                </TableCell>
+                                <TableCell className={cn("text-left font-mono font-bold", netIncome > 0 ? "text-emerald-500" : netIncome < 0 ? "text-[#CD5C5C]" : "text-foreground")}>ج.م {netIncome.toLocaleString(undefined, { minimumFractionDigits: 2 })}</TableCell>
+                            </TableRow>
                             
                             <SectionHeader id="dist" title="(-) توزيعات الأرباح" total={totals.dist} />
                             <DetailRows id="dist" data={details.distributionsDetails} />
+
+                            {Math.abs(totals.valuationReserve) > 0.001 && (
+                                <TableRow 
+                                    className="font-semibold text-muted-foreground bg-muted/15 border-t border-dashed cursor-pointer hover:bg-muted/30 transition-colors group"
+                                    onClick={() => openDrillDown({ id: 'valuationReserve', name: 'فروق تقييم المخزون وتسوية المركز المالي', balance: totals.valuationReserve, type: 'valuationReserve' })}
+                                    title="انقر لعرض تفاصيل التسوية"
+                                >
+                                    <TableCell className="flex items-center justify-between py-2.5">
+                                        <div className="flex items-center gap-1.5">
+                                            <Scale className="h-4 w-4 text-foreground shrink-0" />
+                                            <span>فروق تقييم المخزون وتسوية المركز المالي</span>
+                                            <Badge variant="outline" className="text-[10px] px-1 py-0 text-foreground border-border">تسوية تلقائية</Badge>
+                                        </div>
+                                        <span className="text-[11px] text-muted-foreground group-hover:text-foreground flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity bg-muted px-2 py-0.5 rounded">
+                                            <Search className="h-3 w-3" /> التفاصيل
+                                        </span>
+                                    </TableCell>
+                                    <TableCell className={cn("text-left font-mono", totals.valuationReserve < 0 ? "text-[#CD5C5C]" : "text-foreground")}>
+                                        ج.م {totals.valuationReserve.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                                    </TableCell>
+                                </TableRow>
+                            )}
                         </TableBody>
                         <TableFooter>
-                            <TableRow className="bg-green-500/10 border-t-2 border-green-600">
-                                <TableHead className="font-black text-lg">إجمالي حقوق الملكية</TableHead>
-                                <TableHead className="text-left font-black text-lg">ج.م {totals.totalEquity.toLocaleString(undefined, { minimumFractionDigits: 2 })}</TableHead>
+                            <TableRow className="bg-muted/30 border-t-2 border-border">
+                                <TableHead className="font-black text-lg text-foreground">إجمالي حقوق الملكية</TableHead>
+                                <TableHead className="text-left font-black text-lg font-mono text-foreground">ج.م {totals.totalEquity.toLocaleString(undefined, { minimumFractionDigits: 2 })}</TableHead>
                             </TableRow>
                         </TableFooter>
                     </Table>
@@ -619,9 +1404,13 @@ function BalanceSheet() {
                         <span className="font-black text-xl">إجمالي الخصوم وحقوق الملكية</span>
                         <span className="font-black text-2xl text-primary">ج.م {(totals.totalLiabilities + totals.totalEquity).toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
                     </div>
-                    {Math.abs(totals.totalAssets - (totals.totalLiabilities + totals.totalEquity)) > 1 && (
+                    {Math.abs(totals.totalAssets - (totals.totalLiabilities + totals.totalEquity)) > 0.05 ? (
                         <div className="mt-2 text-xs text-destructive text-center flex items-center justify-center gap-1">
                             <AlertTriangle className="h-3 w-3"/> الميزانية غير متوازنة — الفرق: {Math.abs(totals.totalAssets - (totals.totalLiabilities + totals.totalEquity)).toLocaleString('ar-EG', { minimumFractionDigits: 2 })} ج.م. راجع التشخيص أدناه.
+                        </div>
+                    ) : (
+                        <div className="mt-2 text-xs text-emerald-600 dark:text-emerald-400 text-center flex items-center justify-center gap-1 font-semibold">
+                            <CheckCircle2 className="h-3.5 w-3.5"/> الميزانية العمومية متزنة تماماً بنسبة 100% (الأصول = الخصوم + حقوق الملكية).
                         </div>
                     )}
                 </div>
@@ -631,11 +1420,246 @@ function BalanceSheet() {
         {/* قسم تشخيص الفروق */}
         <div className="mt-8">
             <h3 className="text-base font-bold mb-4 flex items-center gap-2 border-b pb-2">
-                <AlertTriangle className="h-5 w-5 text-amber-600" />
+                <AlertTriangle className="h-5 w-5 text-muted-foreground" />
                 تشخيص أسباب الفرق وعرض المستندات المسببة للمشاكل
             </h3>
             <BalanceDiagnostics totals={totals} details={details} netIncome={netIncome} allData={allData} />
         </div>
+
+        {/* نافذة Pop Screen لعرض جميع حركات البند المنبثقة من الميزانية */}
+        <Dialog open={drillDownModal.isOpen} onOpenChange={(open) => setDrillDownModal(prev => ({ ...prev, isOpen: open }))}>
+            <DialogContent className="max-w-5xl w-[95vw] max-h-[92vh] flex flex-col p-0 overflow-hidden" dir="rtl">
+                <DialogHeader className="p-4 border-b bg-muted/30 shrink-0">
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                        <div className="flex items-center gap-2.5">
+                            <div className="p-2 rounded-lg bg-primary/10 text-primary">
+                                <FileText className="h-5 w-5" />
+                            </div>
+                            <div>
+                                <div className="flex items-center gap-2">
+                                    <DialogTitle className="text-lg font-bold">
+                                        كشف تفصيلي: {drillDownModal.name}
+                                    </DialogTitle>
+                                    <Badge variant="outline" className="text-xs">
+                                        {drillDownModal.type === 'customer' ? 'عميل'
+                                            : drillDownModal.type === 'supplier' ? 'مورد'
+                                            : drillDownModal.type === 'cashAccount' ? 'خزينة / بنك'
+                                            : drillDownModal.type === 'warehouse' ? 'مستودع'
+                                            : drillDownModal.type === 'asset' ? 'أصل ثابت'
+                                            : drillDownModal.type === 'partner' ? 'شريك'
+                                            : 'بند ميزانية'}
+                                    </Badge>
+                                </div>
+                                <DialogDescription className="text-xs text-muted-foreground mt-0.5">
+                                    عرض جميع العمليات والسندات المؤثرة على رصيد البند في المركز المالي
+                                </DialogDescription>
+                            </div>
+                        </div>
+
+                        <div className="flex items-center gap-2">
+                            <Button 
+                                variant="outline" 
+                                size="sm" 
+                                className="h-8 gap-1 text-xs"
+                                onClick={() => window.print()}
+                            >
+                                <Printer className="h-3.5 w-3.5" />
+                                <span>طباعة الكشف</span>
+                            </Button>
+                        </div>
+                    </div>
+
+                    {/* بطاقات المؤشرات المالية السريعة للبند */}
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 pt-3">
+                        <div className="p-2.5 rounded-lg border bg-background/60">
+                            <span className="text-[11px] text-muted-foreground block">الرصيد الافتتاحي</span>
+                            <span className={cn("font-mono font-bold text-sm block mt-0.5", modalData.opening < 0 ? "text-[#CD5C5C]" : "text-foreground")}>
+                                ج.م {modalData.opening.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                            </span>
+                        </div>
+                        <div className="p-2.5 rounded-lg border bg-background/60">
+                            <span className="text-[11px] text-muted-foreground block flex items-center gap-1 text-foreground">
+                                <ArrowDownLeft className="h-3 w-3" /> إجمالي المدين (+)
+                            </span>
+                            <span className="font-mono font-bold text-sm block mt-0.5 text-foreground">
+                                ج.م {modalData.totalDebit.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                            </span>
+                        </div>
+                        <div className="p-2.5 rounded-lg border bg-background/60">
+                            <span className="text-[11px] text-muted-foreground block flex items-center gap-1 text-foreground">
+                                <ArrowUpRight className="h-3 w-3" /> إجمالي الدائن (-)
+                            </span>
+                            <span className="font-mono font-bold text-sm block mt-0.5 text-foreground">
+                                ج.م {modalData.totalCredit.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                            </span>
+                        </div>
+                        <div className="p-2.5 rounded-lg border bg-muted/40 border-border">
+                            <span className="text-[11px] text-muted-foreground font-medium block">صافي الرصيد بالميزانية</span>
+                            <span className={cn("font-mono font-black text-sm block mt-0.5", modalData.finalBalance < 0 ? "text-[#CD5C5C]" : "text-foreground")}>
+                                ج.م {modalData.finalBalance.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                            </span>
+                        </div>
+                    </div>
+                </DialogHeader>
+
+                {/* شريط البحث والتبديل */}
+                <div className="p-3 border-b bg-muted/10 flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2 shrink-0">
+                    <div className="relative flex-1 max-w-sm">
+                        <Search className="absolute right-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
+                        <Input
+                            placeholder="بحث برقم السند، المرجع، البيان، أو التاريخ..."
+                            value={modalSearch}
+                            onChange={(e) => setModalSearch(e.target.value)}
+                            className="h-8 pr-8 text-xs"
+                        />
+                    </div>
+
+                    {drillDownModal.type === 'warehouse' && (
+                        <div className="flex items-center gap-1 bg-muted p-1 rounded-md">
+                            <Button
+                                size="sm"
+                                variant={warehouseViewMode === 'movements' ? 'default' : 'ghost'}
+                                className="h-7 text-xs px-2.5"
+                                onClick={() => setWarehouseViewMode('movements')}
+                            >
+                                <ArrowRightLeft className="h-3 w-3 ml-1" />
+                                حركات المخزن
+                            </Button>
+                            <Button
+                                size="sm"
+                                variant={warehouseViewMode === 'items' ? 'default' : 'ghost'}
+                                className="h-7 text-xs px-2.5"
+                                onClick={() => setWarehouseViewMode('items')}
+                            >
+                                <Package className="h-3 w-3 ml-1" />
+                                أرصدة الأصناف بالمخزن ({modalData.warehouseItems.length})
+                            </Button>
+                        </div>
+                    )}
+
+                    <div className="text-xs text-muted-foreground">
+                        {drillDownModal.type === 'warehouse' && warehouseViewMode === 'items'
+                            ? `عرض ${filteredWarehouseItems.length} صنف`
+                            : `عرض ${filteredModalRows.length} حركة مسجلة`
+                        }
+                    </div>
+                </div>
+
+                {/* منطقة الجدول مع شريط التمرير */}
+                <div className="flex-1 overflow-auto p-3">
+                    {drillDownModal.type === 'warehouse' && warehouseViewMode === 'items' ? (
+                        <Table>
+                            <TableHeader className="bg-muted/40 sticky top-0 z-10">
+                                <TableRow>
+                                    <TableHead className="w-12 text-center">#</TableHead>
+                                    <TableHead>الباركود</TableHead>
+                                    <TableHead>اسم الصنف</TableHead>
+                                    <TableHead className="text-center">الرصيد الفعلي</TableHead>
+                                    <TableHead className="text-center">التكلفة الفردية</TableHead>
+                                    <TableHead className="text-left">إجمالي القيمة</TableHead>
+                                </TableRow>
+                            </TableHeader>
+                            <TableBody>
+                                {filteredWarehouseItems.map((item, idx) => (
+                                    <TableRow key={item.id} className="hover:bg-muted/20">
+                                        <TableCell className="text-center text-xs text-muted-foreground">{idx + 1}</TableCell>
+                                        <TableCell className="font-mono text-xs">{item.barcode || '-'}</TableCell>
+                                        <TableCell className="font-medium text-xs">{item.name}</TableCell>
+                                        <TableCell className="text-center font-mono font-bold text-xs">{item.qty}</TableCell>
+                                        <TableCell className="text-center font-mono text-xs">ج.م {item.cost.toLocaleString(undefined, { minimumFractionDigits: 2 })}</TableCell>
+                                        <TableCell className="text-left font-mono font-semibold text-xs text-primary">
+                                            ج.م {item.total.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                                        </TableCell>
+                                    </TableRow>
+                                ))}
+                                {filteredWarehouseItems.length === 0 && (
+                                    <TableRow>
+                                        <TableCell colSpan={6} className="text-center py-8 text-muted-foreground italic text-xs">
+                                            لا توجد أصناف تطابق معايير البحث
+                                        </TableCell>
+                                    </TableRow>
+                                )}
+                            </TableBody>
+                            <TableFooter className="sticky bottom-0 bg-muted font-bold">
+                                <TableRow>
+                                    <TableCell colSpan={3}>إجمالي قيمة المخزون بالمستودع</TableCell>
+                                    <TableCell className="text-center font-mono">
+                                        {filteredWarehouseItems.reduce((s, i) => s + i.qty, 0)}
+                                    </TableCell>
+                                    <TableCell></TableCell>
+                                    <TableCell className="text-left font-mono text-primary font-black">
+                                        ج.م {filteredWarehouseItems.reduce((s, i) => s + i.total, 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                                    </TableCell>
+                                </TableRow>
+                            </TableFooter>
+                        </Table>
+                    ) : (
+                        <Table>
+                            <TableHeader className="bg-muted/40 sticky top-0 z-10">
+                                <TableRow>
+                                    <TableHead className="w-12 text-center">#</TableHead>
+                                    <TableHead className="w-24">التاريخ</TableHead>
+                                    <TableHead className="w-36">نوع الحركة / السند</TableHead>
+                                    <TableHead className="w-32">رقم المرجع</TableHead>
+                                    <TableHead>البيان والتفاصيل</TableHead>
+                                    <TableHead className="text-center w-28 text-foreground">مدين (+)</TableHead>
+                                    <TableHead className="text-center w-28 text-foreground">دائن (-)</TableHead>
+                                    <TableHead className="text-left w-32 font-bold text-foreground">الرصيد</TableHead>
+                                </TableRow>
+                            </TableHeader>
+                            <TableBody>
+                                {filteredModalRows.map((row, idx) => (
+                                    <TableRow key={row.id || idx} className="hover:bg-muted/20">
+                                        <TableCell className="text-center text-xs text-muted-foreground">{idx + 1}</TableCell>
+                                        <TableCell className="font-mono text-xs whitespace-nowrap text-foreground">{row.date}</TableCell>
+                                        <TableCell className="text-xs">
+                                            <Badge variant="outline" className="text-[11px] font-normal text-foreground border-border">
+                                                {row.type}
+                                            </Badge>
+                                        </TableCell>
+                                        <TableCell className="font-mono text-xs font-semibold text-foreground">{row.refNo || '-'}</TableCell>
+                                        <TableCell className="text-xs leading-relaxed max-w-md text-foreground">{row.description || '-'}</TableCell>
+                                        <TableCell className="text-center font-mono text-xs font-medium text-foreground">
+                                            {row.debit > 0 ? `+${row.debit.toLocaleString(undefined, { minimumFractionDigits: 2 })}` : '-'}
+                                        </TableCell>
+                                        <TableCell className="text-center font-mono text-xs font-medium text-foreground">
+                                            {row.credit > 0 ? `-${row.credit.toLocaleString(undefined, { minimumFractionDigits: 2 })}` : '-'}
+                                        </TableCell>
+                                        <TableCell className={cn("text-left font-mono text-xs font-bold", typeof row.balance === 'number' && row.balance < 0 ? "text-[#CD5C5C]" : "text-foreground")}>
+                                            {typeof row.balance === 'number'
+                                                ? (row.balance < 0 ? `(${Math.abs(row.balance).toLocaleString(undefined, { minimumFractionDigits: 2 })})` : `ج.م ${row.balance.toLocaleString(undefined, { minimumFractionDigits: 2 })}`)
+                                                : '-'
+                                            }
+                                        </TableCell>
+                                    </TableRow>
+                                ))}
+                                {filteredModalRows.length === 0 && (
+                                    <TableRow>
+                                        <TableCell colSpan={8} className="text-center py-8 text-muted-foreground italic text-xs">
+                                            لا توجد حركات مسجلة لهذا البند تطابق معايير البحث
+                                        </TableCell>
+                                    </TableRow>
+                                )}
+                            </TableBody>
+                            <TableFooter className="sticky bottom-0 bg-muted font-bold">
+                                <TableRow>
+                                    <TableCell colSpan={5} className="text-foreground">إجمالي الحركات المعروضة</TableCell>
+                                    <TableCell className="text-center font-mono text-foreground">
+                                        ج.م {filteredModalRows.reduce((s, r) => s + (r.debit || 0), 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                                    </TableCell>
+                                    <TableCell className="text-center font-mono text-foreground">
+                                        ج.م {filteredModalRows.reduce((s, r) => s + (r.credit || 0), 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                                    </TableCell>
+                                    <TableCell className={cn("text-left font-mono font-black", modalData.finalBalance < 0 ? "text-[#CD5C5C]" : "text-foreground")}>
+                                        ج.م {modalData.finalBalance.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                                    </TableCell>
+                                </TableRow>
+                            </TableFooter>
+                        </Table>
+                    )}
+                </div>
+            </DialogContent>
+        </Dialog>
         </>
     )
 }
@@ -743,8 +1767,8 @@ function TrialBalanceView() {
                     </CardHeader>
                     <CardContent className="py-2">
                         <div className="flex justify-between items-center text-sm font-bold">
-                            <span className="text-blue-600">مدين: {totals.periodDebit.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
-                            <span className="text-amber-600">دائن: {totals.periodCredit.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
+                            <span className="text-foreground">مدين: {totals.periodDebit.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
+                            <span className="text-foreground">دائن: {totals.periodCredit.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
                         </div>
                         <p className="text-xs text-muted-foreground mt-1">إجمالي الحركات المسجلة بالفترة المحددة</p>
                     </CardContent>
@@ -756,8 +1780,8 @@ function TrialBalanceView() {
                     </CardHeader>
                     <CardContent className="py-2">
                         <div className="flex justify-between items-center text-sm font-black">
-                            <span className="text-primary">مدين: {totals.endingDebit.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
-                            <span className="text-primary">دائن: {totals.endingCredit.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
+                            <span className="text-foreground">مدين: {totals.endingDebit.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
+                            <span className="text-foreground">دائن: {totals.endingCredit.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
                         </div>
                         <p className="text-xs text-muted-foreground mt-1">الرصيد الصافي التراكمي في نهاية الفترة</p>
                     </CardContent>
@@ -809,33 +1833,30 @@ function TrialBalanceView() {
                                         {row.accountName}
                                     </TableCell>
                                     <TableCell className="text-center">
-                                        <Badge variant="outline" className={cn(
-                                            "text-[10px] px-1.5 py-0 font-medium",
-                                            row.normalBalance === 'debit' ? "text-blue-600 border-blue-200" : "text-amber-600 border-amber-200"
-                                        )}>
+                                        <Badge variant="outline" className="text-[10px] px-1.5 py-0 font-medium text-foreground border-border">
                                             {row.normalBalance === 'debit' ? 'مدين' : 'دائن'}
                                         </Badge>
                                     </TableCell>
                                     {/* Opening */}
-                                    <TableCell className="text-center font-mono text-xs border-r">
+                                    <TableCell className="text-center font-mono text-xs border-r text-foreground">
                                         {row.openingDebit > 0 ? row.openingDebit.toLocaleString(undefined, { minimumFractionDigits: 2 }) : '-'}
                                     </TableCell>
-                                    <TableCell className="text-center font-mono text-xs">
+                                    <TableCell className="text-center font-mono text-xs text-foreground">
                                         {row.openingCredit > 0 ? row.openingCredit.toLocaleString(undefined, { minimumFractionDigits: 2 }) : '-'}
                                     </TableCell>
                                     {/* Period */}
-                                    <TableCell className="text-center font-mono text-xs border-x text-blue-600">
+                                    <TableCell className="text-center font-mono text-xs border-x text-foreground">
                                         {row.periodDebit > 0 ? row.periodDebit.toLocaleString(undefined, { minimumFractionDigits: 2 }) : '-'}
                                     </TableCell>
-                                    <TableCell className="text-center font-mono text-xs border-l text-amber-600">
+                                    <TableCell className="text-center font-mono text-xs border-l text-foreground">
                                         {row.periodCredit > 0 ? row.periodCredit.toLocaleString(undefined, { minimumFractionDigits: 2 }) : '-'}
                                     </TableCell>
                                     {/* Ending */}
-                                    <TableCell className="text-center font-mono text-xs font-bold border-r text-primary">
-                                        {row.endingDebit > 0 ? row.endingDebit.toLocaleString(undefined, { minimumFractionDigits: 2 }) : '-'}
+                                    <TableCell className={cn("text-center font-mono text-xs font-bold border-r", row.endingDebit < 0 ? "text-[#CD5C5C]" : "text-foreground")}>
+                                        {row.endingDebit !== 0 ? (row.endingDebit < 0 ? `(${Math.abs(row.endingDebit).toLocaleString(undefined, { minimumFractionDigits: 2 })})` : row.endingDebit.toLocaleString(undefined, { minimumFractionDigits: 2 })) : '-'}
                                     </TableCell>
-                                    <TableCell className="text-center font-mono text-xs font-bold text-primary">
-                                        {row.endingCredit > 0 ? row.endingCredit.toLocaleString(undefined, { minimumFractionDigits: 2 }) : '-'}
+                                    <TableCell className={cn("text-center font-mono text-xs font-bold", row.endingCredit < 0 ? "text-[#CD5C5C]" : "text-foreground")}>
+                                        {row.endingCredit !== 0 ? (row.endingCredit < 0 ? `(${Math.abs(row.endingCredit).toLocaleString(undefined, { minimumFractionDigits: 2 })})` : row.endingCredit.toLocaleString(undefined, { minimumFractionDigits: 2 })) : '-'}
                                     </TableCell>
                                 </TableRow>
                             );
@@ -846,22 +1867,22 @@ function TrialBalanceView() {
                             <TableCell colSpan={3} className="text-base font-black">
                                 إجمالي ميزان المراجعة (المجاميع المحاسبية)
                             </TableCell>
-                            <TableCell className="text-center font-mono text-sm border-r font-black">
+                            <TableCell className="text-center font-mono text-sm border-r font-black text-foreground">
                                 {totals.openingDebit.toLocaleString(undefined, { minimumFractionDigits: 2 })}
                             </TableCell>
-                            <TableCell className="text-center font-mono text-sm font-black">
+                            <TableCell className="text-center font-mono text-sm font-black text-foreground">
                                 {totals.openingCredit.toLocaleString(undefined, { minimumFractionDigits: 2 })}
                             </TableCell>
-                            <TableCell className="text-center font-mono text-sm border-x text-blue-700 font-black">
+                            <TableCell className="text-center font-mono text-sm border-x text-foreground font-black">
                                 {totals.periodDebit.toLocaleString(undefined, { minimumFractionDigits: 2 })}
                             </TableCell>
-                            <TableCell className="text-center font-mono text-sm border-l text-amber-700 font-black">
+                            <TableCell className="text-center font-mono text-sm border-l text-foreground font-black">
                                 {totals.periodCredit.toLocaleString(undefined, { minimumFractionDigits: 2 })}
                             </TableCell>
-                            <TableCell className="text-center font-mono text-sm border-r text-primary font-black">
+                            <TableCell className={cn("text-center font-mono text-sm border-r font-black", totals.endingDebit < 0 ? "text-[#CD5C5C]" : "text-foreground")}>
                                 {totals.endingDebit.toLocaleString(undefined, { minimumFractionDigits: 2 })}
                             </TableCell>
-                            <TableCell className="text-center font-mono text-sm text-primary font-black">
+                            <TableCell className={cn("text-center font-mono text-sm font-black", totals.endingCredit < 0 ? "text-[#CD5C5C]" : "text-foreground")}>
                                 {totals.endingCredit.toLocaleString(undefined, { minimumFractionDigits: 2 })}
                             </TableCell>
                         </TableRow>
@@ -872,7 +1893,7 @@ function TrialBalanceView() {
             {/* تشخيص ميزان المراجعة عند وجود اختلال */}
             {!totals.isBalanced && (
                 <div className="mt-6 space-y-3">
-                    <h4 className="font-bold text-sm text-destructive flex items-center gap-2">
+                    <h4 className="font-bold text-sm text-[#CD5C5C] flex items-center gap-2">
                         <AlertTriangle className="h-4 w-4" />
                         تشخيص الحسابات الشاذة في ميزان المراجعة
                     </h4>
@@ -903,16 +1924,16 @@ function TrialBalanceView() {
                                     return (
                                         <TableRow key={idx} className="bg-red-50/30 text-xs">
                                             <TableCell className="font-mono text-muted-foreground">{row.accountCode}</TableCell>
-                                            <TableCell className="font-semibold">{row.accountName}</TableCell>
+                                            <TableCell className="font-semibold text-foreground">{row.accountName}</TableCell>
                                             <TableCell className="text-center">
-                                                <Badge variant="outline" className={cn("text-[10px]", row.normalBalance === 'debit' ? 'text-blue-600' : 'text-amber-600')}>
+                                                <Badge variant="outline" className="text-[10px] text-foreground border-border">
                                                     {row.normalBalance === 'debit' ? 'مدين' : 'دائن'}
                                                 </Badge>
                                             </TableCell>
-                                            <TableCell className="text-center font-mono">{row.endingDebit > 0 ? row.endingDebit.toLocaleString('ar-EG', { minimumFractionDigits: 2 }) : '—'}</TableCell>
-                                            <TableCell className="text-center font-mono">{row.endingCredit > 0 ? row.endingCredit.toLocaleString('ar-EG', { minimumFractionDigits: 2 }) : '—'}</TableCell>
+                                            <TableCell className="text-center font-mono text-foreground">{row.endingDebit > 0 ? row.endingDebit.toLocaleString('ar-EG', { minimumFractionDigits: 2 }) : '—'}</TableCell>
+                                            <TableCell className="text-center font-mono text-foreground">{row.endingCredit > 0 ? row.endingCredit.toLocaleString('ar-EG', { minimumFractionDigits: 2 }) : '—'}</TableCell>
                                             <TableCell className="text-center">
-                                                <Badge variant="destructive" className="text-[10px]">{anomaly}</Badge>
+                                                <Badge variant="destructive" className="text-[10px] bg-[#CD5C5C] text-white">{anomaly}</Badge>
                                             </TableCell>
                                         </TableRow>
                                     );
@@ -1316,15 +2337,15 @@ function BalanceDiagnostics({ totals, details, netIncome, allData }: any) {
     );
   }
 
-  const sevColor = (s: string) => s === 'high' ? 'border-red-300 bg-red-50/60 dark:bg-red-950/20 text-red-700' : s === 'medium' ? 'border-amber-300 bg-amber-50/60 dark:bg-amber-950/20 text-amber-700' : 'border-blue-300 bg-blue-50/60 dark:bg-blue-950/20 text-blue-700';
-  const sevBadge = (s: string) => s === 'high' ? 'bg-red-600' : s === 'medium' ? 'bg-amber-600' : 'bg-blue-500';
+  const sevColor = (s: string) => s === 'high' ? 'border-[#CD5C5C]/40 bg-destructive/10 text-[#CD5C5C]' : s === 'medium' ? 'border-border bg-muted/40 text-foreground' : 'border-border bg-muted/20 text-muted-foreground';
+  const sevBadge = (s: string) => s === 'high' ? 'bg-[#CD5C5C] text-white' : s === 'medium' ? 'bg-secondary text-secondary-foreground' : 'bg-muted text-muted-foreground';
   const sevLabel = (s: string) => s === 'high' ? 'عالي' : s === 'medium' ? 'متوسط' : 'منخفض';
   const typeIcon = (t: string) => {
-    if (t === 'sale')       return <ShoppingCart className="h-3.5 w-3.5 text-amber-600" />;
-    if (t === 'purchase')   return <Receipt className="h-3.5 w-3.5 text-blue-600" />;
-    if (t === 'payment')    return <Wallet className="h-3.5 w-3.5 text-emerald-600" />;
-    if (t === 'item')       return <Package className="h-3.5 w-3.5 text-purple-600" />;
-    if (t === 'adjustment') return <ArrowRightLeft className="h-3.5 w-3.5 text-orange-600" />;
+    if (t === 'sale')       return <ShoppingCart className="h-3.5 w-3.5 text-muted-foreground" />;
+    if (t === 'purchase')   return <Receipt className="h-3.5 w-3.5 text-muted-foreground" />;
+    if (t === 'payment')    return <Wallet className="h-3.5 w-3.5 text-muted-foreground" />;
+    if (t === 'item')       return <Package className="h-3.5 w-3.5 text-muted-foreground" />;
+    if (t === 'adjustment') return <ArrowRightLeft className="h-3.5 w-3.5 text-muted-foreground" />;
     return <FileText className="h-3.5 w-3.5 text-muted-foreground" />;
   };
 

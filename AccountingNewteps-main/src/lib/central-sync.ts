@@ -636,24 +636,39 @@ export async function getTablesSyncMatrix(): Promise<TablesSyncMatrixResponse> {
 
     // 1. استعلام محلي موحد فائق السرعة عبر الـ RowVersion والـ Timestamps
     const localTableEntries = Object.keys(TABLE_METADATA_MAP);
-    const localUnionQueries = localTableEntries.map(table => `
-        SELECT 
-            '${table}' as tableName,
-            COUNT(*) as localRows,
-            MAX(CAST(t.[RowVersion] AS BIGINT)) as currentLocalRowVersion,
-            SUM(CASE 
-                WHEN (m.LastPushRowVersion IS NULL OR CAST(t.[RowVersion] AS BIGINT) > m.LastPushRowVersion)
-                     OR t.SyncStatus = 'pending'
-                     OR t.LastSyncedAt IS NULL
-                THEN 1 ELSE 0 
-            END) as pendingPush,
-            MAX(t.UpdatedAt) as lastLocalModified,
-            MAX(t.LastSyncedAt) as lastSyncedAt
-        FROM dbo.[${table}] t
-        LEFT JOIN dbo.SyncTrackingMatrix m ON m.TableName = '${table}'
-    `).join(' UNION ALL ');
+    // Build per-table queries from the actual schema. A single legacy table missing one
+    // tracking column must not prevent the entire directions list from loading.
+    const localColumnsRes = await localPool.request().query(`
+        SELECT t.name AS TableName, c.name AS ColumnName
+        FROM sys.tables t
+        JOIN sys.schemas s ON s.schema_id = t.schema_id
+        JOIN sys.columns c ON c.object_id = t.object_id
+        WHERE s.name = 'dbo'
+    `);
+    const localColumns = new Map<string, Set<string>>();
+    for (const row of localColumnsRes.recordset) {
+        const columns = localColumns.get(row.TableName) || new Set<string>();
+        columns.add(row.ColumnName);
+        localColumns.set(row.TableName, columns);
+    }
+    const localUnionQueries = localTableEntries.filter(table => localColumns.has(table)).map(table => {
+        const columns = localColumns.get(table)!;
+        const pendingTerms: string[] = [];
+        if (columns.has('RowVersion')) pendingTerms.push('(m.LastPushRowVersion IS NULL OR CAST(t.[RowVersion] AS BIGINT) > m.LastPushRowVersion)');
+        if (columns.has('SyncStatus')) pendingTerms.push("t.[SyncStatus] = 'pending'");
+        if (columns.has('LastSyncedAt')) pendingTerms.push('t.[LastSyncedAt] IS NULL');
+        const pendingExpr = pendingTerms.length ? `SUM(CASE WHEN ${pendingTerms.join(' OR ')} THEN 1 ELSE 0 END)` : '0';
+        const rowVersionExpr = columns.has('RowVersion') ? 'MAX(CAST(t.[RowVersion] AS BIGINT))' : 'NULL';
+        const updatedExpr = columns.has('UpdatedAt') ? 'MAX(t.[UpdatedAt])' : 'NULL';
+        const syncedExpr = columns.has('LastSyncedAt') ? 'MAX(t.[LastSyncedAt])' : 'NULL';
+        return `SELECT '${table}' AS tableName, COUNT(*) AS localRows, ${rowVersionExpr} AS currentLocalRowVersion,
+            ${pendingExpr} AS pendingPush, ${updatedExpr} AS lastLocalModified, ${syncedExpr} AS lastSyncedAt
+            FROM dbo.[${table}] t LEFT JOIN dbo.SyncTrackingMatrix m ON m.TableName = '${table}'`;
+    });
 
-    const localRes = await localPool.request().query(localUnionQueries);
+    const localRes = localUnionQueries.length
+        ? await localPool.request().query(localUnionQueries.join(' UNION ALL '))
+        : { recordset: [] as any[] };
     const localDataMap = new Map<string, {
         localRows: number;
         currentLocalRowVersion: string | null;
@@ -691,17 +706,28 @@ export async function getTablesSyncMatrix(): Promise<TablesSyncMatrixResponse> {
         `);
         const centralExistingTables = new Set(tablesInCentralRes.recordset.map(r => r.TABLE_NAME));
 
-        const centralValidTables = localTableEntries.filter(t => centralExistingTables.has(t));
+        const centralColumnsRes = await centralPool.request().query(`
+            SELECT TABLE_NAME AS TableName, COLUMN_NAME AS ColumnName
+            FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = 'dbo'
+        `);
+        const centralColumns = new Map<string, Set<string>>();
+        for (const row of centralColumnsRes.recordset) {
+            const columns = centralColumns.get(row.TableName) || new Set<string>();
+            columns.add(row.ColumnName);
+            centralColumns.set(row.TableName, columns);
+        }
+        const centralValidTables = localTableEntries.filter(t => centralExistingTables.has(t) && centralColumns.has(t));
         if (centralValidTables.length > 0) {
-            const centralUnionQueries = centralValidTables.map(table => `
-                SELECT 
-                    '${table}' as tableName,
-                    COUNT(*) as centralTotalRows,
-                    SUM(CASE WHEN BranchCode = '${branchCode}' THEN 1 ELSE 0 END) as centralBranchRows,
-                    MAX(CAST([RowVersion] AS BIGINT)) as currentCentralRowVersion,
-                    MAX(UpdatedAt) as lastCentralModified
-                FROM dbo.[${table}]
-            `).join(' UNION ALL ');
+            const centralUnionQueries = centralValidTables.map(table => {
+                const columns = centralColumns.get(table)!;
+                const branchExpr = columns.has('BranchCode')
+                    ? `SUM(CASE WHEN [BranchCode] = '${branchCode.replace(/'/g, "''")}' THEN 1 ELSE 0 END)`
+                    : 'CAST(0 AS INT)';
+                const rowVersionExpr = columns.has('RowVersion') ? 'MAX(CAST([RowVersion] AS BIGINT))' : 'NULL';
+                const updatedExpr = columns.has('UpdatedAt') ? 'MAX([UpdatedAt])' : 'NULL';
+                return `SELECT '${table}' AS tableName, COUNT(*) AS centralTotalRows, ${branchExpr} AS centralBranchRows,
+                    ${rowVersionExpr} AS currentCentralRowVersion, ${updatedExpr} AS lastCentralModified FROM dbo.[${table}]`;
+            }).join(' UNION ALL ');
 
             const centralRes = await centralPool.request().query(centralUnionQueries);
             for (const row of centralRes.recordset) {
@@ -1474,13 +1500,22 @@ export async function getTablesRowCountsComparison() {
  */
 export async function updateTableSyncDirection(tableName: string, direction: SyncDirection) {
     const pool = await getDbPool();
+    await ensureSyncTrackingMatrixTable(pool);
+    const meta = TABLE_METADATA_MAP[tableName];
+    if (!meta) throw new Error(`جدول المزامنة غير معروف: ${tableName}`);
     await pool.request()
         .input('TableName', sql.NVarChar(128), tableName)
         .input('Direction', sql.NVarChar(50), direction)
+        .input('Name', sql.NVarChar(255), meta.name)
+        .input('Category', sql.NVarChar(100), meta.category)
+        .input('Description', sql.NVarChar(500), meta.description || '')
+        .input('Scope', sql.NVarChar(100), meta.dataScope || '')
         .query(`
-            UPDATE dbo.SyncTrackingMatrix 
-            SET SyncDirection = @Direction, UpdatedAt = SYSUTCDATETIME()
-            WHERE TableName = @TableName;
+            IF EXISTS (SELECT 1 FROM dbo.SyncTrackingMatrix WHERE TableName = @TableName)
+                UPDATE dbo.SyncTrackingMatrix SET SyncDirection = @Direction, UpdatedAt = SYSUTCDATETIME() WHERE TableName = @TableName;
+            ELSE
+                INSERT INTO dbo.SyncTrackingMatrix (TableName, TableDisplayName, Category, SyncDirection, DataDescription, DataScope, SyncStatus)
+                VALUES (@TableName, @Name, @Category, @Direction, @Description, @Scope, 'pending');
         `);
     return { success: true, tableName, direction };
 }
@@ -1490,17 +1525,23 @@ export async function updateTableSyncDirection(tableName: string, direction: Syn
  */
 export async function updateTableSyncDirectionsBulk(updates: { tableName: string; direction: SyncDirection }[]) {
     const pool = await getDbPool();
+    await ensureSyncTrackingMatrixTable(pool);
     for (const item of updates) {
-        await pool.request()
-            .input('TableName', sql.NVarChar(128), item.tableName)
-            .input('Direction', sql.NVarChar(50), item.direction)
-            .query(`
-                UPDATE dbo.SyncTrackingMatrix 
-                SET SyncDirection = @Direction, UpdatedAt = SYSUTCDATETIME()
-                WHERE TableName = @TableName;
-            `);
+        await updateTableSyncDirection(item.tableName, item.direction);
     }
     return { success: true, updatedCount: updates.length };
+}
+
+/** تطبيق اتجاه واحد على كل الجداول التابعة لقسم محدد. */
+export async function updateTableSyncDirectionsByCategory(category: string, direction: SyncDirection) {
+    const matchingTables = Object.entries(TABLE_METADATA_MAP)
+        .filter(([, meta]) => meta.category === category)
+        .map(([tableName]) => tableName);
+    if (matchingTables.length === 0) throw new Error(`قسم المزامنة غير معروف: ${category}`);
+    for (const tableName of matchingTables) {
+        await updateTableSyncDirection(tableName, direction);
+    }
+    return { success: true, updatedCount: matchingTables.length };
 }
 
 /**
@@ -1508,15 +1549,9 @@ export async function updateTableSyncDirectionsBulk(updates: { tableName: string
  */
 export async function resetTableSyncDirections() {
     const pool = await getDbPool();
+    await ensureSyncTrackingMatrixTable(pool);
     for (const [tableName, meta] of Object.entries(TABLE_METADATA_MAP)) {
-        await pool.request()
-            .input('TableName', sql.NVarChar(128), tableName)
-            .input('Direction', sql.NVarChar(50), meta.direction)
-            .query(`
-                UPDATE dbo.SyncTrackingMatrix 
-                SET SyncDirection = @Direction, UpdatedAt = SYSUTCDATETIME()
-                WHERE TableName = @TableName;
-            `);
+        await updateTableSyncDirection(tableName, meta.direction);
     }
     return { success: true };
 }

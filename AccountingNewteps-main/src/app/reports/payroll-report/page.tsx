@@ -208,7 +208,7 @@ export default function PayrollReportPage() {
             onClick={() => window.print()}
             className="gap-1.5 text-xs font-semibold h-8"
           >
-            <Printer className="h-3.5 w-3.5 text-sky-600 dark:text-sky-400" />
+            <Printer className="h-3.5 w-3.5 text-foreground dark:text-foreground" />
             طباعة مسير الرواتب
           </Button>
         </div>
@@ -220,11 +220,11 @@ export default function PayrollReportPage() {
           <CardHeader className="p-3.5 pb-1">
             <CardTitle className="text-xs font-medium text-muted-foreground flex items-center justify-between">
               <span>إجمالي الرواتب الأساسية</span>
-              <DollarSign className="h-4 w-4 text-blue-600 dark:text-blue-400" />
+              <DollarSign className="h-4 w-4 text-foreground dark:text-foreground" />
             </CardTitle>
           </CardHeader>
           <CardContent className="p-3.5 pt-0">
-            <div className="text-xl font-bold font-mono text-blue-700 dark:text-blue-400">
+            <div className="text-xl font-bold font-mono text-foreground dark:text-foreground">
               {summary.totalBasic.toLocaleString("ar-EG", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ج.م
             </div>
             <p className="text-[11px] text-muted-foreground mt-0.5">
@@ -271,11 +271,11 @@ export default function PayrollReportPage() {
           <CardHeader className="p-3.5 pb-1">
             <CardTitle className="text-xs font-medium text-muted-foreground flex items-center justify-between">
               <span>السلف المستقطعة</span>
-              <CreditCard className="h-4 w-4 text-amber-600 dark:text-amber-400" />
+              <CreditCard className="h-4 w-4 text-foreground dark:text-foreground" />
             </CardTitle>
           </CardHeader>
           <CardContent className="p-3.5 pt-0">
-            <div className="text-xl font-bold font-mono text-amber-700 dark:text-amber-400">
+            <div className="text-xl font-bold font-mono text-foreground dark:text-foreground">
               {summary.totalAdvancesDeducted.toLocaleString("ar-EG", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ج.م
             </div>
             <p className="text-[11px] text-muted-foreground mt-0.5">
@@ -288,11 +288,11 @@ export default function PayrollReportPage() {
           <CardHeader className="p-3.5 pb-1">
             <CardTitle className="text-xs font-medium text-muted-foreground flex items-center justify-between">
               <span>صافي الرواتب المستحقة</span>
-              <BadgeCheck className="h-4 w-4 text-indigo-600 dark:text-indigo-400" />
+              <BadgeCheck className="h-4 w-4 text-foreground dark:text-foreground" />
             </CardTitle>
           </CardHeader>
           <CardContent className="p-3.5 pt-0">
-            <div className="text-xl font-bold font-mono text-indigo-700 dark:text-indigo-400">
+            <div className="text-xl font-bold font-mono text-foreground dark:text-foreground">
               {summary.totalNet.toLocaleString("ar-EG", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ج.م
             </div>
             <p className="text-[11px] text-muted-foreground mt-0.5">
@@ -392,7 +392,7 @@ export default function PayrollReportPage() {
                 مسير رواتب شهر {selectedMonth} لسنة {selectedYear} ({payrollRows.length} موظف)
               </CardTitle>
             </div>
-            <Badge variant="outline" className="text-xs font-mono font-bold text-indigo-700 dark:text-indigo-400">
+            <Badge variant="outline" className="text-xs font-mono font-bold text-foreground dark:text-foreground">
               صافي المسير: {summary.totalNet.toLocaleString("ar-EG", { minimumFractionDigits: 2 })} ج.م
             </Badge>
           </div>
@@ -410,7 +410,7 @@ export default function PayrollReportPage() {
                   <TableHead className="text-left font-mono">الأساسي</TableHead>
                   <TableHead className="text-left font-mono text-emerald-600">+ البدلات</TableHead>
                   <TableHead className="text-left font-mono text-rose-600">- الخصومات</TableHead>
-                  <TableHead className="text-left font-mono text-amber-600">- السلف</TableHead>
+                  <TableHead className="text-left font-mono text-foreground">- السلف</TableHead>
                   <TableHead className="text-left font-mono font-bold">صافي الراتب</TableHead>
                   <TableHead className="text-center">الحالة</TableHead>
                 </TableRow>
@@ -449,10 +449,10 @@ export default function PayrollReportPage() {
                       <TableCell className="text-left font-mono text-rose-600 dark:text-rose-400 font-semibold">
                         {r.deductions > 0 ? `-${r.deductions.toLocaleString("ar-EG", { minimumFractionDigits: 2 })}` : "-"}
                       </TableCell>
-                      <TableCell className="text-left font-mono text-amber-600 dark:text-amber-400 font-semibold">
+                      <TableCell className="text-left font-mono text-foreground dark:text-foreground font-semibold">
                         {r.advancesDeducted > 0 ? `-${r.advancesDeducted.toLocaleString("ar-EG", { minimumFractionDigits: 2 })}` : "-"}
                       </TableCell>
-                      <TableCell className="text-left font-mono font-bold text-sm text-indigo-700 dark:text-indigo-400">
+                      <TableCell className="text-left font-mono font-bold text-sm text-foreground dark:text-foreground">
                         {r.netSalary.toLocaleString("ar-EG", { minimumFractionDigits: 2 })}
                       </TableCell>
                       <TableCell className="text-center">
@@ -461,7 +461,7 @@ export default function PayrollReportPage() {
                             تم الصرف
                           </Badge>
                         ) : (
-                          <Badge variant="outline" className="text-[10px] bg-amber-500/10 text-amber-600 border-amber-300">
+                          <Badge variant="outline" className="text-[10px] bg-amber-500/10 text-foreground border-amber-300">
                             مستحق
                           </Badge>
                         )}
@@ -484,10 +484,10 @@ export default function PayrollReportPage() {
                   <TableCell className="text-left font-mono text-sm font-black text-rose-600">
                     {summary.totalDeductions.toLocaleString("ar-EG", { minimumFractionDigits: 2 })} ج.م
                   </TableCell>
-                  <TableCell className="text-left font-mono text-sm font-black text-amber-600">
+                  <TableCell className="text-left font-mono text-sm font-black text-foreground">
                     {summary.totalAdvancesDeducted.toLocaleString("ar-EG", { minimumFractionDigits: 2 })} ج.م
                   </TableCell>
-                  <TableCell className="text-left font-mono text-sm font-black text-indigo-700 dark:text-indigo-400">
+                  <TableCell className="text-left font-mono text-sm font-black text-foreground dark:text-foreground">
                     {summary.totalNet.toLocaleString("ar-EG", { minimumFractionDigits: 2 })} ج.م
                   </TableCell>
                   <TableCell></TableCell>

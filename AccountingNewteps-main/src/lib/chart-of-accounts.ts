@@ -25,6 +25,7 @@ export const CHART_OF_ACCOUNTS: AccountNode[] = [
     { code: '1104', name: 'سلف وعهد الموظفين والمناديب', type: 'asset', normalBalance: 'debit', level: 3, parentCode: '11' },
     { code: '1105', name: 'ضريبة القيمة المضافة - مدخلات (مشتريات/مصروفات)', type: 'asset', normalBalance: 'debit', level: 3, parentCode: '11' },
     { code: '1106', name: 'مصروفات مدفوعة مقدماً وأرصدة مدينة أخرى', type: 'asset', normalBalance: 'debit', level: 3, parentCode: '11' },
+    { code: '1107', name: 'إنتاج تحت التشغيل', type: 'asset', normalBalance: 'debit', level: 3, parentCode: '11', description: 'تكاليف الخامات والأجور والتكاليف الصناعية المحملة على أوامر التصنيع غير المكتملة' },
 
     // 12. الأصول غير المتداولة / الثابتة (Fixed / Non-Current Assets)
     { code: '12', name: 'الأصول غير المتداولة والثابتة', type: 'asset', normalBalance: 'debit', level: 2, parentCode: '1' },
@@ -107,6 +108,9 @@ export const getCOAAccountForLabel = (label: string): AccountNode => {
     if (l.includes('عملاء') || l.includes('عميل') || l.includes('customer') || l.includes('receivable')) {
         return CHART_OF_ACCOUNTS.find(a => a.code === '1102')!;
     }
+    if (l.includes('إنتاج تحت التشغيل') || l.includes('انتاج تحت التشغيل') || l.includes('work in process') || l.includes('wip')) {
+        return CHART_OF_ACCOUNTS.find(a => a.code === '1107')!;
+    }
     // 3. Inventory
     if (l.includes('مخزون') || l.includes('بضاعة') || l.includes('inventory') || l.includes('مخزن')) {
         return CHART_OF_ACCOUNTS.find(a => a.code === '1103')!;
@@ -122,6 +126,9 @@ export const getCOAAccountForLabel = (label: string): AccountNode => {
     // 6. Accounts Payable (Suppliers)
     if (l.includes('مورد') || l.includes('موردين') || l.includes('supplier') || l.includes('payable')) {
         return CHART_OF_ACCOUNTS.find(a => a.code === '2101')!;
+    }
+    if (l.includes('مستحقات عاملين') || l.includes('مصروفات مستحقة') || l.includes('تكاليف تصنيع مستحقة') || l.includes('manufacturing payable')) {
+        return CHART_OF_ACCOUNTS.find(a => a.code === '2103')!;
     }
     // 7. VAT
     if (l.includes('ضريبة') || l.includes('vat') || l.includes('قيمة مضافة')) {
@@ -389,6 +396,13 @@ export function generateAllJournalEntries(allData: any): JournalEntryLike[] {
     const getPartnerName = (id?: string) => partners.find((p: any) => p.id === id)?.name || 'شريك غير معروف';
 
     const fiscalYearStart = settings?.main?.financial?.fiscalYearStart || '2024-01-01';
+    const financialSettings = settings?.main?.financial || {};
+    const itemCostIncludesTax = financialSettings.itemCostIncludesTax === true;
+    const itemCostVatRate = Math.max(0, Number(financialSettings.vatRate) || 14);
+    const getProfitUnitCost = (cost: any) => {
+        const value = Math.max(0, Number(cost) || 0);
+        return itemCostIncludesTax ? value / (1 + itemCostVatRate / 100) : value;
+    };
 
     // 1. Customers Opening Balances
     const totalCustomerOB = customers.reduce((sum: number, c: any) => sum + (Number(c.openingBalance) || 0), 0);
@@ -419,28 +433,37 @@ export function generateAllJournalEntries(allData: any): JournalEntryLike[] {
     const allSales = [...validSales, ...standalonePos];
 
     allSales.forEach((sale: any) => {
-        const totalBeforeDiscount = sale.subtotal || (Number(sale.total) + (Number(sale.discount) || 0));
+        const total = Number(sale.total) || 0;
+        const discount = Number(sale.discount) || 0;
+        const subtotal = sale.subtotal != null ? Number(sale.subtotal) : (total + discount);
         const number = sale.invoiceNumber || `ف-ب-${String(sale.id).slice(-4)}`;
-        const amountDue = Number(sale.total) - (Number(sale.paidAmount) || 0);
+        const tax = sale.taxAmount != null ? Number(sale.taxAmount) : Math.max(0, total + discount - subtotal);
+        const revenueNetOfTax = total + discount - tax;
         const cashAccName = getCashAccountName(sale.paidToAccountId);
 
-        if (sale.paidAmount && Number(sale.paidAmount) > 0) {
-            entries.push({ id: `sale-cash-${sale.id}`, date: sale.date, warehouseId: sale.warehouseId, number, description: `فاتورة بيع ${number} للعميل ${sale.customerName || ''}`, debit: Number(sale.paidAmount), credit: 0, account: cashAccName });
+        const initialPaid = sale.initialPaidAmount != null
+            ? Number(sale.initialPaidAmount)
+            : (sale.paidAmount != null ? Number(sale.paidAmount) : 0);
+
+        if (initialPaid > 0) {
+            entries.push({ id: `sale-cash-${sale.id}`, date: sale.date, warehouseId: sale.warehouseId, number, description: `فاتورة بيع ${number} للعميل ${sale.customerName || ''}`, debit: initialPaid, credit: 0, account: cashAccName });
         }
-        if (amountDue > 0.01) {
-            entries.push({ id: `sale-ar-${sale.id}`, date: sale.date, warehouseId: sale.warehouseId, number, description: `فاتورة بيع ${number} للعميل ${sale.customerName || ''}`, debit: amountDue, credit: 0, account: 'حسابات العملاء' });
+        const arAmount = total - initialPaid;
+        if (arAmount > 0.001) {
+            entries.push({ id: `sale-ar-${sale.id}`, date: sale.date, warehouseId: sale.warehouseId, number, description: `فاتورة بيع ${number} للعميل ${sale.customerName || ''}`, debit: arAmount, credit: 0, account: 'حسابات العملاء' });
+        } else if (arAmount < -0.001) {
+            entries.push({ id: `sale-ar-overpay-${sale.id}`, date: sale.date, warehouseId: sale.warehouseId, number, description: `رصيد دائن زائد على فاتورة بيع ${number}`, debit: 0, credit: Math.abs(arAmount), account: 'حسابات العملاء' });
         }
-        if (Number(sale.discount) > 0) {
-            entries.push({ id: `sale-discount-${sale.id}`, date: sale.date, warehouseId: sale.warehouseId, number, description: `خصم مسموح به على فاتورة بيع ${number}`, debit: Number(sale.discount), credit: 0, account: 'خصم مسموح به' });
+        if (discount > 0) {
+            entries.push({ id: `sale-discount-${sale.id}`, date: sale.date, warehouseId: sale.warehouseId, number, description: `خصم مسموح به على فاتورة بيع ${number}`, debit: discount, credit: 0, account: 'خصم مسموح به' });
         }
-        if (Number(sale.taxAmount) > 0) {
-            entries.push({ id: `sale-tax-${sale.id}`, date: sale.date, warehouseId: sale.warehouseId, number, description: `ضريبة القيمة المضافة على مبيعات ${number}`, debit: 0, credit: Number(sale.taxAmount), account: 'ضريبة القيمة المضافة' });
+        if (tax > 0) {
+            entries.push({ id: `sale-tax-${sale.id}`, date: sale.date, warehouseId: sale.warehouseId, number, description: `ضريبة القيمة المضافة على مبيعات ${number}`, debit: 0, credit: tax, account: 'ضريبة القيمة المضافة' });
         }
 
-        const revenueNetOfTax = totalBeforeDiscount - (Number(sale.taxAmount) || 0);
         entries.push({ id: `sale-rev-${sale.id}`, date: sale.date, warehouseId: sale.warehouseId, number, description: `إيرادات مبيعات ${number}`, debit: 0, credit: revenueNetOfTax, account: 'إيرادات المبيعات' });
 
-        const cogs = (sale.items || []).reduce((acc: number, i: any) => acc + (Number(i.qty || 0) * (Number(i.cost) || Number(itemsMap.get(i.id)?.cost) || 0)), 0);
+        const cogs = (sale.items || []).reduce((acc: number, i: any) => acc + (Number(i.qty || 0) * getProfitUnitCost(Number(i.cost) || Number(itemsMap.get(i.id)?.cost) || 0)), 0);
         const inventoryAccount = sale.salesRepId ? 'مخزون بعهدة المندوب' : `مخزون - ${getWarehouse(sale.warehouseId)?.name || 'غير محدد'}`;
         if (cogs > 0) {
             entries.push({ id: `sale-cogs-${sale.id}`, date: sale.date, warehouseId: sale.warehouseId, number, description: `تكلفة بضاعة مباعة ${number}`, debit: cogs, credit: 0, account: 'تكلفة البضاعة المباعة' });
@@ -456,19 +479,28 @@ export function generateAllJournalEntries(allData: any): JournalEntryLike[] {
     allReturns.forEach((ret: any) => {
         const number = ret.receiptNumber || `م-ب-${String(ret.id).slice(-4)}`;
         const cashAccName = getCashAccountName(ret.paidFromAccountId || (ret.warehouseId ? getCashAccount(warehouses.find((w: any) => w.id === ret.warehouseId)?.id)?.id : undefined));
+        const returnedTotal = Number(ret.total) || 0;
+        const paidRefund = Number(ret.paidAmount) || 0;
+        const returnTax = Number(ret.tax) || 0;
+        const returnNet = Math.max(0, returnedTotal - returnTax);
 
-        entries.push({ id: `ret-rev-${ret.id}`, date: ret.date, warehouseId: ret.warehouseId, number, description: `مرتجع مبيعات ${number} من ${ret.customerName || 'عميل كاشير'}`, debit: Number(ret.total), credit: 0, account: 'إيرادات المبيعات' });
-
-        if (ret.paidAmount && Number(ret.paidAmount) > 0) {
-            entries.push({ id: `ret-cash-${ret.id}`, date: ret.date, warehouseId: ret.warehouseId, number, description: `رد نقدي لمرتجع ${number}`, debit: 0, credit: Number(ret.paidAmount), account: cashAccName });
+        entries.push({ id: `ret-rev-${ret.id}`, date: ret.date, warehouseId: ret.warehouseId, number, description: `مرتجع مبيعات ${number} من ${ret.customerName || 'عميل كاشير'}`, debit: returnNet, credit: 0, account: 'إيرادات المبيعات' });
+        if (returnTax > 0) {
+            entries.push({ id: `ret-tax-${ret.id}`, date: ret.date, warehouseId: ret.warehouseId, number, description: `عكس ضريبة مرتجع المبيعات ${number}`, debit: returnTax, credit: 0, account: 'ضريبة القيمة المضافة' });
         }
 
-        const amountAddedToBalance = Number(ret.total) - (Number(ret.paidAmount) || 0);
-        if (amountAddedToBalance > 0.01) {
-            entries.push({ id: `ret-ar-${ret.id}`, date: ret.date, warehouseId: ret.warehouseId, number, description: `تخفيض مديونية عميل لمرتجع ${number}`, debit: 0, credit: amountAddedToBalance, account: 'حسابات العملاء' });
+        if (paidRefund > 0) {
+            entries.push({ id: `ret-cash-${ret.id}`, date: ret.date, warehouseId: ret.warehouseId, number, description: `رد نقدي لمرتجع ${number}`, debit: 0, credit: paidRefund, account: cashAccName });
         }
 
-        const returnedCogs = (ret.items || []).reduce((acc: number, i: any) => acc + (Number(i.qty || 0) * (Number(i.cost) || Number(itemsMap.get(i.id)?.cost) || 0)), 0);
+        const arReduction = returnedTotal - paidRefund;
+        if (arReduction > 0.001) {
+            entries.push({ id: `ret-ar-${ret.id}`, date: ret.date, warehouseId: ret.warehouseId, number, description: `تخفيض مديونية عميل لمرتجع ${number}`, debit: 0, credit: arReduction, account: 'حسابات العملاء' });
+        } else if (arReduction < -0.001) {
+            entries.push({ id: `ret-ar-overrefund-${ret.id}`, date: ret.date, warehouseId: ret.warehouseId, number, description: `زيادة استرداد نقدي لمرتجع ${number}`, debit: Math.abs(arReduction), credit: 0, account: 'حسابات العملاء' });
+        }
+
+        const returnedCogs = (ret.items || []).reduce((acc: number, i: any) => acc + (Number(i.qty || 0) * getProfitUnitCost(Number(i.cost) || Number(itemsMap.get(i.id)?.cost) || 0)), 0);
         const inventoryAccount = `مخزون - ${getWarehouse(ret.warehouseId)?.name || 'غير محدد'}`;
         if (returnedCogs > 0) {
             entries.push({ id: `ret-inv-${ret.id}`, date: ret.date, warehouseId: ret.warehouseId, number, description: `إعادة للمخزون لمرتجع ${number}`, debit: returnedCogs, credit: 0, account: inventoryAccount });
@@ -480,24 +512,33 @@ export function generateAllJournalEntries(allData: any): JournalEntryLike[] {
     purchaseInvoices.forEach((p: any) => {
         const number = p.invoiceNumber || `ف-ش-${String(p.id).slice(-4)}`;
         const warehouse = getWarehouse(p.warehouseId);
-        const amountDue = Number(p.total) - (Number(p.paidAmount) || 0);
-        const purchaseCost = (p.items || []).reduce((acc: number, item: any) => acc + (Number(item.qty || 0) * (Number(item.cost) || 0)), 0);
+        const total = Number(p.total) || 0;
+        const discount = Number(p.discount) || 0;
+        const tax = Number(p.tax) || 0;
+        const subtotal = p.subtotal != null ? Number(p.subtotal) : (total + discount - tax);
         const cashAccName = getCashAccountName(p.paidFromAccountId);
 
-        entries.push({ id: `pur-inv-debit-${p.id}`, date: p.date, warehouseId: p.warehouseId, number, description: `مشتريات لصالح مخزن ${warehouse?.name || ''}`, debit: purchaseCost || Number(p.total), credit: 0, account: `مخزون - ${warehouse?.name || 'غير محدد'}` });
+        const initialPaid = p.initialPaidAmount != null
+            ? Number(p.initialPaidAmount)
+            : (p.paidAmount != null ? Number(p.paidAmount) : 0);
 
-        if (p.paidAmount && Number(p.paidAmount) > 0) {
-            entries.push({ id: `pur-cash-${p.id}`, date: p.date, warehouseId: p.warehouseId, number, description: `دفع للمورد ${p.supplierName || ''} للفاتورة ${number}`, debit: 0, credit: Number(p.paidAmount), account: cashAccName });
+        entries.push({ id: `pur-inv-debit-${p.id}`, date: p.date, warehouseId: p.warehouseId, number, description: `مشتريات لصالح مخزن ${warehouse?.name || ''}`, debit: subtotal, credit: 0, account: `مخزون - ${warehouse?.name || 'غير محدد'}` });
+
+        if (tax > 0) {
+            entries.push({ id: `pur-tax-${p.id}`, date: p.date, warehouseId: p.warehouseId, number, description: `ضريبة مدخلات للفاتورة ${number}`, debit: tax, credit: 0, account: 'ضريبة القيمة المضافة' });
         }
-        if (amountDue > 0.01) {
-            entries.push({ id: `pur-ap-${p.id}`, date: p.date, warehouseId: p.warehouseId, number, description: `مستحقات للمورد ${p.supplierName || ''} للفاتورة ${number}`, debit: 0, credit: amountDue, account: 'حسابات الموردين' });
+
+        if (initialPaid > 0) {
+            entries.push({ id: `pur-cash-${p.id}`, date: p.date, warehouseId: p.warehouseId, number, description: `دفع للمورد ${p.supplierName || ''} للفاتورة ${number}`, debit: 0, credit: initialPaid, account: cashAccName });
         }
-        if (Number(p.discount) > 0) {
-            // الخصم المكتسب من المورد
-            entries.push({ id: `pur-discount-${p.id}`, date: p.date, warehouseId: p.warehouseId, number, description: `خصم مكتسب على فاتورة شراء ${number}`, debit: 0, credit: Number(p.discount), account: 'خصم مكتسب' });
+        const apAmount = total - initialPaid;
+        if (apAmount > 0.001) {
+            entries.push({ id: `pur-ap-${p.id}`, date: p.date, warehouseId: p.warehouseId, number, description: `مستحقات للمورد ${p.supplierName || ''} للفاتورة ${number}`, debit: 0, credit: apAmount, account: 'حسابات الموردين' });
+        } else if (apAmount < -0.001) {
+            entries.push({ id: `pur-ap-overpay-${p.id}`, date: p.date, warehouseId: p.warehouseId, number, description: `سداد مستحقات سابقة للمورد ${p.supplierName || ''} مع الفاتورة ${number}`, debit: Math.abs(apAmount), credit: 0, account: 'حسابات الموردين' });
         }
-        if (Number(p.tax) > 0) {
-            entries.push({ id: `pur-tax-${p.id}`, date: p.date, warehouseId: p.warehouseId, number, description: `ضريبة مدخلات للفاتورة ${number}`, debit: Number(p.tax), credit: 0, account: 'ضريبة القيمة المضافة' });
+        if (discount > 0) {
+            entries.push({ id: `pur-discount-${p.id}`, date: p.date, warehouseId: p.warehouseId, number, description: `خصم مكتسب على فاتورة شراء ${number}`, debit: 0, credit: discount, account: 'خصم مكتسب' });
         }
     });
 
@@ -506,16 +547,25 @@ export function generateAllJournalEntries(allData: any): JournalEntryLike[] {
         const number = pr.receiptNumber || `م-ش-${String(pr.id).slice(-4)}`;
         const warehouse = getWarehouse(pr.warehouseId);
         const cashAccName = getCashAccountName(pr.paidToAccountId);
-        const returnedValue = Number(pr.total);
+        const returnedValue = Number(pr.total) || 0;
+        const paidAmount = Number(pr.paidAmount) || 0;
+        const returnTax = Number(pr.tax) || 0;
+        const netCost = Math.max(0, returnedValue - returnTax);
 
-        if (pr.paidAmount && Number(pr.paidAmount) > 0) {
-            entries.push({ id: `pr-cash-${pr.id}`, date: pr.date, warehouseId: pr.warehouseId, number, description: `استلام نقدي لمرتجع شراء ${number}`, debit: Number(pr.paidAmount), credit: 0, account: cashAccName });
+        entries.push({ id: `pr-inv-${pr.id}`, date: pr.date, warehouseId: pr.warehouseId, number, description: `صرف من المخزون لمرتجع ${number}`, debit: 0, credit: netCost, account: `مخزون - ${warehouse?.name || 'غير محدد'}` });
+        if (returnTax > 0) {
+            entries.push({ id: `pr-tax-${pr.id}`, date: pr.date, warehouseId: pr.warehouseId, number, description: `عكس ضريبة مدخلات مرتجع الشراء ${number}`, debit: 0, credit: returnTax, account: 'ضريبة القيمة المضافة' });
         }
-        const debtReduction = returnedValue - (Number(pr.paidAmount) || 0);
-        if (debtReduction > 0.01) {
-            entries.push({ id: `pr-ap-${pr.id}`, date: pr.date, warehouseId: pr.warehouseId, number, description: `تخفيض مديونية مورد لمرتجع ${number}`, debit: debtReduction, credit: 0, account: 'حسابات الموردين' });
+
+        if (paidAmount > 0) {
+            entries.push({ id: `pr-cash-${pr.id}`, date: pr.date, warehouseId: pr.warehouseId, number, description: `استلام نقدي لمرتجع شراء ${number}`, debit: paidAmount, credit: 0, account: cashAccName });
         }
-        entries.push({ id: `pr-inv-${pr.id}`, date: pr.date, warehouseId: pr.warehouseId, number, description: `صرف من المخزون لمرتجع ${number}`, debit: 0, credit: returnedValue, account: `مخزون - ${warehouse?.name || 'غير محدد'}` });
+        const apReduction = returnedValue - paidAmount;
+        if (apReduction > 0.001) {
+            entries.push({ id: `pr-ap-${pr.id}`, date: pr.date, warehouseId: pr.warehouseId, number, description: `تخفيض مديونية مورد لمرتجع ${number}`, debit: apReduction, credit: 0, account: 'حسابات الموردين' });
+        } else if (apReduction < -0.001) {
+            entries.push({ id: `pr-ap-refund-${pr.id}`, date: pr.date, warehouseId: pr.warehouseId, number, description: `تسوية حساب مورد لمرتجع ${number}`, debit: 0, credit: Math.abs(apReduction), account: 'حسابات الموردين' });
+        }
     });
 
     // 8. Expenses

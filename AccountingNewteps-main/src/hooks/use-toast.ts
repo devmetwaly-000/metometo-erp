@@ -1,7 +1,6 @@
-
 "use client"
 
-// This hook is inspired by react-hot-toast
+// This hook is inspired by react-hot-toast & shadcn/ui
 import * as React from "react"
 
 // Import types from the toast component
@@ -9,17 +8,44 @@ import type {
   ToastActionElement,
   ToastProps,
 } from "@/components/ui/toast"
-import { useData } from "@/contexts/data-provider"
 
 const TOAST_LIMIT = 1
-const TOAST_REMOVE_DELAY = 5000;
+const DEFAULT_FALLBACK_DELAY = 2500;
 
+let defaultToastDuration: number = (() => {
+  if (typeof window !== 'undefined') {
+    try {
+      const stored = localStorage.getItem('app_toast_duration');
+      if (stored) {
+        const parsed = parseFloat(stored);
+        if (!isNaN(parsed) && parsed > 0) {
+          return parsed < 100 ? Math.round(parsed * 1000) : Math.round(parsed);
+        }
+      }
+    } catch {}
+  }
+  return DEFAULT_FALLBACK_DELAY;
+})();
+
+export const setDefaultToastDuration = (durationMs: number) => {
+  if (typeof durationMs === 'number' && !isNaN(durationMs) && durationMs > 0) {
+    defaultToastDuration = durationMs;
+    if (typeof window !== 'undefined') {
+      try {
+        localStorage.setItem('app_toast_duration', String(durationMs));
+      } catch {}
+    }
+  }
+};
+
+export const getDefaultToastDuration = () => defaultToastDuration;
 
 type ToasterToast = ToastProps & {
   id: string
   title?: React.ReactNode
   description?: React.ReactNode
   action?: ToastActionElement
+  duration?: number
 }
 
 const actionTypes = {
@@ -60,23 +86,39 @@ interface State {
   toasts: ToasterToast[]
 }
 
-const toastTimeouts = new Map<string, ReturnType<typeof setTimeout>>()
+const dismissTimeouts = new Map<string, ReturnType<typeof setTimeout>>()
+const removeTimeouts = new Map<string, ReturnType<typeof setTimeout>>()
 
-const addToRemoveQueue = (toastId: string, duration?: number) => {
-  if (toastTimeouts.has(toastId)) {
-    return
-  }
+const scheduleDismiss = (toastId: string, duration?: number) => {
+  if (dismissTimeouts.has(toastId)) return;
+  const effectiveDuration = (typeof duration === 'number' && duration > 0)
+    ? duration
+    : defaultToastDuration;
 
   const timeout = setTimeout(() => {
-    toastTimeouts.delete(toastId)
-    dispatch({
-      type: "REMOVE_TOAST",
-      toastId: toastId,
-    })
-  }, duration || TOAST_REMOVE_DELAY);
+    dismissTimeouts.delete(toastId);
+    dispatch({ type: "DISMISS_TOAST", toastId });
+  }, effectiveDuration);
 
-  toastTimeouts.set(toastId, timeout)
-}
+  dismissTimeouts.set(toastId, timeout);
+};
+
+const scheduleRemove = (toastId: string) => {
+  if (removeTimeouts.has(toastId)) return;
+
+  if (dismissTimeouts.has(toastId)) {
+    clearTimeout(dismissTimeouts.get(toastId)!);
+    dismissTimeouts.delete(toastId);
+  }
+
+  // Allow smooth CSS exit animation (250ms) before unmounting from DOM
+  const timeout = setTimeout(() => {
+    removeTimeouts.delete(toastId);
+    dispatch({ type: "REMOVE_TOAST", toastId });
+  }, 250);
+
+  removeTimeouts.set(toastId, timeout);
+};
 
 export const reducer = (state: State, action: Action): State => {
   switch (action.type) {
@@ -97,14 +139,12 @@ export const reducer = (state: State, action: Action): State => {
     case "DISMISS_TOAST": {
       const { toastId } = action
 
-      // ! Side effects ! - This could be extracted into a dismissToast() action,
-      // but I'll keep it here for simplicity
       if (toastId) {
-        addToRemoveQueue(toastId)
+        scheduleRemove(toastId);
       } else {
         state.toasts.forEach((toast) => {
-          addToRemoveQueue(toast.id)
-        })
+          scheduleRemove(toast.id);
+        });
       }
 
       return {
@@ -151,10 +191,10 @@ type Toast = Omit<ToasterToast, "id"> & {
 function toast({ ...props }: Toast) {
   const id = genId()
 
-  const update = (props: ToasterToast) =>
+  const update = (updatedProps: ToasterToast) =>
     dispatch({
       type: "UPDATE_TOAST",
-      toast: { ...props, id },
+      toast: { ...updatedProps, id },
     })
   const dismiss = () => dispatch({ type: "DISMISS_TOAST", toastId: id })
 
@@ -170,7 +210,7 @@ function toast({ ...props }: Toast) {
     },
   })
   
-  addToRemoveQueue(id, props.duration);
+  scheduleDismiss(id, props.duration);
 
   return {
     id: id,

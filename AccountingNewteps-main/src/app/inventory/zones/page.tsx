@@ -425,7 +425,7 @@ export default function MainWarehousesPage() {
                                         {division.allowOverfill && (
                                           <Tooltip>
                                               <TooltipTrigger asChild>
-                                                  <Archive className="h-5 w-5 text-blue-500"/>
+                                                  <Archive className="h-5 w-5 text-foreground"/>
                                               </TooltipTrigger>
                                               <TooltipContent><p>مسموح بتجاوز السعة الاستيعابية</p></TooltipContent>
                                           </Tooltip>

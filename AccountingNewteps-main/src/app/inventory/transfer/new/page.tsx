@@ -918,7 +918,7 @@ export default function NewStockTransferPage() {
                             </div>
                             <div className="p-2.5 rounded bg-background border flex justify-between items-center">
                                 <span className="text-muted-foreground">إجمالي المصاريف المضافة:</span>
-                                <span className="font-mono font-bold text-amber-600">+ {totalExpenses.toLocaleString('ar-EG', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ج.م</span>
+                                <span className="font-mono font-bold text-foreground">+ {totalExpenses.toLocaleString('ar-EG', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ج.م</span>
                             </div>
                             <div className="p-2.5 rounded bg-primary/10 border border-primary/30 flex justify-between items-center font-bold">
                                 <span className="text-primary">إجمالي القيمة الواصلة:</span>

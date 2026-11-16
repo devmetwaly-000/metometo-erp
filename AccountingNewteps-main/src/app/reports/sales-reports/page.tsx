@@ -309,7 +309,7 @@ export default function SalesReportPage() {
                                 <TableCell className="font-mono">{sale.invoiceNumber}</TableCell>
                                 <TableCell>
                                     <div className="flex items-center gap-2">
-                                        {sale.isDelivery ? <Truck className="h-4 w-4 text-blue-500" /> : <FileText className="h-4 w-4 text-muted-foreground" />}
+                                        {sale.isDelivery ? <Truck className="h-4 w-4 text-foreground" /> : <FileText className="h-4 w-4 text-muted-foreground" />}
                                         <span>{sale.type === 'POS' ? 'كاشير' : 'فاتورة'}</span>
                                     </div>
                                 </TableCell>

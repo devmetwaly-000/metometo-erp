@@ -266,12 +266,12 @@ export default function MyInvoicesPage() {
                     </Card>
                     <Card className="bg-amber-50 dark:bg-amber-900/10 border-amber-200 dark:border-amber-900/50">
                         <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                            <CardTitle className="text-sm font-medium text-amber-700 dark:text-amber-400">إجمالي المديونيات</CardTitle>
-                            <CreditCard className="h-4 w-4 text-amber-600" />
+                            <CardTitle className="text-sm font-medium text-foreground dark:text-foreground">إجمالي المديونيات</CardTitle>
+                            <CreditCard className="h-4 w-4 text-foreground" />
                         </CardHeader>
                         <CardContent>
-                            <div className="text-2xl font-bold text-amber-700 dark:text-amber-400">{summary.totalDebt.toLocaleString()} ج.م</div>
-                            <p className="text-xs text-amber-600/70 mt-1">مستحقات متبقية على العملاء</p>
+                            <div className="text-2xl font-bold text-foreground dark:text-foreground">{summary.totalDebt.toLocaleString()} ج.م</div>
+                            <p className="text-xs text-foreground/70 mt-1">مستحقات متبقية على العملاء</p>
                         </CardContent>
                     </Card>
                 </div>
@@ -329,7 +329,7 @@ export default function MyInvoicesPage() {
                                                 <TableCell className="text-center">
                                                     {inv.status === 'approved' 
                                                         ? <Badge variant="default" className="bg-green-600"><CheckCircle className="ml-1 h-3 w-3"/>معتمدة</Badge>
-                                                        : <Badge variant="outline" className="border-amber-500 text-amber-500"><Clock className="ml-1 h-3 w-3"/>معلقة</Badge>
+                                                        : <Badge variant="outline" className="border-amber-500 text-foreground"><Clock className="ml-1 h-3 w-3"/>معلقة</Badge>
                                                     }
                                                 </TableCell>
                                                 <TableCell className="text-center font-bold">{inv.total.toLocaleString()}</TableCell>
@@ -338,7 +338,7 @@ export default function MyInvoicesPage() {
                                                 <TableCell className="text-center">
                                                     {inv.location ? (
                                                         <Button variant="outline" size="sm" onClick={() => openMap(inv.location!.latitude, inv.location!.longitude)}>
-                                                            <MapPin className="ml-1 h-4 w-4 text-blue-600"/>
+                                                            <MapPin className="ml-1 h-4 w-4 text-foreground"/>
                                                             عرض
                                                         </Button>
                                                     ) : (

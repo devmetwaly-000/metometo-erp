@@ -571,7 +571,7 @@ export default function SalesRepInvoicePage() {
                 </div>
                  <div className="text-left text-sm flex items-center gap-2">
                     {locationError ? (
-                        <div className="flex items-center gap-2 text-amber-600">
+                        <div className="flex items-center gap-2 text-foreground">
                             <Loader2 className="h-4 w-4 animate-spin"/>
                             <span>{locationError}</span>
                         </div>

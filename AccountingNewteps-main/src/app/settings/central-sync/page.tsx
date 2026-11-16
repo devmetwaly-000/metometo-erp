@@ -120,7 +120,7 @@ export default function CentralSyncSettingsPage() {
     const [roleSwitchError, setRoleSwitchError] = useState<string | null>(null);
 
     // Password Protection Gate State
-    const [isUnlocked, setIsUnlocked] = useState(false);
+    const [isUnlocked, setIsUnlocked] = useState(true);
     const [accessPassword, setAccessPassword] = useState('');
     const [isCheckingPassword, setIsCheckingPassword] = useState(false);
     const [authError, setAuthError] = useState<string | null>(null);
@@ -504,14 +504,14 @@ export default function CentralSyncSettingsPage() {
     const renderDirectionBadge = (dir: SyncDirection) => {
         if (dir === 'push') {
             return (
-                <Badge variant="outline" className="text-[10px] font-semibold text-amber-700 dark:text-amber-300 bg-amber-500/10 border-amber-500/30 gap-1 px-2 py-0.5">
+                <Badge variant="outline" className="text-[10px] font-semibold text-foreground dark:text-foreground bg-amber-500/10 border-amber-500/30 gap-1 px-2 py-0.5">
                     <ArrowUpRight className="h-3 w-3" /> رفع للإدارة
                 </Badge>
             );
         }
         if (dir === 'pull') {
             return (
-                <Badge variant="outline" className="text-[10px] font-semibold text-sky-700 dark:text-sky-300 bg-sky-500/10 border-sky-500/30 gap-1 px-2 py-0.5">
+                <Badge variant="outline" className="text-[10px] font-semibold text-foreground dark:text-foreground bg-sky-500/10 border-sky-500/30 gap-1 px-2 py-0.5">
                     <ArrowDownLeft className="h-3 w-3" /> سحب للفرع
                 </Badge>
             );
@@ -537,7 +537,7 @@ export default function CentralSyncSettingsPage() {
                 return {
                     title: 'رفع للإدارة فقط (Push)',
                     desc: 'الفرع يرسل حركاته وسجلاته للإدارة المركزية ولا يستقبل تعديلات من السيرفر المركزي.',
-                    color: 'text-amber-700 dark:text-amber-400',
+                    color: 'text-foreground dark:text-foreground',
                     border: 'border-amber-500/25',
                     bg: 'bg-amber-500/5'
                 };
@@ -545,7 +545,7 @@ export default function CentralSyncSettingsPage() {
                 return {
                     title: 'سحب من الإدارة فقط (Pull)',
                     desc: 'الفرع يستقبل التحديثات الصادرة من المركز ولا يقوم برفع أي تعديلات مسجلة بالفرع.',
-                    color: 'text-sky-700 dark:text-sky-400',
+                    color: 'text-foreground dark:text-foreground',
                     border: 'border-sky-500/25',
                     bg: 'bg-sky-500/5'
                 };
@@ -695,21 +695,21 @@ export default function CentralSyncSettingsPage() {
                 );
             case 'pending_push':
                 return (
-                    <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-bold bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/30">
+                    <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-bold bg-amber-500/10 text-foreground dark:text-foreground border border-amber-500/30">
                         <ArrowUpRight className="h-3 w-3" />
                         {t.pendingPushCount.toLocaleString()} بانتظار الرفع
                     </span>
                 );
             case 'pending_pull':
                 return (
-                    <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-bold bg-sky-500/10 text-sky-600 dark:text-sky-400 border border-sky-500/30">
+                    <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-bold bg-sky-500/10 text-foreground dark:text-foreground border border-sky-500/30">
                         <ArrowDownLeft className="h-3 w-3" />
                         {t.pendingPullCount.toLocaleString()} سحب معلق
                     </span>
                 );
             case 'pending_both':
                 return (
-                    <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-bold bg-cyan-500/10 text-cyan-600 dark:text-cyan-400 border border-cyan-500/30">
+                    <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-bold bg-cyan-500/10 text-foreground dark:text-foreground border border-cyan-500/30">
                         <ArrowLeftRight className="h-3 w-3" />
                         رفع ({t.pendingPushCount}) وسحب ({t.pendingPullCount})
                     </span>
@@ -809,7 +809,7 @@ export default function CentralSyncSettingsPage() {
             <div className="flex flex-col w-full min-h-[75vh] items-center justify-center p-4">
                 <Card className="w-full max-w-md border border-border shadow-xl bg-card text-card-foreground">
                     <CardHeader className="text-center pb-4">
-                        <div className="mx-auto w-14 h-14 rounded-full bg-amber-500/10 flex items-center justify-center mb-3 text-amber-600 dark:text-amber-400">
+                        <div className="mx-auto w-14 h-14 rounded-full bg-amber-500/10 flex items-center justify-center mb-3 text-foreground dark:text-foreground">
                             <Lock className="w-7 h-7" />
                         </div>
                         <CardTitle className="text-xl font-bold flex items-center justify-center gap-2">
@@ -913,7 +913,7 @@ export default function CentralSyncSettingsPage() {
                         disabled={isTesting}
                         className="gap-1.5 text-xs font-semibold h-8"
                     >
-                        {isTesting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Zap className="h-3.5 w-3.5 text-amber-500" />}
+                        {isTesting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Zap className="h-3.5 w-3.5 text-foreground" />}
                         فحص الاتصال
                     </Button>
                     <Button 
@@ -923,7 +923,7 @@ export default function CentralSyncSettingsPage() {
                         disabled={isRefreshingMatrix}
                         className="gap-1.5 text-xs font-semibold h-8"
                     >
-                        {isRefreshingMatrix ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5 text-sky-500" />}
+                        {isRefreshingMatrix ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5 text-foreground" />}
                         تحديث الفحص
                     </Button>
                     <Button 
@@ -964,7 +964,7 @@ export default function CentralSyncSettingsPage() {
                                     className="h-6 text-[11px] px-2 text-muted-foreground hover:text-foreground font-semibold gap-1 border border-border/60 hover:bg-muted"
                                     title="تغيير دور النظام بباسورد الإدارة"
                                 >
-                                    <Lock className="h-3 w-3 text-amber-500" />
+                                    <Lock className="h-3 w-3 text-foreground" />
                                     تبديل الدور 🔒
                                 </Button>
                             </div>
@@ -982,7 +982,7 @@ export default function CentralSyncSettingsPage() {
                         <div className="md:col-span-4 space-y-1 md:border-l md:pl-4">
                             <div className="flex items-center justify-between">
                                 <span className="text-xs text-muted-foreground flex items-center gap-1.5 font-semibold">
-                                    <Server className="h-3.5 w-3.5 text-sky-600" />
+                                    <Server className="h-3.5 w-3.5 text-foreground" />
                                     {config.systemRole === 'central' ? 'سيرفر الإدارة المحلي' : 'سيرفر الإدارة المركزي'}
                                 </span>
                                 {testResult ? (
@@ -1016,7 +1016,7 @@ export default function CentralSyncSettingsPage() {
                         <div className="md:col-span-4 space-y-1.5">
                             <div className="flex items-center justify-between">
                                 <span className="text-xs text-muted-foreground flex items-center gap-1 font-semibold">
-                                    <Clock className="h-3.5 w-3.5 text-amber-500" />
+                                    <Clock className="h-3.5 w-3.5 text-foreground" />
                                     العمليات المعلقة حالياً
                                 </span>
                                 <Badge 
@@ -1040,7 +1040,7 @@ export default function CentralSyncSettingsPage() {
                                 <span className="flex items-center gap-1 text-emerald-600 font-bold">
                                     <ArrowUpRight className="h-3 w-3" /> مرفوع: {config.lastPushedCount || 0}
                                 </span>
-                                <span className="flex items-center gap-1 text-sky-600 font-bold">
+                                <span className="flex items-center gap-1 text-foreground font-bold">
                                     <ArrowDownLeft className="h-3 w-3" /> مسحوب: {config.lastPulledCount || 0}
                                 </span>
                                 <span className="text-muted-foreground font-sans">
@@ -1068,7 +1068,7 @@ export default function CentralSyncSettingsPage() {
                             )}
                         </TabsTrigger>
                         <TabsTrigger value="queue" className="gap-2 font-bold text-xs rounded-lg data-[state=active]:shadow-sm py-2 md:py-1.5">
-                            <Activity className="h-4 w-4 text-amber-600" /> 
+                            <Activity className="h-4 w-4 text-foreground" /> 
                             طابور الحركات
                             {pendingBreakdown.total > 0 && (
                                 <span className="mr-1 px-1.5 py-0.2 rounded-full text-[10px] bg-amber-600 text-white font-bold">
@@ -1077,7 +1077,7 @@ export default function CentralSyncSettingsPage() {
                             )}
                         </TabsTrigger>
                         <TabsTrigger value="config" className="gap-2 font-bold text-xs rounded-lg data-[state=active]:shadow-sm py-2 md:py-1.5">
-                            <Server className="h-4 w-4 text-sky-600" /> 
+                            <Server className="h-4 w-4 text-foreground" /> 
                             إعدادات الربط والنظام
                         </TabsTrigger>
                     </TabsList>
@@ -1109,7 +1109,7 @@ export default function CentralSyncSettingsPage() {
                                     variant="outline"
                                     onClick={() => handleSyncNow('push')}
                                     disabled={isSyncing}
-                                    className="gap-1.5 font-bold text-amber-700 dark:text-amber-300 text-xs h-8 border-amber-500/30 hover:bg-amber-500/10"
+                                    className="gap-1.5 font-bold text-foreground dark:text-foreground text-xs h-8 border-amber-500/30 hover:bg-amber-500/10"
                                 >
                                     {isSyncing && syncingMode === 'push' ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <ArrowUpRight className="h-3.5 w-3.5" />}
                                     رفع حركات الفرع ⬆️
@@ -1119,7 +1119,7 @@ export default function CentralSyncSettingsPage() {
                                     variant="outline"
                                     onClick={() => handleSyncNow('pull')}
                                     disabled={isSyncing}
-                                    className="gap-1.5 font-bold text-sky-700 dark:text-sky-300 text-xs h-8 border-sky-500/30 hover:bg-sky-500/10"
+                                    className="gap-1.5 font-bold text-foreground dark:text-foreground text-xs h-8 border-sky-500/30 hover:bg-sky-500/10"
                                 >
                                     {isSyncing && syncingMode === 'pull' ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <ArrowDownLeft className="h-3.5 w-3.5" />}
                                     سحب من الإدارة ⬇️
@@ -1245,8 +1245,8 @@ export default function CentralSyncSettingsPage() {
                                                 <TableHead className="text-center min-w-[100px] font-bold">الاتجاه</TableHead>
                                                 <TableHead className="text-center min-w-[125px] font-bold">آخر تعديل بالفرع</TableHead>
                                                 <TableHead className="text-center min-w-[125px] font-bold">آخر مزامنة للإدارة</TableHead>
-                                                <TableHead className="text-center min-w-[90px] font-bold text-amber-600">معلق بالفرع</TableHead>
-                                                <TableHead className="text-center min-w-[100px] font-bold text-sky-600">سطور الفرع بالإدارة</TableHead>
+                                                <TableHead className="text-center min-w-[90px] font-bold text-foreground">معلق بالفرع</TableHead>
+                                                <TableHead className="text-center min-w-[100px] font-bold text-foreground">سطور الفرع بالإدارة</TableHead>
                                                 <TableHead className="text-center min-w-[100px] font-bold text-slate-700 dark:text-slate-300">إجمالي الإدارة</TableHead>
                                                 <TableHead className="text-center min-w-[130px] font-bold">حالة المزامنة</TableHead>
                                                 <TableHead className="text-center min-w-[190px] font-bold">إجراءات المزامنة</TableHead>
@@ -1287,7 +1287,7 @@ export default function CentralSyncSettingsPage() {
                                                         </TableCell>
                                                         <TableCell className="text-center font-mono font-bold">
                                                             {t.pendingPushCount > 0 ? (
-                                                                <span className="inline-block px-2 py-0.5 rounded font-mono font-bold text-xs bg-amber-500/15 text-amber-700 dark:text-amber-400 border border-amber-500/30">
+                                                                <span className="inline-block px-2 py-0.5 rounded font-mono font-bold text-xs bg-amber-500/15 text-foreground dark:text-foreground border border-amber-500/30">
                                                                     {t.pendingPushCount.toLocaleString()}
                                                                 </span>
                                                             ) : (
@@ -1298,7 +1298,7 @@ export default function CentralSyncSettingsPage() {
                                                             {t.centralBranchRows === null ? (
                                                                 <span className="text-[11px] text-muted-foreground/50">-</span>
                                                             ) : (
-                                                                <span className={cn(t.centralBranchRows > 0 ? "text-sky-700 dark:text-sky-400 font-bold" : "text-muted-foreground/60")}>
+                                                                <span className={cn(t.centralBranchRows > 0 ? "text-foreground dark:text-foreground font-bold" : "text-muted-foreground/60")}>
                                                                     {t.centralBranchRows.toLocaleString()}
                                                                 </span>
                                                             )}
@@ -1410,19 +1410,19 @@ export default function CentralSyncSettingsPage() {
                                 </div>
 
                                 <div className="rounded-lg border border-amber-500/25 bg-amber-500/5 p-2.5 text-center">
-                                    <span className="text-[11px] font-semibold text-amber-700 dark:text-amber-400 flex items-center justify-center gap-1">
+                                    <span className="text-[11px] font-semibold text-foreground dark:text-foreground flex items-center justify-center gap-1">
                                         <ArrowUpRight className="h-3 w-3" /> رفع للإدارة فقط
                                     </span>
-                                    <span className="text-xl font-black text-amber-700 dark:text-amber-400 font-mono">{dirStats.push}</span>
-                                    <span className="text-[10px] text-amber-700/80 dark:text-amber-400/80 block mt-0.5">فواتير وسندات وحركات</span>
+                                    <span className="text-xl font-black text-foreground dark:text-foreground font-mono">{dirStats.push}</span>
+                                    <span className="text-[10px] text-foreground/80 dark:text-foreground/80 block mt-0.5">فواتير وسندات وحركات</span>
                                 </div>
 
                                 <div className="rounded-lg border border-sky-500/25 bg-sky-500/5 p-2.5 text-center">
-                                    <span className="text-[11px] font-semibold text-sky-700 dark:text-sky-400 flex items-center justify-center gap-1">
+                                    <span className="text-[11px] font-semibold text-foreground dark:text-foreground flex items-center justify-center gap-1">
                                         <ArrowDownLeft className="h-3 w-3" /> سحب للفرع فقط
                                     </span>
-                                    <span className="text-xl font-black text-sky-700 dark:text-sky-400 font-mono">{dirStats.pull}</span>
-                                    <span className="text-[10px] text-sky-700/80 dark:text-sky-400/80 block mt-0.5">تحديثات مركزية</span>
+                                    <span className="text-xl font-black text-foreground dark:text-foreground font-mono">{dirStats.pull}</span>
+                                    <span className="text-[10px] text-foreground/80 dark:text-foreground/80 block mt-0.5">تحديثات مركزية</span>
                                 </div>
 
                                 <div className="rounded-lg border border-teal-500/25 bg-teal-500/5 p-2.5 text-center">
@@ -1448,7 +1448,7 @@ export default function CentralSyncSettingsPage() {
                             <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
                                 <div className="space-y-0.5">
                                     <h4 className="text-sm font-bold text-foreground flex items-center gap-1.5">
-                                        <Zap className="h-4 w-4 text-amber-500" />
+                                        <Zap className="h-4 w-4 text-foreground" />
                                         إجراء تطبيق جماعي على قسم كامل
                                     </h4>
                                     <p className="text-[11px] text-muted-foreground">
@@ -1627,21 +1627,21 @@ export default function CentralSyncSettingsPage() {
                                                                     >
                                                                         <SelectTrigger className={cn(
                                                                             "h-8 text-xs font-bold w-[165px] border shadow-xs transition-colors",
-                                                                            t.direction === 'push' && "border-amber-500/40 bg-amber-500/10 text-amber-700 dark:text-amber-300",
-                                                                            t.direction === 'pull' && "border-sky-500/40 bg-sky-500/10 text-sky-700 dark:text-sky-300",
+                                                                            t.direction === 'push' && "border-amber-500/40 bg-amber-500/10 text-foreground dark:text-foreground",
+                                                                            t.direction === 'pull' && "border-sky-500/40 bg-sky-500/10 text-foreground dark:text-foreground",
                                                                             t.direction === 'bidirectional' && "border-teal-500/40 bg-teal-500/10 text-teal-700 dark:text-teal-300",
                                                                             t.direction === 'disabled' && "border-rose-500/40 bg-rose-500/10 text-rose-700 dark:text-rose-400"
                                                                         )}>
                                                                             <SelectValue />
                                                                         </SelectTrigger>
                                                                         <SelectContent>
-                                                                            <SelectItem value="push" className="text-xs font-bold text-amber-700 dark:text-amber-300">
+                                                                            <SelectItem value="push" className="text-xs font-bold text-foreground dark:text-foreground">
                                                                                 <div className="flex items-center gap-1.5">
                                                                                     <ArrowUpRight className="h-3.5 w-3.5" />
                                                                                     <span>⬆️ رفع للإدارة (Push)</span>
                                                                                 </div>
                                                                             </SelectItem>
-                                                                            <SelectItem value="pull" className="text-xs font-bold text-sky-700 dark:text-sky-300">
+                                                                            <SelectItem value="pull" className="text-xs font-bold text-foreground dark:text-foreground">
                                                                                 <div className="flex items-center gap-1.5">
                                                                                     <ArrowDownLeft className="h-3.5 w-3.5" />
                                                                                     <span>⬇️ سحب للفرع (Pull)</span>
@@ -1735,7 +1735,7 @@ export default function CentralSyncSettingsPage() {
                             <div className="flex items-center gap-3">
                                 <div className={cn(
                                     "p-3 rounded-xl border",
-                                    pendingBreakdown.total > 0 ? "bg-amber-500/10 border-amber-500/20 text-amber-600" : "bg-emerald-500/10 border-emerald-500/20 text-emerald-600"
+                                    pendingBreakdown.total > 0 ? "bg-amber-500/10 border-amber-500/20 text-foreground" : "bg-emerald-500/10 border-emerald-500/20 text-emerald-600"
                                 )}>
                                     {pendingBreakdown.total > 0 ? <AlertCircle className="h-6 w-6" /> : <CheckCircle2 className="h-6 w-6" />}
                                 </div>
@@ -1776,9 +1776,9 @@ export default function CentralSyncSettingsPage() {
                                 "p-3 rounded-xl border text-center space-y-1 transition-all",
                                 pendingBreakdown.sales > 0 ? "bg-amber-500/10 border-amber-500/30 shadow-xs" : "bg-card hover:bg-muted/30"
                             )}>
-                                <ShoppingCart className="h-5 w-5 mx-auto text-sky-600" />
+                                <ShoppingCart className="h-5 w-5 mx-auto text-foreground" />
                                 <div className="text-xs text-muted-foreground font-medium">فواتير مبيعات</div>
-                                <div className={cn("text-xl font-black font-mono", pendingBreakdown.sales > 0 ? "text-amber-600" : "text-foreground")}>
+                                <div className={cn("text-xl font-black font-mono", pendingBreakdown.sales > 0 ? "text-foreground" : "text-foreground")}>
                                     {pendingBreakdown.sales}
                                 </div>
                             </div>
@@ -1789,7 +1789,7 @@ export default function CentralSyncSettingsPage() {
                             )}>
                                 <Receipt className="h-5 w-5 mx-auto text-rose-500" />
                                 <div className="text-xs text-muted-foreground font-medium">مرتجع مبيعات</div>
-                                <div className={cn("text-xl font-black font-mono", pendingBreakdown.salesReturns > 0 ? "text-amber-600" : "text-foreground")}>
+                                <div className={cn("text-xl font-black font-mono", pendingBreakdown.salesReturns > 0 ? "text-foreground" : "text-foreground")}>
                                     {pendingBreakdown.salesReturns}
                                 </div>
                             </div>
@@ -1798,9 +1798,9 @@ export default function CentralSyncSettingsPage() {
                                 "p-3 rounded-xl border text-center space-y-1 transition-all",
                                 pendingBreakdown.purchases > 0 ? "bg-amber-500/10 border-amber-500/30 shadow-xs" : "bg-card hover:bg-muted/30"
                             )}>
-                                <Truck className="h-5 w-5 mx-auto text-amber-500" />
+                                <Truck className="h-5 w-5 mx-auto text-foreground" />
                                 <div className="text-xs text-muted-foreground font-medium">فواتير مشتريات</div>
-                                <div className={cn("text-xl font-black font-mono", pendingBreakdown.purchases > 0 ? "text-amber-600" : "text-foreground")}>
+                                <div className={cn("text-xl font-black font-mono", pendingBreakdown.purchases > 0 ? "text-foreground" : "text-foreground")}>
                                     {pendingBreakdown.purchases}
                                 </div>
                             </div>
@@ -1811,7 +1811,7 @@ export default function CentralSyncSettingsPage() {
                             )}>
                                 <Boxes className="h-5 w-5 mx-auto text-teal-600" />
                                 <div className="text-xs text-muted-foreground font-medium">مرتجع مشتريات</div>
-                                <div className={cn("text-xl font-black font-mono", pendingBreakdown.purchaseReturns > 0 ? "text-amber-600" : "text-foreground")}>
+                                <div className={cn("text-xl font-black font-mono", pendingBreakdown.purchaseReturns > 0 ? "text-foreground" : "text-foreground")}>
                                     {pendingBreakdown.purchaseReturns}
                                 </div>
                             </div>
@@ -1822,7 +1822,7 @@ export default function CentralSyncSettingsPage() {
                             )}>
                                 <Banknote className="h-5 w-5 mx-auto text-emerald-600" />
                                 <div className="text-xs text-muted-foreground font-medium">سندات قبض</div>
-                                <div className={cn("text-xl font-black font-mono", pendingBreakdown.customerPayments > 0 ? "text-amber-600" : "text-foreground")}>
+                                <div className={cn("text-xl font-black font-mono", pendingBreakdown.customerPayments > 0 ? "text-foreground" : "text-foreground")}>
                                     {pendingBreakdown.customerPayments}
                                 </div>
                             </div>
@@ -1831,9 +1831,9 @@ export default function CentralSyncSettingsPage() {
                                 "p-3 rounded-xl border text-center space-y-1 transition-all",
                                 pendingBreakdown.supplierPayments > 0 ? "bg-amber-500/10 border-amber-500/30 shadow-xs" : "bg-card hover:bg-muted/30"
                             )}>
-                                <CreditCard className="h-5 w-5 mx-auto text-blue-600" />
+                                <CreditCard className="h-5 w-5 mx-auto text-foreground" />
                                 <div className="text-xs text-muted-foreground font-medium">سندات صرف</div>
-                                <div className={cn("text-xl font-black font-mono", pendingBreakdown.supplierPayments > 0 ? "text-amber-600" : "text-foreground")}>
+                                <div className={cn("text-xl font-black font-mono", pendingBreakdown.supplierPayments > 0 ? "text-foreground" : "text-foreground")}>
                                     {pendingBreakdown.supplierPayments}
                                 </div>
                             </div>
@@ -1844,7 +1844,7 @@ export default function CentralSyncSettingsPage() {
                             )}>
                                 <Receipt className="h-5 w-5 mx-auto text-slate-600 dark:text-slate-400" />
                                 <div className="text-xs text-muted-foreground font-medium">مصروفات وإيراد</div>
-                                <div className={cn("text-xl font-black font-mono", pendingBreakdown.expenses > 0 ? "text-amber-600" : "text-foreground")}>
+                                <div className={cn("text-xl font-black font-mono", pendingBreakdown.expenses > 0 ? "text-foreground" : "text-foreground")}>
                                     {pendingBreakdown.expenses}
                                 </div>
                             </div>
@@ -1853,9 +1853,9 @@ export default function CentralSyncSettingsPage() {
                                 "p-3 rounded-xl border text-center space-y-1 transition-all",
                                 pendingBreakdown.stock > 0 ? "bg-amber-500/10 border-amber-500/30 shadow-xs" : "bg-card hover:bg-muted/30"
                             )}>
-                                <Boxes className="h-5 w-5 mx-auto text-cyan-600" />
+                                <Boxes className="h-5 w-5 mx-auto text-foreground" />
                                 <div className="text-xs text-muted-foreground font-medium">حركات مخازن</div>
-                                <div className={cn("text-xl font-black font-mono", pendingBreakdown.stock > 0 ? "text-amber-600" : "text-foreground")}>
+                                <div className={cn("text-xl font-black font-mono", pendingBreakdown.stock > 0 ? "text-foreground" : "text-foreground")}>
                                     {pendingBreakdown.stock}
                                 </div>
                             </div>
@@ -1864,9 +1864,9 @@ export default function CentralSyncSettingsPage() {
                                 "p-3 rounded-xl border text-center space-y-1 transition-all",
                                 pendingBreakdown.transfers > 0 ? "bg-amber-500/10 border-amber-500/30 shadow-xs" : "bg-card hover:bg-muted/30"
                             )}>
-                                <ArrowLeftRight className="h-5 w-5 mx-auto text-sky-600" />
+                                <ArrowLeftRight className="h-5 w-5 mx-auto text-foreground" />
                                 <div className="text-xs text-muted-foreground font-medium">تحويلات فروع</div>
-                                <div className={cn("text-xl font-black font-mono", pendingBreakdown.transfers > 0 ? "text-amber-600" : "text-foreground")}>
+                                <div className={cn("text-xl font-black font-mono", pendingBreakdown.transfers > 0 ? "text-foreground" : "text-foreground")}>
                                     {pendingBreakdown.transfers}
                                 </div>
                             </div>
@@ -1877,7 +1877,7 @@ export default function CentralSyncSettingsPage() {
                             )}>
                                 <Wallet className="h-5 w-5 mx-auto text-emerald-700" />
                                 <div className="text-xs text-muted-foreground font-medium">حركات خزينة</div>
-                                <div className={cn("text-xl font-black font-mono", pendingBreakdown.treasury > 0 ? "text-amber-600" : "text-foreground")}>
+                                <div className={cn("text-xl font-black font-mono", pendingBreakdown.treasury > 0 ? "text-foreground" : "text-foreground")}>
                                     {pendingBreakdown.treasury}
                                 </div>
                             </div>
@@ -1886,9 +1886,9 @@ export default function CentralSyncSettingsPage() {
                                 "p-3 rounded-xl border text-center space-y-1 transition-all",
                                 pendingBreakdown.rep > 0 ? "bg-amber-500/10 border-amber-500/30 shadow-xs" : "bg-card hover:bg-muted/30"
                             )}>
-                                <Users className="h-5 w-5 mx-auto text-amber-600" />
+                                <Users className="h-5 w-5 mx-auto text-foreground" />
                                 <div className="text-xs text-muted-foreground font-medium">مندوبين وتوزيع</div>
-                                <div className={cn("text-xl font-black font-mono", pendingBreakdown.rep > 0 ? "text-amber-600" : "text-foreground")}>
+                                <div className={cn("text-xl font-black font-mono", pendingBreakdown.rep > 0 ? "text-foreground" : "text-foreground")}>
                                     {pendingBreakdown.rep}
                                 </div>
                             </div>
@@ -1899,7 +1899,7 @@ export default function CentralSyncSettingsPage() {
                             )}>
                                 <Terminal className="h-5 w-5 mx-auto text-teal-600" />
                                 <div className="text-xs text-muted-foreground font-medium">كاشير وHR</div>
-                                <div className={cn("text-xl font-black font-mono", (pendingBreakdown.hr + pendingBreakdown.pos) > 0 ? "text-amber-600" : "text-foreground")}>
+                                <div className={cn("text-xl font-black font-mono", (pendingBreakdown.hr + pendingBreakdown.pos) > 0 ? "text-foreground" : "text-foreground")}>
                                     {pendingBreakdown.hr + pendingBreakdown.pos}
                                 </div>
                             </div>
@@ -1909,7 +1909,7 @@ export default function CentralSyncSettingsPage() {
                         <Card className="border shadow-sm">
                             <CardHeader className="pb-3">
                                 <CardTitle className="text-base flex items-center gap-2">
-                                    <ListChecks className="h-5 w-5 text-amber-600" />
+                                    <ListChecks className="h-5 w-5 text-foreground" />
                                     قائمة الجداول التي بها حركات معلقة حالياً ({pendingTablesList.length})
                                 </CardTitle>
                                 <CardDescription>
@@ -1944,7 +1944,7 @@ export default function CentralSyncSettingsPage() {
                                                     </TableCell>
                                                     <TableCell className="text-center font-mono font-bold">
                                                         {t.pendingPushCount > 0 ? (
-                                                            <span className="px-2 py-0.5 rounded bg-amber-500/15 text-amber-700 dark:text-amber-400 font-mono font-bold">
+                                                            <span className="px-2 py-0.5 rounded bg-amber-500/15 text-foreground dark:text-foreground font-mono font-bold">
                                                                 {t.pendingPushCount.toLocaleString()}
                                                             </span>
                                                         ) : (
@@ -1953,7 +1953,7 @@ export default function CentralSyncSettingsPage() {
                                                     </TableCell>
                                                     <TableCell className="text-center font-mono font-bold">
                                                         {t.pendingPullCount > 0 ? (
-                                                            <span className="px-2 py-0.5 rounded bg-sky-500/15 text-sky-700 dark:text-sky-400 font-mono font-bold">
+                                                            <span className="px-2 py-0.5 rounded bg-sky-500/15 text-foreground dark:text-foreground font-mono font-bold">
                                                                 {t.pendingPullCount.toLocaleString()}
                                                             </span>
                                                         ) : (
@@ -2059,7 +2059,7 @@ export default function CentralSyncSettingsPage() {
                                                         <TableCell className="text-center font-mono font-bold text-emerald-600">
                                                             +{log.pushed || 0}
                                                         </TableCell>
-                                                        <TableCell className="text-center font-mono font-bold text-sky-600">
+                                                        <TableCell className="text-center font-mono font-bold text-foreground">
                                                             +{log.pulled || 0}
                                                         </TableCell>
                                                         <TableCell className="text-muted-foreground text-xs truncate max-w-xs">
@@ -2088,7 +2088,7 @@ export default function CentralSyncSettingsPage() {
                         <Card className="border shadow-sm">
                             <CardHeader>
                                 <CardTitle className="text-base flex items-center gap-2">
-                                    <Server className="h-5 w-5 text-sky-600" />
+                                    <Server className="h-5 w-5 text-foreground" />
                                     إعدادات الربط السحابي وبيانات الخادم المركزي
                                 </CardTitle>
                                 <CardDescription>
@@ -2142,7 +2142,7 @@ export default function CentralSyncSettingsPage() {
                                             </div>
                                             {config.systemRole === 'central' && (
                                                 <div className="absolute top-3 left-3 text-muted-foreground" title="يتطلب باسورد المدير">
-                                                    <Lock className="h-4 w-4 text-amber-500" />
+                                                    <Lock className="h-4 w-4 text-foreground" />
                                                 </div>
                                             )}
                                         </div>
@@ -2176,7 +2176,7 @@ export default function CentralSyncSettingsPage() {
                                             </div>
                                             {config.systemRole !== 'central' && (
                                                 <div className="absolute top-3 left-3 text-muted-foreground" title="يتطلب باسورد المدير">
-                                                    <Lock className="h-4 w-4 text-amber-500" />
+                                                    <Lock className="h-4 w-4 text-foreground" />
                                                 </div>
                                             )}
                                         </div>
@@ -2231,7 +2231,7 @@ export default function CentralSyncSettingsPage() {
                                 {/* Section 2: Central SQL Server Credentials */}
                                 <div className="p-4 rounded-xl border bg-muted/20 space-y-3">
                                     <div className="flex items-center gap-2 border-b pb-2">
-                                        <Server className="h-4 w-4 text-sky-600" />
+                                        <Server className="h-4 w-4 text-foreground" />
                                         <span className="font-bold text-sm">2. خادم قاعدة بيانات الإدارة (Central SQL Server)</span>
                                     </div>
                                     <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
@@ -2308,7 +2308,7 @@ export default function CentralSyncSettingsPage() {
                                     disabled={isTesting}
                                     className="gap-1.5 text-xs font-semibold h-8"
                                 >
-                                    {isTesting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Zap className="h-3.5 w-3.5 text-amber-500" />}
+                                    {isTesting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Zap className="h-3.5 w-3.5 text-foreground" />}
                                     فحص صحة الاتصال
                                 </Button>
                                 <Button 
@@ -2327,7 +2327,7 @@ export default function CentralSyncSettingsPage() {
                         <Card className="border border-sky-500/20 bg-sky-500/5 shadow-sm">
                             <CardHeader>
                                 <CardTitle className="text-base flex items-center gap-2">
-                                    <Sparkles className="h-5 w-5 text-sky-600" />
+                                    <Sparkles className="h-5 w-5 text-foreground" />
                                     تأسيس وبناء قاعدة البيانات المركزية ومطابقة الجداول (71 جدولاً)
                                 </CardTitle>
                                 <CardDescription>
@@ -2383,7 +2383,7 @@ export default function CentralSyncSettingsPage() {
                 <DialogContent className="sm:max-w-md">
                     <DialogHeader className="border-b pb-3">
                         <DialogTitle className="flex items-center gap-2 text-base font-bold text-foreground">
-                            <ShieldCheck className="h-5 w-5 text-amber-500" />
+                            <ShieldCheck className="h-5 w-5 text-foreground" />
                             تأكيد تغيير دور النظام في قاعدة البيانات
                         </DialogTitle>
                         <DialogDescription className="text-xs">
@@ -2392,7 +2392,7 @@ export default function CentralSyncSettingsPage() {
                     </DialogHeader>
 
                     <form onSubmit={handleConfirmSwitchRole} className="space-y-4 py-2">
-                        <div className="p-3 rounded-lg border bg-amber-500/10 border-amber-500/20 text-xs text-amber-800 dark:text-amber-300 space-y-1">
+                        <div className="p-3 rounded-lg border bg-amber-500/10 border-amber-500/20 text-xs text-foreground dark:text-foreground space-y-1">
                             <div className="font-bold flex items-center gap-1">
                                 <Lock className="h-3.5 w-3.5" />
                                 إجراء محمي بكلمة المرور

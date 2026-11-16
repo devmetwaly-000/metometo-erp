@@ -24,8 +24,8 @@ export default {
     extend: {
       // تعريف متغيرات الخطوط التي تم استيرادها في layout.tsx
       fontFamily: {
-        body: ["var(--font-inter)", "sans-serif"],
-        headline: ["var(--font-noto-kufi-arabic)", "sans-serif"],
+        body: ["Arial", "Tahoma", "sans-serif"],
+        headline: ["Tahoma", "Arial", "sans-serif"],
       },
       // تعريف ألوان مخصصة باستخدام متغيرات CSS HSL من globals.css
       // هذا يسمح بتغيير الألوان ديناميكيًا مع السمات (فاتح/داكن/محايد)
@@ -122,3 +122,4 @@ export default {
     },
   ],
 } satisfies Config;
+

@@ -212,7 +212,7 @@ const SupplierPurchaseHistoryDialog = ({ supplier, onClose }: { supplier: any, o
                                                     <TableCell className="font-mono text-xs">{item.invoiceNumber}</TableCell>
                                                     <TableCell className="font-bold">{item.itemName}</TableCell>
                                                     <TableCell className="font-mono text-xs text-muted-foreground">{item.code}</TableCell>
-                                                    <TableCell className="text-center font-bold text-amber-600">{item.qty}</TableCell>
+                                                    <TableCell className="text-center font-bold text-foreground">{item.qty}</TableCell>
                                                     <TableCell className="text-center">{item.cost.toLocaleString()}</TableCell>
                                                     <TableCell className="text-center font-black">{item.total.toLocaleString()}</TableCell>
                                                 </TableRow>
@@ -239,7 +239,7 @@ const SupplierPurchaseHistoryDialog = ({ supplier, onClose }: { supplier: any, o
                                             <div className="text-[10px] text-muted-foreground font-mono mb-2">{item.code}</div>
                                             <div className="grid grid-cols-2 gap-x-2 gap-y-1 text-[11px] pt-2 border-t">
                                                 <div><span className="text-muted-foreground">آخر تكلفة:</span> {item.lastCost.toLocaleString()}</div>
-                                                <div className="text-left font-bold text-amber-600">إجمالي التكلفة: {item.totalCost.toLocaleString()}</div>
+                                                <div className="text-left font-bold text-foreground">إجمالي التكلفة: {item.totalCost.toLocaleString()}</div>
                                             </div>
                                         </div>
                                     ))}
@@ -264,7 +264,7 @@ const SupplierPurchaseHistoryDialog = ({ supplier, onClose }: { supplier: any, o
                                                     <TableCell className="font-bold">{item.name}</TableCell>
                                                     <TableCell className="font-mono text-xs">{item.code}</TableCell>
                                                     <TableCell className="text-center font-bold">{item.totalQty}</TableCell>
-                                                    <TableCell className="text-center text-amber-600 font-black">{item.lastCost.toLocaleString()}</TableCell>
+                                                    <TableCell className="text-center text-foreground font-black">{item.lastCost.toLocaleString()}</TableCell>
                                                     <TableCell className="text-center font-bold">{item.totalCost.toLocaleString()}</TableCell>
                                                     <TableCell className="text-center text-green-600 italic font-semibold">{item.totalRevenue.toLocaleString()}</TableCell>
                                                 </TableRow>
@@ -281,7 +281,7 @@ const SupplierPurchaseHistoryDialog = ({ supplier, onClose }: { supplier: any, o
             <div className="p-3 bg-muted border-t grid grid-cols-2 md:grid-cols-3 gap-2">
                 <div className="p-2 bg-background rounded border flex flex-col items-center shadow-sm">
                     <span className="text-[9px] uppercase font-bold text-muted-foreground">إجمالي قطع المشتريات</span>
-                    <span className="text-base font-black text-amber-600">{totals.qty.toLocaleString()}</span>
+                    <span className="text-base font-black text-foreground">{totals.qty.toLocaleString()}</span>
                 </div>
                 <div className="p-2 bg-background rounded border flex flex-col items-center shadow-sm ring-1 ring-primary/20">
                     <span className="text-[9px] uppercase font-bold text-muted-foreground">إجمالي التكلفة (مشتريات)</span>
@@ -365,7 +365,7 @@ const SupplierForm = ({ supplier, onSave, onClose, hasInvoices }: { supplier?: S
             اسم المورد
           </Label>
           <Input id="supplier-name" value={formData.name} onChange={(e) => setFormData({...formData, name: e.target.value})} disabled={hasInvoices} className={cn("col-span-3", hasInvoices && "bg-muted")} />
-          {hasInvoices && <div className="col-start-2 col-span-3 text-[10px] text-amber-600 font-semibold">لا يمكن تعديل الاسم لوجود فواتير مرتبطة.</div>}
+          {hasInvoices && <div className="col-start-2 col-span-3 text-[10px] text-foreground font-semibold">لا يمكن تعديل الاسم لوجود فواتير مرتبطة.</div>}
         </div>
         <div className="grid grid-cols-4 items-center gap-4">
           <Label htmlFor="supplier-contact" className="text-right">جهة الاتصال</Label>
@@ -530,7 +530,7 @@ export default function SuppliersPage() {
                                                   <DropdownMenuContent align="end">
                                                       <DropdownMenuLabel>الإجراءات</DropdownMenuLabel>
                                                       <DropdownMenuItem onSelect={() => handleHistoryClick(supplier)}>
-                                                          <History className="ml-2 h-4 w-4 text-amber-600" /> سجل توريد الأصناف
+                                                          <History className="ml-2 h-4 w-4 text-foreground" /> سجل توريد الأصناف
                                                       </DropdownMenuItem>
                                                       <DropdownMenuSeparator />
                                                       <DropdownMenuItem onSelect={() => handleEditClick(supplier)}>

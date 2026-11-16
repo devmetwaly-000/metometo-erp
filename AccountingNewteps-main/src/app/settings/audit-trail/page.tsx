@@ -95,7 +95,7 @@ export default function AuditTrailPage() {
             case 'INSERT': return <Badge className="bg-emerald-600 text-white">إضافة جديدة</Badge>;
             case 'UPDATE': return <Badge className="bg-blue-600 text-white">تعديل بيانات</Badge>;
             case 'DELETE': return <Badge className="bg-red-600 text-white">حذف</Badge>;
-            case 'POST': return <Badge className="bg-purple-600 text-white">ترحيل قيد</Badge>;
+            case 'POST': return <Badge className="bg-primary text-primary-foreground">ترحيل قيد</Badge>;
             case 'APPROVE': return <Badge className="bg-indigo-600 text-white">اعتماد</Badge>;
             case 'DEPRECIATE': return <Badge className="bg-amber-600 text-white">إهلاك أصول</Badge>;
             case 'PUTAWAY': return <Badge className="bg-teal-600 text-white">تسكين مخزني</Badge>;
@@ -250,7 +250,7 @@ export default function AuditTrailPage() {
                                             </TableCell>
                                             <TableCell className="text-center">
                                                 <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => setSelectedLog(log)}>
-                                                    <Eye className="h-4 w-4 text-blue-500" />
+                                                    <Eye className="h-4 w-4 text-foreground" />
                                                 </Button>
                                             </TableCell>
                                         </TableRow>

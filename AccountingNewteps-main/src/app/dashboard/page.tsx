@@ -714,13 +714,13 @@ export default function DashboardPage() {
 
             <Dialog open={isReceivablesBreakdownOpen} onOpenChange={setIsReceivablesBreakdownOpen}>
                 <DialogTrigger asChild>
-                    <Card className="cursor-pointer hover:bg-muted/50 transition-colors border-amber-200 shadow-sm">
+                    <Card className="cursor-pointer hover:bg-muted/50 transition-colors shadow-sm">
                         <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                             <CardTitle className="text-sm font-medium">مستحقات العملاء (مديونيات)</CardTitle>
-                            <Users className="h-4 w-4 text-muted-foreground text-amber-600"/>
+                            <Users className="h-4 w-4 text-muted-foreground"/>
                         </CardHeader>
                         <CardContent>
-                            <div className="text-2xl font-bold text-amber-600">{kpiData.accountsReceivable.toLocaleString()} ج.م</div>
+                            <div className="text-2xl font-bold">{kpiData.accountsReceivable.toLocaleString()} ج.م</div>
                             <p className="text-[10px] text-muted-foreground mt-1">انقر لعرض تفاصيل المديونيات</p>
                         </CardContent>
                     </Card>
@@ -728,7 +728,7 @@ export default function DashboardPage() {
                 <DialogContent className="max-w-md">
                     <DialogHeader>
                         <DialogTitle className="flex items-center gap-2">
-                            <ArrowUpCircle className="h-5 w-5 text-amber-600"/>
+                            <ArrowUpCircle className="h-5 w-5 text-muted-foreground"/>
                             تفاصيل مديونيات العملاء
                         </DialogTitle>
                         <DialogDescription>توضيح لكيفية احتساب إجمالي المبالغ المطلوبة من العملاء.</DialogDescription>
@@ -745,16 +745,16 @@ export default function DashboardPage() {
                             </div>
                             <div className="flex justify-between text-sm text-muted-foreground">
                                 <span>(-) تحصيلات مستقلة:</span>
-                                <span className="font-semibold text-green-600">-{kpiData.receivablesBreakdown.standalonePayments.toLocaleString()}</span>
+                                <span className="font-semibold">-{kpiData.receivablesBreakdown.standalonePayments.toLocaleString()}</span>
                             </div>
                             <div className="flex justify-between text-sm text-muted-foreground">
                                 <span>(-) قيمة مرتجعات مبيعات:</span>
-                                <span className="font-semibold text-green-600">-{kpiData.receivablesBreakdown.returns.toLocaleString()}</span>
+                                <span className="font-semibold">-{kpiData.receivablesBreakdown.returns.toLocaleString()}</span>
                             </div>
                         </div>
-                        <div className="p-4 bg-amber-50 dark:bg-amber-900/20 rounded-lg flex justify-between items-center border-2 border-amber-200">
+                        <div className="p-4 bg-muted/40 rounded-lg flex justify-between items-center border">
                             <span className="font-bold text-lg">صافي المديونية:</span>
-                            <span className="font-black text-2xl text-amber-600">{kpiData.accountsReceivable.toLocaleString()} ج.م</span>
+                            <span className="font-black text-2xl">{kpiData.accountsReceivable.toLocaleString()} ج.م</span>
                         </div>
                     </div>
                 </DialogContent>
@@ -856,32 +856,32 @@ export default function DashboardPage() {
             <Card>
                 <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                     <CardTitle className="text-sm font-medium">المحصل نقداً</CardTitle>
-                    <Banknote className="h-4 w-4 text-green-500"/>
+                    <Banknote className="h-4 w-4 text-muted-foreground"/>
                 </CardHeader>
                 <CardContent>
-                    <div className="text-2xl font-bold text-green-600">{kpiData.totalCashFromSales.toLocaleString()} ج.م</div>
+                    <div className="text-2xl font-bold">{kpiData.totalCashFromSales.toLocaleString()} ج.م</div>
                     <p className="text-[10px] text-muted-foreground mt-1">المبالغ المستلمة فعلياً</p>
                 </CardContent>
             </Card>
             <Card>
                 <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                     <CardTitle className="text-sm font-medium">تكلفة البضاعة المباعة</CardTitle>
-                    <Tag className="h-4 w-4 text-amber-600"/>
+                    <Tag className="h-4 w-4 text-muted-foreground"/>
                 </CardHeader>
                 <CardContent>
-                    <div className="text-2xl font-bold text-amber-600">{kpiData.totalCOGS.toLocaleString()} ج.م</div>
+                    <div className="text-2xl font-bold">{kpiData.totalCOGS.toLocaleString()} ج.م</div>
                     <p className="text-[10px] text-muted-foreground mt-1">COGS للفترة المحددة</p>
                 </CardContent>
             </Card>
             <Card><CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2"><CardTitle className="text-sm font-medium">إجمالي المصروفات</CardTitle><DollarSign className="h-4 w-4 text-muted-foreground"/></CardHeader><CardContent><div className="text-2xl font-bold text-destructive">{kpiData.totalExpenses.toLocaleString()} ج.م</div></CardContent></Card>
-            <Card><CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2"><CardTitle className="text-sm font-medium">إجمالي المرتجعات</CardTitle><TrendingDown className="h-4 w-4 text-muted-foreground"/></CardHeader><CardContent><div className="text-2xl font-bold text-amber-600">{kpiData.totalSalesReturns.toLocaleString()} ج.م</div></CardContent></Card>
+            <Card><CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2"><CardTitle className="text-sm font-medium">إجمالي المرتجعات</CardTitle><TrendingDown className="h-4 w-4 text-muted-foreground"/></CardHeader><CardContent><div className="text-2xl font-bold">{kpiData.totalSalesReturns.toLocaleString()} ج.م</div></CardContent></Card>
         </div>
 
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
             <Card className="cursor-pointer hover:bg-muted/50 transition-colors" onClick={handlePrintCustomersReport}>
                 <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                     <CardTitle className="text-sm font-medium">إجمالي العملاء</CardTitle>
-                    <Users className="h-4 w-4 text-muted-foreground text-blue-500"/>
+                    <Users className="h-4 w-4 text-muted-foreground"/>
                 </CardHeader>
                 <CardContent>
                     <div className="text-2xl font-bold">{kpiData.customersCount}</div>
@@ -891,7 +891,7 @@ export default function DashboardPage() {
             <Card>
                 <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                     <CardTitle className="text-sm font-medium">إجمالي الموردين</CardTitle>
-                    <Building className="h-4 w-4 text-muted-foreground text-orange-500"/>
+                    <Building className="h-4 w-4 text-muted-foreground"/>
                 </CardHeader>
                 <CardContent>
                     <div className="text-2xl font-bold">{kpiData.suppliersCount}</div>
@@ -901,7 +901,7 @@ export default function DashboardPage() {
             <Card>
                 <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                     <CardTitle className="text-sm font-medium">إجمالي الأصناف</CardTitle>
-                    <Boxes className="h-4 w-4 text-muted-foreground text-purple-500"/>
+                    <Boxes className="h-4 w-4 text-muted-foreground"/>
                 </CardHeader>
                 <CardContent>
                     <div className="text-2xl font-bold">{kpiData.productsCount}</div>
@@ -986,7 +986,7 @@ export default function DashboardPage() {
                 </CardContent>
             </Card>
             <Card>
-                <CardHeader className="flex items-center gap-2"><AlertTriangle className="text-amber-500" />أصناف وصلت لحد الطلب</CardHeader>
+                <CardHeader className="flex items-center gap-2"><AlertTriangle className="text-foreground" />أصناف وصلت لحد الطلب</CardHeader>
                 <CardContent>
                     <Table>
                         <TableHeader><TableRow><TableHead>الصنف</TableHead><TableHead>الفرع</TableHead><TableHead className="text-center">الرصيد</TableHead><TableHead className="text-center">حد الطلب</TableHead></TableRow></TableHeader>

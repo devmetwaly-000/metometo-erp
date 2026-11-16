@@ -224,7 +224,7 @@ const PurchaseHistoryDialog = ({ customer, onClose }: { customer: any, onClose: 
                                                     <TableCell className="font-mono text-xs">{item.invoiceNumber}</TableCell>
                                                     <TableCell className="font-bold">{item.itemName}</TableCell>
                                                     <TableCell className="font-mono text-xs text-muted-foreground">{item.code}</TableCell>
-                                                    <TableCell className="text-center font-bold text-blue-600">{item.qty}</TableCell>
+                                                    <TableCell className="text-center font-bold text-foreground">{item.qty}</TableCell>
                                                     <TableCell className="text-center">{item.price.toLocaleString()}</TableCell>
                                                     <TableCell className="text-center text-muted-foreground italic">{item.cost.toLocaleString()}</TableCell>
                                                     <TableCell className="text-center font-black">{item.total.toLocaleString()}</TableCell>
@@ -307,11 +307,11 @@ const PurchaseHistoryDialog = ({ customer, onClose }: { customer: any, onClose: 
             <div className="p-3 bg-muted border-t grid grid-cols-2 md:grid-cols-4 gap-2">
                 <div className="p-2 bg-background rounded border flex flex-col items-center shadow-sm">
                     <span className="text-[9px] uppercase font-bold text-muted-foreground">إجمالي القطع</span>
-                    <span className="text-base font-black text-blue-600">{totals.qty.toLocaleString()}</span>
+                    <span className="text-base font-black text-foreground">{totals.qty.toLocaleString()}</span>
                 </div>
                 <div className="p-2 bg-background rounded border flex flex-col items-center shadow-sm">
                     <span className="text-[9px] uppercase font-bold text-muted-foreground">إجمالي التكلفة</span>
-                    <span className="text-base font-black text-amber-600">{totals.cost.toLocaleString()}</span>
+                    <span className="text-base font-black text-foreground">{totals.cost.toLocaleString()}</span>
                 </div>
                 <div className="p-2 bg-background rounded border flex flex-col items-center shadow-sm">
                     <span className="text-[9px] uppercase font-bold text-muted-foreground">صافي الإيراد</span>
@@ -418,7 +418,7 @@ const QuickPaymentDialog = ({ customer, onClose }: { customer: any, onClose: () 
                 </div>
                 {customer.currentBalance < 0 && (
                     <div className="bg-amber-100 dark:bg-amber-900/30 p-2 rounded-full">
-                        <AlertTriangle className="h-6 w-6 text-amber-600 dark:text-amber-400" />
+                        <AlertTriangle className="h-6 w-6 text-foreground dark:text-foreground" />
                     </div>
                 )}
             </div>
@@ -521,7 +521,7 @@ const CustomerForm = ({ customer, onSave, onClose, allCustomers, hasInvoices }: 
         <div className="space-y-2">
           <Label htmlFor="customer-name" className={hasInvoices ? "text-muted-foreground" : ""}>اسم العميل</Label>
           <Input id="customer-name" value={formData.name} onChange={(e) => setFormData({...formData, name: e.target.value})} disabled={hasInvoices} className={hasInvoices ? "bg-muted" : ""} />
-          {hasInvoices && <p className="text-[10px] text-amber-600 font-semibold">لا يمكن تعديل الاسم لوجود فواتير مرتبطة.</p>}
+          {hasInvoices && <p className="text-[10px] text-foreground font-semibold">لا يمكن تعديل الاسم لوجود فواتير مرتبطة.</p>}
         </div>
         <div className="space-y-2">
           <Label htmlFor="customer-phone">رقم الهاتف</Label>
@@ -535,7 +535,7 @@ const CustomerForm = ({ customer, onSave, onClose, allCustomers, hasInvoices }: 
           <div className="flex items-center justify-between">
             <Label htmlFor="opening-balance" className={hasInvoices && !isBalanceUnlocked ? "text-muted-foreground" : ""}>رصيد أول المدة</Label>
             {hasInvoices && !isBalanceUnlocked && (
-                <Button type="button" variant="ghost" size="sm" className="h-7 px-2 text-[10px] gap-1 text-amber-600 hover:text-amber-700 hover:bg-amber-50" onClick={handleUnlock}>
+                <Button type="button" variant="ghost" size="sm" className="h-7 px-2 text-[10px] gap-1 text-foreground hover:text-foreground hover:bg-amber-50" onClick={handleUnlock}>
                     <Lock className="h-3.5 w-3.5" /> تعديل الرصيد المحمي
                 </Button>
             )}
@@ -737,7 +737,7 @@ export default function CustomersPage() {
                                                         <PlusCircle className="ml-2 h-4 w-4 text-green-600" /> تسجيل دفعة
                                                     </DropdownMenuItem>
                                                     <DropdownMenuItem onSelect={() => handleHistoryClick(customer)}>
-                                                        <History className="ml-2 h-4 w-4 text-blue-600" /> سجل مشتريات الأصناف
+                                                        <History className="ml-2 h-4 w-4 text-foreground" /> سجل مشتريات الأصناف
                                                     </DropdownMenuItem>
                                                     <DropdownMenuItem onSelect={() => router.push(`/reports/customer-statement?customerId=${customer.id}`)}>
                                                         <List className="ml-2 h-4 w-4" /> كشف حساب مالي

@@ -362,7 +362,7 @@ export default function RepSalesReportPage() {
             onClick={() => window.print()}
             className="gap-1.5 text-xs font-semibold h-8"
           >
-            <Printer className="h-3.5 w-3.5 text-sky-600 dark:text-sky-400" />
+            <Printer className="h-3.5 w-3.5 text-foreground dark:text-foreground" />
             طباعة التقرير
           </Button>
         </div>
@@ -374,11 +374,11 @@ export default function RepSalesReportPage() {
           <CardHeader className="p-3.5 pb-1">
             <CardTitle className="text-xs font-medium text-muted-foreground flex items-center justify-between">
               <span>إجمالي مبيعات المناديب</span>
-              <DollarSign className="h-4 w-4 text-blue-600 dark:text-blue-400" />
+              <DollarSign className="h-4 w-4 text-foreground dark:text-foreground" />
             </CardTitle>
           </CardHeader>
           <CardContent className="p-3.5 pt-0">
-            <div className="text-xl font-bold font-mono text-blue-700 dark:text-blue-400">
+            <div className="text-xl font-bold font-mono text-foreground dark:text-foreground">
               {summary.grandTotalSales.toLocaleString("ar-EG", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ج.م
             </div>
             <p className="text-[11px] text-muted-foreground mt-0.5">
@@ -408,11 +408,11 @@ export default function RepSalesReportPage() {
           <CardHeader className="p-3.5 pb-1">
             <CardTitle className="text-xs font-medium text-muted-foreground flex items-center justify-between">
               <span>مبيعات آجلة (مديونيات عملاء)</span>
-              <Clock className="h-4 w-4 text-amber-600 dark:text-amber-400" />
+              <Clock className="h-4 w-4 text-foreground dark:text-foreground" />
             </CardTitle>
           </CardHeader>
           <CardContent className="p-3.5 pt-0">
-            <div className="text-xl font-bold font-mono text-amber-700 dark:text-amber-400">
+            <div className="text-xl font-bold font-mono text-foreground dark:text-foreground">
               {summary.grandTotalCredit.toLocaleString("ar-EG", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ج.م
             </div>
             <p className="text-[11px] text-muted-foreground mt-0.5">
@@ -425,11 +425,11 @@ export default function RepSalesReportPage() {
           <CardHeader className="p-3.5 pb-1">
             <CardTitle className="text-xs font-medium text-muted-foreground flex items-center justify-between">
               <span>التوريدات النقدية للخزينة</span>
-              <ArrowDownLeft className="h-4 w-4 text-indigo-600 dark:text-indigo-400" />
+              <ArrowDownLeft className="h-4 w-4 text-foreground dark:text-foreground" />
             </CardTitle>
           </CardHeader>
           <CardContent className="p-3.5 pt-0">
-            <div className="text-xl font-bold font-mono text-indigo-700 dark:text-indigo-400">
+            <div className="text-xl font-bold font-mono text-foreground dark:text-foreground">
               {summary.grandTotalRemitted.toLocaleString("ar-EG", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ج.م
             </div>
             <p className="text-[11px] text-muted-foreground mt-0.5">
@@ -438,15 +438,15 @@ export default function RepSalesReportPage() {
           </CardContent>
         </Card>
 
-        <Card className="border shadow-sm bg-gradient-to-br from-purple-500/5 to-transparent">
+        <Card className="border shadow-sm bg-card">
           <CardHeader className="p-3.5 pb-1">
             <CardTitle className="text-xs font-medium text-muted-foreground flex items-center justify-between">
               <span>قيمة بضاعة العهدة الحالية</span>
-              <Package className="h-4 w-4 text-purple-600 dark:text-purple-400" />
+              <Package className="h-4 w-4 text-foreground dark:text-foreground" />
             </CardTitle>
           </CardHeader>
           <CardContent className="p-3.5 pt-0">
-            <div className="text-xl font-bold font-mono text-purple-700 dark:text-purple-400">
+            <div className="text-xl font-bold font-mono text-foreground dark:text-foreground">
               {summary.grandTotalCustody.toLocaleString("ar-EG", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ج.م
             </div>
             <p className="text-[11px] text-muted-foreground mt-0.5">
@@ -550,9 +550,9 @@ export default function RepSalesReportPage() {
                       <TableHead className="text-left font-mono font-bold">إجمالي المبيعات</TableHead>
                       <TableHead className="text-left font-mono">التحصيل النقدي</TableHead>
                       <TableHead className="text-left font-mono">الآجل للعملاء</TableHead>
-                      <TableHead className="text-left font-mono text-indigo-600 dark:text-indigo-400">التوريدات للخزينة</TableHead>
-                      <TableHead className="text-left font-mono font-bold text-amber-600 dark:text-amber-400">المتبقي عهدة نقدية</TableHead>
-                      <TableHead className="text-left font-mono font-bold text-purple-600 dark:text-purple-400">قيمة بضاعة العهدة</TableHead>
+                      <TableHead className="text-left font-mono text-foreground dark:text-foreground">التوريدات للخزينة</TableHead>
+                      <TableHead className="text-left font-mono font-bold text-foreground dark:text-foreground">المتبقي عهدة نقدية</TableHead>
+                      <TableHead className="text-left font-mono font-bold text-foreground dark:text-foreground">قيمة بضاعة العهدة</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -580,24 +580,24 @@ export default function RepSalesReportPage() {
                             <TableCell className="text-center font-mono font-bold">
                               {r.invoicesCount}
                             </TableCell>
-                            <TableCell className="text-left font-mono font-bold text-blue-700 dark:text-blue-400">
+                            <TableCell className="text-left font-mono font-bold text-foreground dark:text-foreground">
                               {r.totalSales.toLocaleString("ar-EG", { minimumFractionDigits: 2 })}
                             </TableCell>
                             <TableCell className="text-left font-mono text-emerald-600 dark:text-emerald-400 font-semibold">
                               {r.cashCollected.toLocaleString("ar-EG", { minimumFractionDigits: 2 })}
                             </TableCell>
-                            <TableCell className="text-left font-mono text-amber-600 dark:text-amber-400">
+                            <TableCell className="text-left font-mono text-foreground dark:text-foreground">
                               {r.creditSales.toLocaleString("ar-EG", { minimumFractionDigits: 2 })}
                             </TableCell>
-                            <TableCell className="text-left font-mono text-indigo-600 dark:text-indigo-400 font-semibold">
+                            <TableCell className="text-left font-mono text-foreground dark:text-foreground font-semibold">
                               {r.cashRemitted.toLocaleString("ar-EG", { minimumFractionDigits: 2 })}
                             </TableCell>
                             <TableCell className="text-left font-mono font-bold">
-                              <span className={cashPendingWithRep > 0 ? "text-amber-600 dark:text-amber-400" : "text-muted-foreground"}>
+                              <span className={cashPendingWithRep > 0 ? "text-foreground dark:text-foreground" : "text-muted-foreground"}>
                                 {cashPendingWithRep.toLocaleString("ar-EG", { minimumFractionDigits: 2 })}
                               </span>
                             </TableCell>
-                            <TableCell className="text-left font-mono font-bold text-purple-700 dark:text-purple-400">
+                            <TableCell className="text-left font-mono font-bold text-foreground dark:text-foreground">
                               {r.custodyValue.toLocaleString("ar-EG", { minimumFractionDigits: 2 })}
                             </TableCell>
                           </TableRow>
@@ -610,22 +610,22 @@ export default function RepSalesReportPage() {
                       <TableCell colSpan={4} className="text-right">
                         إجمالي النتائج:
                       </TableCell>
-                      <TableCell className="text-left font-mono text-sm font-black text-blue-700 dark:text-blue-400">
+                      <TableCell className="text-left font-mono text-sm font-black text-foreground dark:text-foreground">
                         {summary.grandTotalSales.toLocaleString("ar-EG", { minimumFractionDigits: 2 })} ج.م
                       </TableCell>
                       <TableCell className="text-left font-mono text-sm font-black text-emerald-600 dark:text-emerald-400">
                         {summary.grandTotalPaid.toLocaleString("ar-EG", { minimumFractionDigits: 2 })} ج.م
                       </TableCell>
-                      <TableCell className="text-left font-mono text-sm font-black text-amber-600 dark:text-amber-400">
+                      <TableCell className="text-left font-mono text-sm font-black text-foreground dark:text-foreground">
                         {summary.grandTotalCredit.toLocaleString("ar-EG", { minimumFractionDigits: 2 })} ج.م
                       </TableCell>
-                      <TableCell className="text-left font-mono text-sm font-black text-indigo-600 dark:text-indigo-400">
+                      <TableCell className="text-left font-mono text-sm font-black text-foreground dark:text-foreground">
                         {summary.grandTotalRemitted.toLocaleString("ar-EG", { minimumFractionDigits: 2 })} ج.م
                       </TableCell>
-                      <TableCell className="text-left font-mono text-sm font-black text-amber-600 dark:text-amber-400">
+                      <TableCell className="text-left font-mono text-sm font-black text-foreground dark:text-foreground">
                         {Math.max(0, summary.grandTotalPaid - summary.grandTotalRemitted).toLocaleString("ar-EG", { minimumFractionDigits: 2 })} ج.م
                       </TableCell>
-                      <TableCell className="text-left font-mono text-sm font-black text-purple-700 dark:text-purple-400">
+                      <TableCell className="text-left font-mono text-sm font-black text-foreground dark:text-foreground">
                         {summary.grandTotalCustody.toLocaleString("ar-EG", { minimumFractionDigits: 2 })} ج.م
                       </TableCell>
                     </TableRow>
@@ -684,13 +684,13 @@ export default function RepSalesReportPage() {
                           <TableCell className="text-muted-foreground">
                             {inv.customerName}
                           </TableCell>
-                          <TableCell className="text-left font-mono font-bold text-blue-700 dark:text-blue-400">
+                          <TableCell className="text-left font-mono font-bold text-foreground dark:text-foreground">
                             {inv.total.toLocaleString("ar-EG", { minimumFractionDigits: 2 })}
                           </TableCell>
                           <TableCell className="text-left font-mono text-emerald-600 dark:text-emerald-400 font-semibold">
                             {inv.paid.toLocaleString("ar-EG", { minimumFractionDigits: 2 })}
                           </TableCell>
-                          <TableCell className="text-left font-mono text-amber-600 dark:text-amber-400">
+                          <TableCell className="text-left font-mono text-foreground dark:text-foreground">
                             {inv.remaining > 0 ? inv.remaining.toLocaleString("ar-EG", { minimumFractionDigits: 2 }) : "-"}
                           </TableCell>
                         </TableRow>
@@ -702,13 +702,13 @@ export default function RepSalesReportPage() {
                       <TableCell colSpan={5} className="text-right">
                         إجمالي الفواتير المعروضة:
                       </TableCell>
-                      <TableCell className="text-left font-mono text-sm font-black text-blue-700 dark:text-blue-400">
+                      <TableCell className="text-left font-mono text-sm font-black text-foreground dark:text-foreground">
                         {summary.grandTotalSales.toLocaleString("ar-EG", { minimumFractionDigits: 2 })} ج.م
                       </TableCell>
                       <TableCell className="text-left font-mono text-sm font-black text-emerald-600 dark:text-emerald-400">
                         {summary.grandTotalPaid.toLocaleString("ar-EG", { minimumFractionDigits: 2 })} ج.م
                       </TableCell>
-                      <TableCell className="text-left font-mono text-sm font-black text-amber-600 dark:text-amber-400">
+                      <TableCell className="text-left font-mono text-sm font-black text-foreground dark:text-foreground">
                         {summary.grandTotalCredit.toLocaleString("ar-EG", { minimumFractionDigits: 2 })} ج.م
                       </TableCell>
                     </TableRow>

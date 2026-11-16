@@ -638,6 +638,17 @@ export async function GET() {
                     toWarehouseId: so.ToWarehouseId || so.toWarehouseId || null,
                     createdByName: so.CreatedByName || so.createdByName || null,
                     notes: so.Notes || so.notes || '',
+                    shippingCost: Number(so.ShippingCost ?? so.shippingCost ?? 0),
+                    expenses: parseItemsArray({ items: so.ExpensesJson || so.expensesJson || '[]' }),
+                    expensesJson: so.ExpensesJson || so.expensesJson || '[]',
+                    shippingPaidBy: so.ShippingPaidBy ?? so.shippingPaidBy ?? null,
+                    shippingPaidFromAccountId: so.ShippingPaidFromAccountId ?? so.shippingPaidFromAccountId ?? null,
+                    shippingTreatment: so.ShippingTreatment ?? so.shippingTreatment ?? 'capitalized',
+                    carrierName: so.CarrierName ?? so.carrierName ?? '',
+                    trackingNumber: so.TrackingNumber ?? so.trackingNumber ?? '',
+                    expenseId: so.ExpenseId ?? so.expenseId ?? null,
+                    totalGoodsValue: Number(so.TotalGoodsValue ?? so.totalGoodsValue ?? 0),
+                    totalTransferredValue: Number(so.TotalTransferredValue ?? so.totalTransferredValue ?? 0),
                     items: parseItemsArray(so)
                 })),
                 stockTransferRecords: stockTransferRes.recordset.map(st => ({
@@ -656,6 +667,10 @@ export async function GET() {
                     carrierName: st.CarrierName ?? st.carrierName ?? '',
                     trackingNumber: st.TrackingNumber ?? st.trackingNumber ?? '',
                     expenseId: st.ExpenseId ?? st.expenseId ?? null,
+                    expenses: parseItemsArray({ items: st.ExpensesJson || st.expensesJson || '[]' }),
+                    expensesJson: st.ExpensesJson || st.expensesJson || '[]',
+                    totalGoodsValue: Number(st.TotalGoodsValue ?? st.totalGoodsValue ?? 0),
+                    totalTransferredValue: Number(st.TotalTransferredValue ?? st.totalTransferredValue ?? 0),
                     items: parseItemsArray(st)
                 })),
                 stockAdjustmentRecords: stockAdjRes.recordset.map(sa => ({

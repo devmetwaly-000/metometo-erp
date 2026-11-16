@@ -297,13 +297,7 @@ export default function SupplierPaymentsPage() {
                 createdByName: user?.name,
             };
             await dbAction('supplierPayments', 'add', newPayment);
-             if (data.invoiceId) {
-                const invoice = purchaseInvoices.find((inv: PurchaseInvoice) => inv.id === data.invoiceId);
-                if (invoice) {
-                    const newPaidAmount = (invoice.paidAmount || 0) + data.amount;
-                    await dbAction('purchaseInvoices', 'update', { id: data.invoiceId, data: { paidAmount: newPaidAmount } });
-                }
-            }
+            await allDataContext.retryDatabaseConnection();
             toast({ title: "تم الحفظ بنجاح", description: `رقم السند: ${receiptNumber}` });
         } catch (error) {
             toast({ variant: "destructive", title: "خطأ", description: "فشل الحفظ" });
@@ -336,14 +330,8 @@ export default function SupplierPaymentsPage() {
         }
 
         try {
-             if (payment.invoiceId) {
-                const invoice = purchaseInvoices.find((inv: PurchaseInvoice) => inv.id === payment.invoiceId);
-                if (invoice) {
-                    const newPaidAmount = (invoice.paidAmount || 0) - payment.amount;
-                    await dbAction('purchaseInvoices', 'update', { id: payment.invoiceId, data: { paidAmount: Math.max(0, newPaidAmount) } });
-                }
-            }
             await dbAction('supplierPayments', 'remove', { id: payment.id! });
+            await allDataContext.retryDatabaseConnection();
             toast({ title: "تم الحذف بنجاح" });
         } catch (error) {
             toast({ variant: "destructive", title: "خطأ", description: "فشل الحذف" });
@@ -540,7 +528,7 @@ export default function SupplierPaymentsPage() {
                                                                 <AlertDialogContent>
                                                                     <AlertDialogHeader>
                                                                         <AlertDialogTitle className="flex items-center gap-2">
-                                                                            {isDeletable(payment) ? <Trash2 className="text-destructive"/> : <AlertTriangle className="text-amber-500"/>}
+                                                                            {isDeletable(payment) ? <Trash2 className="text-destructive"/> : <AlertTriangle className="text-foreground"/>}
                                                                             {isDeletable(payment) ? "هل أنت متأكد من الحذف؟" : "تنبيه: لا يمكن الحذف"}
                                                                         </AlertDialogTitle>
                                                                         <AlertDialogDescription>

@@ -164,8 +164,8 @@ export default function InventoryMovementsPage() {
     const combined = [...warehouses, ...inventoryZones].filter((w: any) => !w.isRepWarehouse);
     
     let filtered = combined;
-    if (!user?.warehouseIds?.includes('all')) {
-        filtered = combined.filter((w: any) => user?.warehouseIds?.includes(w.id));
+    if (user?.role !== 'مسؤول' && !user?.warehouseIds?.includes('all')) {
+        filtered = combined.filter((w: any) => user?.warehouseIds?.includes(w.id) || w.isMain || w.warehouseType === 'warehouse');
     }
 
     if (filters.branchId !== 'all') {
@@ -179,7 +179,7 @@ export default function InventoryMovementsPage() {
   }, [warehouses, inventoryZones, user, filters.branchId]);
 
   const getSourceInfo = (id: string) => {
-    const warehouse = allWarehouses.find((w: Warehouse) => w.id === id);
+    const warehouse = [...warehouses, ...inventoryZones].find((w: Warehouse) => w.id === id);
     return warehouse ? warehouse.name : id;
   };
   
@@ -395,23 +395,39 @@ export default function InventoryMovementsPage() {
                                      <div className="text-[10px] text-muted-foreground">بواسطة: {move.createdByName || move.cashierName || 'غير معروف'}</div>
                                 </TableCell>
                                 <TableCell className="text-center">
-                                    <Badge variant={
-                                        move.type === 'in' ? 'default' :
-                                        move.type === 'out' ? 'destructive' :
-                                        move.type === 'adjustment' ? 'outline' :
-                                        'secondary'
-                                    }>
-                                        <span className="flex items-center gap-1">
-                                            {move.type === 'adjustment' && <SlidersHorizontal className="h-3 w-3" />}
-                                            {getTypeLabel(move)}
-                                        </span>
-                                    </Badge>
+                                    <div className="flex flex-col items-center justify-center gap-1">
+                                        <Badge variant={
+                                            move.type === 'in' ? 'default' :
+                                            move.type === 'out' ? 'destructive' :
+                                            move.type === 'adjustment' ? 'outline' :
+                                            'secondary'
+                                        }>
+                                            <span className="flex items-center gap-1">
+                                                {move.type === 'adjustment' && <SlidersHorizontal className="h-3 w-3" />}
+                                                {getTypeLabel(move)}
+                                            </span>
+                                        </Badge>
+                                        {move.type === 'out' && (move.status === 'pending_preparation' || move.status === 'preparing' || move.status === 'prepared') && (
+                                            <Link href="/inventory/requisitions/processing">
+                                                <Badge variant="outline" className="text-[10px] border-amber-500 text-foreground bg-amber-500/10 hover:bg-amber-500/20 cursor-pointer">
+                                                    {move.status === 'pending_preparation' ? '⏳ بانتظار التحضير (لم يُخصم الرصيد - اضغط للتحضير)' :
+                                                     move.status === 'preparing' ? '📦 جاري التحضير (لم يُخصم الرصيد - اضغط للمتابعة)' :
+                                                     '✅ تم التحضير - بانتظار اعتماد الصرف'}
+                                                </Badge>
+                                            </Link>
+                                        )}
+                                        {move.type === 'out' && (move.status === 'cancelled' || move.status === 'rejected') && (
+                                            <Badge variant="outline" className="text-[10px] border-destructive text-destructive">
+                                                ملغي (غير محتسب بالرصيد)
+                                            </Badge>
+                                        )}
+                                    </div>
                                 </TableCell>
                                 <TableCell className="text-center">
                                     {move.type === 'in' && <div className="flex items-center justify-center gap-2"><ArrowDown className="text-green-500 h-4 w-4"/> إلى: {getSourceInfo(move.warehouseId)}</div>}
                                     {move.type === 'out' && <div className="flex items-center justify-center gap-2"><ArrowLeft className="text-red-500 h-4 w-4"/> من: {getSourceInfo(move.warehouseId)}</div>}
-                                    {move.type === 'transfer' && <div className="flex items-center justify-center gap-2">من: {getSourceInfo(move.fromSourceId)} <ArrowRight className="h-4 w-4 text-blue-500"/> إلى: {getSourceInfo(move.toSourceId)}</div>}
-                                    {move.type === 'adjustment' && <div className="flex items-center justify-center gap-2"><SlidersHorizontal className="h-4 w-4 text-purple-500"/> في: {getSourceInfo(move.warehouseId)}</div>}
+                                    {move.type === 'transfer' && <div className="flex items-center justify-center gap-2">من: {getSourceInfo(move.fromSourceId)} <ArrowRight className="h-4 w-4 text-foreground"/> إلى: {getSourceInfo(move.toSourceId)}</div>}
+                                    {move.type === 'adjustment' && <div className="flex items-center justify-center gap-2"><SlidersHorizontal className="h-4 w-4 text-foreground"/> في: {getSourceInfo(move.warehouseId)}</div>}
                                 </TableCell>
                                 <TableCell className="text-center">
                                     <DialogTrigger asChild>

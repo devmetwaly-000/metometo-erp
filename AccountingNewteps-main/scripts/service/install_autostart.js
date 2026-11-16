@@ -20,29 +20,14 @@ function installAutoStart() {
     }
 
     try {
-        // 1. إنشاء اختصار في مجلد Startup عبر PowerShell
-        const psScript = `
-$WshShell = New-Object -ComObject WScript.Shell
-$Shortcut = $WshShell.CreateShortcut('${SHORTCUT_PATH}')
-$Shortcut.TargetPath = 'wscript.exe'
-$Shortcut.Arguments = '"${SILENT_VBS}"'
-$Shortcut.WorkingDirectory = '${SCRIPT_DIR}'
-$Shortcut.Description = 'MultiBranch POS ERP Background Service'
-$Shortcut.Save()
-`;
-        const tempPsFile = path.join(SCRIPT_DIR, 'temp_create_shortcut.ps1');
-        fs.writeFileSync(tempPsFile, psScript, 'utf8');
+        // استخدم مصدراً واحداً للتشغيل التلقائي حتى لا يبدأ حارسان عند تسجيل الدخول.
+        try { fs.unlinkSync(SHORTCUT_PATH); } catch (err) {
+            if (err.code !== 'ENOENT') throw err;
+        }
 
-        execSync(`powershell -NoProfile -ExecutionPolicy Bypass -File "${tempPsFile}"`, { stdio: 'inherit' });
-        try { fs.unlinkSync(tempPsFile); } catch {}
-
-        console.log('✓ تم إنشاء اختصار التشغيل التلقائي في مجلد Startup بنجاح:');
-        console.log('  ', SHORTCUT_PATH);
-
-        // 2. إضافة إدخال في سجل النظام Registry (HKCU Run) لمزيد من الموثوقية
         const regCommand = `reg add "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Run" /v "MetoPOS_ERP" /t REG_SZ /d "wscript.exe \\"${SILENT_VBS}\\"" /f`;
         execSync(regCommand, { stdio: 'inherit' });
-        console.log('✓ تم تسجيل الخدمة في مفتاح التشغيل التلقائي بالريجستري (Registry Run).');
+        console.log('✓ تم ضبط مصدر واحد للتشغيل التلقائي وحذف اختصار Startup المكرر.');
 
         console.log('\n===============================================================');
         console.log(' تهانينا! سيعمل البرنامج تلقائياً في الخلفية فور تشغيل الـ PC.');

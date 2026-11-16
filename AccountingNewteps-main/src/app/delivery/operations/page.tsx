@@ -141,7 +141,7 @@ export default function DeliveryOperationsPage() {
                         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                             <div className="flex items-center justify-between p-4 border rounded-lg bg-muted">
                                 <div className="flex items-center gap-3">
-                                    <ShoppingCart className="h-6 w-6 text-blue-500"/>
+                                    <ShoppingCart className="h-6 w-6 text-foreground"/>
                                     <span className="font-semibold">إجمالي قيمة الفواتير</span>
                                 </div>
                                 <span className="font-bold text-lg">{reportData.totalSalesValue.toLocaleString()} ج.م</span>

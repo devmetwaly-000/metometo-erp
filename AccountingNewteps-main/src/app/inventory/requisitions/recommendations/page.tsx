@@ -520,7 +520,7 @@ export default function RecommendationsPage() {
                                                             <DropdownMenuContent>
                                                                 <DialogTrigger asChild>
                                                                     <DropdownMenuItem onSelect={e => e.preventDefault()} onClick={() => setSelectedItemForChart(rec)}>
-                                                                        <BarChart2 className="ml-2 h-4 w-4 text-blue-500"/> تحليل المبيعات
+                                                                        <BarChart2 className="ml-2 h-4 w-4 text-foreground"/> تحليل المبيعات
                                                                     </DropdownMenuItem>
                                                                 </DialogTrigger>
                                                                 <DropdownMenuSeparator />

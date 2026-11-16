@@ -277,7 +277,7 @@ export default function RepOperationsPage() {
                     </div>
                      <div className="flex items-center justify-between p-4 border rounded-lg">
                         <div className="flex items-center gap-3">
-                            <Banknote className="h-6 w-6 text-blue-500"/>
+                            <Banknote className="h-6 w-6 text-foreground"/>
                             <span className="font-semibold">إجمالي النقدية الموردة</span>
                         </div>
                         <span className="font-bold text-lg">{reportData.totalRemitted.toLocaleString()} ج.م</span>
@@ -306,7 +306,7 @@ export default function RepOperationsPage() {
                                 <TableHead className="text-center">مصروف عهدة</TableHead>
                                 <TableHead className="text-center">مباع</TableHead>
                                 <TableHead className="text-center text-teal-600">مرتجع عملاء (+)</TableHead>
-                                <TableHead className="text-center text-amber-600">تفريغ مخزن (-)</TableHead>
+                                <TableHead className="text-center text-foreground">تفريغ مخزن (-)</TableHead>
                                 <TableHead className="text-center font-bold">رصيد بالسيارة</TableHead>
                                 </TableRow>
                             </TableHeader>
@@ -317,7 +317,7 @@ export default function RepOperationsPage() {
                                     <TableCell className="text-center">{item.issued > 0 ? item.issued : '-'}</TableCell>
                                     <TableCell className="text-center text-green-600">{item.sold > 0 ? item.sold : '-'}</TableCell>
                                     <TableCell className="text-center text-teal-600 font-bold">{item.customerReturns > 0 ? `+${item.customerReturns}` : '-'}</TableCell>
-                                    <TableCell className="text-center text-amber-600">{item.returned > 0 ? item.returned: '-'}</TableCell>
+                                    <TableCell className="text-center text-foreground">{item.returned > 0 ? item.returned: '-'}</TableCell>
                                     <TableCell className={`text-center font-bold ${item.balance < 0 ? 'text-destructive' : 'text-primary'}`}>{item.balance}</TableCell>
                                 </TableRow>
                                 )) : (

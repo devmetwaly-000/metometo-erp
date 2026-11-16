@@ -117,7 +117,7 @@ export default function RequisitionsListPage() {
   const getStatusBadge = (status: Requisition['status']) => {
       switch(status) {
           case 'pending':
-              return <Badge variant="outline" className="border-amber-500 text-amber-500">قيد التنفيذ</Badge>;
+              return <Badge variant="outline" className="border-amber-500 text-foreground">قيد التنفيذ</Badge>;
           case 'fulfilled':
               return <Badge variant="default" className="bg-green-600">تم التنفيذ</Badge>;
           case 'rejected':

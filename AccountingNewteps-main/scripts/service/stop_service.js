@@ -8,38 +8,61 @@ const path = require('path');
 
 const LOGS_DIR = path.resolve(__dirname, '..', '..', 'logs');
 const PID_FILE = path.join(LOGS_DIR, 'pos_service.pid');
+const DAEMON_LOCK_FILE = path.join(LOGS_DIR, 'pos_service_daemon.lock');
 
 function stopService() {
     console.log('=== إيقاف خدمة منظومة المحاسبة (Stopping Background Service) ===');
 
-    let pidStopped = false;
+    const killPid = pid => {
+        if (!pid || !Number.isInteger(Number(pid))) return;
+        try {
+            execSync(`taskkill /pid ${Number(pid)} /f /t`, { stdio: 'ignore' });
+            console.log(`✓ تم إنهاء العملية ${pid}.`);
+        } catch (error) {
+            // A stale PID is expected after an abrupt shutdown; report other failures.
+            if (!String(error.message || '').toLowerCase().includes('not found')) {
+                console.warn(`تعذر إنهاء العملية ${pid}: ${error.message}`);
+            }
+        }
+    };
 
     // 1. إيقاف الـ PID المسجل إن وجد
     if (fs.existsSync(PID_FILE)) {
         try {
             const data = JSON.parse(fs.readFileSync(PID_FILE, 'utf8'));
-            if (data.childPid) {
-                execSync(`taskkill /pid ${data.childPid} /f /t`, { stdio: 'ignore' });
-            }
-            if (data.daemonPid) {
-                execSync(`taskkill /pid ${data.daemonPid} /f /t`, { stdio: 'ignore' });
-            }
-            fs.unlinkSync(PID_FILE);
-            pidStopped = true;
-            console.log('✓ تم إنهاء العمليات المسجلة بالخدمة.');
+            killPid(data.childPid);
+            killPid(data.daemonPid);
+            try {
+                const lock = JSON.parse(fs.readFileSync(DAEMON_LOCK_FILE, 'utf8'));
+                if (lock.daemonPid === data.daemonPid) fs.unlinkSync(DAEMON_LOCK_FILE);
+            } catch {}
         } catch {}
+        try { fs.unlinkSync(PID_FILE); } catch {}
     }
 
-    // 2. فحص البورت 9002 وإنهاء أي عملية تستخدمه لضمان تحرير المنفذ
+    // إزالة الحارس المسجل حتى لو كان ملف PID مفقوداً أو قديماً.
     try {
-        const netstatOutput = execSync('netstat -ano | findstr :9002', { encoding: 'utf8' });
+        const lock = JSON.parse(fs.readFileSync(DAEMON_LOCK_FILE, 'utf8'));
+        killPid(lock.daemonPid);
+        try {
+            const currentLock = JSON.parse(fs.readFileSync(DAEMON_LOCK_FILE, 'utf8'));
+            if (currentLock.daemonPid === lock.daemonPid) fs.unlinkSync(DAEMON_LOCK_FILE);
+        } catch {}
+    } catch {}
+
+    // 2. إنهاء العملية التي تستمع محلياً على 9002 فقط.
+    try {
+        const netstatOutput = execSync('netstat -ano -p tcp', { encoding: 'utf8' });
         const lines = netstatOutput.trim().split('\n');
         const pids = new Set();
         
         for (const line of lines) {
             const parts = line.trim().split(/\s+/);
-            const pid = parts[parts.length - 1];
-            if (pid && !isNaN(pid) && pid !== '0') {
+            if (parts.length < 5) continue;
+            const localAddress = parts[1];
+            const state = parts[3];
+            const pid = parts[4];
+            if (localAddress && /:9002$/.test(localAddress) && state === 'LISTENING' && /^\d+$/.test(pid) && pid !== '0') {
                 pids.add(pid);
             }
         }
@@ -52,7 +75,7 @@ function stopService() {
         }
     } catch {}
 
-    console.log('✓ الخدمة متوقفة الآن.');
+    console.log('✓ انتهى طلب الإيقاف.');
 }
 
 stopService();

@@ -373,7 +373,7 @@ export default function PosTerminalsPage() {
         {isCentral && (
           <Card className="border-sky-500/40 bg-sky-500/5 shadow-sm">
             <CardContent className="p-4 flex items-center gap-3">
-              <Building2 className="h-6 w-6 text-sky-600 shrink-0" />
+              <Building2 className="h-6 w-6 text-foreground shrink-0" />
               <div className="space-y-0.5 text-xs">
                 <p className="font-bold text-sm text-foreground">وضع المراجعة والتدقيق المركزي (Central HQ)</p>
                 <p className="text-muted-foreground">

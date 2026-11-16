@@ -9,6 +9,19 @@ BEGIN
 END
 GO
 
+-- تفعيل عزل لقطة القراءة الملتزمة (RCSI) لدعم التزامن العالي لـ 200 جهاز وموبايل
+IF EXISTS (SELECT 1 FROM sys.databases WHERE name = N'MultiBranchPOS_DB' AND is_read_committed_snapshot_on = 0)
+BEGIN
+    ALTER DATABASE MultiBranchPOS_DB SET READ_COMMITTED_SNAPSHOT ON WITH ROLLBACK AFTER 5 SECONDS;
+END
+GO
+
+IF EXISTS (SELECT 1 FROM sys.databases WHERE name = N'MultiBranchPOS_DB' AND snapshot_isolation_state = 0)
+BEGIN
+    ALTER DATABASE MultiBranchPOS_DB SET ALLOW_SNAPSHOT_ISOLATION ON;
+END
+GO
+
 USE MultiBranchPOS_DB;
 GO
 
@@ -353,6 +366,9 @@ BEGIN
         PaidToAccountId NVARCHAR(64) NULL,
         Notes NVARCHAR(MAX) NULL,
         ItemsJson NVARCHAR(MAX) NULL,
+        IsUnlinked BIT NOT NULL DEFAULT 0,
+        TotalInventoryCost DECIMAL(18, 4) NULL,
+        PriceVariance DECIMAL(18, 4) NULL,
         CreatedAt DATETIME2 NOT NULL DEFAULT SYSUTCDATETIME()
     );
     CREATE INDEX IX_PurchaseReturns_Date ON dbo.PurchaseReturns (Date);
@@ -699,7 +715,131 @@ BEGIN
 END
 GO
 
--- 25. SEED INITIAL ESSENTIAL DATA (Default Admin, Warehouse, Cash Account, Roles)
+-- 25. Core Accounting: General Ledger (الأستاذ العام القيود المركزية)
+IF NOT EXISTS (SELECT * FROM sys.tables WHERE name = 'GeneralLedgerEntries')
+BEGIN
+    CREATE TABLE dbo.GeneralLedgerEntries (
+        [Id] NVARCHAR(64) NOT NULL,
+        [EntryNumber] NVARCHAR(100) NOT NULL,
+        [Date] DATETIME2 NOT NULL,
+        [SourceType] NVARCHAR(50) NOT NULL,
+        [SourceId] NVARCHAR(64) NOT NULL,
+        [SourceNumber] NVARCHAR(100) NULL,
+        [WarehouseId] NVARCHAR(64) NULL,
+        [Description] NVARCHAR(500) NULL,
+        [Status] NVARCHAR(50) NOT NULL DEFAULT ('posted'),
+        [TotalDebit] DECIMAL(18,4) NOT NULL DEFAULT ((0)),
+        [TotalCredit] DECIMAL(18,4) NOT NULL DEFAULT ((0)),
+        [LinesJson] NVARCHAR(MAX) NOT NULL,
+        [CreatedById] NVARCHAR(64) NULL,
+        [CreatedByName] NVARCHAR(255) NULL,
+        [BranchCode] NVARCHAR(50) NULL,
+        [BranchName] NVARCHAR(255) NULL,
+        [SyncStatus] NVARCHAR(20) NULL DEFAULT ('synced'),
+        [LastSyncedAt] DATETIME2 NULL,
+        [UpdatedAt] DATETIME2 NOT NULL DEFAULT (sysutcdatetime()),
+        [CreatedAt] DATETIME2 NOT NULL DEFAULT (sysutcdatetime()),
+        [RowVersion] ROWVERSION,
+        CONSTRAINT [PK_GeneralLedgerEntries] PRIMARY KEY CLUSTERED ([Id])
+    );
+    CREATE NONCLUSTERED INDEX IX_GeneralLedgerEntries_Source ON dbo.GeneralLedgerEntries (SourceType, SourceId, Date DESC);
+END
+GO
+
+-- 26. Security & Auditing: Audit Trail Logs (سجل الرقابة وتدقيق العمليات)
+IF NOT EXISTS (SELECT * FROM sys.tables WHERE name = 'AuditTrailLogs')
+BEGIN
+    CREATE TABLE dbo.AuditTrailLogs (
+        [Id] NVARCHAR(64) NOT NULL,
+        [Timestamp] DATETIME2 NOT NULL,
+        [UserId] NVARCHAR(64) NULL,
+        [UserName] NVARCHAR(255) NULL,
+        [UserRole] NVARCHAR(100) NULL,
+        [Action] NVARCHAR(50) NOT NULL,
+        [Entity] NVARCHAR(100) NOT NULL,
+        [EntityId] NVARCHAR(64) NULL,
+        [Details] NVARCHAR(MAX) NULL,
+        [PreviousState] NVARCHAR(MAX) NULL,
+        [NewState] NVARCHAR(MAX) NULL,
+        [IpAddress] NVARCHAR(50) NULL,
+        [Hash] NVARCHAR(128) NULL,
+        [BranchCode] NVARCHAR(50) NULL,
+        [BranchName] NVARCHAR(255) NULL,
+        [SyncStatus] NVARCHAR(20) NULL DEFAULT ('synced'),
+        [LastSyncedAt] DATETIME2 NULL,
+        [UpdatedAt] DATETIME2 NOT NULL DEFAULT (sysutcdatetime()),
+        [CreatedAt] DATETIME2 NOT NULL DEFAULT (sysutcdatetime()),
+        [RowVersion] ROWVERSION,
+        CONSTRAINT [PK_AuditTrailLogs] PRIMARY KEY CLUSTERED ([Id])
+    );
+    CREATE NONCLUSTERED INDEX IX_AuditTrailLogs_Timestamp ON dbo.AuditTrailLogs (Timestamp DESC, Entity, Action);
+END
+GO
+
+-- 27. Manufacturing: Manufacturing Orders (أوامر التصنيع وتكاليف الإنتاج)
+IF NOT EXISTS (SELECT * FROM sys.tables WHERE name = 'ManufacturingOrders')
+BEGIN
+    CREATE TABLE dbo.ManufacturingOrders (
+        [Id] NVARCHAR(64) NOT NULL,
+        [OrderNumber] NVARCHAR(100) NOT NULL,
+        [Date] DATETIME2 NULL DEFAULT (sysutcdatetime()),
+        [OrderDate] DATETIME2 NULL DEFAULT (sysutcdatetime()),
+        [ProductId] NVARCHAR(64) NULL,
+        [ProductName] NVARCHAR(255) NULL,
+        [FinishedItemId] NVARCHAR(64) NULL,
+        [FinishedItemName] NVARCHAR(255) NULL,
+        [QuantityToProduce] DECIMAL(18,4) NULL DEFAULT ((1)),
+        [TargetQuantity] DECIMAL(18,4) NULL DEFAULT ((1)),
+        [ProducedQuantity] DECIMAL(18,4) NULL DEFAULT ((0)),
+        [RawMaterialsWarehouseId] NVARCHAR(64) NULL,
+        [FinishedGoodsWarehouseId] NVARCHAR(64) NULL,
+        [SourceWarehouseId] NVARCHAR(64) NULL,
+        [TargetWarehouseId] NVARCHAR(64) NULL,
+        [RawMaterialCost] DECIMAL(18,4) NOT NULL DEFAULT ((0)),
+        [TotalRawMaterialCost] DECIMAL(18,4) NOT NULL DEFAULT ((0)),
+        [LaborCost] DECIMAL(18,4) NOT NULL DEFAULT ((0)),
+        [OverheadCost] DECIMAL(18,4) NOT NULL DEFAULT ((0)),
+        [TotalCost] DECIMAL(18,4) NOT NULL DEFAULT ((0)),
+        [TotalProductionCost] DECIMAL(18,4) NOT NULL DEFAULT ((0)),
+        [UnitCost] DECIMAL(18,4) NOT NULL DEFAULT ((0)),
+        [ProfitMarginPercent] DECIMAL(9,4) NOT NULL DEFAULT ((25)),
+        [EstimatedSalePrice] DECIMAL(18,4) NOT NULL DEFAULT ((0)),
+        [SalePrice] DECIMAL(18,4) NOT NULL DEFAULT ((0)),
+        [WasteTreatment] NVARCHAR(30) NULL,
+        [WastedMaterialCost] DECIMAL(18,4) NOT NULL DEFAULT ((0)),
+        [DamagedOutputCost] DECIMAL(18,4) NOT NULL DEFAULT ((0)),
+        [BaseFinishedGoodsCost] DECIMAL(18,4) NOT NULL DEFAULT ((0)),
+        [AllocatedWasteCost] DECIMAL(18,4) NOT NULL DEFAULT ((0)),
+        [AllocatedWasteCostPerUnit] DECIMAL(18,4) NOT NULL DEFAULT ((0)),
+        [ItemCostUpdated] BIT NOT NULL DEFAULT ((0)),
+        [ItemSalePriceUpdated] BIT NOT NULL DEFAULT ((0)),
+        [ExpectedScrapPercent] DECIMAL(9,4) NOT NULL DEFAULT ((0)),
+        [NormalScrapQuantity] DECIMAL(18,4) NOT NULL DEFAULT ((0)),
+        [AbnormalScrapQuantity] DECIMAL(18,4) NOT NULL DEFAULT ((0)),
+        [NormalScrapCost] DECIMAL(18,4) NOT NULL DEFAULT ((0)),
+        [UnitProductionCost] DECIMAL(18,4) NOT NULL DEFAULT ((0)),
+        [Status] NVARCHAR(50) NOT NULL DEFAULT ('completed'),
+        [BomSnapshotJson] NVARCHAR(MAX) NULL,
+        [BOMDetailsJson] NVARCHAR(MAX) NULL,
+        [BatchNumber] NVARCHAR(100) NULL,
+        [Notes] NVARCHAR(MAX) NULL,
+        [CreatedBy] NVARCHAR(255) NULL,
+        [CreatedById] NVARCHAR(64) NULL,
+        [CreatedByName] NVARCHAR(255) NULL,
+        [BranchCode] NVARCHAR(50) NULL,
+        [BranchName] NVARCHAR(255) NULL,
+        [SyncStatus] NVARCHAR(20) NULL DEFAULT ('synced'),
+        [LastSyncedAt] DATETIME2 NULL,
+        [UpdatedAt] DATETIME2 NOT NULL DEFAULT (sysutcdatetime()),
+        [CreatedAt] DATETIME2 NOT NULL DEFAULT (sysutcdatetime()),
+        [RowVersion] ROWVERSION,
+        CONSTRAINT [PK_ManufacturingOrders] PRIMARY KEY CLUSTERED ([Id])
+    );
+    CREATE NONCLUSTERED INDEX IX_ManufacturingOrders_Status ON dbo.ManufacturingOrders (Status, CreatedAt DESC);
+END
+GO
+
+-- 28. SEED INITIAL ESSENTIAL DATA (Default Admin, Warehouse, Cash Account, Roles)
 IF NOT EXISTS (SELECT 1 FROM dbo.Warehouses WHERE Id = 'main-warehouse')
 BEGIN
     INSERT INTO dbo.Warehouses (Id, Code, Name, Address)

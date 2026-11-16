@@ -68,6 +68,17 @@ export default function JournalPage() {
     const [activeView, setActiveTab] = useState("detailed-view");
     const [selectedAccountForLedger, setSelectedAccountForLedger] = useState<string | null>(null);
 
+    useEffect(() => {
+        if (typeof window !== 'undefined') {
+            const params = new URLSearchParams(window.location.search);
+            const acc = params.get('account');
+            if (acc) {
+                setSelectedAccountForLedger(decodeURIComponent(acc));
+                setActiveTab('ledger-view');
+            }
+        }
+    }, []);
+
     const {
         salesInvoices, purchaseInvoices, expenses, exceptionalIncomes, warehouses,
         stockTransferRecords, items: itemsData, cashAccounts,
@@ -165,7 +176,9 @@ export default function JournalPage() {
             const number = ret.receiptNumber || `م-ب-${ret.id.slice(-4)}`;
             const cashAccName = getCashAccountName(ret.paidFromAccountId || (ret.warehouseId ? getCashAccount(warehouses.find(w => w.id === ret.warehouseId)?.id)?.id : undefined));
             
-            entries.push({ id: `ret-rev-${ret.id}`, date: ret.date, warehouseId: ret.warehouseId, number: number, description: `مرتجع مبيعات ${number} من ${ret.customerName || 'عميل كاشير'}`, debit: ret.total, credit: 0, account: 'إيرادات المبيعات' });
+            const returnTax = Number(ret.tax) || 0;
+            entries.push({ id: `ret-rev-${ret.id}`, date: ret.date, warehouseId: ret.warehouseId, number: number, description: `مرتجع مبيعات ${number} من ${ret.customerName || 'عميل كاشير'}`, debit: Math.max(0, Number(ret.total) - returnTax), credit: 0, account: 'إيرادات المبيعات' });
+            if (returnTax > 0) entries.push({ id: `ret-tax-${ret.id}`, date: ret.date, warehouseId: ret.warehouseId, number, description: `عكس ضريبة مرتجع المبيعات ${number}`, debit: returnTax, credit: 0, account: 'ضريبة القيمة المضافة' });
             
             if (ret.paidAmount && ret.paidAmount > 0) {
                 entries.push({ id: `ret-cash-${ret.id}`, date: ret.date, warehouseId: ret.warehouseId, number: number, description: `رد نقدي لمرتجع ${number}`, debit: 0, credit: ret.paidAmount, account: cashAccName });
@@ -222,7 +235,9 @@ export default function JournalPage() {
             if (debtReduction > 0.01) {
                 entries.push({ id: `pr-ap-${pr.id}`, date: pr.date, warehouseId: pr.warehouseId, number: number, description: `تخفيض مديونية مورد لمرتجع ${number}`, debit: debtReduction, credit: 0, account: 'حسابات الموردين' });
             }
-            entries.push({ id: `pr-inv-${pr.id}`, date: pr.date, warehouseId: pr.warehouseId, number: number, description: `صرف من المخزون لمرتجع ${number}`, debit: 0, credit: returnedValue, account: `مخزون - ${warehouse?.name || 'غير محدد'}` });
+            const returnTax = Number(pr.tax) || 0;
+            entries.push({ id: `pr-inv-${pr.id}`, date: pr.date, warehouseId: pr.warehouseId, number: number, description: `صرف من المخزون لمرتجع ${number}`, debit: 0, credit: Math.max(0, returnedValue - returnTax), account: `مخزون - ${warehouse?.name || 'غير محدد'}` });
+            if (returnTax > 0) entries.push({ id: `pr-tax-${pr.id}`, date: pr.date, warehouseId: pr.warehouseId, number, description: `عكس ضريبة مدخلات مرتجع الشراء ${number}`, debit: 0, credit: returnTax, account: 'ضريبة القيمة المضافة' });
         });
 
         // --- Expenses ---

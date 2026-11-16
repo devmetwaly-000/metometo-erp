@@ -231,7 +231,7 @@ export default function VatDeclarationReportPage() {
             onClick={() => window.print()}
             className="gap-1.5 text-xs font-semibold h-8"
           >
-            <Printer className="h-3.5 w-3.5 text-sky-600 dark:text-sky-400" />
+            <Printer className="h-3.5 w-3.5 text-foreground dark:text-foreground" />
             طباعة الإقرار الضريبي
           </Button>
         </div>
@@ -243,11 +243,11 @@ export default function VatDeclarationReportPage() {
           <CardHeader className="p-3.5 pb-1">
             <CardTitle className="text-xs font-medium text-muted-foreground flex items-center justify-between">
               <span>ضريبة المخرجات (المبيعات)</span>
-              <Receipt className="h-4 w-4 text-blue-600 dark:text-blue-400" />
+              <Receipt className="h-4 w-4 text-foreground dark:text-foreground" />
             </CardTitle>
           </CardHeader>
           <CardContent className="p-3.5 pt-0">
-            <div className="text-2xl font-bold font-mono text-blue-700 dark:text-blue-400">
+            <div className="text-2xl font-bold font-mono text-foreground dark:text-foreground">
               {taxDeclaration.netOutputTax.toLocaleString("ar-EG", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ج.م
             </div>
             <p className="text-[11px] text-muted-foreground mt-0.5">
@@ -277,11 +277,11 @@ export default function VatDeclarationReportPage() {
           <CardHeader className="p-3.5 pb-1">
             <CardTitle className="text-xs font-medium text-muted-foreground flex items-center justify-between">
               <span>نسبة الضريبة المطبقة</span>
-              <Percent className="h-4 w-4 text-indigo-600 dark:text-indigo-400" />
+              <Percent className="h-4 w-4 text-foreground dark:text-foreground" />
             </CardTitle>
           </CardHeader>
           <CardContent className="p-3.5 pt-0">
-            <div className="text-2xl font-bold font-mono text-indigo-700 dark:text-indigo-400">
+            <div className="text-2xl font-bold font-mono text-foreground dark:text-foreground">
               {taxDeclaration.vatRate}%
             </div>
             <p className="text-[11px] text-muted-foreground mt-0.5">
@@ -294,13 +294,13 @@ export default function VatDeclarationReportPage() {
           <CardHeader className="p-3.5 pb-1">
             <CardTitle className="text-xs font-medium text-muted-foreground flex items-center justify-between">
               <span>صافي الضريبة للإقرار</span>
-              <Scale className="h-4 w-4 text-amber-600 dark:text-amber-400" />
+              <Scale className="h-4 w-4 text-foreground dark:text-foreground" />
             </CardTitle>
           </CardHeader>
           <CardContent className="p-3.5 pt-0">
             <div className={cn(
               "text-2xl font-bold font-mono",
-              taxDeclaration.netVatPayable >= 0 ? "text-amber-700 dark:text-amber-400" : "text-emerald-700 dark:text-emerald-400"
+              taxDeclaration.netVatPayable >= 0 ? "text-foreground dark:text-foreground" : "text-emerald-700 dark:text-emerald-400"
             )}>
               {Math.abs(taxDeclaration.netVatPayable).toLocaleString("ar-EG", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ج.م
             </div>
@@ -385,7 +385,7 @@ export default function VatDeclarationReportPage() {
                 <TableCell className="font-semibold">المبيعات الخاضعة للنسبة الأساسية (فواتير بيع + نقاط البيع)</TableCell>
                 <TableCell className="text-left font-mono">{taxDeclaration.grossSales.toLocaleString("ar-EG", { minimumFractionDigits: 2 })} ج.م</TableCell>
                 <TableCell className="text-center font-mono">{taxDeclaration.vatRate}%</TableCell>
-                <TableCell className="text-left font-mono font-bold text-blue-700 dark:text-blue-400">
+                <TableCell className="text-left font-mono font-bold text-foreground dark:text-foreground">
                   {taxDeclaration.outputTax.toLocaleString("ar-EG", { minimumFractionDigits: 2 })} ج.م
                 </TableCell>
               </TableRow>
@@ -403,7 +403,7 @@ export default function VatDeclarationReportPage() {
                 <TableCell>صافي ضريبة المخرجات المستحقة (1 - 2)</TableCell>
                 <TableCell className="text-left font-mono">{taxDeclaration.netSales.toLocaleString("ar-EG", { minimumFractionDigits: 2 })} ج.م</TableCell>
                 <TableCell className="text-center font-mono">-</TableCell>
-                <TableCell className="text-left font-mono font-black text-blue-700 dark:text-blue-400">
+                <TableCell className="text-left font-mono font-black text-foreground dark:text-foreground">
                   {taxDeclaration.netOutputTax.toLocaleString("ar-EG", { minimumFractionDigits: 2 })} ج.م
                 </TableCell>
               </TableRow>
@@ -450,7 +450,7 @@ export default function VatDeclarationReportPage() {
                 </TableCell>
                 <TableCell className={cn(
                   "text-left font-mono text-base font-black",
-                  taxDeclaration.netVatPayable >= 0 ? "text-amber-700 dark:text-amber-400" : "text-emerald-700 dark:text-emerald-400"
+                  taxDeclaration.netVatPayable >= 0 ? "text-foreground dark:text-foreground" : "text-emerald-700 dark:text-emerald-400"
                 )}>
                   {taxDeclaration.netVatPayable.toLocaleString("ar-EG", { minimumFractionDigits: 2 })} ج.م
                 </TableCell>

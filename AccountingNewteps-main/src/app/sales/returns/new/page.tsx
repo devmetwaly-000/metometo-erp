@@ -19,6 +19,7 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import { getGeneralCashAccounts } from "@/lib/accounting-utils";
+import { calculateInvoiceReturnTotals } from "@/lib/invoice-return-totals";
 
 interface ReturnItem {
   id: string; 
@@ -32,6 +33,7 @@ interface ReturnItem {
   uniqueId: string;
   soldQty: number;
   returnedBefore: number;
+  maxReturnQty: number;
 }
 
 export default function NewSalesReturnPage() {
@@ -50,6 +52,7 @@ export default function NewSalesReturnPage() {
   
   const [subtotal, setSubtotal] = useState(0);
   const [discount, setDiscount] = useState(0);
+  const [tax, setTax] = useState(0);
   const [total, setTotal] = useState(0);
   const [paidAmount, setPaidAmount] = useState(0);
   const [paidFromAccountId, setPaidFromAccountId] = useState("");
@@ -143,6 +146,7 @@ export default function NewSalesReturnPage() {
             qty: remaining, 
             soldQty: item.qty,
             returnedBefore: returnedBefore,
+            maxReturnQty: remaining,
             price: item.price,
             cost: item.cost || master?.cost || 0,
             total: remaining * item.price,
@@ -162,9 +166,13 @@ export default function NewSalesReturnPage() {
   
   useEffect(() => {
     const newSubtotal = items.reduce((acc, item) => acc + item.total, 0);
+    const invoice = allSales.find((inv: any) => inv.id === selectedInvoiceId);
+    const returnTotals = calculateInvoiceReturnTotals(invoice, newSubtotal);
     setSubtotal(newSubtotal);
-    setTotal(newSubtotal - discount);
-  }, [items, discount]);
+    setDiscount(returnTotals.discount);
+    setTax(returnTotals.tax);
+    setTotal(returnTotals.total);
+  }, [items, selectedInvoiceId, allSales]);
 
   const currentCustomerBalance = useMemo(() => {
     if (!customerId) return 0;
@@ -287,6 +295,9 @@ export default function NewSalesReturnPage() {
                 total: item.total,
                 code: item.code,
             })),
+            subtotal,
+            discount,
+            tax,
             total,
             paidAmount: Number(paidAmount) || 0,
             paidFromAccountId: paidAmount > 0 ? paidFromAccountId : null,
@@ -299,8 +310,8 @@ export default function NewSalesReturnPage() {
         await dbAction('salesReturns', 'add', returnData);
         toast({ title: 'تم الحفظ بنجاح', description: `تم حفظ مرتجع المبيعات برقم: ${receiptNumber}` });
         router.push('/sales/returns');
-    } catch (error) {
-        toast({ variant: 'destructive', title: 'خطأ', description: 'فشل حفظ مرتجع المبيعات.' });
+    } catch (error: any) {
+        toast({ variant: 'destructive', title: 'تعذر حفظ المرتجع', description: error?.message || 'يرجى مراجعة الكمية والمبلغ المدفوع.' });
     } finally {
         setIsSaving(false);
     }
@@ -358,7 +369,7 @@ export default function NewSalesReturnPage() {
                     <TableCell className="font-medium">{item.name}</TableCell>
                     <TableCell className="text-center">{item.soldQty}</TableCell>
                     <TableCell className="text-center text-muted-foreground">{item.returnedBefore}</TableCell>
-                    <TableCell><Input type="number" value={item.qty} onChange={e => setItems(items.map(i => i.uniqueId === item.uniqueId ? {...i, qty: Number(e.target.value), total: Number(e.target.value) * i.price} : i))} className="text-center h-8 w-24 mx-auto font-bold" /></TableCell>
+                    <TableCell><Input type="number" min={0} max={item.maxReturnQty} step="0.0001" value={item.qty} onChange={e => setItems(items.map(i => { if (i.uniqueId !== item.uniqueId) return i; const qty = Math.max(0, Math.min(Number(e.target.value) || 0, i.maxReturnQty)); return {...i, qty, total: qty * i.price}; }))} className="text-center h-8 w-24 mx-auto font-bold" /></TableCell>
                     <TableCell className="text-center">ج.م {item.price.toFixed(2)}</TableCell>
                     <TableCell className="text-center font-bold">ج.م {item.total.toFixed(2)}</TableCell>
                     <TableCell className="text-center">
@@ -385,13 +396,29 @@ export default function NewSalesReturnPage() {
             </div>
             <div className="w-full md:max-w-sm space-y-4">
                 <div className="space-y-2">
+                    <div className="flex justify-between text-sm">
+                        <span>قيمة الأصناف المرتجعة</span>
+                        <span>ج.م {subtotal.toFixed(2)}</span>
+                    </div>
+                    {discount > 0 && (
+                        <div className="flex justify-between text-sm text-muted-foreground">
+                            <span>نصيب المرتجع من خصم الفاتورة</span>
+                            <span>- ج.م {discount.toFixed(2)}</span>
+                        </div>
+                    )}
+                    {tax > 0 && (
+                        <div className="flex justify-between text-sm text-muted-foreground">
+                            <span>{allSales.find((inv: any) => inv.id === selectedInvoiceId)?.isTaxIncluded ? 'الضريبة (ضمن السعر)' : 'ضريبة القيمة المضافة'}</span>
+                            <span>ج.م {tax.toFixed(2)}</span>
+                        </div>
+                    )}
                     <div className="flex justify-between font-bold text-base border-b pb-2">
                         <span>إجمالي قيمة المرتجع</span>
                         <span className="text-primary">ج.م {total.toFixed(2)}</span>
                     </div>
                     <div className="flex justify-between items-center pt-2">
                         <Label htmlFor="paidAmount" className="font-semibold">المبلغ المردود نقداً</Label>
-                        <Input id="paidAmount" type="number" value={paidAmount} onFocus={e => e.target.select()} onChange={e => setPaidAmount(parseFloat(e.target.value) || 0)} className="h-10 text-lg w-32 text-left" />
+                        <Input id="paidAmount" type="number" min={0} max={total} step="0.01" value={paidAmount} onFocus={e => e.target.select()} onChange={e => setPaidAmount(Math.max(0, Math.min(parseFloat(e.target.value) || 0, total)))} className="h-10 text-lg w-32 text-left" />
                     </div>
                     {paidAmount > 0 && (
                         <div className="space-y-2 animate-in fade-in slide-in-from-top-1">

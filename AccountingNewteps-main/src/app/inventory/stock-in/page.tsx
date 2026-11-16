@@ -396,7 +396,7 @@ const PutAwaySection = ({
                                         {!isReallocate && item.previouslyAllocated > 0 && (
                                             <span>| تم تسكينه سابقاً: <strong className="text-emerald-600">{item.previouslyAllocated}</strong></span>
                                         )}
-                                        <span>| موزع حالياً على الحاويات: <strong className="text-blue-600">{currentlyEntering}</strong></span>
+                                        <span>| موزع حالياً على الحاويات: <strong className="text-foreground">{currentlyEntering}</strong></span>
                                     </div>
                                 </div>
                                 <Badge
@@ -404,7 +404,7 @@ const PutAwaySection = ({
                                     className={cn(
                                         "text-sm px-3 py-1 font-bold",
                                         remaining === 0 && "bg-emerald-600 hover:bg-emerald-700 text-white",
-                                        remaining > 0 && "bg-amber-500/15 text-amber-700 dark:text-amber-300 border border-amber-500/40"
+                                        remaining > 0 && "bg-amber-500/15 text-foreground dark:text-foreground border border-amber-500/40"
                                     )}
                                 >
                                     {remaining === 0 ? (
@@ -423,7 +423,7 @@ const PutAwaySection = ({
 
                                 {sectionsForWarehouse.length === 0 ? (
                                     <div className="p-4 border border-dashed border-amber-500/50 rounded-lg bg-amber-500/10 text-center space-y-2">
-                                        <p className="text-sm font-bold text-amber-700 dark:text-amber-300">
+                                        <p className="text-sm font-bold text-foreground dark:text-foreground">
                                             لا توجد حاويات أو أقسام معرفة داخل مخزن &quot;{warehouseName}&quot; حتى الآن.
                                         </p>
                                         <Button
@@ -521,7 +521,7 @@ const PutAwaySection = ({
                             تم توزيع كافة الكميات المستلمة بالكامل على الحاويات، جاهز للحفظ.
                         </span>
                     ) : (
-                        <span className="text-amber-600 font-medium">
+                        <span className="text-foreground font-medium">
                             ملاحظة: إذا قمت بتسكين جزء فقط من الكمية، سيبقى الإذن في قائمة الانتظار لتسكين الكمية المتبقية لاحقاً.
                         </span>
                     )}
@@ -547,7 +547,8 @@ export default function StockInPage() {
         warehouses, 
         inventorySections,
         inventoryZones,
-        dbAction, 
+        dbAction,
+        processSyncQueue,
         loading 
     } = useData();
 
@@ -691,6 +692,11 @@ export default function StockInPage() {
                     allocations: updatedAllocationsLog,
                 }
             });
+
+            // إجبار sync فوري لتحديث أرصدة المخزون في كل الصفحات
+            if (isFullyAllocated && processSyncQueue) {
+                setTimeout(() => processSyncQueue(), 500);
+            }
     
             toast({
                 title: isFullyAllocated ? 'تم التسكين الكامل بنجاح' : 'تم حفظ التسكين الجزئي بنجاح',
@@ -781,7 +787,7 @@ export default function StockInPage() {
                                                             الأصناف: {(record.items || []).length} صنف
                                                         </span>
                                                         <div className="flex items-center justify-end gap-2">
-                                                            <Badge variant="outline" className="border-amber-500 text-amber-600 dark:text-amber-400">
+                                                            <Badge variant="outline" className="border-amber-500 text-foreground dark:text-foreground">
                                                                 <Clock className="ml-1 h-3 w-3"/>
                                                                 بانتظار تحديد الحاويات
                                                             </Badge>
@@ -847,7 +853,7 @@ export default function StockInPage() {
                                                             <Button variant="ghost" size="icon" onClick={() => {
                                                                 setTimeout(() => router.push(`/inventory/stock-in/${record.id}`), 150);
                                                             }} title="عرض التفاصيل">
-                                                                <Eye className="h-4 w-4 text-blue-500" />
+                                                                <Eye className="h-4 w-4 text-foreground" />
                                                             </Button>
                                                             <Button variant="ghost" size="icon" onClick={() => {
                                                                 setTimeout(() => router.push(`/inventory/stock-in/${record.id}`), 150);
@@ -857,7 +863,7 @@ export default function StockInPage() {
                                                             <Button
                                                                 variant="outline"
                                                                 size="sm"
-                                                                className="h-7 text-xs gap-1 border-amber-400 text-amber-700 dark:text-amber-400 font-bold"
+                                                                className="h-7 text-xs gap-1 border-amber-400 text-foreground dark:text-foreground font-bold"
                                                                 onClick={() => setModalRecord({ record, isReallocate: true })}
                                                                 title="تعديل تسكين الحاويات والكميات"
                                                             >

@@ -308,3 +308,231 @@ nextjs-portal {
   }
 }
 
+/* POS Responsive Dynamic Layout & Column Widths */
+@media (min-width: 768px) {
+  .pos-cart-panel {
+    flex: 0 0 calc(var(--cart-width, 40%) - 0.5rem) !important;
+    max-width: calc(var(--cart-width, 40%) - 0.5rem) !important;
+    width: calc(var(--cart-width, 40%) - 0.5rem) !important;
+  }
+  .pos-items-panel {
+    flex: 0 0 calc(var(--items-width, 60%) - 0.5rem) !important;
+    max-width: calc(var(--items-width, 60%) - 0.5rem) !important;
+    width: calc(var(--items-width, 60%) - 0.5rem) !important;
+  }
+}
+
+/* ============================================================
+   قاعدة ألوان الكتابة والبطاقات الشاملة للنظام بأكمله:
+   - الوضع الداكن والمخصص: أبيض ناصع (#FFFFFF) للنصوص والأرقام والبطاقات
+   - الوضع الفاتح: أسود داكن عالي التباين (#0F172A) للنصوص والأرقام
+   - الوضع المحايد: كحلي داكن (#1E293B) للنصوص والأرقام
+   - الأخضر: مخصص حصراً للأرباح وصافي الدخل الإيجابي عبر كافة الأوضاع
+   - الأحمر الهندي (#CD5C5C): مخصص حصراً للخسائر والقيم السالبة والديون
+   - إلغاء كافة الألوان الجانبية (البنفسجي، الأزرق، البرتقالي، الوردي، إلخ)
+   ============================================================ */
+
+:root {
+  --color-indian-red: #CD5C5C;
+  --color-profit: #15803D; /* أخضر غامق عالي التباين في الوضع الفاتح */
+}
+
+.dark,
+.custom,
+:root:not(.light):not(.neutral),
+[data-theme="dark"],
+[data-theme="custom"] {
+  --color-indian-red: #CD5C5C;
+  --color-profit: #10B981; /* أخضر زمردي ناصع ومشرق في الأوضاع الداكنة والمخصصة */
+}
+
+.light,
+[data-theme="light"] {
+  --color-indian-red: #CD5C5C;
+  --color-profit: #15803D;
+}
+
+.neutral,
+[data-theme="neutral"] {
+  --color-indian-red: #CD5C5C;
+  --color-profit: #059669; /* أخضر متناسق وواضح في الوضع المحايد */
+}
+
+/* ============================================================
+   1. تحييد شامل للوضع الداكن والوضع المخصص (.dark, .custom):
+      جميع النصوص والأرقام بيضاء، والحدود الجانبية للبطاقات موحدة
+   ============================================================ */
+.dark table td,
+.dark table th,
+.custom table td,
+.custom table th,
+:root:not(.light):not(.neutral) table td,
+:root:not(.light):not(.neutral) table th {
+  color: #FFFFFF !important;
+}
+
+.dark [class*="text-blue-"],
+.dark [class*="text-purple-"],
+.dark [class*="text-violet-"],
+.dark [class*="text-indigo-"],
+.dark [class*="text-amber-"],
+.dark [class*="text-orange-"],
+.dark [class*="text-yellow-"],
+.dark [class*="text-cyan-"],
+.dark [class*="text-sky-"],
+.dark [class*="text-pink-"],
+.dark [class*="text-teal-"],
+.custom [class*="text-blue-"],
+.custom [class*="text-purple-"],
+.custom [class*="text-violet-"],
+.custom [class*="text-indigo-"],
+.custom [class*="text-amber-"],
+.custom [class*="text-orange-"],
+.custom [class*="text-yellow-"],
+.custom [class*="text-cyan-"],
+.custom [class*="text-sky-"],
+.custom [class*="text-pink-"],
+.custom [class*="text-teal-"],
+:root:not(.light):not(.neutral) [class*="text-blue-"],
+:root:not(.light):not(.neutral) [class*="text-purple-"],
+:root:not(.light):not(.neutral) [class*="text-violet-"],
+:root:not(.light):not(.neutral) [class*="text-indigo-"],
+:root:not(.light):not(.neutral) [class*="text-amber-"],
+:root:not(.light):not(.neutral) [class*="text-orange-"],
+:root:not(.light):not(.neutral) [class*="text-yellow-"],
+:root:not(.light):not(.neutral) [class*="text-cyan-"],
+:root:not(.light):not(.neutral) [class*="text-sky-"],
+:root:not(.light):not(.neutral) [class*="text-pink-"],
+:root:not(.light):not(.neutral) [class*="text-teal-"] {
+  color: #FFFFFF !important;
+}
+
+/* تحييد الحواف الملونة للبطاقات في الأوضاع الداكنة */
+.dark [class*="border-l-"],
+.dark [class*="border-r-"],
+.custom [class*="border-l-"],
+.custom [class*="border-r-"],
+:root:not(.light):not(.neutral) [class*="border-l-"],
+:root:not(.light):not(.neutral) [class*="border-r-"] {
+  border-left-color: hsl(var(--border)) !important;
+  border-right-color: hsl(var(--border)) !important;
+}
+
+/* ============================================================
+   2. تحييد شامل للوضع الفاتح (.light):
+      عكس كافة النصوص والأرقام للأسود الداكن عالي المقروئية (#0F172A)
+   ============================================================ */
+.light table td,
+.light table th {
+  color: #0F172A !important;
+}
+
+.light [class*="text-blue-"],
+.light [class*="text-purple-"],
+.light [class*="text-violet-"],
+.light [class*="text-indigo-"],
+.light [class*="text-amber-"],
+.light [class*="text-orange-"],
+.light [class*="text-yellow-"],
+.light [class*="text-cyan-"],
+.light [class*="text-sky-"],
+.light [class*="text-pink-"],
+.light [class*="text-teal-"] {
+  color: #0F172A !important;
+}
+
+.light [class*="border-l-"],
+.light [class*="border-r-"] {
+  border-left-color: hsl(var(--border)) !important;
+  border-right-color: hsl(var(--border)) !important;
+}
+
+/* ============================================================
+   3. تحييد شامل للوضع المحايد (.neutral):
+      نصوص كحلية/رمادية داكنة مريحة للعين (#1E293B)
+   ============================================================ */
+.neutral table td,
+.neutral table th {
+  color: #1E293B !important;
+}
+
+.neutral [class*="text-blue-"],
+.neutral [class*="text-purple-"],
+.neutral [class*="text-violet-"],
+.neutral [class*="text-indigo-"],
+.neutral [class*="text-amber-"],
+.neutral [class*="text-orange-"],
+.neutral [class*="text-yellow-"],
+.neutral [class*="text-cyan-"],
+.neutral [class*="text-sky-"],
+.neutral [class*="text-pink-"],
+.neutral [class*="text-teal-"] {
+  color: #1E293B !important;
+}
+
+.neutral [class*="border-l-"],
+.neutral [class*="border-r-"] {
+  border-left-color: hsl(var(--border)) !important;
+  border-right-color: hsl(var(--border)) !important;
+}
+
+/* ============================================================
+   4. اللونان الوحيدان المعتمدان في المنظومة بالكامل:
+      - الأحمر الهندي (#CD5C5C) للقيم السالبة والخسائر والديون
+      - الأخضر (Emerald/Green) للأرباح وصافي الدخل فقط
+   ============================================================ */
+.text-destructive,
+.text-negative,
+.text-indian-red,
+[data-negative="true"],
+.dark .text-destructive,
+.dark .text-negative,
+.dark .text-indian-red,
+.dark [data-negative="true"],
+.custom .text-destructive,
+.custom .text-negative,
+.custom .text-indian-red,
+.custom [data-negative="true"],
+.light .text-destructive,
+.light .text-negative,
+.light .text-indian-red,
+.light [data-negative="true"],
+.neutral .text-destructive,
+.neutral .text-negative,
+.neutral .text-indian-red,
+.neutral [data-negative="true"],
+:root:not(.light):not(.neutral) .text-destructive,
+:root:not(.light):not(.neutral) [data-negative="true"] {
+  color: #CD5C5C !important;
+}
+
+.bg-indian-red {
+  background-color: var(--color-indian-red) !important;
+}
+
+.text-profit,
+.text-profit-auto,
+[data-profit="true"],
+.dark .text-profit,
+.dark [data-profit="true"],
+.custom .text-profit,
+.custom [data-profit="true"],
+:root:not(.light):not(.neutral) .text-profit,
+:root:not(.light):not(.neutral) [data-profit="true"] {
+  color: #10B981 !important;
+}
+
+.light .text-profit,
+.light [data-profit="true"] {
+  color: #15803D !important;
+}
+
+.neutral .text-profit,
+.neutral [data-profit="true"] {
+  color: #059669 !important;
+}
+
+
+
+
+

@@ -231,7 +231,7 @@ const PaymentForm = ({ onSave, customers, cashAccounts, salesInvoices, warehouse
                                     </span>
                                 </div>
                             </div>
-                            {currentCustomerBalance < 0 && <AlertTriangle className="h-5 w-5 text-amber-500" />}
+                            {currentCustomerBalance < 0 && <AlertTriangle className="h-5 w-5 text-foreground" />}
                         </div>
                     )}
                 </div>
@@ -286,7 +286,8 @@ export default function CustomerPaymentsPage() {
         warehouses,
         dbAction, 
         getNextId, 
-        loading 
+        loading,
+        retryDatabaseConnection
     } = useData();
 
     const { toast } = useToast();
@@ -323,13 +324,7 @@ export default function CustomerPaymentsPage() {
                 createdByName: user?.name,
             };
             await dbAction('customerPayments', 'add', newPayment);
-             if (data.invoiceId) {
-                const invoice = salesInvoices.find((inv: SaleInvoice) => inv.id === data.invoiceId);
-                if (invoice) {
-                    const newPaidAmount = (invoice.paidAmount || 0) + data.amount;
-                    await dbAction('salesInvoices', 'update', { id: data.invoiceId, data: { paidAmount: newPaidAmount } });
-                }
-            }
+            await retryDatabaseConnection();
             toast({ title: dictionary.general.success, description: `${dictionary.general.receiptNumber}: ${receiptNumber}` });
         } catch (error) {
             toast({ variant: "destructive", title: dictionary.general.error, description: "فشل الحفظ" });
@@ -373,14 +368,8 @@ export default function CustomerPaymentsPage() {
         }
 
         try {
-             if (payment.invoiceId) {
-                const invoice = salesInvoices.find((inv: SaleInvoice) => inv.id === payment.invoiceId);
-                if (invoice) {
-                    const newPaidAmount = (invoice.paidAmount || 0) - payment.amount;
-                    await dbAction('salesInvoices', 'update', { id: payment.invoiceId, data: { paidAmount: Math.max(0, newPaidAmount) } });
-                }
-            }
             await dbAction('customerPayments', 'remove', { id: payment.id! });
+            await retryDatabaseConnection();
             toast({ title: dictionary.general.success });
         } catch (error) {
             toast({ variant: "destructive", title: dictionary.general.error, description: "فشل الحذف" });
@@ -579,7 +568,7 @@ export default function CustomerPaymentsPage() {
                                                                 <AlertDialogContent>
                                                                     <AlertDialogHeader>
                                                                         <AlertDialogTitle className="flex items-center gap-2">
-                                                                            {isDeletable(payment) ? <Trash2 className="text-destructive"/> : <AlertTriangle className="text-amber-500"/>}
+                                                                            {isDeletable(payment) ? <Trash2 className="text-destructive"/> : <AlertTriangle className="text-foreground"/>}
                                                                             {isDeletable(payment) ? "هل أنت متأكد من الحذف؟" : "تنبيه: لا يمكن الحذف"}
                                                                         </AlertDialogTitle>
                                                                         <AlertDialogDescription>

@@ -187,7 +187,7 @@ export default function StockTransferListPage() {
                             {record.shippingCost && record.shippingCost > 0 ? (
                               <div className="flex flex-col items-center">
                                 <span className="font-semibold font-mono text-xs">{Number(record.shippingCost).toLocaleString()} ج.م</span>
-                                <Badge variant="outline" className={`text-[10px] py-0 px-1 ${record.shippingTreatment === 'capitalized' ? 'bg-amber-500/10 text-amber-600' : 'bg-blue-500/10 text-blue-600'}`}>
+                                <Badge variant="outline" className={`text-[10px] py-0 px-1 ${record.shippingTreatment === 'capitalized' ? 'bg-amber-500/10 text-foreground' : 'bg-blue-500/10 text-foreground'}`}>
                                   {record.shippingTreatment === 'capitalized' ? 'مرسملة' : 'تشغيلي'}
                                 </Badge>
                               </div>
@@ -198,7 +198,7 @@ export default function StockTransferListPage() {
                            <TableCell className="text-center no-print">
                              <div className="flex justify-center gap-2">
                                 <Button variant="ghost" size="icon" onClick={() => router.push(`/inventory/transfer/${record.id}`)} title="عرض وتفاصيل">
-                                    <Eye className="h-4 w-4 text-blue-500" />
+                                    <Eye className="h-4 w-4 text-foreground" />
                                 </Button>
                                 <Button variant="ghost" size="icon" onClick={() => router.push(`/inventory/transfer/${record.id}`)} title="طباعة">
                                     <Printer className="h-4 w-4" />
