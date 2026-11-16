@@ -397,7 +397,18 @@ export async function GET() {
                     closingStatement: parseJson(ps.ClosingStatementJson, null)
                 })),
                 barcodeDesigns: barcodeDesignsRes.recordset.map(bd => ({ id: bd.Id, name: bd.Name, ...parseJson(bd.ConfigJson, {}) })),
-                posTerminals: posTerminalsRes.recordset.map(t => ({ ...t, id: t.Id, name: t.Name || t.name })),
+                posTerminals: posTerminalsRes.recordset.map(t => ({
+                    ...t,
+                    id: t.Id || t.id,
+                    code: t.Code || t.code || '',
+                    name: t.Name || t.name || '',
+                    warehouseId: t.WarehouseId || t.warehouseId || '',
+                    posPrinterType: t.PosPrinterType || t.posPrinterType || 'system',
+                    posPrinterAddress: t.PosPrinterAddress || t.posPrinterAddress || '',
+                    enableKitchenPrinter: t.EnableKitchenPrinter !== undefined ? !!t.EnableKitchenPrinter : (t.enableKitchenPrinter ?? false),
+                    kitchenPrinterType: t.KitchenPrinterType || t.kitchenPrinterType || 'system',
+                    kitchenPrinterAddress: t.KitchenPrinterAddress || t.kitchenPrinterAddress || ''
+                })),
                 paymentMethods: paymentMethodsRes.recordset.map(p => ({ ...p, id: p.Id, name: p.Name || p.name })),
                 partners: partnersRes.recordset.map(p => ({ ...p, id: p.Id, name: p.Name || p.name })),
                 employees: employeesRes.recordset.map(e => ({ ...e, id: e.Id, name: e.Name || e.name })),

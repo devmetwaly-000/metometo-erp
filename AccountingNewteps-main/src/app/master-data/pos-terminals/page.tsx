@@ -72,15 +72,41 @@ interface Warehouse {
   name: string;
 }
 
+const normalizeTerminal = (t?: any): Partial<PosTerminal> => {
+  if (!t) return {
+    name: "",
+    warehouseId: "",
+    code: "",
+    posPrinterType: 'system',
+    posPrinterAddress: '',
+    enableKitchenPrinter: false,
+    kitchenPrinterType: 'system',
+    kitchenPrinterAddress: ''
+  };
+  return {
+    id: t.id || t.Id,
+    code: t.code || t.Code || '',
+    name: t.name || t.Name || '',
+    warehouseId: t.warehouseId || t.WarehouseId || '',
+    posPrinterType: t.posPrinterType || t.PosPrinterType || 'system',
+    posPrinterAddress: t.posPrinterAddress || t.PosPrinterAddress || '',
+    enableKitchenPrinter: t.enableKitchenPrinter !== undefined ? !!t.enableKitchenPrinter : (t.EnableKitchenPrinter !== undefined ? !!t.EnableKitchenPrinter : false),
+    kitchenPrinterType: t.kitchenPrinterType || t.KitchenPrinterType || 'system',
+    kitchenPrinterAddress: t.kitchenPrinterAddress || t.KitchenPrinterAddress || ''
+  };
+};
+
 const TerminalForm = ({ terminal, onSave, onClose, warehouses, allTerminals, systemPrinters }: { terminal?: PosTerminal; onSave: (data: Partial<PosTerminal>) => void; onClose: () => void; warehouses: Warehouse[], allTerminals: PosTerminal[], systemPrinters: Array<{ deviceId?: string, name: string }> }) => {
-  const [formData, setFormData] = useState<Partial<PosTerminal>>(
-    terminal || { name: "", warehouseId: warehouses.length === 1 ? warehouses[0].id : "", code: "", posPrinterType: 'system', posPrinterAddress: '', enableKitchenPrinter: false, kitchenPrinterType: 'system', kitchenPrinterAddress: '' }
-  );
+  const [formData, setFormData] = useState<Partial<PosTerminal>>(() => {
+    const norm = normalizeTerminal(terminal);
+    if (!norm.warehouseId && warehouses.length === 1) norm.warehouseId = warehouses[0].id;
+    return norm;
+  });
   const { toast } = useToast();
 
   useEffect(() => {
     if (terminal) {
-      setFormData(terminal);
+      setFormData(normalizeTerminal(terminal));
     } else {
       setFormData({
         name: "",
@@ -152,7 +178,7 @@ const TerminalForm = ({ terminal, onSave, onClose, warehouses, allTerminals, sys
     }
     
     const isCodeDuplicate = allTerminals.some(
-        (t) => String(t.code) === String(formData.code) && t.id !== terminal?.id
+        (t: any) => String(t.code || t.Code) === String(formData.code) && (t.id || t.Id) !== (terminal?.id || (terminal as any)?.Id)
     );
 
     if (isCodeDuplicate) {
@@ -371,7 +397,11 @@ export default function PosTerminalsPage() {
     toast({ title: 'تم الحذف بنجاح' });
   };
   
-  const getWarehouseName = (id: string) => warehouses.find((w: Warehouse) => w.id === id)?.name || 'غير محدد';
+  const getWarehouseName = (id: string) => {
+    if (!id) return 'غير محدد';
+    const found = warehouses.find((w: Warehouse) => w.id === id || (w as any).Id === id);
+    return found?.name || (found as any)?.Name || 'غير محدد';
+  };
 
   return (
     <>
@@ -445,10 +475,10 @@ export default function PosTerminalsPage() {
                   </TableHeader>
                   <TableBody>
                     {posTerminals && posTerminals.length > 0 ? posTerminals.map((terminal: any, index: number) => (
-                      <TableRow key={terminal.id}>
-                        <TableCell className="font-mono">{terminal.code}</TableCell>
-                        <TableCell className="font-medium">{terminal.name}</TableCell>
-                        <TableCell>{getWarehouseName(terminal.warehouseId)}</TableCell>
+                      <TableRow key={terminal.id || terminal.Id}>
+                        <TableCell className="font-mono">{terminal.code || terminal.Code || '-'}</TableCell>
+                        <TableCell className="font-medium">{terminal.name || terminal.Name || '-'}</TableCell>
+                        <TableCell>{getWarehouseName(terminal.warehouseId || terminal.WarehouseId)}</TableCell>
                         <TableCell className="text-center">
                           {isCentral ? (
                             <span className="text-[11px] text-muted-foreground font-medium px-2 py-1 rounded bg-muted">
