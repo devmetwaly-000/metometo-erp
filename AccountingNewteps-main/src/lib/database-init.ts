@@ -1164,6 +1164,7 @@ export async function createAndInitializeDatabase(options: DbInitOptions): Promi
                 [CustomerId] NVARCHAR(64) NULL,
                 [CustomerName] NVARCHAR(255) NULL,
                 [WarehouseId] NVARCHAR(64) NULL,
+                [SalesRepId] NVARCHAR(64) NULL,
                 [CreatedById] NVARCHAR(64) NULL,
                 [CreatedByName] NVARCHAR(255) NULL,
                 [Subtotal] DECIMAL(18,4) NOT NULL DEFAULT ((0)),
@@ -2002,7 +2003,9 @@ export async function createAndInitializeDatabase(options: DbInitOptions): Promi
             `IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('dbo.PosSessions') AND name = 'BranchCode')
                 ALTER TABLE dbo.PosSessions ADD [BranchCode] NVARCHAR(50) NULL;`,
             `IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('dbo.PosSessions') AND name = 'BranchName')
-                ALTER TABLE dbo.PosSessions ADD [BranchName] NVARCHAR(255) NULL;`
+                ALTER TABLE dbo.PosSessions ADD [BranchName] NVARCHAR(255) NULL;`,
+            `IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('dbo.SalesReturns') AND name = 'SalesRepId')
+                ALTER TABLE dbo.SalesReturns ADD [SalesRepId] NVARCHAR(64) NULL;`
         ];
 
         const schemaUpgradeErrors: string[] = [];
@@ -2371,9 +2374,9 @@ export async function createAndInitializeDatabase(options: DbInitOptions): Promi
                 GROUP BY SalesRepId
             ) si ON u.Id = si.SalesRepId
             LEFT JOIN (
-                SELECT CreatedById AS RepId, COUNT(Id) AS ReturnsCount, SUM(Total) AS TotalCustomerReturnsValue, SUM(COALESCE(PaidAmount, 0)) AS TotalRefundedByRep
+                SELECT COALESCE(SalesRepId, CreatedById) AS RepId, COUNT(Id) AS ReturnsCount, SUM(Total) AS TotalCustomerReturnsValue, SUM(COALESCE(PaidAmount, 0)) AS TotalRefundedByRep
                 FROM dbo.SalesReturns
-                GROUP BY CreatedById
+                GROUP BY COALESCE(SalesRepId, CreatedById)
             ) sr ON u.Id = sr.RepId
             LEFT JOIN (
                 SELECT SalesRepId, COUNT(Id) AS RemittancesCount, SUM(Amount) AS TotalRemittedCash
@@ -2396,6 +2399,46 @@ export async function createAndInitializeDatabase(options: DbInitOptions): Promi
                 GROUP BY SalesRepId
             ) vis ON u.Id = vis.SalesRepId
             WHERE u.IsSalesRep = 1 OR u.Role LIKE N'%مندوب%';`,
+
+            `CREATE OR ALTER VIEW dbo.View_ItemProfitLoss AS
+            SELECT 
+                i.Id AS ItemId,
+                i.Code AS ItemCode,
+                i.Name AS ItemName,
+                COALESCE(s.SoldQty, 0) AS TotalSoldQty,
+                COALESCE(s.SoldValue, 0) AS TotalSoldValue,
+                COALESCE(s.SoldCost, 0) AS TotalSoldCost,
+                COALESCE(s.SoldCount, 0) AS TotalSoldCount,
+                COALESCE(r.ReturnedQty, 0) AS TotalReturnedQty,
+                COALESCE(r.ReturnedValue, 0) AS TotalReturnedValue,
+                COALESCE(r.ReturnedCost, 0) AS TotalReturnedCost,
+                (COALESCE(s.SoldValue, 0) - COALESCE(r.ReturnedValue, 0)) AS NetRevenue,
+                ((COALESCE(s.SoldValue, 0) - COALESCE(r.ReturnedValue, 0)) - (COALESCE(s.SoldCost, 0) - COALESCE(r.ReturnedCost, 0))) AS NetProfit
+            FROM dbo.Items i
+            LEFT JOIN (
+                SELECT 
+                    sii.ItemId,
+                    SUM(sii.Qty) AS SoldQty,
+                    SUM(sii.Total) AS SoldValue,
+                    SUM(sii.Qty * COALESCE(NULLIF(sii.Cost, 0), it.Cost, 0)) AS SoldCost,
+                    COUNT(DISTINCT si.Id) AS SoldCount
+                FROM dbo.SalesInvoiceItems sii
+                INNER JOIN dbo.SalesInvoices si ON sii.InvoiceId = si.Id
+                LEFT JOIN dbo.Items it ON sii.ItemId = it.Id
+                WHERE si.Status = 'approved' OR si.Status = 'completed' OR si.Status IS NULL
+                GROUP BY sii.ItemId
+            ) s ON i.Id = s.ItemId
+            LEFT JOIN (
+                SELECT 
+                    sri.ItemId,
+                    SUM(sri.Qty) AS ReturnedQty,
+                    SUM(sri.Total) AS ReturnedValue,
+                    SUM(sri.Qty * COALESCE(it.Cost, 0)) AS ReturnedCost
+                FROM dbo.SalesReturnItems sri
+                INNER JOIN dbo.SalesReturns sr ON sri.ReturnId = sr.Id
+                LEFT JOIN dbo.Items it ON sri.ItemId = it.Id
+                GROUP BY sri.ItemId
+            ) r ON i.Id = r.ItemId;`,
 
             `CREATE OR ALTER VIEW dbo.View_ItemStockBalances AS
             WITH InwardStock AS (
@@ -2439,6 +2482,47 @@ export async function createAndInitializeDatabase(options: DbInitOptions): Promi
                 await targetPool.request().query(vw);
             } catch (vwErr: any) {
                 console.error('Error creating view:', vwErr.message);
+            }
+        }
+
+        // 5.5 Create Historical Period Archive Tables (for both Branch & Central DBs)
+        const archiveSourceTables = [
+            'SalesInvoices',
+            'SalesInvoiceItems',
+            'SalesReturns',
+            'SalesReturnItems',
+            'PurchaseInvoices',
+            'PurchaseReturns',
+            'StockInRecords',
+            'StockOutRecords',
+            'StockTransferRecords',
+            'StockAdjustmentRecords',
+            'StockIssuesToReps',
+            'StockReturnsFromReps',
+            'RepRemittances'
+        ];
+        for (const srcTbl of archiveSourceTables) {
+            try {
+                const archiveTbl = `Archived${srcTbl}`;
+                const colsRes = await targetPool.request().query(`
+                    SELECT COLUMN_NAME
+                    FROM INFORMATION_SCHEMA.COLUMNS
+                    WHERE TABLE_NAME = '${srcTbl}' AND DATA_TYPE NOT IN ('timestamp', 'rowversion')
+                    ORDER BY ORDINAL_POSITION
+                `);
+                if (colsRes.recordset.length > 0) {
+                    const colNames = colsRes.recordset.map((r: any) => `[${r.COLUMN_NAME}]`).join(', ');
+                    await targetPool.request().query(`
+                        IF NOT EXISTS (SELECT * FROM sys.tables WHERE name = '${archiveTbl}')
+                        BEGIN
+                            SELECT TOP 0 ${colNames}, CAST(NULL AS NVARCHAR(64)) AS [ArchiveBatchId], CAST(sysutcdatetime() AS DATETIME2) AS [ArchivedAt]
+                            INTO dbo.[${archiveTbl}]
+                            FROM dbo.[${srcTbl}];
+                        END
+                    `);
+                }
+            } catch (archErr: any) {
+                console.warn(`Archive table init warning for ${srcTbl}:`, archErr.message);
             }
         }
 
@@ -2967,7 +3051,29 @@ export async function createAndInitializeDatabase(options: DbInitOptions): Promi
             `IF NOT EXISTS (SELECT * FROM sys.indexes WHERE name = 'IX_SystemErrorLogs_Timestamp' AND object_id = OBJECT_ID('dbo.SystemErrorLogs'))
              CREATE NONCLUSTERED INDEX IX_SystemErrorLogs_Timestamp ON dbo.SystemErrorLogs (Timestamp DESC, Source, Action);`,
             `IF NOT EXISTS (SELECT * FROM sys.indexes WHERE name = 'IX_ManufacturingOrders_Status' AND object_id = OBJECT_ID('dbo.ManufacturingOrders'))
-             CREATE NONCLUSTERED INDEX IX_ManufacturingOrders_Status ON dbo.ManufacturingOrders (Status, CreatedAt DESC);`
+             CREATE NONCLUSTERED INDEX IX_ManufacturingOrders_Status ON dbo.ManufacturingOrders (Status, CreatedAt DESC);`,
+            `IF NOT EXISTS (SELECT * FROM sys.indexes WHERE name = 'IX_SalesInvoices_Perf' AND object_id = OBJECT_ID('dbo.SalesInvoices'))
+             CREATE NONCLUSTERED INDEX IX_SalesInvoices_Perf ON dbo.SalesInvoices (Date DESC, Status, WarehouseId, CustomerId, SalesRepId) INCLUDE (Total, PaidAmount, InitialPaidAmount, PaidToAccountId);`,
+            `IF NOT EXISTS (SELECT * FROM sys.indexes WHERE name = 'IX_SalesReturns_Perf' AND object_id = OBJECT_ID('dbo.SalesReturns'))
+             CREATE NONCLUSTERED INDEX IX_SalesReturns_Perf ON dbo.SalesReturns (Date DESC, WarehouseId, CustomerId, SalesRepId) INCLUDE (Total, PaidAmount, PaidFromAccountId);`,
+            `IF NOT EXISTS (SELECT * FROM sys.indexes WHERE name = 'IX_StockIssuesToReps_Perf' AND object_id = OBJECT_ID('dbo.StockIssuesToReps'))
+             CREATE NONCLUSTERED INDEX IX_StockIssuesToReps_Perf ON dbo.StockIssuesToReps (SalesRepId, WarehouseId, Date DESC);`,
+            `IF NOT EXISTS (SELECT * FROM sys.indexes WHERE name = 'IX_StockReturnsFromReps_Perf' AND object_id = OBJECT_ID('dbo.StockReturnsFromReps'))
+             CREATE NONCLUSTERED INDEX IX_StockReturnsFromReps_Perf ON dbo.StockReturnsFromReps (SalesRepId, WarehouseId, Date DESC);`,
+            `IF NOT EXISTS (SELECT * FROM sys.indexes WHERE name = 'IX_RepRemittances_Perf' AND object_id = OBJECT_ID('dbo.RepRemittances'))
+             CREATE NONCLUSTERED INDEX IX_RepRemittances_Perf ON dbo.RepRemittances (SalesRepId, ToAccountId, Date DESC) INCLUDE (Amount);`,
+            `IF NOT EXISTS (SELECT * FROM sys.indexes WHERE name = 'IX_CustomerPayments_Perf' AND object_id = OBJECT_ID('dbo.CustomerPayments'))
+             CREATE NONCLUSTERED INDEX IX_CustomerPayments_Perf ON dbo.CustomerPayments (CustomerId, PaidToAccountId, InvoiceId, Date DESC) INCLUDE (Amount);`,
+            `IF NOT EXISTS (SELECT * FROM sys.indexes WHERE name = 'IX_SupplierPayments_Perf' AND object_id = OBJECT_ID('dbo.SupplierPayments'))
+             CREATE NONCLUSTERED INDEX IX_SupplierPayments_Perf ON dbo.SupplierPayments (SupplierId, PaidFromAccountId, InvoiceId, Date DESC) INCLUDE (Amount);`,
+            `IF NOT EXISTS (SELECT * FROM sys.indexes WHERE name = 'IX_SalesInvoiceItems_Perf' AND object_id = OBJECT_ID('dbo.SalesInvoiceItems'))
+             CREATE NONCLUSTERED INDEX IX_SalesInvoiceItems_Perf ON dbo.SalesInvoiceItems (InvoiceId, ItemId) INCLUDE (Qty, Price, Cost, Total);`,
+            `IF NOT EXISTS (SELECT * FROM sys.indexes WHERE name = 'IX_SalesReturnItems_Perf' AND object_id = OBJECT_ID('dbo.SalesReturnItems'))
+             CREATE NONCLUSTERED INDEX IX_SalesReturnItems_Perf ON dbo.SalesReturnItems (ReturnId, ItemId) INCLUDE (Qty, Price, Total);`,
+            `IF NOT EXISTS (SELECT * FROM sys.indexes WHERE name = 'IX_ArchiveLogs_CutoffDate' AND object_id = OBJECT_ID('dbo.ArchiveLogs'))
+             CREATE NONCLUSTERED INDEX IX_ArchiveLogs_CutoffDate ON dbo.ArchiveLogs (CutoffDate DESC, ArchiveDate DESC);`,
+            `IF NOT EXISTS (SELECT * FROM sys.indexes WHERE name = 'IX_ArchivedSalesInvoices_Batch' AND object_id = OBJECT_ID('dbo.ArchivedSalesInvoices'))
+             CREATE NONCLUSTERED INDEX IX_ArchivedSalesInvoices_Batch ON dbo.ArchivedSalesInvoices (ArchiveBatchId, Date DESC);`
         ];
 
         for (const idxSql of performanceIndexes) {
@@ -2978,10 +3084,14 @@ export async function createAndInitializeDatabase(options: DbInitOptions): Promi
             }
         }
 
-        // 10. Ensure ROWVERSION on all tables for monotonic synchronization
+        // 10. Ensure ROWVERSION on all tables for monotonic synchronization (excluding Archive tables)
         try {
             const allTablesRes = await targetPool.request().query(`
-                SELECT TABLE_NAME FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_TYPE = 'BASE TABLE' AND TABLE_NAME != 'sysdiagrams';
+                SELECT TABLE_NAME FROM INFORMATION_SCHEMA.TABLES 
+                WHERE TABLE_TYPE = 'BASE TABLE' 
+                  AND TABLE_NAME != 'sysdiagrams'
+                  AND TABLE_NAME NOT LIKE 'Archived%'
+                  AND TABLE_NAME != 'ArchiveLogs';
             `);
             for (const t of allTablesRes.recordset.map((r: any) => r.TABLE_NAME)) {
                 try {

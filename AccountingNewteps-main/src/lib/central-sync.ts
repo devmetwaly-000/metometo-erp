@@ -152,7 +152,9 @@ export const TABLE_METADATA_MAP: Record<string, TableSyncMeta> = {
     Requisitions: { name: 'طلبات الاحتياج والشراء', category: 'إعدادات النظام', direction: 'push', idColumn: 'Id', description: 'طلبات الاحتياج الداخلي ومذكرات الشراء والتحويل المرفوعة من الفروع', dataScope: 'طلبات شراء' },
     Notifications: { name: 'الإشعارات والتنبيهات', category: 'إعدادات النظام', direction: 'push', idColumn: 'Id', description: 'إشعارات النظام اللحظية والتنبيهات الإدارية الهامة', dataScope: 'إشعارات' },
     LoginHistory: { name: 'سجل الدخول والأمان', category: 'إعدادات النظام', direction: 'push', idColumn: 'Id', description: 'سجل أمان وتتبع تسجيل دخول وخروج المستخدمين وعناوين IP', dataScope: 'سجل أمان' },
-    AuditTrailLogs: { name: 'سجل التدقيق الرقابي غير القابل للتعديل', category: 'إعدادات النظام', direction: 'push', idColumn: 'Id', description: 'سجل الرقابة الصارم غير القابل للحذف أو التعديل مع البصمة الرقمية (SHA-256) وحالة السجلات قبل وبعد التعديل', dataScope: 'رقابة وتدقيق' }
+    AuditTrailLogs: { name: 'سجل التدقيق الرقابي غير القابل للتعديل', category: 'إعدادات النظام', direction: 'push', idColumn: 'Id', description: 'سجل الرقابة الصارم غير القابل للحذف أو التعديل مع البصمة الرقمية (SHA-256) وحالة السجلات قبل وبعد التعديل', dataScope: 'رقابة وتدقيق' },
+    SystemErrorLogs: { name: 'سجل تتبع أخطاء النظام والـ SQL', category: 'إعدادات النظام', direction: 'push', idColumn: 'Id', description: 'سجل مركزي لتتبع كافة أخطاء النظام والاستعلامات والطباعة والمزامنة', dataScope: 'رقابة وتدقيق' },
+    ArchiveLogs: { name: 'سجل أرشفة الفترات والسنوات المغلقة', category: 'إعدادات النظام', direction: 'push', idColumn: 'Id', description: 'سجل عمليات ترحيل وأرشفة الفواتير والحركات التاريخية للفترات المغلقة', dataScope: 'أرشفة تاريخية' }
 };
 
 /**
@@ -609,7 +611,144 @@ async function ensureSyncTrackingMatrixTable(pool: sql.ConnectionPool) {
             IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('dbo.ManufacturingOrders') AND name = 'CreatedAt')
                 ALTER TABLE dbo.ManufacturingOrders ADD [CreatedAt] DATETIME2 NOT NULL DEFAULT (sysutcdatetime());
         END;
+
+        IF NOT EXISTS (SELECT * FROM sys.tables WHERE name = 'SystemErrorLogs')
+        BEGIN
+            CREATE TABLE dbo.[SystemErrorLogs] (
+                [Id] NVARCHAR(64) NOT NULL,
+                [Timestamp] DATETIME2 NOT NULL DEFAULT (sysutcdatetime()),
+                [Source] NVARCHAR(100) NOT NULL,
+                [Action] NVARCHAR(100) NULL,
+                [Endpoint] NVARCHAR(255) NULL,
+                [TableName] NVARCHAR(100) NULL,
+                [ErrorMessage] NVARCHAR(MAX) NOT NULL,
+                [ErrorStack] NVARCHAR(MAX) NULL,
+                [ErrorCode] NVARCHAR(50) NULL,
+                [PayloadJson] NVARCHAR(MAX) NULL,
+                [UserId] NVARCHAR(64) NULL,
+                [UserName] NVARCHAR(255) NULL,
+                [BranchCode] NVARCHAR(50) NULL,
+                [BranchName] NVARCHAR(255) NULL,
+                [StatusCode] INT NULL DEFAULT ((500)),
+                [Resolved] BIT NOT NULL DEFAULT ((0)),
+                [SyncStatus] NVARCHAR(20) NULL DEFAULT ('synced'),
+                [LastSyncedAt] DATETIME2 NULL,
+                [UpdatedAt] DATETIME2 NOT NULL DEFAULT (sysutcdatetime()),
+                [CreatedAt] DATETIME2 NOT NULL DEFAULT (sysutcdatetime()),
+                [RowVersion] ROWVERSION,
+                CONSTRAINT [PK_SystemErrorLogs] PRIMARY KEY CLUSTERED ([Id])
+            );
+        END;
+
+        IF NOT EXISTS (SELECT * FROM sys.tables WHERE name = 'ArchiveLogs')
+        BEGIN
+            CREATE TABLE dbo.[ArchiveLogs] (
+                [Id] NVARCHAR(64) NOT NULL PRIMARY KEY,
+                [ArchiveDate] DATETIME2 NOT NULL DEFAULT (sysutcdatetime()),
+                [CutoffDate] DATETIME2 NOT NULL,
+                [WarehouseId] NVARCHAR(64) NULL,
+                [WarehouseName] NVARCHAR(255) NULL,
+                [ArchivedById] NVARCHAR(64) NULL,
+                [ArchivedByName] NVARCHAR(255) NULL,
+                [TotalRecordsArchived] INT NOT NULL DEFAULT 0,
+                [SummaryJson] NVARCHAR(MAX) NULL,
+                [Notes] NVARCHAR(MAX) NULL,
+                [BranchCode] NVARCHAR(50) NULL,
+                [BranchName] NVARCHAR(255) NULL,
+                [SyncStatus] NVARCHAR(20) NULL DEFAULT ('synced'),
+                [LastSyncedAt] DATETIME2 NULL,
+                [UpdatedAt] DATETIME2 NOT NULL DEFAULT (sysutcdatetime()),
+                [CreatedAt] DATETIME2 NOT NULL DEFAULT (sysutcdatetime())
+            );
+        END;
+
+        IF OBJECT_ID('dbo.SalesReturns') IS NOT NULL AND COL_LENGTH('dbo.SalesReturns', 'SalesRepId') IS NULL
+            ALTER TABLE dbo.SalesReturns ADD [SalesRepId] NVARCHAR(64) NULL;
+
+        IF OBJECT_ID('dbo.PosSessions') IS NOT NULL AND COL_LENGTH('dbo.PosSessions', 'ClosingStatementJson') IS NULL
+            ALTER TABLE dbo.PosSessions ADD [ClosingStatementJson] NVARCHAR(MAX) NULL;
+
+        -- فهارس الأداء العالي (Performance Indexes) للفرع والمركزية
+        IF OBJECT_ID('dbo.SalesInvoices') IS NOT NULL AND NOT EXISTS (SELECT * FROM sys.indexes WHERE name = 'IX_SalesInvoices_Perf' AND object_id = OBJECT_ID('dbo.SalesInvoices'))
+            CREATE NONCLUSTERED INDEX IX_SalesInvoices_Perf ON dbo.SalesInvoices (Date DESC, Status, WarehouseId, CustomerId, SalesRepId) INCLUDE (Total, PaidAmount, InitialPaidAmount, PaidToAccountId);
+
+        IF OBJECT_ID('dbo.SalesReturns') IS NOT NULL AND NOT EXISTS (SELECT * FROM sys.indexes WHERE name = 'IX_SalesReturns_Perf' AND object_id = OBJECT_ID('dbo.SalesReturns'))
+            CREATE NONCLUSTERED INDEX IX_SalesReturns_Perf ON dbo.SalesReturns (Date DESC, WarehouseId, CustomerId, SalesRepId) INCLUDE (Total, PaidAmount, PaidFromAccountId);
+
+        IF OBJECT_ID('dbo.StockIssuesToReps') IS NOT NULL AND NOT EXISTS (SELECT * FROM sys.indexes WHERE name = 'IX_StockIssuesToReps_Perf' AND object_id = OBJECT_ID('dbo.StockIssuesToReps'))
+            CREATE NONCLUSTERED INDEX IX_StockIssuesToReps_Perf ON dbo.StockIssuesToReps (SalesRepId, WarehouseId, Date DESC);
+
+        IF OBJECT_ID('dbo.StockReturnsFromReps') IS NOT NULL AND NOT EXISTS (SELECT * FROM sys.indexes WHERE name = 'IX_StockReturnsFromReps_Perf' AND object_id = OBJECT_ID('dbo.StockReturnsFromReps'))
+            CREATE NONCLUSTERED INDEX IX_StockReturnsFromReps_Perf ON dbo.StockReturnsFromReps (SalesRepId, WarehouseId, Date DESC);
+
+        IF OBJECT_ID('dbo.RepRemittances') IS NOT NULL AND NOT EXISTS (SELECT * FROM sys.indexes WHERE name = 'IX_RepRemittances_Perf' AND object_id = OBJECT_ID('dbo.RepRemittances'))
+            CREATE NONCLUSTERED INDEX IX_RepRemittances_Perf ON dbo.RepRemittances (SalesRepId, ToAccountId, Date DESC) INCLUDE (Amount);
     `);
+
+    // تثبيت وتحديث الـ Views التحليلية المجمعة في كل من الفرع والمركزية
+    const centralAndBranchViews = [
+        `CREATE OR ALTER VIEW dbo.View_CustomerBalances AS
+        SELECT 
+            c.Id AS CustomerId, c.Name AS CustomerName, c.Phone, c.CreditLimit, c.OpeningBalance,
+            COALESCE(inv.InvoicesCount, 0) AS InvoicesCount,
+            COALESCE(inv.TotalInvoiced, 0) AS TotalInvoiced,
+            COALESCE(inv.PaidOnInvoices, 0) AS PaidOnInvoices,
+            COALESCE(pmt.UnlinkedReceipts, 0) AS TotalReceipts,
+            COALESCE(ret.TotalReturns, 0) AS TotalReturns,
+            COALESCE(ret.CashRefunded, 0) AS CashRefundedOnReturns,
+            (c.OpeningBalance + COALESCE(inv.TotalInvoiced, 0) - COALESCE(inv.PaidOnInvoices, 0) - COALESCE(pmt.UnlinkedReceipts, 0) - (COALESCE(ret.TotalReturns, 0) - COALESCE(ret.CashRefunded, 0))) AS CurrentCalculatedBalance
+        FROM dbo.Customers c
+        LEFT JOIN (SELECT CustomerId, COUNT(Id) AS InvoicesCount, SUM(Total) AS TotalInvoiced, SUM(COALESCE(PaidAmount, 0)) AS PaidOnInvoices FROM dbo.SalesInvoices WHERE Status = 'approved' OR Status = 'completed' OR Status IS NULL GROUP BY CustomerId) inv ON c.Id = inv.CustomerId
+        LEFT JOIN (SELECT CustomerId, SUM(Amount) AS UnlinkedReceipts FROM dbo.CustomerPayments WHERE InvoiceId IS NULL OR InvoiceId = '' GROUP BY CustomerId) pmt ON c.Id = pmt.CustomerId
+        LEFT JOIN (SELECT CustomerId, SUM(Total) AS TotalReturns, SUM(COALESCE(PaidAmount, 0)) AS CashRefunded FROM dbo.SalesReturns GROUP BY CustomerId) ret ON c.Id = ret.CustomerId;`,
+
+        `CREATE OR ALTER VIEW dbo.View_SupplierBalances AS
+        SELECT 
+            s.Id AS SupplierId, s.Name AS SupplierName, s.Contact, s.OpeningBalance,
+            COALESCE(purch.PurchasesCount, 0) AS PurchasesCount,
+            COALESCE(purch.TotalPurchases, 0) AS TotalPurchases,
+            COALESCE(purch.PaidOnPurchases, 0) AS PaidOnPurchases,
+            COALESCE(pmt.UnlinkedDisbursements, 0) AS TotalDisbursements,
+            COALESCE(ret.TotalReturns, 0) AS TotalReturns,
+            COALESCE(ret.CashReceived, 0) AS CashReceivedOnReturns,
+            (s.OpeningBalance + COALESCE(purch.TotalPurchases, 0) - COALESCE(purch.PaidOnPurchases, 0) - COALESCE(pmt.UnlinkedDisbursements, 0) - (COALESCE(ret.TotalReturns, 0) - COALESCE(ret.CashReceived, 0))) AS CurrentCalculatedBalance
+        FROM dbo.Suppliers s
+        LEFT JOIN (SELECT SupplierId, COUNT(Id) AS PurchasesCount, SUM(Total) AS TotalPurchases, SUM(COALESCE(PaidAmount, 0)) AS PaidOnPurchases FROM dbo.PurchaseInvoices GROUP BY SupplierId) purch ON s.Id = purch.SupplierId
+        LEFT JOIN (SELECT SupplierId, SUM(Amount) AS UnlinkedDisbursements FROM dbo.SupplierPayments WHERE InvoiceId IS NULL OR InvoiceId = '' GROUP BY SupplierId) pmt ON s.Id = pmt.SupplierId
+        LEFT JOIN (SELECT SupplierId, SUM(Total) AS TotalReturns, SUM(COALESCE(PaidAmount, 0)) AS CashReceived FROM dbo.PurchaseReturns GROUP BY SupplierId) ret ON s.Id = ret.SupplierId;`,
+
+        `CREATE OR ALTER VIEW dbo.View_SalesRepBalances AS
+        SELECT 
+            u.Id AS RepId, u.Name AS RepName, u.Phone, u.Role,
+            w.Id AS RepWarehouseId, w.Name AS RepWarehouseName,
+            COALESCE(si.InvoicesCount, 0) AS InvoicesCount,
+            COALESCE(si.TotalSoldValue, 0) AS TotalSoldValue,
+            COALESCE(si.TotalCollectedOnInvoices, 0) AS TotalCollectedOnInvoices,
+            COALESCE(sr.ReturnsCount, 0) AS ReturnsCount,
+            COALESCE(sr.TotalCustomerReturnsValue, 0) AS TotalCustomerReturnsValue,
+            COALESCE(sr.TotalRefundedByRep, 0) AS TotalRefundedByRep,
+            COALESCE(rem.RemittancesCount, 0) AS RemittancesCount,
+            COALESCE(rem.TotalRemittedCash, 0) AS TotalRemittedCash,
+            (COALESCE(si.TotalCollectedOnInvoices, 0) - COALESCE(sr.TotalRefundedByRep, 0) - COALESCE(rem.TotalRemittedCash, 0)) AS NetCashCustody,
+            COALESCE(iss.IssuesCount, 0) AS StockIssuesCount,
+            COALESCE(retw.ReturnsToWarehouseCount, 0) AS StockReturnsCount,
+            COALESCE(vis.VisitsCount, 0) AS VisitsCount
+        FROM dbo.Users u
+        LEFT JOIN dbo.Warehouses w ON w.RepId = u.Id AND w.IsRepWarehouse = 1
+        LEFT JOIN (SELECT SalesRepId, COUNT(Id) AS InvoicesCount, SUM(Total) AS TotalSoldValue, SUM(COALESCE(PaidAmount, 0)) AS TotalCollectedOnInvoices FROM dbo.SalesInvoices WHERE (Status = 'approved' OR Status = 'completed' OR Status IS NULL) AND SalesRepId IS NOT NULL GROUP BY SalesRepId) si ON u.Id = si.SalesRepId
+        LEFT JOIN (SELECT COALESCE(SalesRepId, CreatedById) AS RepId, COUNT(Id) AS ReturnsCount, SUM(Total) AS TotalCustomerReturnsValue, SUM(COALESCE(PaidAmount, 0)) AS TotalRefundedByRep FROM dbo.SalesReturns GROUP BY COALESCE(SalesRepId, CreatedById)) sr ON u.Id = sr.RepId
+        LEFT JOIN (SELECT SalesRepId, COUNT(Id) AS RemittancesCount, SUM(Amount) AS TotalRemittedCash FROM dbo.RepRemittances GROUP BY SalesRepId) rem ON u.Id = rem.SalesRepId
+        LEFT JOIN (SELECT SalesRepId, COUNT(Id) AS IssuesCount FROM dbo.StockIssuesToReps GROUP BY SalesRepId) iss ON u.Id = iss.SalesRepId
+        LEFT JOIN (SELECT SalesRepId, COUNT(Id) AS ReturnsToWarehouseCount FROM dbo.StockReturnsFromReps GROUP BY SalesRepId) retw ON u.Id = retw.SalesRepId
+        LEFT JOIN (SELECT SalesRepId, COUNT(Id) AS VisitsCount FROM dbo.CustomerVisits GROUP BY SalesRepId) vis ON u.Id = vis.SalesRepId
+        WHERE u.IsSalesRep = 1 OR u.Role LIKE N'%مندوب%';`
+    ];
+
+    for (const vwSql of centralAndBranchViews) {
+        try {
+            await pool.request().query(vwSql);
+        } catch {}
+    }
 }
 
 /**
