@@ -1,7 +1,7 @@
 
 "use client";
 
-import React, { useMemo, useState } from "react";
+import React, { useMemo, useState, useEffect, useCallback } from "react";
 import Link from 'next/link';
 import PageHeader from "@/components/page-header";
 import {
@@ -155,8 +155,39 @@ export default function CustomerReceivablesReport() {
     const { customers, salesInvoices, customerPayments, salesReturns, loading } = useData();
     const isMobile = useIsMobile();
     const [searchTerm, setSearchTerm] = useState("");
+    const [sqlBalances, setSqlBalances] = useState<any[] | null>(null);
+
+    const fetchSqlBalances = useCallback(async () => {
+        try {
+            const res = await fetch('/api/reports/aggregated?type=customer-balances');
+            const json = await res.json();
+            if (json.success && Array.isArray(json.data)) {
+                setSqlBalances(json.data);
+            }
+        } catch (err) {
+            console.warn('Fallback to client calculation for customer-receivables:', err);
+        }
+    }, []);
+
+    useEffect(() => {
+        fetchSqlBalances();
+    }, [fetchSqlBalances]);
     
     const customersWithBalance = useMemo(() => {
+        if (sqlBalances && sqlBalances.length > 0) {
+            return sqlBalances
+                .map((row: any) => ({
+                    id: row.CustomerId,
+                    name: row.CustomerName,
+                    phone: row.Phone,
+                    creditLimit: Number(row.CreditLimit || 0),
+                    openingBalance: Number(row.OpeningBalance || 0),
+                    currentBalance: Number(row.CurrentCalculatedBalance || 0),
+                    invoiceCount: Number(row.InvoicesCount || 0)
+                }))
+                .filter((c: any) => c.currentBalance > 0.01);
+        }
+
         if (loading) return [];
         
         return customers.map((customer: Customer) => {
@@ -181,7 +212,7 @@ export default function CustomerReceivablesReport() {
             
             return { ...customer, currentBalance: balance, invoiceCount };
         }).filter((c: any) => c.currentBalance > 0.01);
-    }, [customers, salesInvoices, customerPayments, salesReturns, loading]);
+    }, [sqlBalances, customers, salesInvoices, customerPayments, salesReturns, loading]);
 
     const filteredCustomers = useMemo(() => {
         if (!searchTerm) {
@@ -204,7 +235,9 @@ export default function CustomerReceivablesReport() {
             .slice(0, 10);
     }, [filteredCustomers]);
     
-    const handlePaymentSaved = () => {};
+    const handlePaymentSaved = () => {
+        fetchSqlBalances();
+    };
 
   return (
     <>

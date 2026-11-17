@@ -2164,51 +2164,238 @@ export async function createAndInitializeDatabase(options: DbInitOptions): Promi
             }
         }
 
-        // 5. Install Analytical Views
+        // 5. Install Analytical Views & Archive Tables
         const views = [
+            `IF NOT EXISTS (SELECT * FROM sys.tables WHERE name = 'ArchiveLogs')
+            CREATE TABLE dbo.ArchiveLogs (
+                Id NVARCHAR(64) NOT NULL PRIMARY KEY,
+                ArchiveDate DATETIME2 NOT NULL DEFAULT (sysutcdatetime()),
+                CutoffDate DATETIME2 NOT NULL,
+                WarehouseId NVARCHAR(64) NULL,
+                WarehouseName NVARCHAR(255) NULL,
+                ArchivedById NVARCHAR(64) NULL,
+                ArchivedByName NVARCHAR(255) NULL,
+                TotalRecordsArchived INT NOT NULL DEFAULT 0,
+                SummaryJson NVARCHAR(MAX) NULL,
+                Notes NVARCHAR(MAX) NULL,
+                CreatedAt DATETIME2 NOT NULL DEFAULT (sysutcdatetime())
+            );`,
+
             `CREATE OR ALTER VIEW dbo.View_CustomerBalances AS
             SELECT 
-                c.Id AS CustomerId, c.Name AS CustomerName, c.Phone, c.CreditLimit, c.OpeningBalance,
+                c.Id AS CustomerId,
+                c.Name AS CustomerName,
+                c.Phone,
+                c.CreditLimit,
+                c.OpeningBalance,
+                COALESCE(inv.InvoicesCount, 0) AS InvoicesCount,
                 COALESCE(inv.TotalInvoiced, 0) AS TotalInvoiced,
                 COALESCE(inv.PaidOnInvoices, 0) AS PaidOnInvoices,
-                COALESCE(pmt.TotalReceipts, 0) AS TotalReceipts,
+                COALESCE(pmt.UnlinkedReceipts, 0) AS TotalReceipts,
                 COALESCE(ret.TotalReturns, 0) AS TotalReturns,
-                (c.OpeningBalance + COALESCE(inv.TotalInvoiced, 0) - COALESCE(inv.PaidOnInvoices, 0) - COALESCE(pmt.TotalReceipts, 0) - COALESCE(ret.TotalReturns, 0)) AS CurrentCalculatedBalance
+                COALESCE(ret.CashRefunded, 0) AS CashRefundedOnReturns,
+                (
+                    c.OpeningBalance
+                    + COALESCE(inv.TotalInvoiced, 0)
+                    - COALESCE(inv.PaidOnInvoices, 0)
+                    - COALESCE(pmt.UnlinkedReceipts, 0)
+                    - (COALESCE(ret.TotalReturns, 0) - COALESCE(ret.CashRefunded, 0))
+                ) AS CurrentCalculatedBalance
             FROM dbo.Customers c
-            LEFT JOIN (SELECT CustomerId, SUM(Total) AS TotalInvoiced, SUM(PaidAmount) AS PaidOnInvoices FROM dbo.SalesInvoices WHERE Status = 'approved' GROUP BY CustomerId) inv ON c.Id = inv.CustomerId
-            LEFT JOIN (SELECT CustomerId, SUM(Amount) AS TotalReceipts FROM dbo.CustomerPayments GROUP BY CustomerId) pmt ON c.Id = pmt.CustomerId
-            LEFT JOIN (SELECT CustomerId, SUM(Total) AS TotalReturns FROM dbo.SalesReturns GROUP BY CustomerId) ret ON c.Id = ret.CustomerId;`,
+            LEFT JOIN (
+                SELECT CustomerId, COUNT(Id) AS InvoicesCount, SUM(Total) AS TotalInvoiced, SUM(COALESCE(PaidAmount, 0)) AS PaidOnInvoices
+                FROM dbo.SalesInvoices
+                WHERE Status = 'approved' OR Status = 'completed' OR Status IS NULL
+                GROUP BY CustomerId
+            ) inv ON c.Id = inv.CustomerId
+            LEFT JOIN (
+                SELECT CustomerId, SUM(Amount) AS UnlinkedReceipts
+                FROM dbo.CustomerPayments
+                WHERE InvoiceId IS NULL OR InvoiceId = ''
+                GROUP BY CustomerId
+            ) pmt ON c.Id = pmt.CustomerId
+            LEFT JOIN (
+                SELECT CustomerId, SUM(Total) AS TotalReturns, SUM(COALESCE(PaidAmount, 0)) AS CashRefunded
+                FROM dbo.SalesReturns
+                GROUP BY CustomerId
+            ) ret ON c.Id = ret.CustomerId;`,
 
             `CREATE OR ALTER VIEW dbo.View_SupplierBalances AS
             SELECT 
-                s.Id AS SupplierId, s.Name AS SupplierName, s.Contact, s.OpeningBalance,
+                s.Id AS SupplierId,
+                s.Name AS SupplierName,
+                s.Contact,
+                s.OpeningBalance,
+                COALESCE(purch.PurchasesCount, 0) AS PurchasesCount,
                 COALESCE(purch.TotalPurchases, 0) AS TotalPurchases,
                 COALESCE(purch.PaidOnPurchases, 0) AS PaidOnPurchases,
-                COALESCE(pmt.TotalDisbursements, 0) AS TotalDisbursements,
+                COALESCE(pmt.UnlinkedDisbursements, 0) AS TotalDisbursements,
                 COALESCE(ret.TotalReturns, 0) AS TotalReturns,
-                (s.OpeningBalance + COALESCE(purch.TotalPurchases, 0) - COALESCE(purch.PaidOnPurchases, 0) - COALESCE(pmt.TotalDisbursements, 0) - COALESCE(ret.TotalReturns, 0)) AS CurrentCalculatedBalance
+                COALESCE(ret.CashReceived, 0) AS CashReceivedOnReturns,
+                (
+                    s.OpeningBalance
+                    + COALESCE(purch.TotalPurchases, 0)
+                    - COALESCE(purch.PaidOnPurchases, 0)
+                    - COALESCE(pmt.UnlinkedDisbursements, 0)
+                    - (COALESCE(ret.TotalReturns, 0) - COALESCE(ret.CashReceived, 0))
+                ) AS CurrentCalculatedBalance
             FROM dbo.Suppliers s
-            LEFT JOIN (SELECT SupplierId, SUM(Total) AS TotalPurchases, SUM(PaidAmount) AS PaidOnPurchases FROM dbo.PurchaseInvoices GROUP BY SupplierId) purch ON s.Id = purch.SupplierId
-            LEFT JOIN (SELECT SupplierId, SUM(Amount) AS TotalDisbursements FROM dbo.SupplierPayments GROUP BY SupplierId) pmt ON s.Id = pmt.SupplierId
-            LEFT JOIN (SELECT SupplierId, SUM(Total) AS TotalReturns FROM dbo.PurchaseReturns GROUP BY SupplierId) ret ON s.Id = ret.SupplierId;`,
+            LEFT JOIN (
+                SELECT SupplierId, COUNT(Id) AS PurchasesCount, SUM(Total) AS TotalPurchases, SUM(COALESCE(PaidAmount, 0)) AS PaidOnPurchases
+                FROM dbo.PurchaseInvoices
+                GROUP BY SupplierId
+            ) purch ON s.Id = purch.SupplierId
+            LEFT JOIN (
+                SELECT SupplierId, SUM(Amount) AS UnlinkedDisbursements
+                FROM dbo.SupplierPayments
+                WHERE InvoiceId IS NULL OR InvoiceId = ''
+                GROUP BY SupplierId
+            ) pmt ON s.Id = pmt.SupplierId
+            LEFT JOIN (
+                SELECT SupplierId, SUM(Total) AS TotalReturns, SUM(COALESCE(PaidAmount, 0)) AS CashReceived
+                FROM dbo.PurchaseReturns
+                GROUP BY SupplierId
+            ) ret ON s.Id = ret.SupplierId;`,
 
             `CREATE OR ALTER VIEW dbo.View_CashAccountBalances AS
             SELECT 
-                ca.Id AS AccountId, ca.Name AS AccountName, ca.Type AS AccountType, ca.OpeningBalance,
+                ca.Id AS AccountId,
+                ca.Name AS AccountName,
+                ca.Type AS AccountType,
+                ca.WarehouseId,
+                ca.OpeningBalance,
                 COALESCE(cp.TotalCustomerPayments, 0) AS TotalCustomerPayments,
-                COALESCE(si.TotalCashSales, 0) AS TotalCashSales,
+                COALESCE(si.TotalInitialCashSales, 0) AS TotalCashSales,
+                COALESCE(ei.TotalExceptionalIncomes, 0) AS TotalExceptionalIncomes,
                 COALESCE(dep.TotalDeposits, 0) AS TotalDeposits,
+                COALESCE(pr.TotalPurchaseReturnCash, 0) AS TotalPurchaseReturnCash,
+                COALESCE(rem.TotalRepRemittances, 0) AS TotalRepRemittances,
                 COALESCE(sp.TotalSupplierPayments, 0) AS TotalSupplierPayments,
+                COALESCE(pi.TotalInitialCashPurchases, 0) AS TotalCashPurchases,
                 COALESCE(ex.TotalExpenses, 0) AS TotalExpenses,
                 COALESCE(withd.TotalWithdrawals, 0) AS TotalWithdrawals,
-                (ca.OpeningBalance + COALESCE(cp.TotalCustomerPayments, 0) + COALESCE(si.TotalCashSales, 0) + COALESCE(dep.TotalDeposits, 0) - COALESCE(sp.TotalSupplierPayments, 0) - COALESCE(ex.TotalExpenses, 0) - COALESCE(withd.TotalWithdrawals, 0)) AS CurrentBalance
+                COALESCE(sr.TotalSalesReturnCash, 0) AS TotalSalesReturnCash,
+                COALESCE(adv.TotalEmployeeAdvances, 0) AS TotalEmployeeAdvances,
+                COALESCE(pd.TotalProfitDistributions, 0) AS TotalProfitDistributions,
+                COALESCE(pay.TotalPayroll, 0) AS TotalPayroll,
+                (
+                    ca.OpeningBalance
+                    + COALESCE(cp.TotalCustomerPayments, 0)
+                    + COALESCE(si.TotalInitialCashSales, 0)
+                    + COALESCE(ei.TotalExceptionalIncomes, 0)
+                    + COALESCE(dep.TotalDeposits, 0)
+                    + COALESCE(pr.TotalPurchaseReturnCash, 0)
+                    + COALESCE(rem.TotalRepRemittances, 0)
+                    - COALESCE(sp.TotalSupplierPayments, 0)
+                    - COALESCE(pi.TotalInitialCashPurchases, 0)
+                    - COALESCE(ex.TotalExpenses, 0)
+                    - COALESCE(withd.TotalWithdrawals, 0)
+                    - COALESCE(sr.TotalSalesReturnCash, 0)
+                    - COALESCE(adv.TotalEmployeeAdvances, 0)
+                    - COALESCE(pd.TotalProfitDistributions, 0)
+                    - COALESCE(pay.TotalPayroll, 0)
+                ) AS CurrentBalance
             FROM dbo.CashAccounts ca
             LEFT JOIN (SELECT PaidToAccountId, SUM(Amount) AS TotalCustomerPayments FROM dbo.CustomerPayments GROUP BY PaidToAccountId) cp ON ca.Id = cp.PaidToAccountId
-            LEFT JOIN (SELECT PaidToAccountId, SUM(PaidAmount) AS TotalCashSales FROM dbo.SalesInvoices WHERE Status = 'approved' GROUP BY PaidToAccountId) si ON ca.Id = si.PaidToAccountId
+            LEFT JOIN (
+                SELECT 
+                    s.PaidToAccountId,
+                    SUM(
+                        CASE 
+                            WHEN s.InitialPaidAmount IS NOT NULL THEN s.InitialPaidAmount
+                            WHEN (COALESCE(s.PaidAmount, 0) - COALESCE(lp.LinkedAmt, 0)) > 0 THEN (COALESCE(s.PaidAmount, 0) - COALESCE(lp.LinkedAmt, 0))
+                            ELSE 0
+                        END
+                    ) AS TotalInitialCashSales
+                FROM dbo.SalesInvoices s
+                LEFT JOIN (SELECT InvoiceId, SUM(Amount) AS LinkedAmt FROM dbo.CustomerPayments WHERE InvoiceId IS NOT NULL GROUP BY InvoiceId) lp ON s.Id = lp.InvoiceId
+                WHERE s.Status = 'approved' OR s.Status = 'completed' OR s.Status IS NULL
+                GROUP BY s.PaidToAccountId
+            ) si ON ca.Id = si.PaidToAccountId
+            LEFT JOIN (SELECT PaidToAccountId, SUM(Amount) AS TotalExceptionalIncomes FROM dbo.ExceptionalIncomes GROUP BY PaidToAccountId) ei ON ca.Id = ei.PaidToAccountId
             LEFT JOIN (SELECT AccountId, SUM(Amount) AS TotalDeposits FROM dbo.TreasuryTransactions WHERE Type = 'deposit' GROUP BY AccountId) dep ON ca.Id = dep.AccountId
+            LEFT JOIN (SELECT PaidToAccountId, SUM(PaidAmount) AS TotalPurchaseReturnCash FROM dbo.PurchaseReturns GROUP BY PaidToAccountId) pr ON ca.Id = pr.PaidToAccountId
+            LEFT JOIN (SELECT ToAccountId, SUM(Amount) AS TotalRepRemittances FROM dbo.RepRemittances GROUP BY ToAccountId) rem ON ca.Id = rem.ToAccountId
             LEFT JOIN (SELECT PaidFromAccountId, SUM(Amount) AS TotalSupplierPayments FROM dbo.SupplierPayments GROUP BY PaidFromAccountId) sp ON ca.Id = sp.PaidFromAccountId
-            LEFT JOIN (SELECT PaidFromAccountId, SUM(Amount) AS TotalExpenses FROM dbo.Expenses WHERE Status <> 'pending' GROUP BY PaidFromAccountId) ex ON ca.Id = ex.PaidFromAccountId
-            LEFT JOIN (SELECT AccountId, SUM(Amount) AS TotalWithdrawals FROM dbo.TreasuryTransactions WHERE Type = 'withdrawal' GROUP BY AccountId) withd ON ca.Id = withd.AccountId;`,
+            LEFT JOIN (
+                SELECT 
+                    p.PaidFromAccountId,
+                    SUM(
+                        CASE 
+                            WHEN p.InitialPaidAmount IS NOT NULL THEN p.InitialPaidAmount
+                            WHEN (COALESCE(p.PaidAmount, 0) - COALESCE(lsp.LinkedAmt, 0)) > 0 THEN (COALESCE(p.PaidAmount, 0) - COALESCE(lsp.LinkedAmt, 0))
+                            ELSE 0
+                        END
+                    ) AS TotalInitialCashPurchases
+                FROM dbo.PurchaseInvoices p
+                LEFT JOIN (SELECT InvoiceId, SUM(Amount) AS LinkedAmt FROM dbo.SupplierPayments WHERE InvoiceId IS NOT NULL GROUP BY InvoiceId) lsp ON p.Id = lsp.InvoiceId
+                GROUP BY p.PaidFromAccountId
+            ) pi ON ca.Id = pi.PaidFromAccountId
+            LEFT JOIN (SELECT PaidFromAccountId, SUM(Amount) AS TotalExpenses FROM dbo.Expenses WHERE Status IS NULL OR Status <> 'pending' GROUP BY PaidFromAccountId) ex ON ca.Id = ex.PaidFromAccountId
+            LEFT JOIN (SELECT AccountId, SUM(Amount) AS TotalWithdrawals FROM dbo.TreasuryTransactions WHERE Type = 'withdrawal' GROUP BY AccountId) withd ON ca.Id = withd.AccountId
+            LEFT JOIN (SELECT PaidFromAccountId, SUM(PaidAmount) AS TotalSalesReturnCash FROM dbo.SalesReturns GROUP BY PaidFromAccountId) sr ON ca.Id = sr.PaidFromAccountId
+            LEFT JOIN (SELECT PaidFromAccountId, SUM(Amount) AS TotalEmployeeAdvances FROM dbo.EmployeeAdvances GROUP BY PaidFromAccountId) adv ON ca.Id = adv.PaidFromAccountId
+            LEFT JOIN (SELECT PaidFromAccountId, SUM(Amount) AS TotalProfitDistributions FROM dbo.ProfitDistributions GROUP BY PaidFromAccountId) pd ON ca.Id = pd.PaidFromAccountId
+            LEFT JOIN (SELECT PaidFromAccountId, SUM(TotalAmount) AS TotalPayroll FROM dbo.PayrollRecords GROUP BY PaidFromAccountId) pay ON ca.Id = pay.PaidFromAccountId;`,
+
+            `CREATE OR ALTER VIEW dbo.View_SalesRepBalances AS
+            SELECT 
+                u.Id AS RepId,
+                u.Name AS RepName,
+                u.Phone,
+                u.Role,
+                w.Id AS RepWarehouseId,
+                w.Name AS RepWarehouseName,
+                COALESCE(si.InvoicesCount, 0) AS InvoicesCount,
+                COALESCE(si.TotalSoldValue, 0) AS TotalSoldValue,
+                COALESCE(si.TotalCollectedOnInvoices, 0) AS TotalCollectedOnInvoices,
+                COALESCE(sr.ReturnsCount, 0) AS ReturnsCount,
+                COALESCE(sr.TotalCustomerReturnsValue, 0) AS TotalCustomerReturnsValue,
+                COALESCE(sr.TotalRefundedByRep, 0) AS TotalRefundedByRep,
+                COALESCE(rem.RemittancesCount, 0) AS RemittancesCount,
+                COALESCE(rem.TotalRemittedCash, 0) AS TotalRemittedCash,
+                (
+                    COALESCE(si.TotalCollectedOnInvoices, 0)
+                    - COALESCE(sr.TotalRefundedByRep, 0)
+                    - COALESCE(rem.TotalRemittedCash, 0)
+                ) AS NetCashCustody,
+                COALESCE(iss.IssuesCount, 0) AS StockIssuesCount,
+                COALESCE(retw.ReturnsToWarehouseCount, 0) AS StockReturnsCount,
+                COALESCE(vis.VisitsCount, 0) AS VisitsCount
+            FROM dbo.Users u
+            LEFT JOIN dbo.Warehouses w ON w.RepId = u.Id AND w.IsRepWarehouse = 1
+            LEFT JOIN (
+                SELECT SalesRepId, COUNT(Id) AS InvoicesCount, SUM(Total) AS TotalSoldValue, SUM(COALESCE(PaidAmount, 0)) AS TotalCollectedOnInvoices
+                FROM dbo.SalesInvoices
+                WHERE (Status = 'approved' OR Status = 'completed' OR Status IS NULL) AND SalesRepId IS NOT NULL
+                GROUP BY SalesRepId
+            ) si ON u.Id = si.SalesRepId
+            LEFT JOIN (
+                SELECT CreatedById AS RepId, COUNT(Id) AS ReturnsCount, SUM(Total) AS TotalCustomerReturnsValue, SUM(COALESCE(PaidAmount, 0)) AS TotalRefundedByRep
+                FROM dbo.SalesReturns
+                GROUP BY CreatedById
+            ) sr ON u.Id = sr.RepId
+            LEFT JOIN (
+                SELECT SalesRepId, COUNT(Id) AS RemittancesCount, SUM(Amount) AS TotalRemittedCash
+                FROM dbo.RepRemittances
+                GROUP BY SalesRepId
+            ) rem ON u.Id = rem.SalesRepId
+            LEFT JOIN (
+                SELECT SalesRepId, COUNT(Id) AS IssuesCount
+                FROM dbo.StockIssuesToReps
+                GROUP BY SalesRepId
+            ) iss ON u.Id = iss.SalesRepId
+            LEFT JOIN (
+                SELECT SalesRepId, COUNT(Id) AS ReturnsToWarehouseCount
+                FROM dbo.StockReturnsFromReps
+                GROUP BY SalesRepId
+            ) retw ON u.Id = retw.SalesRepId
+            LEFT JOIN (
+                SELECT SalesRepId, COUNT(Id) AS VisitsCount
+                FROM dbo.CustomerVisits
+                GROUP BY SalesRepId
+            ) vis ON u.Id = vis.SalesRepId
+            WHERE u.IsSalesRep = 1 OR u.Role LIKE N'%مندوب%';`,
 
             `CREATE OR ALTER VIEW dbo.View_ItemStockBalances AS
             WITH InwardStock AS (

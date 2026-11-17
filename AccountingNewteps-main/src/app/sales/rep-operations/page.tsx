@@ -2,7 +2,7 @@
 
 "use client";
 
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useState, useEffect } from 'react';
 import PageHeader from "@/components/page-header";
 import {
   Card,
@@ -19,12 +19,13 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { Loader2, Coins, Package, ShoppingCart, Undo, Banknote } from "lucide-react";
+import { Loader2, Coins, Package, ShoppingCart, Undo, Banknote, Database, Users } from "lucide-react";
 import { useData } from "@/contexts/data-provider";
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
 import Link from 'next/link';
 
 // Data Interfaces
@@ -75,6 +76,9 @@ export default function RepOperationsPage() {
         fromDate: "",
         toDate: "",
     });
+    const [sqlRepsOverview, setSqlRepsOverview] = useState<any[]>([]);
+    const [sqlRepDetails, setSqlRepDetails] = useState<any | null>(null);
+    const [isFetchingSql, setIsFetchingSql] = useState(false);
 
     const {
         users,
@@ -88,6 +92,30 @@ export default function RepOperationsPage() {
     } = useData();
     
     const salesReps = users.filter((u: any) => u.isSalesRep || u.role === 'مندوب' || (u.role && u.role.includes('مندوب')));
+
+    // جلب الأرصدة المجمعة للمناديب من SQL View مباشرة (GROUP BY & SUM)
+    useEffect(() => {
+        const fetchSqlAggregated = async () => {
+            setIsFetchingSql(true);
+            try {
+                const params = new URLSearchParams({ type: 'rep-summary' });
+                if (filters.salesRepId) params.set('salesRepId', filters.salesRepId);
+                if (filters.fromDate) params.set('fromDate', filters.fromDate);
+                if (filters.toDate) params.set('toDate', filters.toDate);
+                const res = await fetch(`/api/reports/aggregated?${params.toString()}`);
+                const json = await res.json();
+                if (json.success) {
+                    setSqlRepsOverview(json.reps || []);
+                    setSqlRepDetails(json.detailedRepSummary || null);
+                }
+            } catch (e) {
+                console.error("Failed to fetch SQL rep summary:", e);
+            } finally {
+                setIsFetchingSql(false);
+            }
+        };
+        fetchSqlAggregated();
+    }, [filters.salesRepId, filters.fromDate, filters.toDate]);
 
     const handleFilterChange = (key: keyof typeof filters, value: string) => {
         setFilters(prev => ({...prev, [key]: value}));
@@ -219,15 +247,84 @@ export default function RepOperationsPage() {
                 balance: d.issued - d.sold - d.returned + d.customerReturns,
             }));
         
-        return { inventory, totalRemitted, totalSoldValue: totalSoldByRep, totalCollectedValue: totalCollectedByRep, transactionLog: transactionLog.sort((a,b) => new Date(b.date).getTime() - new Date(a.date).getTime()) };
+        return {
+            inventory,
+            totalRemitted: sqlRepDetails ? sqlRepDetails.totalRemitted : totalRemitted,
+            totalSoldValue: sqlRepDetails ? sqlRepDetails.totalSoldValue : totalSoldByRep,
+            totalCollectedValue: sqlRepDetails ? sqlRepDetails.totalCollectedValue : totalCollectedByRep,
+            netCashCustody: sqlRepDetails ? sqlRepDetails.netCashCustody : (totalCollectedByRep - totalRemitted),
+            transactionLog: transactionLog.sort((a,b) => new Date(b.date).getTime() - new Date(a.date).getTime())
+        };
 
-    }, [filters, issues, sales, returns, returnsFromCustomers, allItems, remittances, loading]);
+    }, [filters, issues, sales, returns, returnsFromCustomers, allItems, remittances, loading, sqlRepDetails]);
     
 
   return (
     <>
       <PageHeader title="مراقبة حركة ومستحقات المندوب" />
       <main className="flex flex-1 flex-col gap-4 p-4 md:gap-8 md:p-6">
+        {sqlRepsOverview.length > 0 && (
+            <Card className="border-primary/20">
+                <CardHeader className="pb-3">
+                    <div className="flex items-center justify-between">
+                        <div>
+                            <CardTitle className="flex items-center gap-2 text-lg">
+                                <Database className="h-5 w-5 text-primary" />
+                                ملخص أرصدة وعهد جميع المناديب (مجمع SQL مباشرة)
+                            </CardTitle>
+                            <CardDescription>اضغط على أي مندوب لعرض كشف حسابه التفصيلي وحركة الأصناف بعهدته.</CardDescription>
+                        </div>
+                        <Badge variant="outline" className="gap-1">
+                            <Users className="h-3.5 w-3.5" />
+                            {sqlRepsOverview.length} مندوب
+                        </Badge>
+                    </div>
+                </CardHeader>
+                <CardContent>
+                    <div className="w-full overflow-auto border rounded-lg">
+                        <Table>
+                            <TableHeader>
+                                <TableRow>
+                                    <TableHead>المندوب</TableHead>
+                                    <TableHead>مخزن العهدة</TableHead>
+                                    <TableHead className="text-center">عدد الفواتير</TableHead>
+                                    <TableHead className="text-center">إجمالي المبيعات</TableHead>
+                                    <TableHead className="text-center">المحصل نقداً</TableHead>
+                                    <TableHead className="text-center">المورد للخزينة</TableHead>
+                                    <TableHead className="text-center">صافي العهدة النقدية بذمته</TableHead>
+                                    <TableHead className="text-center">أذونات الصرف / المرتجع</TableHead>
+                                    <TableHead className="text-center">الزيارات</TableHead>
+                                </TableRow>
+                            </TableHeader>
+                            <TableBody>
+                                {sqlRepsOverview.map((rep: any) => (
+                                    <TableRow 
+                                        key={rep.RepId} 
+                                        className={`cursor-pointer transition-colors hover:bg-muted/60 ${filters.salesRepId === rep.RepId ? 'bg-primary/10 font-semibold' : ''}`}
+                                        onClick={() => handleFilterChange("salesRepId", rep.RepId)}
+                                    >
+                                        <TableCell className="font-medium">{rep.RepName}</TableCell>
+                                        <TableCell className="text-muted-foreground text-xs">{rep.RepWarehouseName || 'غير مرتبط'}</TableCell>
+                                        <TableCell className="text-center">{rep.InvoicesCount}</TableCell>
+                                        <TableCell className="text-center font-mono">{Number(rep.TotalSoldValue || 0).toLocaleString()} ج.م</TableCell>
+                                        <TableCell className="text-center font-mono text-emerald-500">{Number(rep.TotalCollectedOnInvoices || 0).toLocaleString()} ج.م</TableCell>
+                                        <TableCell className="text-center font-mono text-blue-500">{Number(rep.TotalRemittedCash || 0).toLocaleString()} ج.م</TableCell>
+                                        <TableCell className="text-center font-mono">
+                                            <Badge variant={Number(rep.NetCashCustody || 0) > 0 ? "destructive" : "secondary"}>
+                                                {Number(rep.NetCashCustody || 0).toLocaleString()} ج.م
+                                            </Badge>
+                                        </TableCell>
+                                        <TableCell className="text-center text-xs">{rep.StockIssuesCount} صرف / {rep.StockReturnsCount} تفريغ</TableCell>
+                                        <TableCell className="text-center">{rep.VisitsCount}</TableCell>
+                                    </TableRow>
+                                ))}
+                            </TableBody>
+                        </Table>
+                    </div>
+                </CardContent>
+            </Card>
+        )}
+
         <Card>
             <CardHeader>
                 <CardTitle>فلاتر البحث</CardTitle>

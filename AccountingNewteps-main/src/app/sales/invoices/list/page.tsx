@@ -92,7 +92,7 @@ const InvoiceItemsTable = ({ items }: { items: any[] }) => (
 )
 
 export default function SalesInvoicesListPage() {
-  const { salesInvoices: invoices, customers, warehouses, inventoryClosings, customerPayments, salesReturns, posSales, posReturns, settings, loading } = useData();
+  const { salesInvoices: invoices, customers, warehouses, users, inventoryClosings, customerPayments, salesReturns, posSales, posReturns, settings, loading } = useData();
   const router = useRouter();
   const shareRef = useRef<HTMLDivElement>(null);
   const printFrameRef = useRef<HTMLIFrameElement>(null);
@@ -101,9 +101,12 @@ export default function SalesInvoicesListPage() {
   const [filters, setFilters] = useState({
     customerId: "all",
     warehouseId: "all",
+    salesRepId: "all",
     fromDate: new Date().toISOString().split('T')[0],
     toDate: new Date().toISOString().split('T')[0],
   });
+  const [currentPage, setCurrentPage] = useState(1);
+  const [pageSize, setPageSize] = useState(50);
 
   const [printModal, setPrintModal] = useState<{ open: boolean, type: 'A4' | 'Thermal', invoice: SaleInvoice | null }>({
     open: false,
@@ -185,6 +188,7 @@ export default function SalesInvoicesListPage() {
 
   const handleFilterChange = (key: keyof typeof filters, value: string) => {
     setFilters(prev => ({ ...prev, [key]: value }));
+    setCurrentPage(1);
   };
   
   const lastClosingDates = useMemo(() => {
@@ -201,6 +205,10 @@ export default function SalesInvoicesListPage() {
   
   const customerOptions = useMemo(() => ([{value: 'all', label: 'كل العملاء'}, ...customers.map((c:any) => ({ value: c.id, label: c.name }))]), [customers]);
   const warehouseOptions = useMemo(() => ([{value: 'all', label: 'كل الفروع'}, ...warehouses.map((w:any) => ({ value: w.id, label: w.name }))]), [warehouses]);
+  const salesRepOptions = useMemo(() => {
+    const reps = (users || []).filter((u: any) => u.isSalesRep || u.role === 'مندوب' || (u.role && u.role.includes('مندوب')));
+    return [{ value: 'all', label: 'كل المناديب' }, ...reps.map((r: any) => ({ value: r.id, label: r.name }))];
+  }, [users]);
 
   const calculateCustomerBalance = (customerId: string) => {
     const customer = customers.find((c: any) => c.id === customerId);
@@ -260,10 +268,17 @@ export default function SalesInvoicesListPage() {
         if (to && invoiceDate > to) return false;
         if (filters.customerId && filters.customerId !== 'all' && invoice.customerId !== filters.customerId) return false;
         if (filters.warehouseId && filters.warehouseId !== 'all' && invoice.warehouseId !== filters.warehouseId) return false;
+        if (filters.salesRepId && filters.salesRepId !== 'all' && invoice.salesRepId !== filters.salesRepId) return false;
         
         return true;
       }).sort((a: any, b: any) => new Date(b.date).getTime() - new Date(a.date).getTime());
   }, [invoices, filters, lastClosingDates]);
+
+  const totalPages = Math.max(1, Math.ceil(filteredInvoices.length / pageSize));
+  const paginatedInvoices = useMemo(() => {
+    const startIndex = (currentPage - 1) * pageSize;
+    return filteredInvoices.slice(startIndex, startIndex + pageSize);
+  }, [filteredInvoices, currentPage, pageSize]);
 
   const companySettings = useMemo(() => settings?.main?.general || {}, [settings]);
   const posReceiptDesign = useMemo(() => settings?.main?.posReceipts?.defaultReceiptDesign || {}, [settings]);
@@ -383,7 +398,7 @@ export default function SalesInvoicesListPage() {
         <Card className="no-print">
             <CardHeader className="p-4"><CardTitle className="text-lg flex items-center gap-2"><Search className="h-4 w-4"/> فلاتر البحث</CardTitle></CardHeader>
             <CardContent className="p-4 pt-0">
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
                     <div className="space-y-2">
                         <Label className="text-xs">العميل</Label>
                         <Combobox options={customerOptions} value={filters.customerId} onValueChange={(v) => handleFilterChange("customerId", v)} placeholder="كل العملاء" emptyMessage="لا يوجد عملاء."/>
@@ -391,6 +406,10 @@ export default function SalesInvoicesListPage() {
                     <div className="space-y-2">
                         <Label className="text-xs">الفرع</Label>
                         <Combobox options={warehouseOptions} value={filters.warehouseId} onValueChange={(v) => handleFilterChange("warehouseId", v)} placeholder="كل الفروع" emptyMessage="لا توجد فروع."/>
+                    </div>
+                    <div className="space-y-2">
+                        <Label className="text-xs">المندوب</Label>
+                        <Combobox options={salesRepOptions} value={filters.salesRepId} onValueChange={(v) => handleFilterChange("salesRepId", v)} placeholder="كل المناديب" emptyMessage="لا يوجد مناديب."/>
                     </div>
                     <div className="space-y-2">
                         <Label className="text-xs">من تاريخ</Label>
@@ -405,9 +424,14 @@ export default function SalesInvoicesListPage() {
         </Card>
 
         <Card>
-          <CardHeader className="p-4 md:p-6">
-            <CardTitle className="text-xl">قائمة فواتير المبيعات</CardTitle>
-            <CardDescription>عرض وتتتبع فواتير المبيعات مع خيارات الطباعة والمشاركة.</CardDescription>
+          <CardHeader className="p-4 md:p-6 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+            <div>
+              <CardTitle className="text-xl">قائمة فواتير المبيعات</CardTitle>
+              <CardDescription>عرض وتتبع أحدث 50 فاتورة في كل صفحة مع خيارات الطباعة والمشاركة.</CardDescription>
+            </div>
+            <Badge variant="secondary" className="w-fit text-xs">
+              إجمالي النتائج: {filteredInvoices.length.toLocaleString()} فاتورة
+            </Badge>
           </CardHeader>
           <CardContent className="p-0 md:p-6 md:pt-0">
             {loading || isSharing ? (
@@ -416,6 +440,7 @@ export default function SalesInvoicesListPage() {
                 {isSharing && <p className="text-sm font-semibold animate-pulse text-primary">جاري معالجة صورة الفاتورة...</p>}
               </div>
             ) : (
+              <>
               <div className="w-full overflow-x-auto border-t md:border border-muted-foreground/10 md:rounded-lg">
                 <Table className="min-w-[900px]">
                   <TableHeader>
@@ -432,8 +457,8 @@ export default function SalesInvoicesListPage() {
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {filteredInvoices.length > 0 ? (
-                      filteredInvoices.map((invoice:any) => {
+                    {paginatedInvoices.length > 0 ? (
+                      paginatedInvoices.map((invoice:any) => {
                         const paid = invoice.paidAmount || 0;
                         const remaining = invoice.total - paid;
                         const etaInfo = etaSubmittedMap[invoice.id] || (invoice.etaUuid ? { uuid: invoice.etaUuid, status: invoice.etaStatus || 'Valid' } : null);
@@ -547,6 +572,23 @@ export default function SalesInvoicesListPage() {
                   </TableBody>
                 </Table>
               </div>
+              {filteredInvoices.length > 0 && (
+                <div className="flex flex-col sm:flex-row items-center justify-between gap-4 p-4 border-t md:border-t-0 mt-2">
+                  <div className="text-xs text-muted-foreground">
+                    عرض <span className="font-bold text-foreground">{(currentPage - 1) * pageSize + 1}</span> إلى <span className="font-bold text-foreground">{Math.min(currentPage * pageSize, filteredInvoices.length)}</span> من إجمالي <span className="font-bold text-foreground">{filteredInvoices.length}</span> فاتورة
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Button variant="outline" size="sm" onClick={() => setCurrentPage(1)} disabled={currentPage === 1}>الأولى</Button>
+                    <Button variant="outline" size="sm" onClick={() => setCurrentPage(p => Math.max(1, p - 1))} disabled={currentPage === 1}>السابق</Button>
+                    <span className="text-xs font-medium px-3">
+                      صفحة {currentPage} من {totalPages}
+                    </span>
+                    <Button variant="outline" size="sm" onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))} disabled={currentPage >= totalPages}>التالي</Button>
+                    <Button variant="outline" size="sm" onClick={() => setCurrentPage(totalPages)} disabled={currentPage >= totalPages}>الأخيرة</Button>
+                  </div>
+                </div>
+              )}
+              </>
             )}
           </CardContent>
         </Card>

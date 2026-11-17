@@ -14,8 +14,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
 import { useData } from "@/contexts/data-provider";
-import { Loader2, AlertTriangle, Lock, Trash2, Calculator, CheckCircle2 } from "lucide-react";
-import React, { useState, useMemo } from "react";
+import { Loader2, AlertTriangle, Lock, Trash2, Calculator, CheckCircle2, Archive, Database, Search, History, FileCheck2 } from "lucide-react";
+import React, { useState, useMemo, useEffect, useCallback } from "react";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -29,6 +29,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Badge } from "@/components/ui/badge";
 import { useAuth } from "@/contexts/auth-context";
 import { calculateStockForItemInWarehouse } from "@/lib/inventory-utils";
 import { cn } from "@/lib/utils";
@@ -46,23 +47,125 @@ export default function PeriodClosingPage() {
     const [selectedClosingDetails, setSelectedClosingDetails] = useState<InventoryClosing | null>(null);
     const { user } = useAuth();
     
+    // حالة أرشفة الفترات والسنوات المالية المغلقة
+    const [archiveCutoffDate, setArchiveCutoffDate] = useState("");
+    const [archiveWarehouseId, setArchiveWarehouseId] = useState("all");
+    const [archivePreview, setArchivePreview] = useState<any | null>(null);
+    const [isArchiving, setIsArchiving] = useState(false);
+    const [archiveLogs, setArchiveLogs] = useState<any[]>([]);
+    const [archiveSearch, setArchiveSearch] = useState("");
+    const [archivedBrowseData, setArchivedBrowseData] = useState<any | null>(null);
+    const [isBrowsingArchive, setIsBrowsingArchive] = useState(false);
+
     const { 
         items, warehouses, inventoryClosings, allData, dbAction, loading: dataLoading,
         posSessions, settings
     } = useData();
 
+    const fetchArchiveLogs = useCallback(async () => {
+        try {
+            const res = await fetch('/api/archive/period?mode=logs');
+            const json = await res.json();
+            if (json.success) {
+                setArchiveLogs(json.logs || []);
+            }
+        } catch (e) {
+            console.error("Failed to load archive logs:", e);
+        }
+    }, []);
+
+    useEffect(() => {
+        fetchArchiveLogs();
+    }, [fetchArchiveLogs]);
+
+    const handlePreviewArchive = async () => {
+        if (!archiveCutoffDate) {
+            toast({ variant: 'destructive', title: 'خطأ', description: 'يرجى تحديد تاريخ نهاية الفترة المراد أرشفتها.' });
+            return;
+        }
+        setIsArchiving(true);
+        try {
+            const params = new URLSearchParams({
+                mode: 'preview',
+                cutoffDate: archiveCutoffDate,
+                warehouseId: archiveWarehouseId
+            });
+            const res = await fetch(`/api/archive/period?${params.toString()}`);
+            const json = await res.json();
+            if (json.success) {
+                setArchivePreview(json);
+            } else {
+                toast({ variant: 'destructive', title: 'خطأ', description: json.error || 'تعذر معاينة بيانات الأرشفة.' });
+            }
+        } catch (e) {
+            toast({ variant: 'destructive', title: 'خطأ', description: 'تعذر الاتصال بالخادم.' });
+        } finally {
+            setIsArchiving(false);
+        }
+    };
+
+    const handleExecuteArchive = async () => {
+        if (!archiveCutoffDate) return;
+        setIsArchiving(true);
+        try {
+            const whObj = warehouses.find((w: Warehouse) => w.id === archiveWarehouseId);
+            const res = await fetch('/api/archive/period', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    cutoffDate: archiveCutoffDate,
+                    warehouseId: archiveWarehouseId,
+                    warehouseName: archiveWarehouseId === 'all' ? 'كل الفروع والمخازن' : (whObj?.name || archiveWarehouseId),
+                    userId: user?.id,
+                    userName: user?.name
+                })
+            });
+            const json = await res.json();
+            if (json.success) {
+                toast({
+                    title: 'تمت أرشفة الفترة بنجاح!',
+                    description: `تم ترحيل ${json.totalArchived} سجل إلى الجداول التاريخية مع الحفاظ التام على جميع الأرصدة الافتتاحية للعملاء والموردين والخزائن والمناديب.`
+                });
+                setArchivePreview(null);
+                fetchArchiveLogs();
+            } else {
+                toast({ variant: 'destructive', title: 'تعذر تنفيذ الأرشفة', description: json.error || 'حدث خطأ أثناء الأرشفة.' });
+            }
+        } catch (e) {
+            toast({ variant: 'destructive', title: 'خطأ', description: 'فشل الاتصال بالخادم.' });
+        } finally {
+            setIsArchiving(false);
+        }
+    };
+
+    const handleBrowseArchive = async (batchId?: string) => {
+        setIsBrowsingArchive(true);
+        try {
+            const params = new URLSearchParams({ mode: 'browse' });
+            if (batchId) params.set('batchId', batchId);
+            if (archiveSearch) params.set('search', archiveSearch);
+            const res = await fetch(`/api/archive/period?${params.toString()}`);
+            const json = await res.json();
+            if (json.success) {
+                setArchivedBrowseData(json);
+            }
+        } catch (e) {
+            toast({ variant: 'destructive', title: 'خطأ', description: 'تعذر جلب سجلات الأرشيف.' });
+        } finally {
+            setIsBrowsingArchive(false);
+        }
+    };
+
     // فحص حالة اليوم المحدد في يوميات العمل (هل اليوم مغلق أم لا يزال مفتوحاً)
     const selectedDayStatus = useMemo(() => {
         if (!closingDate) return null;
 
-        // استخراج تاريخ الإقفال المختار بصيغة YYYY-MM-DD
         const selectedDateStr = new Date(closingDate).toLocaleDateString('en-CA');
         const todayStr = new Date().toLocaleDateString('en-CA');
         const activePosWorkDay = settings?.main?.posSettings?.workDay;
 
         const openSessions = (posSessions || []).filter((s: any) => !s.isClosed);
 
-        // هل توجد جلسة عمل مفتوحة تطابق اليوم المختار تحديداً؟
         const openSessionOnSelectedDate = openSessions.find((s: any) => {
             const sDate = s.workDayDate 
                 || s.closingStatement?.workDayDate 
@@ -71,10 +174,7 @@ export default function PeriodClosingPage() {
             return sDate === selectedDateStr;
         });
 
-        // إذا كان اليوم المختار هو تاريخ اليوم الفعلي وتوجد جلسة عمل مفتوحة لم تُقفل بعد
         const isTodayOpen = (selectedDateStr === todayStr && openSessions.length > 0);
-
-        // إذا كان اليوم المختار يطابق يوم العمل النشط في إعدادات نقاط البيع ولم يُقفل
         const isActiveWorkDayOpen = Boolean(activePosWorkDay && selectedDateStr === activePosWorkDay && openSessions.length > 0);
 
         if (openSessionOnSelectedDate || isTodayOpen || isActiveWorkDayOpen) {
@@ -85,7 +185,6 @@ export default function PeriodClosingPage() {
             };
         }
 
-        // البحث عما إذا كان هناك سجل إقفال مثبت ليوم العمل لهذا التاريخ
         const closedSession = (posSessions || []).find((s: any) => {
             if (!s.isClosed) return false;
             const sDate = s.workDayDate 
@@ -135,7 +234,6 @@ export default function PeriodClosingPage() {
             return;
         }
 
-        // إذا كان اليوم المختار بالذات ما زال مفتوحاً كـ يوم عمل في نقاط البيع
         if (selectedDayStatus && selectedDayStatus.isOpen) {
             toast({ 
                 variant: 'destructive', 
@@ -146,7 +244,6 @@ export default function PeriodClosingPage() {
         }
 
         setIsLoading(true);
-        // حساب الرصيد الدفتري الدقيق لكل صنف في المخزن المحدد حتى تاريخ ونهاية يوم الإقفال
         const balances = items
             .map((item: Item) => {
                 const balance = calculateStockForItemInWarehouse(item.id, warehouseId, allData, closingDate);
@@ -220,11 +317,11 @@ export default function PeriodClosingPage() {
 
     return (
         <>
-            <PageHeader title="إقفال الفترات المخزنية والأرصدة الافتتاحية" />
+            <PageHeader title="إقفال وأرشفة الفترات والسنوات المالية" />
             <main className="flex flex-1 flex-col gap-4 p-4 md:gap-8 md:p-6">
                 <Card>
                     <CardHeader>
-                        <CardTitle>إقفال فترة جديدة وتكوين رصيد افتتاحي</CardTitle>
+                        <CardTitle>1. إقفال فترة مخزنية جديدة وتكوين رصيد افتتاحي</CardTitle>
                         <CardDescription>
                             حدد المخزن وتاريخ الإقفال. سيقوم النظام بحساب الأرصدة الدفترية وحفظها كرصيد افتتاحي للفترة الجديدة، مع التحقق من أن اليوم المختار مغلق في يوميات العمل.
                         </CardDescription>
@@ -428,6 +525,212 @@ export default function PeriodClosingPage() {
                         </CardContent>
                     </Card>
                 )}
+
+                {/* القسم الثاني: أرشفة الفترات والسنوات المالية المغلقة (ترحيل الجداول التاريخية) */}
+                <Card className="border-primary/30 shadow-sm">
+                    <CardHeader>
+                        <div className="flex items-center gap-2">
+                            <Archive className="h-5 w-5 text-primary" />
+                            <CardTitle>2. أرشفة الفترات والسنوات المالية المغلقة (ترحيل الجداول التاريخية)</CardTitle>
+                        </div>
+                        <CardDescription>
+                            ترحيل الفواتير والحركات القديمة وعهد وتوريدات المناديب إلى جداول الأرشيف التاريخية (`dbo.Archived*`) بعد دمج صافي أثرها المالي تلقائياً في الأرصدة الافتتاحية للعملاء والموردين والخزائن ليبقى النظام خفيفاً وسريعاً للأبد.
+                        </CardDescription>
+                    </CardHeader>
+                    <CardContent className="space-y-6">
+                        <div className="grid md:grid-cols-3 gap-4 items-end">
+                            <div className="space-y-2">
+                                <Label>نطاق الفرع / المخزن</Label>
+                                <Select value={archiveWarehouseId} onValueChange={v => { setArchiveWarehouseId(v); setArchivePreview(null); }}>
+                                    <SelectTrigger><SelectValue placeholder="كل الفروع والمخازن" /></SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value="all">كل الفروع والمخازن (شامل توريدات المناديب)</SelectItem>
+                                        {warehouses.map((w: Warehouse) => <SelectItem key={w.id} value={w.id}>{w.name}</SelectItem>)}
+                                    </SelectContent>
+                                </Select>
+                            </div>
+                            <div className="space-y-2">
+                                <Label>أرشفة الحركات حتى نهاية تاريخ</Label>
+                                <Input
+                                    type="date"
+                                    value={archiveCutoffDate}
+                                    onChange={(e) => {
+                                        setArchiveCutoffDate(e.target.value);
+                                        setArchivePreview(null);
+                                    }}
+                                />
+                            </div>
+                            <div>
+                                <Button onClick={handlePreviewArchive} disabled={isArchiving || !archiveCutoffDate} className="w-full md:w-auto">
+                                    {isArchiving ? <Loader2 className="ml-2 h-4 w-4 animate-spin" /> : <Database className="ml-2 h-4 w-4" />}
+                                    معاينة السجلات القابلة للأرشفة
+                                </Button>
+                            </div>
+                        </div>
+
+                        {archivePreview && (
+                            <div className="rounded-lg border bg-muted/30 p-4 space-y-4">
+                                <div className="flex items-center justify-between">
+                                    <h4 className="font-bold text-sm flex items-center gap-2">
+                                        <FileCheck2 className="h-4 w-4 text-emerald-500" />
+                                        نتيجة فحص السجلات حتى تاريخ {new Date(archivePreview.cutoffDate).toLocaleDateString('ar-EG')}
+                                    </h4>
+                                    <Badge variant="default">
+                                        إجمالي السجلات: {Number(archivePreview.totalRecords || 0).toLocaleString()} سجل
+                                    </Badge>
+                                </div>
+                                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-center">
+                                    <div className="p-3 rounded-md border bg-background">
+                                        <div className="text-xs text-muted-foreground">فواتير المبيعات والكاشير</div>
+                                        <div className="text-lg font-bold text-primary mt-1">{archivePreview.counts?.salesInvoicesCount || 0}</div>
+                                    </div>
+                                    <div className="p-3 rounded-md border bg-background">
+                                        <div className="text-xs text-muted-foreground">مرتجعات المبيعات</div>
+                                        <div className="text-lg font-bold mt-1">{archivePreview.counts?.salesReturnsCount || 0}</div>
+                                    </div>
+                                    <div className="p-3 rounded-md border bg-background">
+                                        <div className="text-xs text-muted-foreground">فواتير ومرتجعات الشراء</div>
+                                        <div className="text-lg font-bold mt-1">
+                                            {Number(archivePreview.counts?.purchaseInvoicesCount || 0) + Number(archivePreview.counts?.purchaseReturnsCount || 0)}
+                                        </div>
+                                    </div>
+                                    <div className="p-3 rounded-md border bg-background">
+                                        <div className="text-xs text-muted-foreground">حركات وتوريدات المناديب</div>
+                                        <div className="text-lg font-bold text-amber-500 mt-1">
+                                            {Number(archivePreview.counts?.repIssuesCount || 0) + Number(archivePreview.counts?.repReturnsCount || 0) + Number(archivePreview.counts?.repRemittancesCount || 0)}
+                                        </div>
+                                    </div>
+                                </div>
+
+                                {Number(archivePreview.totalRecords || 0) > 0 && (
+                                    <div className="flex justify-end pt-2">
+                                        <AlertDialog>
+                                            <AlertDialogTrigger asChild>
+                                                <Button variant="destructive" disabled={isArchiving}>
+                                                    <Archive className="ml-2 h-4 w-4" />
+                                                    تنفيذ الأرشفة وترحيل الأرصدة الافتتاحية الآن
+                                                </Button>
+                                            </AlertDialogTrigger>
+                                            <AlertDialogContent>
+                                                <AlertDialogHeader>
+                                                    <AlertDialogTitle>تأكيد أرشفة الفترة وترحيل السجلات التاريخية</AlertDialogTitle>
+                                                    <AlertDialogDescription>
+                                                        سيقوم النظام بدمج صافي أثر الفواتير والحركات حتى تاريخ <span className="font-bold text-foreground">{new Date(archiveCutoffDate).toLocaleDateString('ar-EG')}</span> في الأرصدة الافتتاحية للعملاء والموردين والخزائن، ثم نقل ({archivePreview.totalRecords}) سجل إلى جداول الأرشيف التاريخية. ستبقى جميع الفواتير المؤرشفة متاحة للبحث والعرض في قسم الأرشيف أدناه.
+                                                    </AlertDialogDescription>
+                                                </AlertDialogHeader>
+                                                <AlertDialogFooter>
+                                                    <AlertDialogCancel>إلغاء</AlertDialogCancel>
+                                                    <AlertDialogAction onClick={handleExecuteArchive} className="bg-destructive hover:bg-destructive/90">
+                                                        نعم، نفذ الأرشفة الآمنة
+                                                    </AlertDialogAction>
+                                                </AlertDialogFooter>
+                                            </AlertDialogContent>
+                                        </AlertDialog>
+                                    </div>
+                                )}
+                            </div>
+                        )}
+                    </CardContent>
+                </Card>
+
+                {/* القسم الثالث: سجل عمليات الأرشفة واستعراض الفواتير المؤرشفة */}
+                <Card>
+                    <CardHeader className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+                        <div>
+                            <CardTitle className="flex items-center gap-2">
+                                <History className="h-5 w-5 text-muted-foreground" />
+                                سجل عمليات الأرشفة واستعراض الأرشيف التاريخي
+                            </CardTitle>
+                            <CardDescription>البحث في الفواتير والحركات التاريخية المرحلة إلى الأرشيف.</CardDescription>
+                        </div>
+                        <div className="flex items-center gap-2">
+                            <Input
+                                placeholder="ابحث برقم الفاتورة أو اسم العميل..."
+                                value={archiveSearch}
+                                onChange={(e) => setArchiveSearch(e.target.value)}
+                                className="w-60 h-9"
+                            />
+                            <Button variant="outline" size="sm" onClick={() => handleBrowseArchive()} disabled={isBrowsingArchive}>
+                                {isBrowsingArchive ? <Loader2 className="h-4 w-4 animate-spin" /> : <Search className="h-4 w-4 ml-1" />}
+                                بحث في الأرشيف
+                            </Button>
+                        </div>
+                    </CardHeader>
+                    <CardContent className="space-y-6">
+                        {archiveLogs.length > 0 ? (
+                            <div className="w-full overflow-auto border rounded-lg">
+                                <Table>
+                                    <TableHeader>
+                                        <TableRow>
+                                            <TableHead>تاريخ تنفيذ الأرشفة</TableHead>
+                                            <TableHead>تاريخ قطع الفترة</TableHead>
+                                            <TableHead>النطاق</TableHead>
+                                            <TableHead>بواسطة</TableHead>
+                                            <TableHead className="text-center">إجمالي السجلات المؤرشفة</TableHead>
+                                            <TableHead className="text-center">استعراض</TableHead>
+                                        </TableRow>
+                                    </TableHeader>
+                                    <TableBody>
+                                        {archiveLogs.map((log: any) => (
+                                            <TableRow key={log.Id}>
+                                                <TableCell className="text-xs font-mono">{new Date(log.ArchiveDate).toLocaleString('ar-EG')}</TableCell>
+                                                <TableCell className="font-semibold">{new Date(log.CutoffDate).toLocaleDateString('ar-EG')}</TableCell>
+                                                <TableCell>{log.WarehouseName || 'كل الفروع'}</TableCell>
+                                                <TableCell>{log.ArchivedByName || '-'}</TableCell>
+                                                <TableCell className="text-center">
+                                                    <Badge variant="secondary">{log.TotalRecordsArchived} سجل</Badge>
+                                                </TableCell>
+                                                <TableCell className="text-center">
+                                                    <Button variant="ghost" size="sm" onClick={() => handleBrowseArchive(log.Id)}>
+                                                        عرض السجلات
+                                                    </Button>
+                                                </TableCell>
+                                            </TableRow>
+                                        ))}
+                                    </TableBody>
+                                </Table>
+                            </div>
+                        ) : (
+                            <p className="text-center text-sm text-muted-foreground py-6">لا توجد عمليات أرشفة مسجلة حتى الآن.</p>
+                        )}
+
+                        {archivedBrowseData && (
+                            <div className="space-y-4 pt-2 border-t">
+                                <h4 className="font-bold text-sm">نتائج البحث في الأرشيف التاريخي ({archivedBrowseData.archivedSales?.length || 0} فاتورة بيع)</h4>
+                                <div className="w-full overflow-auto border rounded-lg max-h-80">
+                                    <Table>
+                                        <TableHeader>
+                                            <TableRow>
+                                                <TableHead>رقم الفاتورة</TableHead>
+                                                <TableHead>التاريخ</TableHead>
+                                                <TableHead>العميل</TableHead>
+                                                <TableHead className="text-center">الإجمالي</TableHead>
+                                                <TableHead className="text-center">المدفوع</TableHead>
+                                            </TableRow>
+                                        </TableHeader>
+                                        <TableBody>
+                                            {(archivedBrowseData.archivedSales || []).length > 0 ? (
+                                                archivedBrowseData.archivedSales.map((inv: any) => (
+                                                    <TableRow key={inv.Id}>
+                                                        <TableCell className="font-mono font-bold">{inv.InvoiceNumber}</TableCell>
+                                                        <TableCell className="text-xs">{new Date(inv.Date).toLocaleDateString('ar-EG')}</TableCell>
+                                                        <TableCell>{inv.CustomerName || 'عميل نقدي'}</TableCell>
+                                                        <TableCell className="text-center font-bold">{Number(inv.Total || 0).toLocaleString()} ج.م</TableCell>
+                                                        <TableCell className="text-center text-emerald-500">{Number(inv.PaidAmount || 0).toLocaleString()} ج.م</TableCell>
+                                                    </TableRow>
+                                                ))
+                                            ) : (
+                                                <TableRow>
+                                                    <TableCell colSpan={5} className="text-center text-muted-foreground py-6">لا توجد فواتير مؤرشفة مطابقة.</TableCell>
+                                                </TableRow>
+                                            )}
+                                        </TableBody>
+                                    </Table>
+                                </div>
+                            </div>
+                        )}
+                    </CardContent>
+                </Card>
 
             </main>
         </>

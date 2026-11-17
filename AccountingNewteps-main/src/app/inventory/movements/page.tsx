@@ -144,15 +144,22 @@ export default function InventoryMovementsPage() {
   const [filters, setFilters] = useState({
     branchId: "all",
     warehouseId: "all",
+    salesRepId: "all",
     type: "all",
     fromDate: new Date().toISOString().split('T')[0],
     toDate: new Date().toISOString().split('T')[0]
   });
+  const [currentPage, setCurrentPage] = useState(1);
+  const [pageSize] = useState(50);
   
   const [selectedMove, setSelectedMove] = useState<any | null>(null);
 
-  const { stockInRecords, stockOutRecords, stockTransferRecords, stockAdjustmentRecords, warehouses, inventoryZones, items: allItems, posSales, salesInvoices, salesReturns, posReturns, purchaseReturns, stockIssuesToReps, stockReturnsFromReps, loading } = useData();
+  const { stockInRecords, stockOutRecords, stockTransferRecords, stockAdjustmentRecords, warehouses, inventoryZones, users, items: allItems, posSales, salesInvoices, salesReturns, posReturns, purchaseReturns, stockIssuesToReps, stockReturnsFromReps, loading } = useData();
   const { user } = useAuth();
+
+  const salesReps = useMemo(() => {
+    return (users || []).filter((u: any) => u.isSalesRep || u.role === 'مندوب' || (u.role && u.role.includes('مندوب')));
+  }, [users]);
 
   const authorizedBranches = useMemo(() => {
     const b = warehouses.filter((w: any) => !w.isMain && !w.isRepWarehouse && !w.repId);
@@ -204,19 +211,29 @@ export default function InventoryMovementsPage() {
     
     // IN
     stockInRecords.forEach((r: any) => allMovements.push({ ...r, type: 'in', warehouseId: r.warehouseId }));
-    salesReturns.forEach((r: any) => allMovements.push({ ...r, type: 'in', warehouseId: r.warehouseId, reason: 'sales_return'}));
-    posReturns.forEach((r: any) => allMovements.push({ ...r, type: 'in', warehouseId: r.warehouseId, reason: 'pos_return'}));
+    
+    const seenReturnIds = new Set<string>();
+    salesReturns.forEach((r: any) => {
+        if (r.id) seenReturnIds.add(r.id);
+        allMovements.push({ ...r, type: 'in', warehouseId: r.warehouseId, reason: (!r.receiptNumber || r.receiptNumber.startsWith('POS-RET')) ? 'pos_return' : 'sales_return' });
+    });
+    posReturns.forEach((r: any) => {
+        if (r.id && seenReturnIds.has(r.id)) return;
+        allMovements.push({ ...r, type: 'in', warehouseId: r.warehouseId, reason: 'pos_return' });
+    });
     stockReturnsFromReps.forEach((r: any) => allMovements.push({ ...r, type: 'in', warehouseId: r.warehouseId, reason: 'rep_return' }));
 
     // OUT - Add Sales explicitly to movements to be consistent with Item Ledger
-    stockOutRecords.forEach((r: any) => allMovements.push({ ...r, type: 'out', warehouseId: r.sourceId }));
+    stockOutRecords.forEach((r: any) => allMovements.push({ ...r, type: 'out', warehouseId: r.sourceId || r.warehouseId }));
     
     // Filter sales that don't already have an explicit stock-out record (to avoid double counting manual/manufacturing stock-outs)
-    salesInvoices.filter((s:any) => s.status === 'approved' && !stockOutRecords.some(so => so.saleInvoiceId === s.id)).forEach((s: any) => {
-        allMovements.push({ ...s, type: 'out', reason: 'sales_invoice', warehouseId: s.warehouseId });
+    const seenSaleIds = new Set<string>();
+    salesInvoices.filter((s:any) => (s.status === 'approved' || s.status === 'completed' || !s.status) && !stockOutRecords.some(so => so.saleInvoiceId === s.id)).forEach((s: any) => {
+        if (s.id) seenSaleIds.add(s.id);
+        allMovements.push({ ...s, type: 'out', reason: s.cashierId ? 'pos_sale' : 'sales_invoice', warehouseId: s.warehouseId });
     });
     
-    posSales.filter((s:any) => !stockOutRecords.some(so => so.saleInvoiceId === s.id)).forEach((s: any) => {
+    posSales.filter((s:any) => (!s.id || !seenSaleIds.has(s.id)) && !stockOutRecords.some(so => so.saleInvoiceId === s.id)).forEach((s: any) => {
         allMovements.push({ ...s, type: 'out', reason: 'pos_sale', warehouseId: s.warehouseId });
     });
 
@@ -241,6 +258,7 @@ export default function InventoryMovementsPage() {
       if (fromDate && moveDate < fromDate) return false;
       if (toDate && moveDate > toDate) return false;
       if (filters.type !== 'all' && move.type !== filters.type) return false;
+      if (filters.salesRepId !== 'all' && move.salesRepId !== filters.salesRepId) return false;
       
       if (filters.warehouseId !== 'all') {
         const whId = filters.warehouseId;
@@ -259,9 +277,15 @@ export default function InventoryMovementsPage() {
     salesInvoices, posSales, filters
   ]);
 
+  const totalPages = Math.max(1, Math.ceil(filteredMovements.length / pageSize));
+  const paginatedMovements = useMemo(() => {
+    const startIndex = (currentPage - 1) * pageSize;
+    return filteredMovements.slice(startIndex, startIndex + pageSize);
+  }, [filteredMovements, currentPage, pageSize]);
 
   const handleFilterChange = (key: keyof typeof filters, value: string) => {
     setFilters(prev => ({...prev, [key]: value}));
+    setCurrentPage(1);
   }
 
   if (loading && allWarehouses.length === 0) {
@@ -298,7 +322,7 @@ export default function InventoryMovementsPage() {
                 <CardTitle>فلاتر البحث</CardTitle>
             </CardHeader>
             <CardContent>
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-6 gap-4">
                      <div className="space-y-2">
                         <Label>الفرع</Label>
                         <Select value={filters.branchId} onValueChange={(v) => {
@@ -323,6 +347,18 @@ export default function InventoryMovementsPage() {
                             <SelectContent>
                                 <SelectItem value="all">كل المخازن التابعة للفرع</SelectItem>
                                 {allWarehouses.map((w: Warehouse) => <SelectItem key={w.id} value={w.id}>{w.name}</SelectItem>)}
+                            </SelectContent>
+                        </Select>
+                    </div>
+                     <div className="space-y-2">
+                        <Label>المندوب</Label>
+                        <Select value={filters.salesRepId} onValueChange={(v) => handleFilterChange("salesRepId", v)}>
+                            <SelectTrigger>
+                                <SelectValue placeholder="كل المناديب" />
+                            </SelectTrigger>
+                            <SelectContent>
+                                <SelectItem value="all">كل المناديب</SelectItem>
+                                {salesReps.map((r: any) => <SelectItem key={r.id} value={r.id}>{r.name}</SelectItem>)}
                             </SelectContent>
                         </Select>
                     </div>
@@ -354,11 +390,16 @@ export default function InventoryMovementsPage() {
         </Card>
 
         <Card>
-          <CardHeader>
-            <CardTitle>سجل حركات المخزون</CardTitle>
-            <CardDescription>
-              عرض لجميع عمليات الاستلام والصرف والتحويل والتسويات والمبيعات التي تمت في المخازن.
-            </CardDescription>
+          <CardHeader className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+            <div>
+              <CardTitle>سجل حركات المخزون</CardTitle>
+              <CardDescription>
+                عرض أحدث 50 حركة مخزنية في كل صفحة (الاستلام، الصرف، التحويل، التسويات، المبيعات، وعهد المناديب).
+              </CardDescription>
+            </div>
+            <Badge variant="secondary" className="w-fit text-xs">
+              إجمالي الحركات: {filteredMovements.length.toLocaleString()} حركة
+            </Badge>
           </CardHeader>
           <CardContent>
             {loading ? (
@@ -366,6 +407,7 @@ export default function InventoryMovementsPage() {
                     <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
                 </div>
             ) : (
+                <>
                 <div className="w-full overflow-auto border rounded-lg">
                     <Dialog onOpenChange={(open) => !open && setSelectedMove(null)}>
                     <Table>
@@ -378,7 +420,7 @@ export default function InventoryMovementsPage() {
                             </TableRow>
                         </TableHeader>
                         <TableBody>
-                            {filteredMovements.length > 0 ? filteredMovements.map((move: any) => (
+                            {paginatedMovements.length > 0 ? paginatedMovements.map((move: any) => (
                             <TableRow key={`${move.type}-${move.id}`}>
                                 <TableCell>
                                     <Tooltip>
@@ -450,6 +492,23 @@ export default function InventoryMovementsPage() {
                     <ItemsDetailsDialog move={selectedMove} allItems={allItems} salesInvoices={salesInvoices} posSales={posSales} />
                     </Dialog>
                 </div>
+                {filteredMovements.length > 0 && (
+                    <div className="flex flex-col sm:flex-row items-center justify-between gap-4 pt-4">
+                        <div className="text-xs text-muted-foreground">
+                            عرض <span className="font-bold text-foreground">{(currentPage - 1) * pageSize + 1}</span> إلى <span className="font-bold text-foreground">{Math.min(currentPage * pageSize, filteredMovements.length)}</span> من إجمالي <span className="font-bold text-foreground">{filteredMovements.length}</span> حركة
+                        </div>
+                        <div className="flex items-center gap-2">
+                            <Button variant="outline" size="sm" onClick={() => setCurrentPage(1)} disabled={currentPage === 1}>الأولى</Button>
+                            <Button variant="outline" size="sm" onClick={() => setCurrentPage(p => Math.max(1, p - 1))} disabled={currentPage === 1}>السابق</Button>
+                            <span className="text-xs font-medium px-3">
+                                صفحة {currentPage} من {totalPages}
+                            </span>
+                            <Button variant="outline" size="sm" onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))} disabled={currentPage >= totalPages}>التالي</Button>
+                            <Button variant="outline" size="sm" onClick={() => setCurrentPage(totalPages)} disabled={currentPage >= totalPages}>الأخيرة</Button>
+                        </div>
+                    </div>
+                )}
+                </>
             )}
           </CardContent>
         </Card>

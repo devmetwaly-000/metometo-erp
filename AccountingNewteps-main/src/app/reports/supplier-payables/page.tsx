@@ -1,7 +1,7 @@
 
 "use client";
 
-import React, { useMemo, useState } from "react";
+import React, { useMemo, useState, useEffect, useCallback } from "react";
 import Link from 'next/link';
 import PageHeader from "@/components/page-header";
 import {
@@ -152,8 +152,38 @@ export default function SupplierPayablesReport() {
     const { suppliers, purchaseInvoices, supplierPayments, purchaseReturns, loading, dbAction } = useData();
     const isMobile = useIsMobile();
     const [searchTerm, setSearchTerm] = useState("");
+    const [sqlBalances, setSqlBalances] = useState<any[] | null>(null);
+
+    const fetchSqlBalances = useCallback(async () => {
+        try {
+            const res = await fetch('/api/reports/aggregated?type=supplier-balances');
+            const json = await res.json();
+            if (json.success && Array.isArray(json.data)) {
+                setSqlBalances(json.data);
+            }
+        } catch (err) {
+            console.warn('Fallback to client calculation for supplier-payables:', err);
+        }
+    }, []);
+
+    useEffect(() => {
+        fetchSqlBalances();
+    }, [fetchSqlBalances]);
     
     const suppliersWithBalance = useMemo(() => {
+        if (sqlBalances && sqlBalances.length > 0) {
+            return sqlBalances
+                .map((row: any) => ({
+                    id: row.SupplierId,
+                    name: row.SupplierName,
+                    contact: row.Contact,
+                    openingBalance: Number(row.OpeningBalance || 0),
+                    currentBalance: Number(row.CurrentCalculatedBalance || 0),
+                    invoiceCount: Number(row.PurchasesCount || 0)
+                }))
+                .filter((s: any) => s.currentBalance > 0.01);
+        }
+
         if (loading) return [];
         
         return suppliers.map((supplier: Supplier) => {
@@ -181,7 +211,7 @@ export default function SupplierPayablesReport() {
             
             return { ...supplier, currentBalance: balance, invoiceCount };
         }).filter((s: any) => s.currentBalance > 0.01);
-    }, [suppliers, purchaseInvoices, supplierPayments, purchaseReturns, loading]);
+    }, [sqlBalances, suppliers, purchaseInvoices, supplierPayments, purchaseReturns, loading]);
 
     const filteredSuppliers = useMemo(() => {
         if (!searchTerm) {
@@ -203,7 +233,9 @@ export default function SupplierPayablesReport() {
             .slice(0, 10);
     }, [filteredSuppliers]);
     
-    const handlePaymentSaved = () => {};
+    const handlePaymentSaved = () => {
+        fetchSqlBalances();
+    };
 
   return (
     <>

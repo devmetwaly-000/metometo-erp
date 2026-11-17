@@ -290,7 +290,7 @@ export default function ItemProfitLossPage() {
     }, [items]);
 
 
-    const handleGenerateReport = () => {
+    const handleGenerateReport = async () => {
         
         const filterByDate = (item: { date: string }) => {
             const itemDate = new Date(item.date);
@@ -322,6 +322,24 @@ export default function ItemProfitLossPage() {
 
         const allFilteredSales = [...approvedSales, ...standalonePosSales];
         setFilteredSales(allFilteredSales);
+
+        // محاولة الجلب من استعلام SQL المجمع (GROUP BY, SUM) أولاً
+        try {
+            const params = new URLSearchParams({
+                type: 'item-profit-loss',
+                warehouseId: filters.warehouseId,
+            });
+            if (filters.fromDate) params.set('fromDate', filters.fromDate);
+            if (filters.toDate) params.set('toDate', filters.toDate);
+            const res = await fetch(`/api/reports/aggregated?${params.toString()}`);
+            const json = await res.json();
+            if (json.success && Array.isArray(json.data) && json.data.length > 0) {
+                setReportData(json.data);
+                return;
+            }
+        } catch (err) {
+            console.warn('Fallback to client calculation for item-profit-loss:', err);
+        }
 
         const filteredSalesReturns = salesReturns.filter((ret: any) => {
             if (!filterByDate(ret)) return false;
