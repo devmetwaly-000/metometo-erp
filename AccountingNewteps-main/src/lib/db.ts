@@ -243,8 +243,24 @@ export async function testLocalDbConnection(input?: Partial<LocalDbConfig>): Pro
     const mssqlCfg = buildMssqlConfig(cfg);
     let testPool: sql.ConnectionPool | null = null;
 
+    const connectAttempt = async (c: sql.config) => {
+        for (let attempt = 1; attempt <= 2; attempt++) {
+            try {
+                return await new sql.ConnectionPool(c).connect();
+            } catch (err: any) {
+                const msg = String(err?.message || '').toLowerCase();
+                if ((err?.code === 'EAI_AGAIN' || msg.includes('eai_again')) && attempt < 2) {
+                    await new Promise(r => setTimeout(r, 800));
+                    continue;
+                }
+                throw err;
+            }
+        }
+        throw new Error('Connection failed');
+    };
+
     try {
-        testPool = await new sql.ConnectionPool(mssqlCfg).connect();
+        testPool = await connectAttempt(mssqlCfg);
         const res = await testPool.request().query('SELECT @@VERSION as version, DB_NAME() as dbName;');
         const latencyMs = Date.now() - startTime;
         await testPool.close();

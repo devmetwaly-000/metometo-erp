@@ -90,33 +90,23 @@ export async function POST(req: Request) {
         const incoming = body.config || body;
         if (incoming.connectionString || incoming.server || incoming.database || incoming.user) {
             currentCfg = await saveLocalDbConfig(incoming);
-        } else if (incoming.connectionString) {
-            const parsed = parseSqlConnectionString(incoming.connectionString);
-            currentCfg = await saveLocalDbConfig(parsed);
         }
 
-        const {
-            server = currentCfg.server,
-            port = Number(currentCfg.port) || 1433,
-            database = currentCfg.database,
-            user = currentCfg.user,
-            password = currentCfg.password,
-            encrypt = currentCfg.encrypt,
-            branchCode = '900',
-            branchName = 'الفرع الرأيسي',
-            isCentral = false
-        } = incoming.server ? { ...currentCfg, ...incoming } : currentCfg;
+        const effectiveDb =
+            !currentCfg.database || currentCfg.database.toLowerCase() === 'master'
+                ? 'MultiBranchPOS_DB'
+                : currentCfg.database;
 
         const initResult = await createAndInitializeDatabase({
-            server,
-            port: Number(port) || 1433,
-            database,
-            user,
-            password,
-            encrypt: Boolean(encrypt),
-            branchCode,
-            branchName,
-            isCentral
+            server: currentCfg.server,
+            port: Number(currentCfg.port) || 1433,
+            database: effectiveDb,
+            user: currentCfg.user,
+            password: currentCfg.password,
+            encrypt: Boolean(currentCfg.encrypt),
+            branchCode: incoming.branchCode || '900',
+            branchName: incoming.branchName || 'الفرع الرأيسي',
+            isCentral: Boolean(incoming.isCentral)
         });
 
         await resetDbPool();

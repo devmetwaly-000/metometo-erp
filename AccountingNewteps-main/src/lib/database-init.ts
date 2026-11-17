@@ -46,6 +46,23 @@ export async function createAndInitializeDatabase(options: DbInitOptions): Promi
         cleanServer.includes('.rds.amazonaws.com') ||
         cleanServer.includes('.database.windows.net');
 
+    const connectWithRetry = async (cfg: sql.config, retries = 3): Promise<sql.ConnectionPool> => {
+        let lastErr: any;
+        for (let attempt = 1; attempt <= retries; attempt++) {
+            try {
+                const pool = new sql.ConnectionPool(cfg);
+                return await pool.connect();
+            } catch (err: any) {
+                lastErr = err;
+                const msg = String(err?.message || '').toLowerCase();
+                const isTransient = err?.code === 'EAI_AGAIN' || err?.code === 'ETIMEOUT' || msg.includes('eai_again') || msg.includes('timeout');
+                if (!isTransient || attempt === retries) throw err;
+                await new Promise(r => setTimeout(r, 1000 * attempt));
+            }
+        }
+        throw lastErr;
+    };
+
     // 1. Connect to 'master' database first to create database if not exists
     const masterConfig: sql.config = {
         user,
@@ -53,11 +70,12 @@ export async function createAndInitializeDatabase(options: DbInitOptions): Promi
         server: cleanServer,
         port: cleanPort,
         database: 'master',
+        connectionTimeout: useEncrypt ? 25000 : 12000,
+        requestTimeout: 60000,
         options: {
             encrypt: useEncrypt,
             trustServerCertificate: true,
             enableArithAbort: true,
-            connectTimeout: 8000
         }
     };
 
@@ -66,13 +84,13 @@ export async function createAndInitializeDatabase(options: DbInitOptions): Promi
 
     try {
         // Sanitize database name (alphanumeric and underscores)
-        const cleanDbName = database.replace(/[^a-zA-Z0-9_]/g, '');
-        if (!cleanDbName) {
-            throw new Error('اسم قاعدة البيانات غير صالح.');
+        let cleanDbName = database.replace(/[^a-zA-Z0-9_]/g, '');
+        if (!cleanDbName || cleanDbName.toLowerCase() === 'master') {
+            cleanDbName = 'MultiBranchPOS_DB';
         }
 
         try {
-            masterPool = await sql.connect(masterConfig);
+            masterPool = await connectWithRetry(masterConfig);
 
             // Check and create database
             await masterPool.request().query(`
@@ -112,7 +130,7 @@ export async function createAndInitializeDatabase(options: DbInitOptions): Promi
             database: cleanDbName
         };
 
-        targetPool = await sql.connect(targetConfig);
+        targetPool = await connectWithRetry(targetConfig);
 
         // 3. Create all 69 Core Master and Transactional Tables with Branch tracking columns
         const ddlStatements = [
