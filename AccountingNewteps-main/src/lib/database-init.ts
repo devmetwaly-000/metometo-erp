@@ -2005,7 +2005,13 @@ export async function createAndInitializeDatabase(options: DbInitOptions): Promi
             `IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('dbo.PosSessions') AND name = 'BranchName')
                 ALTER TABLE dbo.PosSessions ADD [BranchName] NVARCHAR(255) NULL;`,
             `IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('dbo.SalesReturns') AND name = 'SalesRepId')
-                ALTER TABLE dbo.SalesReturns ADD [SalesRepId] NVARCHAR(64) NULL;`
+                ALTER TABLE dbo.SalesReturns ADD [SalesRepId] NVARCHAR(64) NULL;`,
+            `IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('dbo.Customers') AND name = 'LoyaltyPoints')
+                ALTER TABLE dbo.Customers ADD [LoyaltyPoints] DECIMAL(18,2) NOT NULL CONSTRAINT DF_Customers_LoyaltyPoints DEFAULT ((0));`,
+            `IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('dbo.Customers') AND name = 'TotalEarnedPoints')
+                ALTER TABLE dbo.Customers ADD [TotalEarnedPoints] DECIMAL(18,2) NOT NULL CONSTRAINT DF_Customers_TotalEarnedPoints DEFAULT ((0));`,
+            `IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('dbo.Customers') AND name = 'TotalRedeemedPoints')
+                ALTER TABLE dbo.Customers ADD [TotalRedeemedPoints] DECIMAL(18,2) NOT NULL CONSTRAINT DF_Customers_TotalRedeemedPoints DEFAULT ((0));`
         ];
 
         const schemaUpgradeErrors: string[] = [];

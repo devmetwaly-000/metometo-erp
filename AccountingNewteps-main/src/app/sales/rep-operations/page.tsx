@@ -261,7 +261,13 @@ export default function RepOperationsPage() {
 
   return (
     <>
-      <PageHeader title="مراقبة حركة ومستحقات المندوب" />
+      <PageHeader title="مراقبة حركة ومستحقات المندوب">
+        <Button asChild size="sm" variant="default">
+          <Link href="/sales/field-sales-management">
+            خطوط السير وعمولات وجرد المناديب بالباركود
+          </Link>
+        </Button>
+      </PageHeader>
       <main className="flex flex-1 flex-col gap-4 p-4 md:gap-8 md:p-6">
         {sqlRepsOverview.length > 0 && (
             <Card className="border-primary/20">

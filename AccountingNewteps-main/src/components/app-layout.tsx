@@ -421,6 +421,7 @@ export const navStructure = [
       { type: 'link', href: '/sales/my-invoices', module: 'sales_rep_my_invoices', title: 'فواتيري' },
       { type: 'link', href: '/sales/rep-invoices', module: 'sales_repInvoices', title: dictionary.nav.approveRepInvoices },
       { type: 'link', href: '/sales/rep-operations', module: 'sales_repOperations', title: dictionary.nav.repOperations },
+      { type: 'link', href: '/sales/field-sales-management', module: 'sales_repOperations', title: 'خطوط السير وعمولات وجرد المناديب (Van Sales)' },
       { type: 'link', href: '/sales/remit-from-rep', module: 'sales_remitFromRep', title: dictionary.nav.remitFromRep },
       { type: 'link', href: '/sales/record-visit', icon: <MapPin/>, module: 'sales_recordVisit', title: 'تسجيل زيارة' },
       { type: 'link', href: '/sales/monitor-visits', module: 'sales_monitorVisits', title: 'متابعة الزيارات' },
@@ -495,6 +496,7 @@ export const navStructure = [
       { type: 'link', href: '/master-data/cash-accounts', module: 'settings_cashAccounts', title: dictionary.nav.cashAndBanks },
       { type: 'link', href: '/master-data/restaurant-tables', module: 'settings_restaurantTables', title: dictionary.nav.tablesAdmin },
       { type: 'link', href: '/settings', module: 'settings_general', title: dictionary.nav.generalSettings },
+      { type: 'link', href: '/settings/customer-experience', module: 'settings_general', title: 'تجربة العملاء ونقاط الولاء والشاشة الثانية' },
       { type: 'link', href: '/settings/e-invoice', module: 'settings_eInvoice', title: dictionary.nav.eInvoiceSettings },
       { type: 'link', href: '/settings/theme', module: 'settings_theme', title: dictionary.nav.themeSettings },
       { type: 'link', href: '/settings/printers', module: 'settings_printers', title: dictionary.nav.printSettings },
@@ -932,7 +934,7 @@ export function AppLayoutContent({ children }: { children: React.ReactNode }) {
   }, [isCentral]);
 
   const isHubLayout = desktopLayout === 'modern_hub';
-  const isPosScreen = pathname === '/pos';
+  const isPosScreen = pathname === '/pos' || pathname === '/pos/customer-display';
   const showHeader = !isPosScreen;
 
   const handleCloseTab = (e: React.MouseEvent, href: string) => {
@@ -1261,7 +1263,7 @@ export function AppLayoutContent({ children }: { children: React.ReactNode }) {
             </div>
 
             {/* Taskbar / Open Tabs Bar */}
-            {tabsLoadedFor === openTabsStorageKey && openTabs.length > 0 && pathname !== '/pos' && (
+            {tabsLoadedFor === openTabsStorageKey && openTabs.length > 0 && !isPosScreen && (
                 <div className="h-11 bg-card/95 backdrop-blur-md border-t flex items-center px-2 gap-1.5 shrink-0 z-40 sticky bottom-0 shadow-[0_-2px_10px_rgba(0,0,0,0.12)] no-print select-none">
                     {/* Scroll Right Button */}
                     <button

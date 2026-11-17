@@ -6,7 +6,17 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Trash2, ShoppingCart, XCircle, Printer, Grip, Dot, Search, Ban, PanelLeft, Boxes, SquareCheck, ListRestart, FileClock, Eye, Loader2, Undo2, PlusCircle, UserPlus, LogOut, Percent, Truck, ArrowLeft, Banknote, Landmark, Wallet, Phone, CircleDollarSign, FileText, CreditCard, UserRound, User as UserIcon, PlayCircle, History, Coins, Building2, LayoutDashboard } from "lucide-react";
+import { Trash2, ShoppingCart, XCircle, Printer, Grip, Dot, Search, Ban, PanelLeft, Boxes, SquareCheck, ListRestart, FileClock, Eye, Loader2, Undo2, PlusCircle, UserPlus, LogOut, Percent, Truck, ArrowLeft, Banknote, Landmark, Wallet, Phone, CircleDollarSign, FileText, CreditCard, UserRound, User as UserIcon, PlayCircle, History, Coins, Building2, LayoutDashboard, Monitor, Gift, MessageCircle, Settings2, PowerOff } from "lucide-react";
+import {
+    getCustomerExperienceConfig,
+    calculateEarnedPoints,
+    calculateRedeemableCash,
+    broadcastToCustomerDisplay,
+    openCustomerDisplayWindow,
+    closeCustomerDisplayWindow,
+    buildWhatsAppInvoiceMessage,
+    sendWhatsAppMessage,
+} from '@/lib/customer-experience';
 import { useData } from "@/contexts/data-provider";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from '@/contexts/auth-context';
@@ -1196,8 +1206,12 @@ export default function PosPage() {
     const [showBackButton, setShowBackButton] = useState(false);
     const [currentHeldInvoiceId, setCurrentHeldInvoiceId] = useState<string | null>(null);
     
+    const cxConfig = useMemo(() => getCustomerExperienceConfig(settings), [settings]);
+    const [redeemedPoints, setRedeemedPoints] = useState<number>(0);
+
     const subtotal = useMemo(() => cart.reduce((acc, item) => acc + item.originalPrice * item.qty, 0), [cart]);
     const promoDiscount = useMemo(() => cart.reduce((acc, item) => acc + item.discountApplied, 0), [cart]);
+    const loyaltyDiscount = useMemo(() => calculateRedeemableCash(redeemedPoints, cxConfig), [redeemedPoints, cxConfig]);
     
     const taxAmount = useMemo(() => {
         if (!applyTax) return 0;
@@ -1210,11 +1224,47 @@ export default function PosPage() {
     }, [applyTax, isTaxIncluded, subtotal, promoDiscount, discount, vatRate]);
 
     const total = useMemo(() => {
-        const netAmount = subtotal - promoDiscount - discount;
+        const netAmount = Math.max(0, subtotal - promoDiscount - discount);
         const finalTax = (applyTax && !isTaxIncluded) ? taxAmount : 0;
         // Total includes tips as it's what the customer pays
         return netAmount + finalTax + Number(tips || 0);
     }, [subtotal, promoDiscount, discount, applyTax, isTaxIncluded, taxAmount, tips]);
+
+    const earnedPoints = useMemo(() => calculateEarnedPoints(total, cxConfig), [total, cxConfig]);
+
+    const handleToggleLoyaltyRedeem = () => {
+        const cust = selectedCustomerId ? customers.find((c: any) => c.id === selectedCustomerId) : null;
+        if (!cust || !cxConfig.loyalty.enabled) return;
+
+        if (redeemedPoints > 0) {
+            setDiscount(prev => Math.max(0, prev - loyaltyDiscount));
+            setRedeemedPoints(0);
+            toast({ title: 'تم إلغاء استبدال النقاط' });
+            return;
+        }
+
+        const availPoints = Number(cust.loyaltyPoints || 0);
+        if (availPoints < cxConfig.loyalty.minPointsToRedeem) {
+            toast({
+                variant: 'destructive',
+                title: 'رصيد النقاط غير كافٍ',
+                description: `الحد الأدنى للاستبدال هو ${cxConfig.loyalty.minPointsToRedeem} نقطة.`
+            });
+            return;
+        }
+
+        const maxPayable = Math.max(0, subtotal - promoDiscount);
+        const maxCashFromPoints = calculateRedeemableCash(availPoints, cxConfig);
+        const cashToRedeem = Math.min(maxPayable, maxCashFromPoints);
+        const pointsUsed = Math.round((cashToRedeem / Math.max(0.1, cxConfig.loyalty.pointRedeemValue)) * 10) / 10;
+
+        setRedeemedPoints(pointsUsed);
+        setDiscount(prev => prev + cashToRedeem);
+        toast({
+            title: 'تم استبدال نقاط الولاء بنجاح',
+            description: `تم خصم ${cashToRedeem} ج.م مقابل استبدال ${pointsUsed} نقطة ولاء.`
+        });
+    };
 
     const paidAmount = useMemo(() => payments.reduce((acc, p) => acc + Number(p.amount || 0), 0), [payments]);
     const change = useMemo(() => (paidAmount >= total ? paidAmount - total : 0), [paidAmount, total]);
@@ -1233,6 +1283,7 @@ export default function PosPage() {
     const resetCartAndPayments = useCallback(() => {
         setCart([]);
         setDiscount(0);
+        setRedeemedPoints(0);
         setTips(0); // Reset tips
         setPayments([]);
         setOrderReference('');
@@ -1930,6 +1981,62 @@ export default function PosPage() {
         return balance;
     }, [selectedCustomerId, customers, salesInvoices, posSales, posReturns, customerPayments, salesReturns]);
 
+    // البث اللحظي لشاشة عرض العميل الثانية مع كل حركة في السلة أو الدفع
+    useEffect(() => {
+        if (!cxConfig.dualScreen.enabled) return;
+        const cust = selectedCustomerId ? customers.find((c: any) => c.id === selectedCustomerId) : null;
+        broadcastToCustomerDisplay({
+            step: cart.length === 0 ? 'idle' : (isPaymentDialogOpen || payments.length > 0 ? 'payment' : 'scanning'),
+            timestamp: Date.now(),
+            companyName: companySettings.companyName || 'متجرنا',
+            branchName: warehouseForSession?.name || '',
+            items: cart.map(it => ({
+                id: it.id,
+                name: it.name,
+                qty: it.qty,
+                price: it.price,
+                originalPrice: it.originalPrice,
+                total: it.total,
+                discountApplied: it.discountApplied,
+                promoApplied: it.promoApplied,
+            })),
+            subtotal,
+            discount: promoDiscount + discount,
+            loyaltyDiscount,
+            redeemedPoints,
+            tax: taxAmount,
+            total,
+            customer: cust ? {
+                id: cust.id,
+                name: cust.name,
+                phone: cust.phone,
+                loyaltyPoints: Number(cust.loyaltyPoints || 0),
+                currentBalance: selectedCustomerBalance,
+            } : null,
+            earnedPoints,
+            invoiceNumber: currentInvoiceNumber,
+        });
+    }, [
+        cxConfig.dualScreen.enabled,
+        cart,
+        subtotal,
+        promoDiscount,
+        discount,
+        loyaltyDiscount,
+        redeemedPoints,
+        taxAmount,
+        total,
+        selectedCustomerId,
+        customers,
+        isPaymentDialogOpen,
+        payments,
+        earnedPoints,
+        currentInvoiceNumber,
+        companySettings.companyName,
+        warehouseForSession?.name,
+        selectedCustomerBalance,
+    ]);
+
     const handleFinishSale = async (sellerId?: string) => {
         if (cart.length === 0 || !warehouseForSession) {
             toast({ variant: 'destructive', title: 'خطأ', description: 'السلة فارغة أو لم يتم تحديد المخزن.' });
@@ -2067,9 +2174,75 @@ export default function PosPage() {
             }
 
 
+            // تحديث رصيد نقاط الولاء للعميل في قاعدة البيانات
+            let updatedCustomerPoints = Number(customer?.loyaltyPoints || 0);
+            if (customer && cxConfig.loyalty.enabled) {
+                updatedCustomerPoints = Math.max(0, Number(customer.loyaltyPoints || 0) - redeemedPoints + earnedPoints);
+                const newTotalEarned = Number(customer.totalEarnedPoints || 0) + earnedPoints;
+                const newTotalRedeemed = Number(customer.totalRedeemedPoints || 0) + redeemedPoints;
+                try {
+                    await dbAction('customers', 'update', {
+                        id: customer.id,
+                        data: {
+                            loyaltyPoints: updatedCustomerPoints,
+                            totalEarnedPoints: newTotalEarned,
+                            totalRedeemedPoints: newTotalRedeemed,
+                        },
+                    });
+                } catch (ptsErr) {
+                    console.error('Failed to update customer loyalty points:', ptsErr);
+                }
+            }
+
+            // تحديث شاشة عرض العميل الثانية إلى خطوة الشكر وإتمام الفاتورة
+            if (cxConfig.dualScreen.enabled) {
+                broadcastToCustomerDisplay({
+                    step: 'completed',
+                    timestamp: Date.now(),
+                    companyName: companySettings.companyName || 'متجرنا',
+                    branchName: warehouseForSession?.name || '',
+                    items: [],
+                    subtotal,
+                    discount: promoDiscount + discount,
+                    loyaltyDiscount,
+                    redeemedPoints,
+                    tax: taxAmount,
+                    total,
+                    customer: customer ? {
+                        id: customer.id,
+                        name: customer.name,
+                        phone: customer.phone,
+                        loyaltyPoints: updatedCustomerPoints,
+                    } : null,
+                    earnedPoints,
+                    invoiceNumber,
+                });
+            }
+
+            // إرسال إيصال الفاتورة عبر WhatsApp تلقائياً إذا كان الخيار مفعلاً
+            if (cxConfig.whatsapp.enabled && cxConfig.whatsapp.autoSendOnPosCheckout && customer?.phone) {
+                const waMsg = buildWhatsAppInvoiceMessage({
+                    companyName: companySettings.companyName || 'متجرنا',
+                    invoiceNumber,
+                    customerName: customer.name,
+                    date: saleData.date,
+                    items: saleData.items,
+                    subtotal,
+                    discount: promoDiscount + discount,
+                    total,
+                    paidAmount: saleData.paidAmount,
+                    earnedPoints,
+                    totalCustomerPoints: updatedCustomerPoints,
+                    config: cxConfig,
+                });
+                sendWhatsAppMessage(customer.phone, waMsg, cxConfig).catch(() => {});
+            }
+
             toast({
                 title: 'تمت العملية بنجاح',
-                description: `تم حفظ الفاتورة ${invoiceNumber}`,
+                description: customer && cxConfig.loyalty.enabled && earnedPoints > 0
+                    ? `تم حفظ الفاتورة ${invoiceNumber} وإضافة +${earnedPoints} نقطة ولاء للعميل`
+                    : `تم حفظ الفاتورة ${invoiceNumber}`,
             });
 
             try {
@@ -2525,6 +2698,56 @@ export default function PosPage() {
                                     <NewCustomerForm onSave={handleNewCustomerSave} onClose={() => {}} allCustomers={customers} />
                                 </AddEntityDialog>
                             </div>
+                            {selectedCustomer && (
+                                <div className="flex flex-wrap items-center justify-between gap-1.5 rounded-lg border border-amber-500/30 bg-amber-500/10 px-2.5 py-1.5 text-xs">
+                                    <div className="flex items-center gap-1.5 font-semibold text-amber-500">
+                                        <Gift className="h-3.5 w-3.5 shrink-0" />
+                                        <span>نقاط الولاء: {Number(selectedCustomer.loyaltyPoints || 0).toLocaleString()} نقطة</span>
+                                        <span className="text-muted-foreground">({calculateRedeemableCash(Number(selectedCustomer.loyaltyPoints || 0), cxConfig)} ج.م)</span>
+                                    </div>
+                                    <div className="flex items-center gap-1">
+                                        {cxConfig.loyalty.enabled && Number(selectedCustomer.loyaltyPoints || 0) >= cxConfig.loyalty.minPointsToRedeem && cart.length > 0 && (
+                                            <Button
+                                                type="button"
+                                                size="sm"
+                                                variant={redeemedPoints > 0 ? "destructive" : "default"}
+                                                className="h-6 px-2 text-[11px]"
+                                                onClick={handleToggleLoyaltyRedeem}
+                                            >
+                                                {redeemedPoints > 0 ? `إلغاء استبدال (${redeemedPoints} ن)` : 'استبدال النقاط كخصم'}
+                                            </Button>
+                                        )}
+                                        {cxConfig.whatsapp.enabled && selectedCustomer.phone && (
+                                            <Button
+                                                type="button"
+                                                size="sm"
+                                                variant="outline"
+                                                className="h-6 px-2 text-[11px] gap-1 border-green-500/40 text-green-600 hover:bg-green-500/10"
+                                                onClick={() => {
+                                                    const msg = buildWhatsAppInvoiceMessage({
+                                                        companyName: companySettings.companyName || 'متجرنا',
+                                                        invoiceNumber: currentInvoiceNumber,
+                                                        customerName: selectedCustomer.name,
+                                                        date: new Date().toISOString(),
+                                                        items: cart,
+                                                        subtotal,
+                                                        discount: promoDiscount + discount,
+                                                        total,
+                                                        paidAmount: paidAmount || total,
+                                                        earnedPoints,
+                                                        totalCustomerPoints: Number(selectedCustomer.loyaltyPoints || 0),
+                                                        config: cxConfig,
+                                                    });
+                                                    sendWhatsAppMessage(selectedCustomer.phone, msg, cxConfig);
+                                                }}
+                                            >
+                                                <MessageCircle className="h-3 w-3" />
+                                                واتساب
+                                            </Button>
+                                        )}
+                                    </div>
+                                </div>
+                            )}
                              <div className="flex items-center space-x-2 rtl:space-x-reverse pt-2">
                                 <Switch id="is-delivery" checked={isDelivery} onCheckedChange={(checked: any) => setIsDelivery(!!checked)} />
                                 <Label htmlFor="is-delivery" className="flex items-center gap-2 cursor-pointer">
@@ -2696,8 +2919,73 @@ export default function PosPage() {
                                 )}
                             </div>
                         </form>
-                        <Button variant="outline" size="icon" className="h-12 w-12 shrink-0" onClick={() => setIsQueryModalOpen(true)}>
+                        <Button variant="outline" size="icon" className="h-12 w-12 shrink-0" onClick={() => setIsQueryModalOpen(true)} title="استعلام المخزون">
                             <Boxes className="h-6 w-6" />
+                        </Button>
+                        {cxConfig.dualScreen.enabled && (
+                            <>
+                                <Button
+                                    variant="outline"
+                                    size="icon"
+                                    className="h-12 w-12 shrink-0 border-emerald-500/40 text-emerald-500 hover:bg-emerald-500/10"
+                                    onClick={() => {
+                                        openCustomerDisplayWindow();
+                                        setTimeout(() => {
+                                            broadcastToCustomerDisplay({
+                                                step: cart.length === 0 ? 'idle' : (isPaymentDialogOpen || payments.length > 0 ? 'payment' : 'scanning'),
+                                                timestamp: Date.now(),
+                                                companyName: companySettings.companyName || 'متجرنا',
+                                                branchName: warehouseForSession?.name || '',
+                                                items: cart.map(it => ({
+                                                    id: it.id,
+                                                    name: it.name,
+                                                    qty: it.qty,
+                                                    price: it.price,
+                                                    originalPrice: it.originalPrice,
+                                                    total: it.total,
+                                                    discountApplied: it.discountApplied,
+                                                    promoApplied: it.promoApplied,
+                                                })),
+                                                subtotal,
+                                                discount: promoDiscount + discount,
+                                                loyaltyDiscount,
+                                                redeemedPoints,
+                                                tax: taxAmount,
+                                                total,
+                                                customer: selectedCustomer ? {
+                                                    id: selectedCustomer.id,
+                                                    name: selectedCustomer.name,
+                                                    phone: selectedCustomer.phone,
+                                                    loyaltyPoints: Number(selectedCustomer.loyaltyPoints || 0),
+                                                } : null,
+                                                earnedPoints,
+                                                invoiceNumber: currentInvoiceNumber,
+                                            });
+                                        }, 300);
+                                    }}
+                                    title="فتح شاشة عرض العميل الثانية"
+                                >
+                                    <Monitor className="h-5 w-5" />
+                                </Button>
+                                <Button
+                                    variant="outline"
+                                    size="icon"
+                                    className="h-12 w-12 shrink-0 border-destructive/30 text-destructive hover:bg-destructive/10"
+                                    onClick={() => closeCustomerDisplayWindow()}
+                                    title="إغلاق شاشة عرض العميل الثانية"
+                                >
+                                    <PowerOff className="h-5 w-5" />
+                                </Button>
+                            </>
+                        )}
+                        <Button
+                            variant="outline"
+                            size="icon"
+                            className="h-12 w-12 shrink-0"
+                            onClick={() => router.push('/settings/customer-experience')}
+                            title="إعدادات شاشة العميل ونقاط الولاء والواتساب"
+                        >
+                            <Settings2 className="h-5 w-5" />
                         </Button>
                     </div>
                     

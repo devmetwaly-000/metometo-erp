@@ -23,7 +23,7 @@ async function getBranchInfo(pool: sql.ConnectionPool, explicitBranchCode?: stri
     }
 }
 
-class ReturnValidationError extends Error {}
+class ReturnValidationError extends Error { }
 
 function parseReturnItems(value: unknown): any[] {
     if (Array.isArray(value)) return value;
@@ -204,7 +204,7 @@ async function ensureRepWarehouseAndAccount(pool: sql.ConnectionPool, userId: st
         const whCheck = await pool.request()
             .input('RepId', sql.NVarChar(64), userId)
             .query(`SELECT Id, Name, Code FROM dbo.Warehouses WHERE RepId = @RepId`);
-        
+
         let repWarehouseId = whCheck.recordset[0]?.Id;
         if (!repWarehouseId) {
             const countRes = await pool.request().query(`SELECT COUNT(*) as cnt FROM dbo.Warehouses WHERE IsRepWarehouse = 1 OR WarehouseType = 'rep'`);
@@ -234,7 +234,7 @@ async function ensureRepWarehouseAndAccount(pool: sql.ConnectionPool, userId: st
         const cashCheck = await pool.request()
             .input('UserId', sql.NVarChar(64), userId)
             .query(`SELECT Id FROM dbo.CashAccounts WHERE UserId = @UserId`);
-        
+
         if (cashCheck.recordset.length === 0) {
             const repCashId = `rep_cash_${userId}`;
             const repCashName = `عهدة: ${userName || 'مندوب'}`;
@@ -257,7 +257,7 @@ async function ensureRepWarehouseAndAccount(pool: sql.ConnectionPool, userId: st
         const userRes = await pool.request()
             .input('Id', sql.NVarChar(64), userId)
             .query(`SELECT WarehouseIds FROM dbo.Users WHERE Id = @Id`);
-        
+
         if (userRes.recordset.length > 0) {
             let existingWids: string[] = [];
             try {
@@ -381,10 +381,10 @@ export async function POST(req: Request) {
                         try {
                             const parsed = JSON.parse(row.SettingValue);
                             if (parsed?.systemRole === 'central') return true;
-                        } catch {}
+                        } catch { }
                     }
                 }
-            } catch {}
+            } catch { }
             return false;
         };
 
@@ -407,7 +407,7 @@ export async function POST(req: Request) {
                 userName: String(userName),
                 details: `${action === 'add' ? 'إضافة' : action === 'update' ? 'تعديل' : 'حذف'} في جدول [${path}] ${docNum ? `- (${docNum})` : ''}`,
                 newState: action === 'remove' ? { deletedId: targetId } : (payload?.data || payload)
-            }).catch(() => {});
+            }).catch(() => { });
         }
 
         // =====================================================================
@@ -418,9 +418,9 @@ export async function POST(req: Request) {
             if (path === 'salesInvoices' || path === 'posSales' || path.startsWith('posSales')) {
                 if (path === 'posSales' || path.startsWith('posSales') || payload.cashierId || payload.isPos) {
                     if (await checkIsCentral()) {
-                        return NextResponse.json({ 
-                            success: false, 
-                            error: "محظور: لا يمكن تسجيل حركات بيع كاشير في الإدارة المركزية. حركات البيع تصدر حصراً من فروع البيع." 
+                        return NextResponse.json({
+                            success: false,
+                            error: "محظور: لا يمكن تسجيل حركات بيع كاشير في الإدارة المركزية. حركات البيع تصدر حصراً من فروع البيع."
                         }, { status: 403 });
                     }
                 }
@@ -499,9 +499,9 @@ export async function POST(req: Request) {
                 `);
                 if (path === 'posReturns' || path.startsWith('posReturns') || payload.cashierId || payload.isPos) {
                     if (await checkIsCentral()) {
-                        return NextResponse.json({ 
-                            success: false, 
-                            error: "محظور: لا يمكن تسجيل مرتجعات كاشير في الإدارة المركزية. مرتجعات الكاشير تصدر حصراً من فروع البيع." 
+                        return NextResponse.json({
+                            success: false,
+                            error: "محظور: لا يمكن تسجيل مرتجعات كاشير في الإدارة المركزية. مرتجعات الكاشير تصدر حصراً من فروع البيع."
                         }, { status: 403 });
                     }
                 }
@@ -1219,9 +1219,12 @@ export async function POST(req: Request) {
                     .input('OpeningBalance', sql.Decimal(18, 4), Number(payload.openingBalance) || 0)
                     .input('CurrentBalance', sql.Decimal(18, 4), Number(payload.currentBalance) || 0)
                     .input('InvoiceCount', sql.Int, Number(payload.invoiceCount) || 0)
+                    .input('LoyaltyPoints', sql.Decimal(18, 2), Number(payload.loyaltyPoints) || 0)
+                    .input('TotalEarnedPoints', sql.Decimal(18, 2), Number(payload.totalEarnedPoints) || 0)
+                    .input('TotalRedeemedPoints', sql.Decimal(18, 2), Number(payload.totalRedeemedPoints) || 0)
                     .query(`
-                        INSERT INTO dbo.Customers (Id, Name, Phone, Address, AllowCredit, CreditLimit, OpeningBalance, CurrentBalance, InvoiceCount)
-                        VALUES (@Id, @Name, @Phone, @Address, @AllowCredit, @CreditLimit, @OpeningBalance, @CurrentBalance, @InvoiceCount);
+                        INSERT INTO dbo.Customers (Id, Name, Phone, Address, AllowCredit, CreditLimit, OpeningBalance, CurrentBalance, InvoiceCount, LoyaltyPoints, TotalEarnedPoints, TotalRedeemedPoints)
+                        VALUES (@Id, @Name, @Phone, @Address, @AllowCredit, @CreditLimit, @OpeningBalance, @CurrentBalance, @InvoiceCount, @LoyaltyPoints, @TotalEarnedPoints, @TotalRedeemedPoints);
                     `);
                 return NextResponse.json({ success: true, id });
             }
@@ -1278,7 +1281,7 @@ export async function POST(req: Request) {
 
             if (path === 'users') {
                 const isRepUser = !!(payload.isSalesRep || payload.role === 'مندوب' || (typeof payload.role === 'string' && payload.role.includes('مندوب')));
-                
+
                 // Guarantee user inherits creator's license or active system license
                 let userTheme = payload.themeSettings;
                 if (typeof userTheme === 'string') {
@@ -1359,9 +1362,9 @@ export async function POST(req: Request) {
 
             if (path === 'posSessions') {
                 if (await checkIsCentral()) {
-                    return NextResponse.json({ 
-                        success: false, 
-                        error: "محظور: لا يمكن فتح يوم عمل كاشير أو تسليم عهدة في الإدارة المركزية. الكاشير مخصص لفروع البيع فقط." 
+                    return NextResponse.json({
+                        success: false,
+                        error: "محظور: لا يمكن فتح يوم عمل كاشير أو تسليم عهدة في الإدارة المركزية. الكاشير مخصص لفروع البيع فقط."
                     }, { status: 403 });
                 }
                 const branch = await getBranchInfo(pool, payload.branchCode, payload.branchName);
@@ -1387,9 +1390,9 @@ export async function POST(req: Request) {
 
             if (path === 'posTerminals') {
                 if (await checkIsCentral()) {
-                    return NextResponse.json({ 
-                        success: false, 
-                        error: "محظور: لا يمكن إضافة أو تعريف أجهزة كاشير في الإدارة المركزية. نقاط البيع تُعرف وترتبط بفروع البيع الفعلية فقط." 
+                    return NextResponse.json({
+                        success: false,
+                        error: "محظور: لا يمكن إضافة أو تعريف أجهزة كاشير في الإدارة المركزية. نقاط البيع تُعرف وترتبط بفروع البيع الفعلية فقط."
                     }, { status: 403 });
                 }
                 let branchCode = payload.branchCode || null;
@@ -1733,6 +1736,9 @@ export async function POST(req: Request) {
                     .input('CreditLimit', sql.Decimal(18, 4), data.creditLimit !== undefined ? Number(data.creditLimit) : null)
                     .input('CurrentBalance', sql.Decimal(18, 4), data.currentBalance !== undefined ? Number(data.currentBalance) : null)
                     .input('InvoiceCount', sql.Int, data.invoiceCount !== undefined ? Number(data.invoiceCount) : null)
+                    .input('LoyaltyPoints', sql.Decimal(18, 2), data.loyaltyPoints !== undefined ? Number(data.loyaltyPoints) : null)
+                    .input('TotalEarnedPoints', sql.Decimal(18, 2), data.totalEarnedPoints !== undefined ? Number(data.totalEarnedPoints) : null)
+                    .input('TotalRedeemedPoints', sql.Decimal(18, 2), data.totalRedeemedPoints !== undefined ? Number(data.totalRedeemedPoints) : null)
                     .query(`
                         UPDATE dbo.Customers
                         SET 
@@ -1741,7 +1747,10 @@ export async function POST(req: Request) {
                             Address = COALESCE(@Address, Address),
                             CreditLimit = COALESCE(@CreditLimit, CreditLimit),
                             CurrentBalance = COALESCE(@CurrentBalance, CurrentBalance),
-                            InvoiceCount = COALESCE(@InvoiceCount, InvoiceCount)
+                            InvoiceCount = COALESCE(@InvoiceCount, InvoiceCount),
+                            LoyaltyPoints = COALESCE(@LoyaltyPoints, LoyaltyPoints),
+                            TotalEarnedPoints = COALESCE(@TotalEarnedPoints, TotalEarnedPoints),
+                            TotalRedeemedPoints = COALESCE(@TotalRedeemedPoints, TotalRedeemedPoints)
                         WHERE Id = @Id;
                     `);
                 return NextResponse.json({ success: true });
@@ -1995,9 +2004,9 @@ export async function POST(req: Request) {
                     const sessions = Object.values(data.cashierSessions) as any[];
                     const hasNewlyOpened = sessions.some(s => s && !s.isClosed && !s.endTime);
                     if (hasNewlyOpened) {
-                        return NextResponse.json({ 
-                            success: false, 
-                            error: "محظور: لا يمكن بدء أو فتح وردية كاشير في الإدارة المركزية. الكاشير مخصص لفروع البيع فقط." 
+                        return NextResponse.json({
+                            success: false,
+                            error: "محظور: لا يمكن بدء أو فتح وردية كاشير في الإدارة المركزية. الكاشير مخصص لفروع البيع فقط."
                         }, { status: 403 });
                     }
                 }
@@ -2034,9 +2043,9 @@ export async function POST(req: Request) {
 
             if (path === 'posTerminals' && updateId) {
                 if (await checkIsCentral()) {
-                    return NextResponse.json({ 
-                        success: false, 
-                        error: "محظور: لا يمكن تعديل أجهزة كاشير في الإدارة المركزية. نقاط البيع تُدار من فروع البيع الفعلية فقط." 
+                    return NextResponse.json({
+                        success: false,
+                        error: "محظور: لا يمكن تعديل أجهزة كاشير في الإدارة المركزية. نقاط البيع تُدار من فروع البيع الفعلية فقط."
                     }, { status: 403 });
                 }
                 let branchCode = data.branchCode || null;
@@ -2187,14 +2196,14 @@ export async function POST(req: Request) {
                 const currentRes = await pool.request()
                     .input('SettingKey', sql.NVarChar(100), targetKey)
                     .query('SELECT SettingValue FROM dbo.AppSettings WHERE SettingKey = @SettingKey');
-                
+
                 let existingObj: any = {};
                 if (currentRes.recordset.length > 0 && currentRes.recordset[0].SettingValue) {
-                    try { existingObj = JSON.parse(currentRes.recordset[0].SettingValue); } catch {}
+                    try { existingObj = JSON.parse(currentRes.recordset[0].SettingValue); } catch { }
                 }
-                
+
                 const merged = { ...existingObj, ...data };
-                
+
                 await pool.request()
                     .input('SettingKey', sql.NVarChar(100), targetKey)
                     .input('SettingValue', sql.NVarChar(sql.MAX), JSON.stringify(merged))
@@ -2393,9 +2402,9 @@ export async function POST(req: Request) {
                     licenses: 'dbo.Licenses'
                 };
                 if (path === 'posTerminals' && await checkIsCentral()) {
-                    return NextResponse.json({ 
-                        success: false, 
-                        error: "محظور: لا يمكن حذف أجهزة نقاط البيع في الإدارة المركزية." 
+                    return NextResponse.json({
+                        success: false,
+                        error: "محظور: لا يمكن حذف أجهزة نقاط البيع في الإدارة المركزية."
                     }, { status: 403 });
                 }
                 if (path === 'users' && removeId) {

@@ -668,6 +668,15 @@ async function ensureSyncTrackingMatrixTable(pool: sql.ConnectionPool) {
         IF OBJECT_ID('dbo.PosSessions') IS NOT NULL AND COL_LENGTH('dbo.PosSessions', 'ClosingStatementJson') IS NULL
             ALTER TABLE dbo.PosSessions ADD [ClosingStatementJson] NVARCHAR(MAX) NULL;
 
+        IF OBJECT_ID('dbo.Customers') IS NOT NULL AND COL_LENGTH('dbo.Customers', 'LoyaltyPoints') IS NULL
+            ALTER TABLE dbo.Customers ADD [LoyaltyPoints] DECIMAL(18,2) NOT NULL CONSTRAINT DF_Customers_LoyaltyPoints DEFAULT ((0));
+
+        IF OBJECT_ID('dbo.Customers') IS NOT NULL AND COL_LENGTH('dbo.Customers', 'TotalEarnedPoints') IS NULL
+            ALTER TABLE dbo.Customers ADD [TotalEarnedPoints] DECIMAL(18,2) NOT NULL CONSTRAINT DF_Customers_TotalEarnedPoints DEFAULT ((0));
+
+        IF OBJECT_ID('dbo.Customers') IS NOT NULL AND COL_LENGTH('dbo.Customers', 'TotalRedeemedPoints') IS NULL
+            ALTER TABLE dbo.Customers ADD [TotalRedeemedPoints] DECIMAL(18,2) NOT NULL CONSTRAINT DF_Customers_TotalRedeemedPoints DEFAULT ((0));
+
         -- فهارس الأداء العالي (Performance Indexes) للفرع والمركزية
         IF OBJECT_ID('dbo.SalesInvoices') IS NOT NULL AND NOT EXISTS (SELECT * FROM sys.indexes WHERE name = 'IX_SalesInvoices_Perf' AND object_id = OBJECT_ID('dbo.SalesInvoices'))
             CREATE NONCLUSTERED INDEX IX_SalesInvoices_Perf ON dbo.SalesInvoices (Date DESC, Status, WarehouseId, CustomerId, SalesRepId) INCLUDE (Total, PaidAmount, InitialPaidAmount, PaidToAccountId);

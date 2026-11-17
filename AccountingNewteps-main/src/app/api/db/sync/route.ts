@@ -294,7 +294,10 @@ export async function GET() {
             creditLimit: Number(c.CreditLimit ?? c.creditLimit ?? 0),
             openingBalance: Number(c.OpeningBalance ?? c.openingBalance ?? 0),
             currentBalance: Number(c.CurrentBalance ?? c.currentBalance ?? 0),
-            invoiceCount: Number(c.InvoiceCount ?? c.invoiceCount ?? 0)
+            invoiceCount: Number(c.InvoiceCount ?? c.invoiceCount ?? 0),
+            loyaltyPoints: Number(c.LoyaltyPoints ?? c.loyaltyPoints ?? 0),
+            totalEarnedPoints: Number(c.TotalEarnedPoints ?? c.totalEarnedPoints ?? 0),
+            totalRedeemedPoints: Number(c.TotalRedeemedPoints ?? c.totalRedeemedPoints ?? 0)
         }));
 
         const suppliers = suppliersRes.recordset.map(s => ({
