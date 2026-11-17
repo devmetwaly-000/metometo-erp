@@ -2741,9 +2741,9 @@ export async function createAndInitializeDatabase(options: DbInitOptions): Promi
             if (existingUsersCount === 0) {
                 const adminUser = {
                     id: 'admin_master',
-                    loginName: 'admin',
-                    name: 'مدير النظام',
-                    password: 'admin',
+                    loginName: 'Admin',
+                    name: 'مدير النظام (Admin)',
+                    password: '200300400',
                     phone: '01000000000',
                     role: 'مسؤول',
                     warehouseIds: JSON.stringify(['all']),

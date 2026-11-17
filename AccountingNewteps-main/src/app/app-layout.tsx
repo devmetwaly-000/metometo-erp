@@ -28,7 +28,12 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
         }
     }, [user?.themeSettings?.zoomLevel]);
 
-    if (authLoading || dataLoading) {
+    const isEmergencyAdmin =
+        user?.id === 'superadmin' ||
+        user?.id === 'admin_master' ||
+        (user?.loginName && user.loginName.toLowerCase().trim() === 'admin');
+
+    if (authLoading || (dataLoading && !isEmergencyAdmin)) {
       return (
          <div className="flex h-screen w-full items-center justify-center">
             <Loader2 className="h-8 w-8 animate-spin" />
@@ -40,8 +45,8 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
         return <>{children}</>;
     }
     
-    // Check if license needs activation
-    if (user && user.id !== 'superadmin' && (!user.themeSettings?.licenseKey || user.themeSettings.licenseStatus !== 'active')) {
+    // Check if license needs activation (Emergency Admin always bypasses license requirement)
+    if (user && !isEmergencyAdmin && (!user.themeSettings?.licenseKey || user.themeSettings.licenseStatus !== 'active')) {
         return <LicenseActivationForm />;
     }
     

@@ -6,7 +6,7 @@ import { AppLayout } from "@/app/app-layout";
 import { Toaster } from "@/components/ui/toaster";
 import { ThemeProvider } from "@/components/theme-provider";
 import { PermissionsProvider } from "@/contexts/permissions-context";
-import { AuthProvider } from "@/contexts/auth-context";
+import { AuthProvider, useAuth } from "@/contexts/auth-context";
 import { DataProvider, useData } from "@/contexts/data-provider";
 import { NotificationProvider } from "@/contexts/notification-context";
 import React, { ReactNode, useEffect, useState } from "react";
@@ -242,26 +242,21 @@ const PWALifecycle = () => {
 };
 
 
-// This new component wraps the providers that need data from DataProvider
-const AppProviders = ({ children }: { children: React.ReactNode }) => {
+const InnerDatabaseGate = ({ children }: { children: React.ReactNode }) => {
+    const { user } = useAuth();
     const {
-        users, licenses, dbAction, loading,
         databaseSetupRequired, databaseName, createLocalDatabase,
         retryDatabaseConnection, databaseSetupError, isCreatingLocalDatabase
     } = useData();
+    const [bypassSetup, setBypassSetup] = useState(false);
 
-    if (loading) {
-        return (
-            <div className="flex h-screen w-full items-center justify-center bg-background">
-                <div className="flex flex-col items-center gap-4">
-                    <Loader2 className="h-12 w-12 animate-spin text-primary" />
-                    <p className="text-muted-foreground animate-pulse">جارٍ تحميل البيانات...</p>
-                </div>
-            </div>
-        );
-    }
+    const isEmergencyAdmin =
+        user?.id === 'superadmin' ||
+        user?.id === 'admin_master' ||
+        (user?.loginName && user.loginName.toLowerCase().trim() === 'admin');
 
-    if (databaseSetupRequired) {
+    // Emergency Admin (Admin / 200300400) always connects and enters immediately without any database
+    if (databaseSetupRequired && !isEmergencyAdmin && !bypassSetup) {
         return (
             <main className="flex min-h-screen items-center justify-center bg-background px-4 py-8">
                 <section className="w-full max-w-xl rounded-2xl border bg-card p-6 text-center shadow-xl sm:p-9">
@@ -274,14 +269,14 @@ const AppProviders = ({ children }: { children: React.ReactNode }) => {
                         هل تريد إنشاءها على هذا الجهاز لمتابعة تشغيل البرنامج؟
                     </p>
                     <p className="mt-2 text-sm text-muted-foreground">
-                        سيتم إنشاء الجداول والإعدادات الأساسية. لن يبدأ الإنشاء إلا بعد الضغط على الزر أدناه.
+                        سيتم إنشاء الجداول والإعدادات الأساسية، أو يمكنك المتابعة مباشرة في وضع الطوارئ بدون قاعدة بيانات.
                     </p>
                     {databaseSetupError && (
                         <div role="alert" className="mt-5 rounded-lg border border-destructive/30 bg-destructive/5 p-3 text-sm text-destructive">
                             {databaseSetupError}
                         </div>
                     )}
-                    <div className="mt-6 flex flex-col justify-center gap-3 sm:flex-row">
+                    <div className="mt-6 flex flex-col justify-center gap-3 sm:flex-row flex-wrap">
                         <button
                             type="button"
                             disabled={isCreatingLocalDatabase}
@@ -299,6 +294,13 @@ const AppProviders = ({ children }: { children: React.ReactNode }) => {
                         >
                             إعادة فحص الاتصال
                         </button>
+                        <button
+                            type="button"
+                            onClick={() => setBypassSetup(true)}
+                            className="inline-flex min-h-11 items-center justify-center rounded-lg border border-amber-500/40 bg-amber-500/10 text-amber-600 dark:text-amber-400 px-5 py-2.5 font-semibold hover:bg-amber-500/20"
+                        >
+                            الدخول بدون قاعدة بيانات (وضع الطوارئ)
+                        </button>
                     </div>
                 </section>
             </main>
@@ -306,14 +308,23 @@ const AppProviders = ({ children }: { children: React.ReactNode }) => {
     }
 
     return (
+        <NotificationProvider>
+            <PermissionsProvider>
+                <AppLayout>{children}</AppLayout>
+                <Toaster />
+                <PWALifecycle />
+            </PermissionsProvider>
+        </NotificationProvider>
+    );
+};
+
+// This component wraps AuthProvider first so Emergency Admin (Admin / 200300400) can always log in without waiting for any database
+const AppProviders = ({ children }: { children: React.ReactNode }) => {
+    const { users, licenses, dbAction } = useData();
+
+    return (
         <AuthProvider initialUsers={users} initialLicenses={licenses} dbAction={dbAction}>
-            <NotificationProvider>
-                <PermissionsProvider>
-                    <AppLayout>{children}</AppLayout>
-                    <Toaster />
-                    <PWALifecycle />
-                </PermissionsProvider>
-            </NotificationProvider>
+            <InnerDatabaseGate>{children}</InnerDatabaseGate>
         </AuthProvider>
     );
 };

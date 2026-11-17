@@ -5,7 +5,7 @@ const sqlConfig: sql.config = {
     password: process.env.DB_PASSWORD || 'MetoPosPass123!',
     server: process.env.DB_SERVER || 'localhost',
     database: process.env.DB_NAME || 'MultiBranchPOS_DB',
-    connectionTimeout: 30000,
+    connectionTimeout: 4000,
     requestTimeout: 60000,
     options: {
         encrypt: false,

@@ -157,8 +157,11 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
     const refreshDataFromSqlServer = useCallback(async (): Promise<boolean> => {
         let connected = false;
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 5000);
         try {
-            const res = await fetch('/api/db/sync', { cache: 'no-store' });
+            const res = await fetch('/api/db/sync', { cache: 'no-store', signal: controller.signal });
+            clearTimeout(timeoutId);
             if (res.ok) {
                 const json = await res.json();
                 if (json.success && json.data) {
@@ -171,21 +174,28 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
                 }
             } else {
                 const json = await res.json().catch(() => null);
+                setIsOnline(false);
                 if (json?.code === 'LOCAL_DATABASE_MISSING') {
                     setDatabaseName(json.database || 'MultiBranchPOS_DB');
                     setDatabaseSetupRequired(true);
                     setDatabaseSetupError(null);
-                    setIsOnline(false);
                 } else {
                     throw new Error(json?.error || `تعذر الاتصال بقاعدة البيانات (${res.status})`);
                 }
             }
         } catch (error) {
-            console.warn('Could not sync with SQL Server, attempting cache fallback:', error);
-            const cached = await localforage.getItem<any>(CACHE_KEY);
-            if (cached) {
-                setAllData(cached);
-            }
+            clearTimeout(timeoutId);
+            setIsOnline(false);
+            console.warn('Could not sync with SQL Server, operating in offline/emergency mode:', error);
+            try {
+                const cached = await Promise.race([
+                    localforage.getItem<any>(CACHE_KEY),
+                    new Promise<null>(resolve => setTimeout(() => resolve(null), 500))
+                ]);
+                if (cached) {
+                    setAllData(cached);
+                }
+            } catch {}
         } finally {
             setIsLoading(false);
         }
@@ -619,15 +629,6 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         goOffline: () => setIsOnline(false),
         goOnline: () => setIsOnline(true)
     };
-
-    if (isLoading && !Object.keys(allData).length) {
-        return (
-            <div className="flex h-screen w-full items-center justify-center">
-                <Loader2 className="h-8 w-8 animate-spin" />
-                <p className="mr-2">جارٍ الاتصال بقاعدة بيانات SQL Server والتحميل...</p>
-            </div>
-        );
-    }
 
     return <DataContext.Provider value={value}>{children}</DataContext.Provider>;
 };

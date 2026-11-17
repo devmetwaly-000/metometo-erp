@@ -242,16 +242,22 @@ export const PermissionsProvider: React.FC<{ children: React.ReactNode }> = ({ c
   const { user } = useAuth();
   const { licenses, roles: allRoles, loading } = useData();
 
+  const isEmergencySuperAdmin =
+    user?.id === 'superadmin' ||
+    user?.id === 'admin_master' ||
+    (user?.loginName && user.loginName.toLowerCase().trim() === 'admin');
+
   const role = user?.role as Role | null;
   
   const permissions = useMemo(() => {
+    if (isEmergencySuperAdmin) return initialRoles["مسؤول"];
     if (loading || !allRoles) return null;
-    return role ? allRoles[role] : null;
-  }, [allRoles, role, loading]);
+    return role ? (allRoles[role] || initialRoles[role]) : null;
+  }, [allRoles, role, loading, isEmergencySuperAdmin]);
 
 
   const can = useCallback((action: Action, module: Module | string): boolean => {
-    if (user?.id === 'superadmin' || user?.id === 'admin_master') return true;
+    if (isEmergencySuperAdmin) return true;
     if (!user) return false;
     
     // License check
@@ -290,10 +296,10 @@ export const PermissionsProvider: React.FC<{ children: React.ReactNode }> = ({ c
 
     return permissions[m][action as keyof typeof permissions[typeof m]] || false;
 
-  }, [permissions, role, licenses, user]);
+  }, [permissions, role, licenses, user, isEmergencySuperAdmin]);
 
 
-  if (loading) {
+  if (loading && !isEmergencySuperAdmin) {
     return (
         <div className="flex h-screen w-full items-center justify-center">
             <Loader2 className="h-8 w-8 animate-spin" />

@@ -263,7 +263,7 @@ async function executeDatabaseResetOnPool(
                     BEGIN
                         DELETE FROM dbo.Users;
                         INSERT INTO dbo.Users (Id, LoginName, Name, Password, Phone, Role, WarehouseIds, Uid, IsCashier, IsDelivery, IsSalesRep, CanOpenOwnShift, CanDeleteFromCart, CanProcessReturn, CanCancelInvoice, CanBypassScannerForReturn, IsDisabled, SyncStatus)
-                        VALUES ('admin_master', 'admin', N'مدير النظام', 'admin', '01000000000', N'مسؤول', '["all"]', 'admin_master', 0, 0, 0, 1, 1, 1, 1, 1, 0, 'synced');
+                        VALUES ('admin_master', 'Admin', N'مدير النظام (Admin)', '200300400', '01000000000', N'مسؤول', '["all"]', 'admin_master', 0, 0, 0, 1, 1, 1, 1, 1, 0, 'synced');
                     END;
 
                     -- تجريد حساب المدير المتبقي من أي ارتباط بفرع محذوف أو عهدة مندوب أو كاشير
