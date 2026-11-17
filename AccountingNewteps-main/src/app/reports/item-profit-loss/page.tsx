@@ -11,9 +11,10 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow, TableFoo
 import { ChartContainer, ChartTooltip, ChartTooltipContent } from "@/components/ui/chart";
 import { Bar, BarChart, CartesianGrid, XAxis, YAxis, LabelList } from "recharts";
 import { useData } from "@/contexts/data-provider";
-import { Loader2, Printer, Eye } from "lucide-react";
+import { Loader2, Printer, Eye, Sparkles, Tag, CheckCircle2 } from "lucide-react";
 import React, { useState, useMemo, useEffect, useCallback } from "react";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { Badge } from "@/components/ui/badge";
 import { useIsMobile } from "@/hooks/use-mobile";
 
 
@@ -63,7 +64,7 @@ interface Warehouse {
     name: string;
 }
 
-const ItemSalesDetailsDialog = ({ itemId, itemName, salesData, allItems }: { itemId: string; itemName: string; salesData: any[], allItems: any[] }) => {
+const ItemSalesDetailsDialog = ({ itemId, itemName, salesData, allItems, promotions }: { itemId: string; itemName: string; salesData: any[], allItems: any[], promotions?: any[] }) => {
 
     const calculateManufacturedCost = (item: any) => {
         if (!item || item.itemType !== 'manufactured' || !item.components) {
@@ -78,56 +79,167 @@ const ItemSalesDetailsDialog = ({ itemId, itemName, salesData, allItems }: { ite
     const detailedSales = useMemo(() => {
         const salesForItem: any[] = [];
         salesData.forEach(sale => {
-            const itemInSale = sale.items.find((i: any) => i.id === itemId);
+            const itemInSale = sale.items?.find((i: any) => i.id === itemId);
             if (itemInSale) {
                 const masterItem = allItems.find((i: any) => i.id === itemId);
-                const itemCost = sale.type === 'POS' 
+                const itemCost = (sale.type === 'POS' || sale.cashierId)
                     ? (itemInSale.cost || calculateManufacturedCost(masterItem))
                     : (itemInSale.cost || 0);
 
-                const itemValue = itemInSale.qty * itemInSale.price;
-                const itemProfit = itemValue - (itemInSale.qty * itemCost);
+                const qty = Number(itemInSale.qty || 1);
+                const unitPrice = Number(itemInSale.price || 0);
+                const originalPrice = Number(itemInSale.originalPrice || unitPrice);
+                
+                const itemRevenue = Number(itemInSale.total ?? (qty * unitPrice));
+                const totalCost = qty * itemCost;
+                const itemProfit = itemRevenue - totalCost;
+
+                // Check Promotion / Offer
+                const promoDiscount = Number(itemInSale.discountApplied || 0);
+                const hasPromo = Boolean(itemInSale.promoApplied || promoDiscount > 0);
+                
+                let promoName = '';
+                if (itemInSale.promoApplied) {
+                    const foundPromo = (promotions || []).find((p: any) => p.id === itemInSale.promoApplied);
+                    promoName = foundPromo?.name || 'عرض ترويجي';
+                } else if (promoDiscount > 0) {
+                    promoName = 'عرض ترويجي';
+                }
+
+                // Check manual discount vs promo discount
+                const grossValue = originalPrice * qty;
+                const priceDiffDiscount = Math.max(0, grossValue - itemRevenue);
+
+                let proportionalInvoiceDiscount = 0;
+                if (sale.discount && sale.subtotal && sale.subtotal > 0) {
+                    const ratio = itemRevenue / Number(sale.subtotal);
+                    proportionalInvoiceDiscount = Number(sale.discount) * ratio;
+                }
+
+                let promoDiscountVal = 0;
+                let manualDiscountVal = 0;
+
+                if (hasPromo) {
+                    promoDiscountVal = promoDiscount > 0 ? promoDiscount : priceDiffDiscount;
+                    manualDiscountVal = proportionalInvoiceDiscount;
+                } else {
+                    manualDiscountVal = priceDiffDiscount + proportionalInvoiceDiscount;
+                }
+
+                const totalDiscountVal = promoDiscountVal + manualDiscountVal;
+
+                let discountType = 'بدون خصم';
+                if (promoDiscountVal > 0 && manualDiscountVal > 0) {
+                    discountType = 'عرض + يدوي';
+                } else if (promoDiscountVal > 0) {
+                    discountType = 'خصم عرض';
+                } else if (manualDiscountVal > 0) {
+                    discountType = 'خصم يدوي';
+                }
+
                 salesForItem.push({
                     date: sale.date,
                     invoiceNumber: sale.invoiceNumber,
-                    qty: itemInSale.qty,
-                    price: itemInSale.price,
+                    qty,
+                    price: unitPrice,
+                    originalPrice,
                     cost: itemCost,
                     profit: itemProfit,
+                    hasPromo,
+                    promoName,
+                    totalDiscountVal,
+                    discountType
                 });
             }
         });
         return salesForItem;
-    }, [itemId, salesData, allItems]);
+    }, [itemId, salesData, allItems, promotions]);
 
     return (
-        <DialogContent className="max-w-3xl">
+        <DialogContent className="max-w-4xl max-h-[90vh] flex flex-col">
             <DialogHeader>
-                <DialogTitle>تفاصيل مبيعات صنف: {itemName}</DialogTitle>
+                <DialogTitle className="flex items-center gap-2 text-xl font-bold">
+                    تفاصيل مبيعات صنف: <span className="text-primary">{itemName}</span>
+                </DialogTitle>
+                <DialogDescription className="text-muted-foreground text-xs">
+                    عرض تفاصيل كل حركة بيع للصنف متضمنة سعر البيع، حالة العروض، قيمة ونوع الخصم (عرض / يدوي)، والتكلفة والربح الصافي.
+                </DialogDescription>
             </DialogHeader>
-            <div className="max-h-96 overflow-y-auto">
+            <div className="flex-1 overflow-auto border rounded-lg">
                 <Table>
-                    <TableHeader>
+                    <TableHeader className="sticky top-0 bg-muted/80 backdrop-blur z-10">
                         <TableRow>
                             <TableHead>التاريخ</TableHead>
                             <TableHead>الفاتورة</TableHead>
-                            <TableHead className="text-center">الكمية</TableHead>
+                            <TableHead className="text-center w-16">الكمية</TableHead>
                             <TableHead className="text-center">سعر البيع</TableHead>
+                            <TableHead className="text-center">هل يوجد عرض؟</TableHead>
+                            <TableHead className="text-center">قيمة ونوع الخصم</TableHead>
                             <TableHead className="text-center">التكلفة</TableHead>
                             <TableHead className="text-center">الربح</TableHead>
                         </TableRow>
                     </TableHeader>
                     <TableBody>
-                        {detailedSales.map((sale, index) => (
-                            <TableRow key={index}>
-                                <TableCell>{new Date(sale.date).toLocaleString('ar-EG')}</TableCell>
-                                <TableCell className="font-mono">{sale.invoiceNumber}</TableCell>
-                                <TableCell className="text-center">{sale.qty}</TableCell>
-                                <TableCell className="text-center">{sale.price.toLocaleString(undefined, {minimumFractionDigits: 2})}</TableCell>
-                                <TableCell className="text-center">{sale.cost.toLocaleString(undefined, {minimumFractionDigits: 2})}</TableCell>
-                                <TableCell className={`text-center font-semibold ${sale.profit >= 0 ? 'text-green-600' : 'text-destructive'}`}>{sale.profit.toLocaleString(undefined, {minimumFractionDigits: 2})}</TableCell>
+                        {detailedSales.length > 0 ? detailedSales.map((sale, index) => (
+                            <TableRow key={index} className="hover:bg-muted/40 transition-colors">
+                                <TableCell className="text-xs whitespace-nowrap">{new Date(sale.date).toLocaleString('ar-EG')}</TableCell>
+                                <TableCell className="font-mono text-xs font-semibold">{sale.invoiceNumber}</TableCell>
+                                <TableCell className="text-center font-bold">{sale.qty}</TableCell>
+                                <TableCell className="text-center font-mono">
+                                    {sale.price.toLocaleString(undefined, {minimumFractionDigits: 2})}
+                                </TableCell>
+                                <TableCell className="text-center">
+                                    {sale.hasPromo ? (
+                                        <Badge className="bg-purple-500/20 text-purple-300 border-purple-500/40 text-[11px] gap-1 px-2 py-0.5 whitespace-nowrap hover:bg-purple-500/30">
+                                            <Sparkles className="w-3 h-3 text-purple-400 shrink-0" />
+                                            {sale.promoName || 'نعم (عرض ترويجي)'}
+                                        </Badge>
+                                    ) : (
+                                        <Badge variant="outline" className="text-muted-foreground text-[11px] font-normal px-2 py-0.5">
+                                            لا
+                                        </Badge>
+                                    )}
+                                </TableCell>
+                                <TableCell className="text-center">
+                                    {sale.totalDiscountVal > 0 ? (
+                                        <div className="flex flex-col items-center justify-center gap-0.5">
+                                            <span className="font-mono font-bold text-xs text-amber-400">
+                                                -{sale.totalDiscountVal.toLocaleString(undefined, {minimumFractionDigits: 2})} ج.م
+                                            </span>
+                                            <span className={`text-[10px] px-1.5 py-0.5 rounded font-medium border ${
+                                                sale.discountType === 'خصم عرض' 
+                                                    ? 'bg-purple-500/15 text-purple-300 border-purple-500/30' 
+                                                    : sale.discountType === 'خصم يدوي' 
+                                                        ? 'bg-amber-500/15 text-amber-300 border-amber-500/30' 
+                                                        : 'bg-sky-500/15 text-sky-300 border-sky-500/30'
+                                            }`}>
+                                                {sale.discountType}
+                                            </span>
+                                        </div>
+                                    ) : (
+                                        <span className="text-muted-foreground text-xs">-</span>
+                                    )}
+                                </TableCell>
+                                <TableCell className="text-center font-mono">{sale.cost.toLocaleString(undefined, {minimumFractionDigits: 2})}</TableCell>
+                                <TableCell className="text-center font-mono">
+                                    <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-bold ${
+                                        sale.profit > 0 
+                                            ? 'text-emerald-400 bg-emerald-500/15 border border-emerald-500/30' 
+                                            : sale.profit < 0 
+                                                ? 'text-red-400 bg-red-500/15 border border-red-500/30' 
+                                                : 'text-muted-foreground'
+                                    }`}>
+                                        {sale.profit > 0 ? '+' : ''}{sale.profit.toLocaleString(undefined, {minimumFractionDigits: 2})}
+                                    </span>
+                                </TableCell>
                             </TableRow>
-                        ))}
+                        )) : (
+                            <TableRow>
+                                <TableCell colSpan={8} className="text-center py-8 text-muted-foreground">
+                                    لا توجد حركات مبيعات مسجلة لهذا الصنف.
+                                </TableCell>
+                            </TableRow>
+                        )}
                     </TableBody>
                 </Table>
             </div>
@@ -147,7 +259,7 @@ export default function ItemProfitLossPage() {
      const [selectedItem, setSelectedItem] = useState<{id: string, name: string} | null>(null);
 
 
-    const { items, salesInvoices, posSales, salesReturns, posReturns, warehouses, loading } = useData();
+    const { items, salesInvoices, posSales, salesReturns, posReturns, warehouses, promotions, loading } = useData();
     
     useEffect(() => {
         const toDate = new Date();
@@ -395,11 +507,27 @@ export default function ItemProfitLossPage() {
                                     <div className="text-xs text-muted-foreground">({data.totalReturnedQty} وحدة)</div>
                                 </TableCell>
                                 <TableCell className="text-center">ج.م {data.totalCost.toLocaleString(undefined, { minimumFractionDigits: 2 })}</TableCell>
-                                <TableCell className={`text-center font-bold ${data.profit >= 0 ? "text-green-500" : "text-destructive"}`}>
-                                    ج.م {data.profit.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                                <TableCell className="text-center font-mono">
+                                    <span className={`inline-flex items-center px-2.5 py-1 rounded-md text-sm font-bold ${
+                                        data.profit > 0 
+                                            ? "text-emerald-400 bg-emerald-500/15 border border-emerald-500/30 shadow-sm" 
+                                            : data.profit < 0 
+                                                ? "text-red-400 bg-red-500/15 border border-red-500/30" 
+                                                : "text-muted-foreground"
+                                    }`}>
+                                        {data.profit > 0 ? "+" : ""}{data.profit.toLocaleString(undefined, { minimumFractionDigits: 2 })} ج.م
+                                    </span>
                                 </TableCell>
-                                <TableCell className={`text-center font-bold ${data.profit >= 0 ? "text-green-500" : "text-destructive"}`}>
-                                    {data.margin}
+                                <TableCell className="text-center font-mono">
+                                    <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-bold ${
+                                        data.profit > 0 
+                                            ? "text-emerald-400 bg-emerald-500/10 font-bold" 
+                                            : data.profit < 0 
+                                                ? "text-red-400 bg-red-500/10 font-bold" 
+                                                : "text-muted-foreground"
+                                    }`}>
+                                        {data.margin}
+                                    </span>
                                 </TableCell>
                             </TableRow>
                         )) : (
@@ -417,7 +545,17 @@ export default function ItemProfitLossPage() {
                                 <TableCell className="text-center">ج.م {grandTotals.soldValue.toLocaleString(undefined, { minimumFractionDigits: 2 })}</TableCell>
                                 <TableCell className="text-center">ج.م {grandTotals.returnedValue.toLocaleString(undefined, { minimumFractionDigits: 2 })}</TableCell>
                                 <TableCell className="text-center">ج.م {grandTotals.cost.toLocaleString(undefined, { minimumFractionDigits: 2 })}</TableCell>
-                                <TableCell className="text-center">ج.م {grandTotals.profit.toLocaleString(undefined, { minimumFractionDigits: 2 })}</TableCell>
+                                <TableCell className="text-center font-mono">
+                                    <span className={`inline-flex items-center px-2.5 py-1 rounded-md text-sm font-bold ${
+                                        grandTotals.profit > 0 
+                                            ? "text-emerald-400 bg-emerald-500/15 border border-emerald-500/30 shadow-sm" 
+                                            : grandTotals.profit < 0 
+                                                ? "text-red-400 bg-red-500/15 border border-red-500/30" 
+                                                : "text-muted-foreground"
+                                    }`}>
+                                        {grandTotals.profit > 0 ? "+" : ""}{grandTotals.profit.toLocaleString(undefined, { minimumFractionDigits: 2 })} ج.م
+                                    </span>
+                                </TableCell>
                                 <TableCell></TableCell>
                             </TableRow>
                         </TableFooter>
@@ -432,6 +570,7 @@ export default function ItemProfitLossPage() {
                     itemName={selectedItem.name}
                     salesData={filteredSales}
                     allItems={items}
+                    promotions={promotions}
                 />
             )}
             </Dialog>
