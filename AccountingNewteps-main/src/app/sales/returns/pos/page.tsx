@@ -23,28 +23,28 @@ import { Badge } from "@/components/ui/badge";
 import { useRouter } from 'next/navigation';
 
 interface PosSale {
-  id: string;
-  invoiceNumber: string;
-  date: string;
-  cashierId: string;
-  cashierName: string;
-  warehouseId?: string;
-  posTerminalId?: string;
-  items: { id: string; code?: string; barcode?: string; name: string; qty: number; price: number; cost?: number; }[];
-  total: number;
-  invoiceCounter?: number;
+    id: string;
+    invoiceNumber: string;
+    date: string;
+    cashierId: string;
+    cashierName: string;
+    warehouseId?: string;
+    posTerminalId?: string;
+    items: { id: string; code?: string; barcode?: string; name: string; qty: number; price: number; cost?: number; }[];
+    total: number;
+    invoiceCounter?: number;
 }
 interface PosReturnItem {
-  id: string; // original item id
-  code?: string;
-  barcode?: string;
-  name: string;
-  qty: number;
-  price: number;
-  cost: number;
-  total: number;
-  maxQty: number; // max qty that can be returned from original invoice
-  previouslyReturned: number; // qty returned in previous transactions for this invoice
+    id: string; // original item id
+    code?: string;
+    barcode?: string;
+    name: string;
+    qty: number;
+    price: number;
+    cost: number;
+    total: number;
+    maxQty: number; // max qty that can be returned from original invoice
+    previouslyReturned: number; // qty returned in previous transactions for this invoice
 }
 
 export default function PosReturnPage() {
@@ -378,28 +378,28 @@ export default function PosReturnPage() {
                         </CardHeader>
                         <CardContent className="pt-4 space-y-4">
                             {canBypassScanner ? (
-                                 <div className="space-y-3">
+                                <div className="space-y-3">
                                     <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
                                         <div>
                                             <Label className="font-bold text-sm">تحديد الأصناف والكميات المرتجعة</Label>
                                             <p className="text-xs text-muted-foreground">يمكنك إدخال الكميات يدوياً أو استخدام الأزرار السريعة لإرجاع الفاتورة كاملة</p>
                                         </div>
                                         <div className="flex gap-2 shrink-0">
-                                            <Button 
-                                                type="button" 
-                                                variant="outline" 
-                                                size="sm" 
-                                                onClick={handleSelectAllReturnQty} 
+                                            <Button
+                                                type="button"
+                                                variant="outline"
+                                                size="sm"
+                                                onClick={handleSelectAllReturnQty}
                                                 className="gap-1.5 text-xs text-primary border-primary/40 hover:bg-primary/10"
                                             >
                                                 <RotateCcw className="h-3.5 w-3.5" />
                                                 إرجاع الفاتورة كاملة
                                             </Button>
-                                            <Button 
-                                                type="button" 
-                                                variant="ghost" 
-                                                size="sm" 
-                                                onClick={handleResetReturnQty} 
+                                            <Button
+                                                type="button"
+                                                variant="ghost"
+                                                size="sm"
+                                                onClick={handleResetReturnQty}
                                                 className="text-xs text-muted-foreground hover:text-destructive"
                                             >
                                                 تصفير الكميات
@@ -442,13 +442,13 @@ export default function PosReturnPage() {
                                                         <TableCell className="text-center">{item.maxQty}</TableCell>
                                                         <TableCell className="text-center text-muted-foreground">{item.previouslyReturned}</TableCell>
                                                         <TableCell className="text-center">
-                                                            <Input 
-                                                                type="number" 
-                                                                value={item.qty} 
-                                                                onChange={(e) => handleQtyChange(item.id, Number(e.target.value))} 
-                                                                className="text-center font-bold h-9 mx-auto max-w-[100px]" 
-                                                                max={item.maxQty - item.previouslyReturned} 
-                                                                min={0} 
+                                                            <Input
+                                                                type="number"
+                                                                value={item.qty}
+                                                                onChange={(e) => handleQtyChange(item.id, Number(e.target.value))}
+                                                                className="text-center font-bold h-9 mx-auto max-w-[100px]"
+                                                                max={item.maxQty - item.previouslyReturned}
+                                                                min={0}
                                                             />
                                                         </TableCell>
                                                         <TableCell className="text-center">{item.price.toLocaleString()}</TableCell>
@@ -467,14 +467,14 @@ export default function PosReturnPage() {
                                         <form onSubmit={handleItemScan} className="space-y-2">
                                             <Label htmlFor='scan-item' className="font-semibold text-sm">مسح باركود الصنف للإرجاع</Label>
                                             <div className="flex gap-2">
-                                                <Input 
-                                                    ref={itemScanRef} 
-                                                    id="scan-item" 
+                                                <Input
+                                                    ref={itemScanRef}
+                                                    id="scan-item"
                                                     dir="ltr"
                                                     className="font-mono text-left"
-                                                    value={scanInput} 
-                                                    onChange={e => setScanInput(e.target.value)} 
-                                                    placeholder="امسح باركود الصنف المرتجع هنا..." 
+                                                    value={scanInput}
+                                                    onChange={e => setScanInput(e.target.value)}
+                                                    placeholder="امسح باركود الصنف المرتجع هنا..."
                                                 />
                                                 <Button type="submit" variant="outline" className="gap-1.5">
                                                     <ScanLine className="h-4 w-4" />
@@ -511,13 +511,13 @@ export default function PosReturnPage() {
                                                             <TableCell className="text-center font-semibold text-destructive">{item.total.toLocaleString()} ج.م</TableCell>
                                                         </TableRow>
                                                     ))}
-                                                     {returnedItems.length === 0 && (
+                                                    {returnedItems.length === 0 && (
                                                         <TableRow>
                                                             <TableCell colSpan={4} className="text-center text-muted-foreground p-6">
                                                                 لم يتم مسح أي أصناف بعد. يرجى مسح باركود الصنف أعلاه.
                                                             </TableCell>
                                                         </TableRow>
-                                                     )}
+                                                    )}
                                                 </TableBody>
                                             </Table>
                                         </div>
@@ -537,9 +537,9 @@ export default function PosReturnPage() {
                             <p className="text-xl font-bold">
                                 إجمالي قيمة المرتجع: <span className="text-destructive font-mono mr-1">{returnTotal.toLocaleString()} ج.م</span>
                             </p>
-                            <Button 
-                                size="lg" 
-                                onClick={handleSaveReturn} 
+                            <Button
+                                size="lg"
+                                onClick={handleSaveReturn}
                                 disabled={returnTotal <= 0 || !canProcessReturn}
                                 className="px-8 font-bold gap-2"
                             >

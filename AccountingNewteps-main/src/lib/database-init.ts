@@ -16,6 +16,7 @@ export interface DbInitOptions {
     branchCode?: string;
     branchName?: string;
     isCentral?: boolean;
+    skipDemoSeed?: boolean;
 }
 
 export async function createAndInitializeDatabase(options: DbInitOptions): Promise<{
@@ -2560,41 +2561,45 @@ export async function createAndInitializeDatabase(options: DbInitOptions): Promi
             }
         }
 
-        // 7. Seed canonical Warehouses
-        // Note: Sales branches have type='branch' and isMain=0; Main Logistics Warehouses have type='warehouse' and isMain=1
-        const warehousesSeed = [
-            { id: '-OmnkFba_GsEb0rfdzyA', code: branchCode, name: branchName, type: 'branch', isRep: 0, isMain: 0 },
-            { id: '-P2S4PYETwslu4f4ym70', code: '5000', name: 'المخزن الرئيسي (ألنهضة)', type: 'warehouse', isRep: 0, isMain: 1 },
-            { id: '-OnwGtz2HzhPQCqm55No', code: 'REP-01', name: 'عهدة المندوب: محاسب', type: 'rep', isRep: 1, isMain: 0, repId: '-OnwGtvQ3IuU_85UL0l9' }
-        ];
+        // Check if database was wiped via Factory Reset or if demo seeding should be skipped
+        let isFactoryResetClean = Boolean(options.skipDemoSeed);
+        try {
+            const cleanRes = await targetPool.request().query(`
+                SELECT SettingValue FROM dbo.AppSettings WHERE SettingKey = 'factory_reset_clean'
+            `);
+            if (cleanRes.recordset[0]?.SettingValue === 'true') {
+                isFactoryResetClean = true;
+            }
+        } catch {}
 
-        for (const w of warehousesSeed) {
-            try {
-                await targetPool.request()
-                    .input('Id', sql.NVarChar(64), w.id)
-                    .input('Code', sql.NVarChar(50), w.code)
-                    .input('Name', sql.NVarChar(255), w.name)
-                    .input('Type', sql.NVarChar(50), w.type)
-                    .input('IsRep', sql.Bit, w.isRep)
-                    .input('IsMain', sql.Bit, w.isMain)
-                    .input('RepId', sql.NVarChar(64), w.repId || null)
-                    .input('BranchCode', sql.NVarChar(50), branchCode)
-                    .input('BranchName', sql.NVarChar(255), branchName)
-                    .query(`
-                        IF NOT EXISTS (SELECT 1 FROM dbo.Warehouses WHERE Id = @Id)
-                        BEGIN
-                            INSERT INTO dbo.Warehouses (Id, Code, Name, WarehouseType, IsRepWarehouse, IsMain, RepId, BranchCode, BranchName, SyncStatus)
-                            VALUES (@Id, @Code, @Name, @Type, @IsRep, @IsMain, @RepId, @BranchCode, @BranchName, 'synced');
-                        END
-                        ELSE
-                        BEGIN
-                            UPDATE dbo.Warehouses 
-                            SET Code = @Code, Name = @Name, WarehouseType = @Type, IsRepWarehouse = @IsRep, IsMain = @IsMain, RepId = @RepId
-                            WHERE Id = @Id;
-                        END
-                    `);
-            } catch (wErr: any) {
-                console.warn(`Warehouse seed error:`, wErr.message);
+        // 7. Seed canonical Warehouses (only on brand-new un-reset databases)
+        if (!isFactoryResetClean) {
+            const warehousesSeed = [
+                { id: '-OmnkFba_GsEb0rfdzyA', code: branchCode, name: branchName, type: 'branch', isRep: 0, isMain: 0 }
+            ];
+
+            for (const w of warehousesSeed) {
+                try {
+                    await targetPool.request()
+                        .input('Id', sql.NVarChar(64), w.id)
+                        .input('Code', sql.NVarChar(50), w.code)
+                        .input('Name', sql.NVarChar(255), w.name)
+                        .input('Type', sql.NVarChar(50), w.type)
+                        .input('IsRep', sql.Bit, w.isRep)
+                        .input('IsMain', sql.Bit, w.isMain)
+                        .input('RepId', sql.NVarChar(64), null)
+                        .input('BranchCode', sql.NVarChar(50), branchCode)
+                        .input('BranchName', sql.NVarChar(255), branchName)
+                        .query(`
+                            IF NOT EXISTS (SELECT 1 FROM dbo.Warehouses WHERE Id = @Id)
+                            BEGIN
+                                INSERT INTO dbo.Warehouses (Id, Code, Name, WarehouseType, IsRepWarehouse, IsMain, RepId, BranchCode, BranchName, SyncStatus)
+                                VALUES (@Id, @Code, @Name, @Type, @IsRep, @IsMain, @RepId, @BranchCode, @BranchName, 'synced');
+                            END
+                        `);
+                } catch (wErr: any) {
+                    console.warn(`Warehouse seed error:`, wErr.message);
+                }
             }
         }
 
@@ -2607,23 +2612,25 @@ export async function createAndInitializeDatabase(options: DbInitOptions): Promi
             console.warn(`Branch IsMain normalization warning:`, fixBranchErr.message);
         }
 
-        // 8. Seed default CashAccount
-        try {
-            await targetPool.request()
-                .input('Id', sql.NVarChar(64), '-OmnkFeLDTdEKiFIrlq7')
-                .input('Name', sql.NVarChar(255), `خزينة فرع: ${branchName}`)
-                .input('Type', sql.NVarChar(50), 'cash')
-                .input('WarehouseId', sql.NVarChar(64), '-OmnkFba_GsEb0rfdzyA')
-                .input('BranchCode', sql.NVarChar(50), branchCode)
-                .input('BranchName', sql.NVarChar(255), branchName)
-                .query(`
-                    IF NOT EXISTS (SELECT 1 FROM dbo.CashAccounts WHERE Id = @Id)
-                    BEGIN
-                        INSERT INTO dbo.CashAccounts (Id, Name, Type, OpeningBalance, WarehouseId, BranchCode, BranchName, SyncStatus)
-                        VALUES (@Id, @Name, @Type, 0, @WarehouseId, @BranchCode, @BranchName, 'synced');
-                    END
-                `);
-        } catch {}
+        // 8. Seed default CashAccount (only on brand-new un-reset databases)
+        if (!isFactoryResetClean) {
+            try {
+                await targetPool.request()
+                    .input('Id', sql.NVarChar(64), '-OmnkFeLDTdEKiFIrlq7')
+                    .input('Name', sql.NVarChar(255), `خزينة فرع: ${branchName}`)
+                    .input('Type', sql.NVarChar(50), 'cash')
+                    .input('WarehouseId', sql.NVarChar(64), '-OmnkFba_GsEb0rfdzyA')
+                    .input('BranchCode', sql.NVarChar(50), branchCode)
+                    .input('BranchName', sql.NVarChar(255), branchName)
+                    .query(`
+                        IF NOT EXISTS (SELECT 1 FROM dbo.CashAccounts WHERE Id = @Id)
+                        BEGIN
+                            INSERT INTO dbo.CashAccounts (Id, Name, Type, OpeningBalance, WarehouseId, BranchCode, BranchName, SyncStatus)
+                            VALUES (@Id, @Name, @Type, 0, @WarehouseId, @BranchCode, @BranchName, 'synced');
+                        END
+                    `);
+            } catch {}
+        }
 
         // 9. Seed default Roles & Permissions
         try {
@@ -2726,10 +2733,13 @@ export async function createAndInitializeDatabase(options: DbInitOptions): Promi
             console.warn('Roles seed error:', rErr.message);
         }
 
-        // 10. Seed default Users (Ensures system is never locked on fresh install)
+        // 10. Seed default Admin User (Ensures system is never locked out)
         try {
-            const defaultUsers = [
-                {
+            const existingUsersCountRes = await targetPool.request().query(`SELECT COUNT(*) as cnt FROM dbo.Users`);
+            const existingUsersCount = Number(existingUsersCountRes.recordset[0]?.cnt) || 0;
+
+            if (existingUsersCount === 0) {
+                const adminUser = {
                     id: 'admin_master',
                     loginName: 'admin',
                     name: 'مدير النظام',
@@ -2738,9 +2748,9 @@ export async function createAndInitializeDatabase(options: DbInitOptions): Promi
                     role: 'مسؤول',
                     warehouseIds: JSON.stringify(['all']),
                     uid: 'admin_master',
-                    isCashier: 1,
-                    isDelivery: 1,
-                    isSalesRep: 1,
+                    isCashier: 0,
+                    isDelivery: 0,
+                    isSalesRep: 0,
                     canOpenOwnShift: 1,
                     canDeleteFromCart: 1,
                     canProcessReturn: 1,
@@ -2748,143 +2758,119 @@ export async function createAndInitializeDatabase(options: DbInitOptions): Promi
                     canBypassScannerForReturn: 1,
                     isDisabled: 0,
                     themeSettings: JSON.stringify({ licenseKey: 'SA-KEY-99ED28E7-023953BC', licenseStatus: 'active', zoomLevel: 1.0 })
-                },
-                {
-                    id: 'cashier_default',
-                    loginName: 'cashier',
-                    name: 'كاشير الفرع',
-                    password: '1234',
-                    phone: '01100000000',
-                    role: 'كاشير',
-                    warehouseIds: JSON.stringify(['-OmnkFba_GsEb0rfdzyA']),
-                    uid: 'cashier_default',
-                    isCashier: 1,
-                    isDelivery: 0,
-                    isSalesRep: 0,
-                    canOpenOwnShift: 1,
-                    canDeleteFromCart: 0,
-                    canProcessReturn: 1,
-                    canCancelInvoice: 0,
-                    canBypassScannerForReturn: 0,
-                    isDisabled: 0,
-                    themeSettings: JSON.stringify({ licenseKey: 'SA-KEY-99ED28E7-023953BC', licenseStatus: 'active', zoomLevel: 1.0 })
-                }
-            ];
+                };
 
-            for (const u of defaultUsers) {
                 await targetPool.request()
-                    .input('Id', sql.NVarChar(64), u.id)
-                    .input('LoginName', sql.NVarChar(100), u.loginName)
-                    .input('Name', sql.NVarChar(255), u.name)
-                    .input('Password', sql.NVarChar(255), u.password)
-                    .input('Phone', sql.NVarChar(50), u.phone)
-                    .input('Role', sql.NVarChar(100), u.role)
-                    .input('WarehouseIds', sql.NVarChar(sql.MAX), u.warehouseIds)
-                    .input('Uid', sql.NVarChar(100), u.uid)
-                    .input('IsCashier', sql.Bit, u.isCashier)
-                    .input('IsDelivery', sql.Bit, u.isDelivery)
-                    .input('IsSalesRep', sql.Bit, u.isSalesRep)
-                    .input('CanOpenOwnShift', sql.Bit, u.canOpenOwnShift)
-                    .input('CanDeleteFromCart', sql.Bit, u.canDeleteFromCart)
-                    .input('CanProcessReturn', sql.Bit, u.canProcessReturn)
-                    .input('CanCancelInvoice', sql.Bit, u.canCancelInvoice)
-                    .input('CanBypassScannerForReturn', sql.Bit, u.canBypassScannerForReturn)
-                    .input('IsDisabled', sql.Bit, u.isDisabled)
-                    .input('ThemeSettings', sql.NVarChar(sql.MAX), u.themeSettings)
+                    .input('Id', sql.NVarChar(64), adminUser.id)
+                    .input('LoginName', sql.NVarChar(100), adminUser.loginName)
+                    .input('Name', sql.NVarChar(255), adminUser.name)
+                    .input('Password', sql.NVarChar(255), adminUser.password)
+                    .input('Phone', sql.NVarChar(50), adminUser.phone)
+                    .input('Role', sql.NVarChar(100), adminUser.role)
+                    .input('WarehouseIds', sql.NVarChar(sql.MAX), adminUser.warehouseIds)
+                    .input('Uid', sql.NVarChar(100), adminUser.uid)
+                    .input('IsCashier', sql.Bit, adminUser.isCashier)
+                    .input('IsDelivery', sql.Bit, adminUser.isDelivery)
+                    .input('IsSalesRep', sql.Bit, adminUser.isSalesRep)
+                    .input('CanOpenOwnShift', sql.Bit, adminUser.canOpenOwnShift)
+                    .input('CanDeleteFromCart', sql.Bit, adminUser.canDeleteFromCart)
+                    .input('CanProcessReturn', sql.Bit, adminUser.canProcessReturn)
+                    .input('CanCancelInvoice', sql.Bit, adminUser.canCancelInvoice)
+                    .input('CanBypassScannerForReturn', sql.Bit, adminUser.canBypassScannerForReturn)
+                    .input('IsDisabled', sql.Bit, adminUser.isDisabled)
+                    .input('ThemeSettings', sql.NVarChar(sql.MAX), adminUser.themeSettings)
                     .input('BranchCode', sql.NVarChar(50), branchCode)
                     .input('BranchName', sql.NVarChar(255), branchName)
                     .query(`
-                        IF NOT EXISTS (SELECT 1 FROM dbo.Users WHERE LoginName = @LoginName OR Id = @Id)
-                        BEGIN
-                            INSERT INTO dbo.Users (Id, LoginName, Name, Password, Phone, Role, WarehouseIds, Uid, IsCashier, IsDelivery, IsSalesRep, CanOpenOwnShift, CanDeleteFromCart, CanProcessReturn, CanCancelInvoice, CanBypassScannerForReturn, IsDisabled, ThemeSettings, BranchCode, BranchName, SyncStatus)
-                            VALUES (@Id, @LoginName, @Name, @Password, @Phone, @Role, @WarehouseIds, @Uid, @IsCashier, @IsDelivery, @IsSalesRep, @CanOpenOwnShift, @CanDeleteFromCart, @CanProcessReturn, @CanCancelInvoice, @CanBypassScannerForReturn, @IsDisabled, @ThemeSettings, @BranchCode, @BranchName, 'synced');
-                        END
+                        INSERT INTO dbo.Users (Id, LoginName, Name, Password, Phone, Role, WarehouseIds, Uid, IsCashier, IsDelivery, IsSalesRep, CanOpenOwnShift, CanDeleteFromCart, CanProcessReturn, CanCancelInvoice, CanBypassScannerForReturn, IsDisabled, ThemeSettings, BranchCode, BranchName, SyncStatus)
+                        VALUES (@Id, @LoginName, @Name, @Password, @Phone, @Role, @WarehouseIds, @Uid, @IsCashier, @IsDelivery, @IsSalesRep, @CanOpenOwnShift, @CanDeleteFromCart, @CanProcessReturn, @CanCancelInvoice, @CanBypassScannerForReturn, @IsDisabled, @ThemeSettings, @BranchCode, @BranchName, 'synced');
                     `);
             }
         } catch (uErr: any) {
             console.warn('Users seed error:', uErr.message);
         }
 
-        // 10b. Ensure all sales reps have a dedicated rep warehouse and cash custody account
-        try {
-            const repsRes = await targetPool.request().query(`
-                SELECT Id, Name, WarehouseIds FROM dbo.Users 
-                WHERE IsSalesRep = 1 OR Role = 'مندوب' OR Role LIKE '%مندوب%'
-            `);
-            for (const r of repsRes.recordset) {
-                const whCheck = await targetPool.request()
-                    .input('RepId', sql.NVarChar(64), r.Id)
-                    .query(`SELECT Id FROM dbo.Warehouses WHERE RepId = @RepId`);
-                
-                let repWhId = whCheck.recordset[0]?.Id;
-                if (!repWhId) {
-                    const countRes = await targetPool.request().query(`SELECT COUNT(*) as cnt FROM dbo.Warehouses WHERE IsRepWarehouse = 1 OR WarehouseType = 'rep'`);
-                    const nextNum = (countRes.recordset[0]?.cnt || 0) + 1;
-                    const nextCode = `REP-${String(nextNum).padStart(2, '0')}`;
-                    repWhId = `rep_wh_${r.Id}`;
-                    const repWhName = `عهدة المندوب: ${r.Name}`;
-
-                    await targetPool.request()
-                        .input('Id', sql.NVarChar(64), repWhId)
-                        .input('Code', sql.NVarChar(50), nextCode)
-                        .input('Name', sql.NVarChar(255), repWhName)
-                        .input('WarehouseType', sql.NVarChar(50), 'rep')
-                        .input('IsRepWarehouse', sql.Bit, 1)
-                        .input('IsMain', sql.Bit, 0)
-                        .input('IsClosed', sql.Bit, 0)
+        // 10b. Ensure dedicated sales reps (excluding admin_master) have a rep warehouse and cash custody account
+        if (!isFactoryResetClean) {
+            try {
+                const repsRes = await targetPool.request().query(`
+                    SELECT Id, Name, WarehouseIds FROM dbo.Users 
+                    WHERE (IsSalesRep = 1 OR Role = 'مندوب' OR Role LIKE '%مندوب%')
+                      AND LoginName != 'admin' AND Id != 'admin_master' AND Role != 'مسؤول'
+                `);
+                for (const r of repsRes.recordset) {
+                    const whCheck = await targetPool.request()
                         .input('RepId', sql.NVarChar(64), r.Id)
-                        .input('BranchCode', sql.NVarChar(50), nextCode)
-                        .input('BranchName', sql.NVarChar(255), repWhName)
-                        .query(`
-                            IF NOT EXISTS (SELECT 1 FROM dbo.Warehouses WHERE Id = @Id OR RepId = @RepId)
-                            BEGIN
-                                INSERT INTO dbo.Warehouses (Id, Code, Name, WarehouseType, IsRepWarehouse, IsMain, IsClosed, RepId, BranchCode, BranchName, SyncStatus)
-                                VALUES (@Id, @Code, @Name, @WarehouseType, @IsRepWarehouse, @IsMain, @IsClosed, @RepId, @BranchCode, @BranchName, 'synced');
-                            END
-                        `);
-                }
+                        .query(`SELECT Id FROM dbo.Warehouses WHERE RepId = @RepId`);
+                    
+                    let repWhId = whCheck.recordset[0]?.Id;
+                    if (!repWhId) {
+                        const countRes = await targetPool.request().query(`SELECT COUNT(*) as cnt FROM dbo.Warehouses WHERE IsRepWarehouse = 1 OR WarehouseType = 'rep'`);
+                        const nextNum = (countRes.recordset[0]?.cnt || 0) + 1;
+                        const nextCode = `REP-${String(nextNum).padStart(2, '0')}`;
+                        repWhId = `rep_wh_${r.Id}`;
+                        const repWhName = `عهدة المندوب: ${r.Name}`;
 
-                // Ensure rep custody cash account
-                const cashCheck = await targetPool.request()
-                    .input('UserId', sql.NVarChar(64), r.Id)
-                    .query(`SELECT Id FROM dbo.CashAccounts WHERE UserId = @UserId`);
-                if (cashCheck.recordset.length === 0) {
-                    const cashId = `rep_cash_${r.Id}`;
-                    const cashName = `عهدة: ${r.Name}`;
-                    await targetPool.request()
-                        .input('Id', sql.NVarChar(64), cashId)
-                        .input('Name', sql.NVarChar(255), cashName)
-                        .input('Type', sql.NVarChar(50), 'cash')
-                        .input('OpeningBalance', sql.Decimal(18, 4), 0)
+                        await targetPool.request()
+                            .input('Id', sql.NVarChar(64), repWhId)
+                            .input('Code', sql.NVarChar(50), nextCode)
+                            .input('Name', sql.NVarChar(255), repWhName)
+                            .input('WarehouseType', sql.NVarChar(50), 'rep')
+                            .input('IsRepWarehouse', sql.Bit, 1)
+                            .input('IsMain', sql.Bit, 0)
+                            .input('IsClosed', sql.Bit, 0)
+                            .input('RepId', sql.NVarChar(64), r.Id)
+                            .input('BranchCode', sql.NVarChar(50), nextCode)
+                            .input('BranchName', sql.NVarChar(255), repWhName)
+                            .query(`
+                                IF NOT EXISTS (SELECT 1 FROM dbo.Warehouses WHERE Id = @Id OR RepId = @RepId)
+                                BEGIN
+                                    INSERT INTO dbo.Warehouses (Id, Code, Name, WarehouseType, IsRepWarehouse, IsMain, IsClosed, RepId, BranchCode, BranchName, SyncStatus)
+                                    VALUES (@Id, @Code, @Name, @WarehouseType, @IsRepWarehouse, @IsMain, @IsClosed, @RepId, @BranchCode, @BranchName, 'synced');
+                                END
+                            `);
+                    }
+
+                    const cashCheck = await targetPool.request()
                         .input('UserId', sql.NVarChar(64), r.Id)
-                        .input('WarehouseId', sql.NVarChar(64), repWhId)
-                        .query(`
-                            IF NOT EXISTS (SELECT 1 FROM dbo.CashAccounts WHERE Id = @Id OR UserId = @UserId)
-                            BEGIN
-                                INSERT INTO dbo.CashAccounts (Id, Name, Type, OpeningBalance, UserId, WarehouseId)
-                                VALUES (@Id, @Name, @Type, @OpeningBalance, @UserId, @WarehouseId);
-                            END
-                        `);
-                }
+                        .query(`SELECT Id FROM dbo.CashAccounts WHERE UserId = @UserId`);
+                    if (cashCheck.recordset.length === 0) {
+                        const cashId = `rep_cash_${r.Id}`;
+                        const cashName = `عهدة: ${r.Name}`;
+                        await targetPool.request()
+                            .input('Id', sql.NVarChar(64), cashId)
+                            .input('Name', sql.NVarChar(255), cashName)
+                            .input('Type', sql.NVarChar(50), 'cash')
+                            .input('OpeningBalance', sql.Decimal(18, 4), 0)
+                            .input('UserId', sql.NVarChar(64), r.Id)
+                            .input('WarehouseId', sql.NVarChar(64), repWhId)
+                            .query(`
+                                IF NOT EXISTS (SELECT 1 FROM dbo.CashAccounts WHERE Id = @Id OR UserId = @UserId)
+                                BEGIN
+                                    INSERT INTO dbo.CashAccounts (Id, Name, Type, OpeningBalance, UserId, WarehouseId)
+                                    VALUES (@Id, @Name, @Type, @OpeningBalance, @UserId, @WarehouseId);
+                                END
+                            `);
+                    }
 
-                // Ensure linked in User.WarehouseIds
-                let wids: string[] = [];
-                try {
-                    wids = JSON.parse(r.WarehouseIds || '[]');
-                } catch {
-                    wids = [];
+                    let wids: string[] = [];
+                    try {
+                        wids = JSON.parse(r.WarehouseIds || '[]');
+                    } catch {
+                        wids = [];
+                    }
+                    if (!Array.isArray(wids)) wids = [];
+                    if (!wids.includes(repWhId)) {
+                        wids.push(repWhId);
+                        await targetPool.request()
+                            .input('Id', sql.NVarChar(64), r.Id)
+                            .input('WarehouseIds', sql.NVarChar(sql.MAX), JSON.stringify(wids))
+                            .query(`UPDATE dbo.Users SET WarehouseIds = @WarehouseIds WHERE Id = @Id`);
+                    }
                 }
-                if (!Array.isArray(wids)) wids = [];
-                if (!wids.includes(repWhId)) {
-                    wids.push(repWhId);
-                    await targetPool.request()
-                        .input('Id', sql.NVarChar(64), r.Id)
-                        .input('WarehouseIds', sql.NVarChar(sql.MAX), JSON.stringify(wids))
-                        .query(`UPDATE dbo.Users SET WarehouseIds = @WarehouseIds WHERE Id = @Id`);
-                }
+            } catch (repSyncErr: any) {
+                console.warn('Rep warehouses sync warning:', repSyncErr.message);
             }
-        } catch (repSyncErr: any) {
-            console.warn('Rep warehouses sync warning:', repSyncErr.message);
         }
 
         // 11. Seed default Active License
@@ -2904,27 +2890,29 @@ export async function createAndInitializeDatabase(options: DbInitOptions): Promi
                 `);
         } catch {}
 
-        // 12. Seed default PaymentMethods
-        try {
-            const defaultMethods = [
-                { id: 'cash', name: 'نقدي' },
-                { id: 'visa', name: 'شبكة / فيزا' },
-                { id: 'transfer', name: 'تحويل بنكي' }
-            ];
-            for (const pm of defaultMethods) {
-                await targetPool.request()
-                    .input('Id', sql.NVarChar(64), pm.id)
-                    .input('Name', sql.NVarChar(255), pm.name)
-                    .input('AccountId', sql.NVarChar(64), '-OmnkFeLDTdEKiFIrlq7')
-                    .input('BranchCode', sql.NVarChar(50), branchCode)
-                    .input('BranchName', sql.NVarChar(255), branchName)
-                    .query(`
-                        IF NOT EXISTS (SELECT 1 FROM dbo.PaymentMethods WHERE Id = @Id)
-                            INSERT INTO dbo.PaymentMethods (Id, Name, AccountId, BranchCode, BranchName, SyncStatus)
-                            VALUES (@Id, @Name, @AccountId, @BranchCode, @BranchName, 'synced');
-                    `);
-            }
-        } catch {}
+        // 12. Seed default PaymentMethods (only on brand-new un-reset databases)
+        if (!isFactoryResetClean) {
+            try {
+                const defaultMethods = [
+                    { id: 'cash', name: 'نقدي' },
+                    { id: 'visa', name: 'شبكة / فيزا' },
+                    { id: 'transfer', name: 'تحويل بنكي' }
+                ];
+                for (const pm of defaultMethods) {
+                    await targetPool.request()
+                        .input('Id', sql.NVarChar(64), pm.id)
+                        .input('Name', sql.NVarChar(255), pm.name)
+                        .input('AccountId', sql.NVarChar(64), '-OmnkFeLDTdEKiFIrlq7')
+                        .input('BranchCode', sql.NVarChar(50), branchCode)
+                        .input('BranchName', sql.NVarChar(255), branchName)
+                        .query(`
+                            IF NOT EXISTS (SELECT 1 FROM dbo.PaymentMethods WHERE Id = @Id)
+                                INSERT INTO dbo.PaymentMethods (Id, Name, AccountId, BranchCode, BranchName, SyncStatus)
+                                VALUES (@Id, @Name, @AccountId, @BranchCode, @BranchName, 'synced');
+                        `);
+                }
+            } catch {}
+        }
 
         // 13. Seed default AppSettings ('main' & 'system_role')
         try {

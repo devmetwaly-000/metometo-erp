@@ -20,7 +20,7 @@ import {
     ArrowLeftRight, Wallet, Users, UserCheck, Terminal, Search, CheckCircle,
     HardDrive, Cpu, AlertCircle, FileText, CheckCheck, X, ListChecks, ShieldAlert,
     Lock, Key, Building2, Store, Shield, SlidersHorizontal, RotateCcw, PauseCircle, PlayCircle, Filter, ArrowUp, ArrowDown,
-    Eye, EyeOff
+    Eye, EyeOff, Trash2
 } from "lucide-react";
 import { CentralSyncConfig, TableSyncMatrixItem, TablesSyncMatrixResponse, SyncDirection } from '@/lib/central-sync';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -29,7 +29,49 @@ import localforage from 'localforage';
 
 export default function CentralSyncSettingsPage() {
     const { toast } = useToast();
-    const { warehouses } = useData();
+    const { warehouses, processSyncQueue } = useData();
+
+    // Global Purge Dialog State
+    const [isPurgeDialogOpen, setIsPurgeDialogOpen] = useState(false);
+    const [purgeScope, setPurgeScope] = useState<'both' | 'local' | 'central'>('both');
+    const [purgeType, setPurgeType] = useState<'factory_reset' | 'transactions_only'>('factory_reset');
+    const [purgePassword, setPurgePassword] = useState('');
+    const [isExecutingPurge, setIsExecutingPurge] = useState(false);
+
+    const handleExecuteGlobalPurge = async () => {
+        if (!purgePassword.trim()) {
+            toast({ variant: 'destructive', title: 'تنبيه', description: 'يرجى إدخال كلمة مرور الإدارة لتأكيد الحذف.' });
+            return;
+        }
+        setIsExecutingPurge(true);
+        try {
+            const res = await fetch('/api/db/backup', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    action: 'reset-data',
+                    resetType: purgeType,
+                    targetScope: purgeScope,
+                    adminPassword: purgePassword.trim()
+                })
+            });
+            const result = await res.json();
+            if (result.success) {
+                try { await localforage.clear(); } catch {}
+                toast({ title: 'تم المسح والتصفير بنجاح ✅', description: result.message });
+                setPurgePassword('');
+                setIsPurgeDialogOpen(false);
+                if (processSyncQueue) await processSyncQueue();
+                await loadSettings(false);
+            } else {
+                throw new Error(result.error || 'فشلت عملية الحذف.');
+            }
+        } catch (err: any) {
+            toast({ variant: 'destructive', title: 'فشل الحذف', description: err.message });
+        } finally {
+            setIsExecutingPurge(false);
+        }
+    };
 
     // 1. Settings State
     const [config, setConfig] = useState<CentralSyncConfig>({
@@ -898,6 +940,15 @@ export default function CentralSyncSettingsPage() {
             {/* 1. Header with Title and Global Action Buttons */}
             <PageHeader title="المزامنة المركزية وإدارة الربط السحابي">
                 <div className="flex items-center gap-2 flex-wrap">
+                    <Button
+                        variant="destructive"
+                        size="sm"
+                        onClick={() => setIsPurgeDialogOpen(true)}
+                        className="gap-1.5 text-xs font-bold h-8 shadow-sm"
+                    >
+                        <Trash2 className="h-3.5 w-3.5" />
+                        حذف وتصفير البيانات (المركزية والفرع)
+                    </Button>
                     <Button 
                         variant="outline" 
                         size="sm" 
@@ -2574,6 +2625,103 @@ export default function CentralSyncSettingsPage() {
                                 <>
                                     <RotateCcw className="h-3.5 w-3.5" />
                                     بدء المزامنة الشاملة للجدول
+                                </>
+                            )}
+                        </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
+
+            {/* نافذة الحذف والتصفير الشامل من الإدارة المركزية والفرع */}
+            <Dialog open={isPurgeDialogOpen} onOpenChange={setIsPurgeDialogOpen}>
+                <DialogContent className="sm:max-w-lg text-right" dir="rtl">
+                    <DialogHeader>
+                        <DialogTitle className="flex items-center gap-2 text-destructive text-base">
+                            <Trash2 className="h-5 w-5" />
+                            حذف وتصفير كل البيانات من الإدارة المركزية والفرع
+                        </DialogTitle>
+                        <DialogDescription className="text-xs leading-relaxed pt-1">
+                            يتيح لك مسح كافة البيانات (بما فيها الفروع، المخازن، الخزن، المناديب، الكاشيرات، الأصناف، العملاء، الموردين، والفواتير) من الإدارة المركزية والفرع معاً.
+                        </DialogDescription>
+                    </DialogHeader>
+
+                    <div className="space-y-4 py-2">
+                        <div className="space-y-1.5">
+                            <Label className="text-xs font-bold">1. نطاق الحذف:</Label>
+                            <Select value={purgeScope} onValueChange={(v: any) => setPurgeScope(v)}>
+                                <SelectTrigger className="h-9 text-xs font-semibold">
+                                    <SelectValue />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value="both" className="text-xs font-bold">الإدارة المركزية والفرع معاً (الموصى به لمنع عودة البيانات)</SelectItem>
+                                    <SelectItem value="central" className="text-xs">قاعدة بيانات الإدارة المركزية فقط ({config.centralDatabase})</SelectItem>
+                                    <SelectItem value="local" className="text-xs">قاعدة بيانات الفرع المحلي فقط</SelectItem>
+                                </SelectContent>
+                            </Select>
+                        </div>
+
+                        <div className="space-y-1.5">
+                            <Label className="text-xs font-bold">2. مستوى المسح:</Label>
+                            <Select value={purgeType} onValueChange={(v: any) => setPurgeType(v)}>
+                                <SelectTrigger className="h-9 text-xs font-semibold">
+                                    <SelectValue />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value="factory_reset" className="text-xs font-bold text-destructive">
+                                        مسح شامل لكل شيء (الفروع، المخازن، الخزن، المناديب، الكاشيرات، الأصناف، العملاء، والحركات)
+                                    </SelectItem>
+                                    <SelectItem value="transactions_only" className="text-xs">
+                                        تصفير الحركات والفواتير والأرشيف فقط (مع بقاء الفروع والأصناف)
+                                    </SelectItem>
+                                </SelectContent>
+                            </Select>
+                        </div>
+
+                        <div className="p-3 rounded-lg bg-destructive/10 border border-destructive/20 text-destructive text-[11px] leading-relaxed">
+                            ⚠️ عند اختيار <strong>المسح الشامل</strong> يتم حذف جميع الفروع والمخازن والخزن والمناديب والكاشيرات والأصناف والعملاء والموردين والحركات، مع الإبقاء فقط على حساب المدير الرئيسي (<code>admin</code>) للدخول للنظام.
+                        </div>
+
+                        <div className="space-y-1.5">
+                            <Label className="text-xs font-bold flex items-center gap-1.5">
+                                <Lock className="h-3.5 w-3.5" />
+                                كلمة مرور الإدارة للتأكيد:
+                            </Label>
+                            <Input
+                                type="password"
+                                value={purgePassword}
+                                onChange={(e) => setPurgePassword(e.target.value)}
+                                placeholder="أدخل كلمة مرور الإدارة (مثل admin)..."
+                                className="h-9 text-xs"
+                            />
+                        </div>
+                    </div>
+
+                    <DialogFooter className="gap-2 sm:gap-0">
+                        <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => setIsPurgeDialogOpen(false)}
+                            disabled={isExecutingPurge}
+                            className="text-xs"
+                        >
+                            إلغاء
+                        </Button>
+                        <Button
+                            variant="destructive"
+                            size="sm"
+                            onClick={handleExecuteGlobalPurge}
+                            disabled={!purgePassword.trim() || isExecutingPurge}
+                            className="text-xs font-bold gap-1.5"
+                        >
+                            {isExecutingPurge ? (
+                                <>
+                                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                                    جارٍ المسح والتصفير...
+                                </>
+                            ) : (
+                                <>
+                                    <Trash2 className="h-3.5 w-3.5" />
+                                    تأكيد وحذف البيانات الآن
                                 </>
                             )}
                         </Button>

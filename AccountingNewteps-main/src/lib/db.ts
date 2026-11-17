@@ -65,7 +65,8 @@ export async function getDbPool(): Promise<sql.ConnectionPool> {
                         password: String(sqlConfig.password),
                         branchCode: '900',
                         branchName: 'الفرع الرأيسي',
-                        isCentral: false
+                        isCentral: false,
+                        skipDemoSeed: tablesCount > 0
                     });
                     if (!initResult.success) {
                         throw new Error(initResult.error || initResult.message || 'فشلت ترقية بنية قاعدة البيانات');

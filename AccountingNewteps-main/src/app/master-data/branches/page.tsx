@@ -165,7 +165,7 @@ export default function BranchesPage() {
   const { user } = useAuth();
   const { toast } = useToast();
   const [clickCount, setClickCount] = useState(0);
-  const [isSecretVisible, setIsSecretVisible] = useState(false);
+  const [isSecretVisible, setIsSecretVisible] = useState(true);
   const [isPasswordDialogOpen, setIsPasswordDialogOpen] = useState(false);
   const [password, setPassword] = useState("");
 

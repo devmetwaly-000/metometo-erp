@@ -1,5 +1,4 @@
 "use client";
-"use client";
 
 import React, { useState, useEffect, useCallback } from 'react';
 import PageHeader from "@/components/page-header";
@@ -10,12 +9,13 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Checkbox } from "@/components/ui/checkbox";
 import { useToast } from "@/hooks/use-toast";
 import { useData } from "@/contexts/data-provider";
 import {
   Download, Upload, Loader2, AlertTriangle, 
   HardDriveDownload, Database, ShieldAlert, FileCheck, Lock, Server, Copy,
-  Trash2, RefreshCw, Building2
+  Trash2, RefreshCw, Building2, Globe, CheckCircle2
 } from "lucide-react";
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
@@ -23,6 +23,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Badge } from "@/components/ui/badge";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
+import localforage from 'localforage';
 
 interface DbStats {
     salesCount: number;
@@ -33,21 +34,27 @@ interface DbStats {
     suppliersCount: number;
     warehousesCount: number;
     cashAccountsCount: number;
+    repsCount: number;
+    cashiersCount: number;
     usersCount: number;
 }
 
 interface BackupInfo {
     database: string;
+    centralDatabase?: string;
+    centralServer?: string;
+    centralConnected?: boolean;
     branchCode: string;
     branchName: string;
     defaultBackupPath: string;
     lastBackupAt: string | null;
     stats: DbStats;
+    centralStats?: DbStats | null;
 }
 
 export default function BackupPage() {
     const { toast } = useToast();
-    const { processSyncQueue, warehouses, inventoryZones } = useData();
+    const { processSyncQueue, allWarehouses, warehouses, inventoryZones } = useData();
 
     const [backupInfo, setBackupInfo] = useState<BackupInfo | null>(null);
     const [isLoadingInfo, setIsLoadingInfo] = useState(false);
@@ -65,21 +72,24 @@ export default function BackupPage() {
     const [parsedBackupData, setParsedBackupData] = useState<any>(null);
 
     // Reset / Purge states
-    const [resetType, setResetType] = useState<'transactions_only' | 'factory_reset'>('transactions_only');
+    const [resetType, setResetType] = useState<'transactions_only' | 'factory_reset'>('factory_reset');
+    const [targetScope, setTargetScope] = useState<'both' | 'local' | 'central'>('both');
     const [adminPassword, setAdminPassword] = useState('');
     const [isLoadingReset, setIsLoadingReset] = useState(false);
     const [isResetDialogOpen, setIsResetDialogOpen] = useState(false);
 
     // Branch purge states (C)
     const [selectedBranchId, setSelectedBranchId] = useState('');
+    const [deleteBranchEntity, setDeleteBranchEntity] = useState(true);
+    const [branchTargetScope, setBranchTargetScope] = useState<'both' | 'local' | 'central'>('both');
     const [branchPassword, setBranchPassword] = useState('');
     const [isLoadingBranchPurge, setIsLoadingBranchPurge] = useState(false);
     const [isBranchDialogOpen, setIsBranchDialogOpen] = useState(false);
 
-    const allBranches = [...(warehouses || []), ...(inventoryZones || [])];
+    const allBranches = [...(allWarehouses || warehouses || []), ...(inventoryZones || [])];
     const selectedBranch = allBranches.find((w: any) => w.id === selectedBranchId);
 
-    // جلب معلومات وإحصائيات قاعدة البيانات
+    // جلب معلومات وإحصائيات قاعدة البيانات (الفرع + المركزية)
     const fetchBackupInfo = useCallback(async () => {
         setIsLoadingInfo(true);
         try {
@@ -132,7 +142,7 @@ export default function BackupPage() {
 
                 toast({
                     title: "تم استخراج النسخة الاحتياطية بنجاح 💾",
-                    description: `تم تصدير ${data.metadata?.tablesCount || 71} جدولاً بإجمالي ${data.metadata?.totalRecords || 0} حركة وسجل.`
+                    description: `تم تصدير ${data.metadata?.tablesCount || 72} جدولاً بإجمالي ${data.metadata?.totalRecords || 0} حركة وسجل.`
                 });
                 await fetchBackupInfo();
             } else {
@@ -262,7 +272,7 @@ export default function BackupPage() {
                 const fileInput = document.getElementById('restore-file') as HTMLInputElement;
                 if (fileInput) fileInput.value = '';
 
-                // تحديث بيانات النظام المحلي
+                try { await localforage.clear(); } catch {}
                 if (processSyncQueue) {
                     await processSyncQueue();
                 }
@@ -282,7 +292,7 @@ export default function BackupPage() {
         }
     };
 
-    // 5. تنفيذ حذف وتصفير البيانات
+    // 5. تنفيذ حذف وتصفير البيانات (من الإدارة المركزية والفرع)
     const handleExecuteReset = async () => {
         if (!adminPassword.trim()) {
             toast({ variant: "destructive", title: "تنبيه", description: "يرجى إدخال كلمة مرور الإدارة لتأكيد الحذف." });
@@ -297,20 +307,26 @@ export default function BackupPage() {
                 body: JSON.stringify({
                     action: 'reset-data',
                     resetType,
+                    targetScope,
                     adminPassword
                 })
             });
 
             const result = await res.json();
             if (result.success) {
+                // مسح الكاش المحلي في المتصفح بالكامل لضمان اختفاء الفروع والمخازن والخزن والمناديب والكاشيرات فوراً
+                try {
+                    await localforage.clear();
+                } catch {}
+
                 toast({
-                    title: "تم تنفيذ الإجراء بنجاح ✅",
+                    title: "تم تنفيذ الحذف والتصفير بنجاح ✅",
                     description: result.message
                 });
                 setAdminPassword('');
                 setIsResetDialogOpen(false);
 
-                // تحديث الشاشات المحلية
+                // تحديث الشاشات المحلية من السيرفر بعد التصفير
                 if (processSyncQueue) {
                     await processSyncQueue();
                 }
@@ -330,7 +346,7 @@ export default function BackupPage() {
         }
     };
 
-    // 6. تنفيذ حذف بيانات فرع محدد
+    // 6. تنفيذ حذف بيانات فرع محدد (مع خيار حذف الفرع نفسه ومخازنه وخزينته وكاشيراته)
     const handleExecuteBranchPurge = async () => {
         if (!selectedBranchId) {
             toast({ variant: 'destructive', title: 'تنبيه', description: 'يرجى اختيار الفرع المراد حذف بياناته.' });
@@ -349,11 +365,14 @@ export default function BackupPage() {
                     action: 'reset-branch',
                     warehouseId: selectedBranchId,
                     branchLabel: selectedBranch?.name || selectedBranchId,
+                    deleteBranchEntity,
+                    targetScope: branchTargetScope,
                     adminPassword: branchPassword
                 })
             });
             const result = await res.json();
             if (result.success) {
+                try { await localforage.clear(); } catch {}
                 toast({ title: 'تم حذف بيانات الفرع بنجاح ✅', description: result.message });
                 setBranchPassword('');
                 setSelectedBranchId('');
@@ -375,9 +394,46 @@ export default function BackupPage() {
         toast({ title: "تم النسخ للحافظة 📋" });
     };
 
+    const renderStatsRow = (stats: DbStats) => (
+        <div className="flex flex-wrap items-center gap-2 text-xs">
+            <div className="px-2.5 py-1 rounded-lg bg-muted/60 border text-center">
+                <span className="text-[10px] text-muted-foreground block">الفروع والمخازن</span>
+                <span className="font-bold text-foreground">{stats.warehousesCount}</span>
+            </div>
+            <div className="px-2.5 py-1 rounded-lg bg-muted/60 border text-center">
+                <span className="text-[10px] text-muted-foreground block">الخزائن والعهد</span>
+                <span className="font-bold text-foreground">{stats.cashAccountsCount}</span>
+            </div>
+            <div className="px-2.5 py-1 rounded-lg bg-muted/60 border text-center">
+                <span className="text-[10px] text-muted-foreground block">المناديب</span>
+                <span className="font-bold text-foreground">{stats.repsCount}</span>
+            </div>
+            <div className="px-2.5 py-1 rounded-lg bg-muted/60 border text-center">
+                <span className="text-[10px] text-muted-foreground block">الكاشيرات والأجهزة</span>
+                <span className="font-bold text-foreground">{stats.cashiersCount}</span>
+            </div>
+            <div className="px-2.5 py-1 rounded-lg bg-muted/60 border text-center">
+                <span className="text-[10px] text-muted-foreground block">الأصناف</span>
+                <span className="font-bold text-foreground">{stats.itemsCount}</span>
+            </div>
+            <div className="px-2.5 py-1 rounded-lg bg-muted/60 border text-center">
+                <span className="text-[10px] text-muted-foreground block">العملاء</span>
+                <span className="font-bold text-foreground">{stats.customersCount}</span>
+            </div>
+            <div className="px-2.5 py-1 rounded-lg bg-muted/60 border text-center">
+                <span className="text-[10px] text-muted-foreground block">الموردين</span>
+                <span className="font-bold text-foreground">{stats.suppliersCount}</span>
+            </div>
+            <div className="px-2.5 py-1 rounded-lg bg-muted/60 border text-center">
+                <span className="text-[10px] text-muted-foreground block">فواتير البيع</span>
+                <span className="font-bold text-foreground">{stats.salesCount}</span>
+            </div>
+        </div>
+    );
+
     return (
         <>
-            <PageHeader title="النسخ الاحتياطي وحذف وإعادة ضبط البيانات">
+            <PageHeader title="النسخ الاحتياطي وحذف وإعادة ضبط البيانات (الإدارة المركزية والفرع)">
                 <Button 
                     variant="outline" 
                     size="sm" 
@@ -386,82 +442,449 @@ export default function BackupPage() {
                     className="gap-1.5 text-xs font-bold"
                 >
                     <RefreshCw className={`h-3.5 w-3.5 ${isLoadingInfo ? 'animate-spin' : ''}`} />
-                    تحديث الإحصائيات
+                    تحديث إحصائيات الفرع والمركزية
                 </Button>
             </PageHeader>
 
             <main className="flex flex-1 flex-col gap-6 p-4 md:gap-6 md:p-6 max-w-7xl mx-auto w-full">
-                {/* شريط معلومات قاعدة البيانات المحلية */}
-                <Card className="border bg-card/60 backdrop-blur-xs shadow-xs">
-                    <CardContent className="p-4 sm:p-5">
-                        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
-                            <div className="flex items-center gap-3">
-                                <div className="h-11 w-11 rounded-xl bg-primary/10 text-primary flex items-center justify-center shrink-0">
-                                    <Database className="h-6 w-6" />
-                                </div>
-                                <div>
-                                    <div className="flex items-center gap-2">
-                                        <h2 className="text-base font-bold text-foreground">
-                                            قاعدة البيانات المحلية: {backupInfo?.database || 'MultiBranchPOS_DB'}
-                                        </h2>
-                                        <Badge variant="outline" className="text-xs bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border-emerald-500/30">
-                                            متصلة ومحدثة ✅
-                                        </Badge>
+                {/* شريط معلومات قاعدة بيانات الفرع والإدارة المركزية */}
+                <div className="grid gap-4 lg:grid-cols-2">
+                    {/* بطاقة قاعدة بيانات الفرع المحلي */}
+                    <Card className="border bg-card/60 backdrop-blur-xs shadow-xs">
+                        <CardContent className="p-4 space-y-3">
+                            <div className="flex items-center justify-between gap-2">
+                                <div className="flex items-center gap-2.5">
+                                    <div className="h-10 w-10 rounded-xl bg-primary/10 text-primary flex items-center justify-center shrink-0">
+                                        <Database className="h-5 w-5" />
                                     </div>
-                                    <p className="text-xs text-muted-foreground mt-0.5">
-                                        الفرع النشط: <strong className="text-foreground">{backupInfo?.branchName || 'الفرع الرأيسي'} ({backupInfo?.branchCode || '900'})</strong>
-                                        {backupInfo?.lastBackupAt && (
-                                            <span className="mr-3">
-                                                | آخر نسخة احتياطية: {new Date(backupInfo.lastBackupAt).toLocaleString('ar-EG')}
-                                            </span>
-                                        )}
-                                    </p>
+                                    <div>
+                                        <div className="flex items-center gap-2">
+                                            <h2 className="text-sm font-bold text-foreground">
+                                                قاعدة الفرع المحلي: {backupInfo?.database || 'MultiBranchPOS_DB'}
+                                            </h2>
+                                            <Badge variant="outline" className="text-[10px] bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border-emerald-500/30">
+                                                متصلة ✅
+                                            </Badge>
+                                        </div>
+                                        <p className="text-[11px] text-muted-foreground">
+                                            الفرع النشط: <strong className="text-foreground">{backupInfo?.branchName || 'الفرع الرئيسي'} ({backupInfo?.branchCode || '900'})</strong>
+                                        </p>
+                                    </div>
                                 </div>
                             </div>
+                            {backupInfo?.stats && renderStatsRow(backupInfo.stats)}
+                        </CardContent>
+                    </Card>
 
-                            {/* ملخص أعداد الحركات والبيانات في النظام */}
-                            {backupInfo?.stats && (
-                                <div className="flex flex-wrap items-center gap-2 text-xs">
-                                    <div className="px-2.5 py-1 rounded-lg bg-muted/60 border text-center">
-                                        <span className="text-[10px] text-muted-foreground block">فواتير مبيعات</span>
-                                        <span className="font-bold text-foreground">{backupInfo.stats.salesCount}</span>
+                    {/* بطاقة قاعدة بيانات الإدارة المركزية */}
+                    <Card className="border bg-card/60 backdrop-blur-xs shadow-xs">
+                        <CardContent className="p-4 space-y-3">
+                            <div className="flex items-center justify-between gap-2">
+                                <div className="flex items-center gap-2.5">
+                                    <div className="h-10 w-10 rounded-xl bg-indigo-500/10 text-indigo-600 flex items-center justify-center shrink-0">
+                                        <Globe className="h-5 w-5" />
                                     </div>
-                                    <div className="px-2.5 py-1 rounded-lg bg-muted/60 border text-center">
-                                        <span className="text-[10px] text-muted-foreground block">بنود مبيعات</span>
-                                        <span className="font-bold text-foreground">{backupInfo.stats.salesItemsCount}</span>
-                                    </div>
-                                    <div className="px-2.5 py-1 rounded-lg bg-muted/60 border text-center">
-                                        <span className="text-[10px] text-muted-foreground block">أصناف الكتالوج</span>
-                                        <span className="font-bold text-foreground">{backupInfo.stats.itemsCount}</span>
-                                    </div>
-                                    <div className="px-2.5 py-1 rounded-lg bg-muted/60 border text-center">
-                                        <span className="text-[10px] text-muted-foreground block">العملاء</span>
-                                        <span className="font-bold text-foreground">{backupInfo.stats.customersCount}</span>
-                                    </div>
-                                    <div className="px-2.5 py-1 rounded-lg bg-muted/60 border text-center">
-                                        <span className="text-[10px] text-muted-foreground block">الموردين</span>
-                                        <span className="font-bold text-foreground">{backupInfo.stats.suppliersCount}</span>
+                                    <div>
+                                        <div className="flex items-center gap-2">
+                                            <h2 className="text-sm font-bold text-foreground">
+                                                قاعدة الإدارة المركزية: {backupInfo?.centralDatabase || 'MultiBranchPOS_Central_DB'}
+                                            </h2>
+                                            {backupInfo?.centralConnected ? (
+                                                <Badge variant="outline" className="text-[10px] bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border-emerald-500/30">
+                                                    متصلة بالسيرفر المركزي ✅
+                                                </Badge>
+                                            ) : (
+                                                <Badge variant="outline" className="text-[10px] bg-amber-500/10 text-amber-700 border-amber-500/30">
+                                                    غير متصلة حالياً
+                                                </Badge>
+                                            )}
+                                        </div>
+                                        <p className="text-[11px] text-muted-foreground">
+                                            السيرفر المركزي: <strong className="text-foreground font-mono">{backupInfo?.centralServer || '10.110.16.16:1433'}</strong>
+                                        </p>
                                     </div>
                                 </div>
+                            </div>
+                            {backupInfo?.centralStats ? (
+                                renderStatsRow(backupInfo.centralStats)
+                            ) : (
+                                <p className="text-xs text-muted-foreground py-2">
+                                    تعذر قراءة إحصائيات السيرفر المركزي حالياً (تأكد من الاتصال بالشبكة أو إعدادات المزامنة المركزية).
+                                </p>
                             )}
+                        </CardContent>
+                    </Card>
+                </div>
+
+                {/* القسم 3 (مقدم للأعلى لأهميته): حذف وتصفير كل البيانات من الإدارة المركزية والفرع */}
+                <Card className="border-2 border-destructive/50 bg-card shadow-sm">
+                    <CardHeader className="border-b pb-4 bg-destructive/5">
+                        <div className="flex flex-wrap items-center justify-between gap-2">
+                            <CardTitle className="text-base font-bold text-destructive flex items-center gap-2">
+                                <ShieldAlert className="h-5 w-5" />
+                                حذف وتصفير كل البيانات من الإدارة المركزية والفرع (إعادة الضبط الشاملة)
+                            </CardTitle>
+                            <Badge variant="destructive" className="text-xs">
+                                يشمل الفروع والمخازن والخزن والمناديب والكاشيرات وكل شيء
+                            </Badge>
+                        </div>
+                        <CardDescription className="text-xs leading-relaxed mt-1">
+                            يتيح لك مسح كافة البيانات من <strong>قاعدة بيانات الإدارة المركزية</strong> و<strong>قاعدة بيانات الفرع</strong> معاً في خطوة واحدة، لضمان عدم عودة أي بيانات محذوفة عبر المزامنة التلقائية والبدء على نظافة تامة.
+                        </CardDescription>
+                    </CardHeader>
+                    <CardContent className="p-4 sm:p-6 space-y-6">
+                        {/* أولاً: اختيار نطاق القواعد المراد حذفها */}
+                        <div className="space-y-2.5">
+                            <Label className="text-xs font-bold text-foreground flex items-center gap-1.5">
+                                <Globe className="h-4 w-4 text-primary" />
+                                أولاً: اختر نطاق الحذف (أين تريد تطبيق المسح؟):
+                            </Label>
+                            <RadioGroup
+                                value={targetScope}
+                                onValueChange={(v: any) => setTargetScope(v)}
+                                className="grid grid-cols-1 md:grid-cols-3 gap-3"
+                            >
+                                <Label
+                                    htmlFor="scope-both"
+                                    className={`p-3.5 rounded-xl border-2 cursor-pointer transition-all flex flex-col gap-1.5 ${
+                                        targetScope === 'both'
+                                            ? 'border-destructive bg-destructive/10 shadow-xs'
+                                            : 'border-border hover:bg-muted/30 opacity-75'
+                                    }`}
+                                >
+                                    <div className="flex items-center justify-between">
+                                        <span className="font-bold text-xs text-foreground flex items-center gap-2">
+                                            <RadioGroupItem value="both" id="scope-both" />
+                                            الإدارة المركزية والفرع معاً
+                                        </span>
+                                        <Badge variant="destructive" className="text-[10px]">الموصى به</Badge>
+                                    </div>
+                                    <p className="text-[11px] text-muted-foreground">
+                                        يحذف البيانات من قاعدة الفرع المحلي ومن السيرفر المركزي في نفس اللحظة لمنع عودتها بالمزامنة.
+                                    </p>
+                                </Label>
+
+                                <Label
+                                    htmlFor="scope-local"
+                                    className={`p-3.5 rounded-xl border-2 cursor-pointer transition-all flex flex-col gap-1.5 ${
+                                        targetScope === 'local'
+                                            ? 'border-primary bg-primary/5 shadow-xs'
+                                            : 'border-border hover:bg-muted/30 opacity-75'
+                                    }`}
+                                >
+                                    <div className="flex items-center justify-between">
+                                        <span className="font-bold text-xs text-foreground flex items-center gap-2">
+                                            <RadioGroupItem value="local" id="scope-local" />
+                                            قاعدة بيانات الفرع المحلي فقط
+                                        </span>
+                                    </div>
+                                    <p className="text-[11px] text-muted-foreground">
+                                        يمسح بيانات قاعدة الفرع الحالية ({backupInfo?.database || 'MultiBranchPOS_DB'}) فقط.
+                                    </p>
+                                </Label>
+
+                                <Label
+                                    htmlFor="scope-central"
+                                    className={`p-3.5 rounded-xl border-2 cursor-pointer transition-all flex flex-col gap-1.5 ${
+                                        targetScope === 'central'
+                                            ? 'border-indigo-600 bg-indigo-500/10 shadow-xs'
+                                            : 'border-border hover:bg-muted/30 opacity-75'
+                                    }`}
+                                >
+                                    <div className="flex items-center justify-between">
+                                        <span className="font-bold text-xs text-foreground flex items-center gap-2">
+                                            <RadioGroupItem value="central" id="scope-central" />
+                                            قاعدة الإدارة المركزية فقط
+                                        </span>
+                                    </div>
+                                    <p className="text-[11px] text-muted-foreground">
+                                        يمسح بيانات السيرفر المركزي ({backupInfo?.centralDatabase || 'MultiBranchPOS_Central_DB'}) فقط.
+                                    </p>
+                                </Label>
+                            </RadioGroup>
+                        </div>
+
+                        {/* ثانياً: اختيار نوع المسح */}
+                        <div className="space-y-2.5">
+                            <Label className="text-xs font-bold text-foreground flex items-center gap-1.5">
+                                <Trash2 className="h-4 w-4 text-destructive" />
+                                ثانياً: اختر مستوى المسح:
+                            </Label>
+                            <RadioGroup 
+                                value={resetType} 
+                                onValueChange={(v: any) => setResetType(v)}
+                                className="grid grid-cols-1 md:grid-cols-2 gap-4"
+                            >
+                                {/* الخيار أ: ضبط المصنع الكامل (مسح كل شيء) */}
+                                <Label 
+                                    htmlFor="opt-factory"
+                                    className={`p-4 rounded-xl border-2 cursor-pointer transition-all flex flex-col gap-2 ${
+                                        resetType === 'factory_reset' 
+                                            ? 'border-destructive bg-destructive/5 shadow-xs' 
+                                            : 'border-border hover:bg-muted/30 opacity-70'
+                                    }`}
+                                >
+                                    <div className="flex items-center justify-between">
+                                        <span className="font-bold text-xs text-destructive flex items-center gap-2">
+                                            <RadioGroupItem value="factory_reset" id="opt-factory" />
+                                            حذف كل البيانات بالكامل (شامل الفروع والمخازن والخزن والمناديب والكاشيرات)
+                                        </span>
+                                        <Badge variant="destructive" className="text-[10px]">
+                                            شامل وتام 100%
+                                        </Badge>
+                                    </div>
+                                    <p className="text-[11px] text-muted-foreground leading-relaxed">
+                                        يمسح جميع <strong>الفروع، المخازن، الأقسام، الخزائن، الحسابات البنكية، المناديب وعهدهم، الكاشيرات وشاشات الكاشير، الموظفين، الأصناف، التصنيفات، العملاء، الموردين، الفواتير، الحركات، والأرشيف التاريخي</strong>.
+                                    </p>
+                                    <div className="text-[10px] font-bold text-foreground pt-1">
+                                        🛡️ يتم الإبقاء فقط على: حساب المدير الرئيسي (`admin`) للدخول للنظام + الأدوار وإعدادات الاتصال.
+                                    </div>
+                                </Label>
+
+                                {/* الخيار ب: تصفير الحركات فقط */}
+                                <Label 
+                                    htmlFor="opt-trans"
+                                    className={`p-4 rounded-xl border-2 cursor-pointer transition-all flex flex-col gap-2 ${
+                                        resetType === 'transactions_only' 
+                                            ? 'border-primary bg-primary/5 shadow-xs' 
+                                            : 'border-border hover:bg-muted/30 opacity-70'
+                                    }`}
+                                >
+                                    <div className="flex items-center justify-between">
+                                        <span className="font-bold text-xs text-foreground flex items-center gap-2">
+                                            <RadioGroupItem value="transactions_only" id="opt-trans" />
+                                            تصفير الحركات والفواتير والأرشيف فقط (مع بقاء الفروع والأصناف)
+                                        </span>
+                                        <Badge variant="outline" className="text-[10px] bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border-emerald-500/30">
+                                            حركات فقط
+                                        </Badge>
+                                    </div>
+                                    <p className="text-[11px] text-muted-foreground leading-relaxed">
+                                        يحذف جميع الفواتير والسندات وحركات المخزون وعهد المناديب وأوامر التصنيع وسجل التدقيق والأرشيف، ويصفر أرصدة الخزائن والعملاء والموردين.
+                                    </p>
+                                    <div className="text-[10px] font-bold text-emerald-700 dark:text-emerald-400 pt-1">
+                                        ✅ يتم الحفاظ على: الفروع، المخازن، الخزائن، المناديب، الكاشيرات، الأصناف، العملاء، والموردين.
+                                    </div>
+                                </Label>
+                            </RadioGroup>
+                        </div>
+
+                        {/* نافذة التأكيد المحمية بكلمة مرور */}
+                        <div className="pt-2 flex justify-end">
+                            <AlertDialog open={isResetDialogOpen} onOpenChange={setIsResetDialogOpen}>
+                                <AlertDialogTrigger asChild>
+                                    <Button 
+                                        variant="destructive" 
+                                        className="h-10 px-6 text-xs font-bold gap-2 shadow-sm"
+                                    >
+                                        <Trash2 className="h-4 w-4" />
+                                        {resetType === 'factory_reset'
+                                            ? 'حذف كل البيانات الآن (الفروع والمخازن والخزن والمناديب والكاشيرات وكل شيء)'
+                                            : 'تصفير الحركات والعمليات الآن'}
+                                    </Button>
+                                </AlertDialogTrigger>
+                                <AlertDialogContent className="text-right" dir="rtl">
+                                    <AlertDialogHeader>
+                                        <AlertDialogTitle className="flex items-center gap-2 text-destructive">
+                                            <AlertTriangle className="h-5 w-5" />
+                                            تأكيد الحذف النهائي (يلزم كلمة مرور الإدارة)
+                                        </AlertDialogTitle>
+                                        <AlertDialogDescription className="text-xs space-y-3 leading-relaxed">
+                                            <div className="p-2.5 rounded-lg bg-muted border space-y-1 text-foreground">
+                                                <div>
+                                                    • <strong>النطاق المختار:</strong>{' '}
+                                                    {targetScope === 'both'
+                                                        ? 'الإدارة المركزية + الفرع المحلي معاً'
+                                                        : targetScope === 'local'
+                                                        ? 'قاعدة بيانات الفرع المحلي فقط'
+                                                        : 'قاعدة بيانات الإدارة المركزية فقط'}
+                                                </div>
+                                                <div>
+                                                    • <strong>مستوى الحذف:</strong>{' '}
+                                                    {resetType === 'factory_reset'
+                                                        ? 'مسح شامل لكل شيء (الفروع، المخازن، الخزن، المناديب، الكاشيرات، الأصناف، العملاء، الموردين، والحركات)'
+                                                        : 'حذف جميع الحركات والفواتير وتصفير الأرصدة فقط'}
+                                                </div>
+                                            </div>
+                                            <div className="p-3 rounded-lg bg-destructive/10 border border-destructive/20 text-destructive text-[11px] font-medium leading-relaxed">
+                                                ⚠️ هذا الإجراء نهائي ولا يمكن التراجع عنه! سيتم أيضاً تفريغ الذاكرة المؤقتة للمتصفح وتصفير عدادات المزامنة.
+                                            </div>
+                                            <div className="space-y-1.5 pt-2">
+                                                <Label className="text-xs font-bold text-foreground flex items-center gap-1.5">
+                                                    <Lock className="h-3.5 w-3.5 text-muted-foreground" />
+                                                    أدخل كلمة مرور الإدارة للمتابعة (مثل كلمة مرور admin):
+                                                </Label>
+                                                <Input 
+                                                    type="password"
+                                                    value={adminPassword}
+                                                    onChange={e => setAdminPassword(e.target.value)}
+                                                    placeholder="كلمة مرور الإدارة..."
+                                                    className="h-9 text-xs bg-background"
+                                                    autoFocus
+                                                />
+                                            </div>
+                                        </AlertDialogDescription>
+                                    </AlertDialogHeader>
+                                    <AlertDialogFooter className="flex-row-reverse gap-2">
+                                        <AlertDialogCancel className="h-9 text-xs font-bold">إلغاء</AlertDialogCancel>
+                                        <AlertDialogAction 
+                                            onClick={handleExecuteReset}
+                                            disabled={!adminPassword.trim() || isLoadingReset}
+                                            className="h-9 text-xs font-bold bg-destructive hover:bg-destructive/90 text-destructive-foreground gap-1.5"
+                                        >
+                                            {isLoadingReset ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />}
+                                            {isLoadingReset ? 'جارٍ المسح الشامل...' : 'تأكيد وحذف البيانات الآن'}
+                                        </AlertDialogAction>
+                                    </AlertDialogFooter>
+                                </AlertDialogContent>
+                            </AlertDialog>
                         </div>
                     </CardContent>
                 </Card>
 
+                {/* القسم 4: حذف فرع / مستودع محدد بالكامل من الفرع والإدارة المركزية */}
+                <Card className="border-orange-400/40 bg-card shadow-xs">
+                    <CardHeader className="border-b pb-4">
+                        <div className="flex items-center justify-between">
+                            <CardTitle className="text-base font-bold text-foreground flex items-center gap-2">
+                                <Building2 className="h-5 w-5" />
+                                حذف فرع أو مخزن أو عهدة مندوب محددة (من الفرع والإدارة المركزية)
+                            </CardTitle>
+                            <Badge variant="outline" className="text-xs border-orange-400/40 text-foreground bg-orange-500/5">
+                                حذف انتقائي للفرع وملحقاته
+                            </Badge>
+                        </div>
+                        <CardDescription className="text-xs leading-relaxed mt-1">
+                            يتيح حذف فرع أو مستودع أو عهدة مندوب معينة بكافة حركاتها وخزينتها وكاشيراتها من كل من الفرع المحلي والإدارة المركزية.
+                        </CardDescription>
+                    </CardHeader>
+                    <CardContent className="p-4 sm:p-6 space-y-5">
+                        <div className="grid gap-4 md:grid-cols-2">
+                            <div className="p-4 rounded-xl border bg-orange-50/40 dark:bg-orange-950/20 space-y-2">
+                                <p className="text-xs font-bold text-foreground flex items-center gap-1.5">
+                                    <Trash2 className="h-3.5 w-3.5" /> ما يتم حذفه للفرع / المخزن المحدد:
+                                </p>
+                                <ul className="text-[11px] text-muted-foreground space-y-1 list-disc list-inside">
+                                    <li>جميع فواتير المبيعات والمشتريات والمرتجعات الخاصة بالفرع</li>
+                                    <li>جميع حركات المخزون (إضافة، صرف، تحويل، تسوية، عهد مناديب)</li>
+                                    <li>جلسات الكاشير والفواتير المعلقة وسجلات الإكراميات</li>
+                                    <li>عند تفعيل خيار <strong>حذف الفرع نفسه</strong>: يتم أيضاً حذف سجل الفرع/المخزن وخزينته وشاشات الكاشير وأقسامه ومناديبه المرتبطين به.</li>
+                                </ul>
+                            </div>
+
+                            <div className="space-y-3">
+                                <div className="space-y-1.5">
+                                    <Label className="text-xs font-bold">اختر الفرع / المخزن / عهدة المندوب:</Label>
+                                    <Select value={selectedBranchId} onValueChange={setSelectedBranchId}>
+                                        <SelectTrigger className="h-9 text-xs">
+                                            <SelectValue placeholder="-- اختر الفرع أو المخزن المراد حذفه --" />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            {allBranches.map((w: any) => (
+                                                <SelectItem key={w.id} value={w.id} className="text-xs">
+                                                    {w.name} {w.code ? `(${w.code})` : ''}
+                                                </SelectItem>
+                                            ))}
+                                        </SelectContent>
+                                    </Select>
+                                </div>
+
+                                <div className="flex items-center space-x-2 rtl:space-x-reverse pt-1">
+                                    <Checkbox
+                                        id="del-branch-entity"
+                                        checked={deleteBranchEntity}
+                                        onCheckedChange={(c) => setDeleteBranchEntity(Boolean(c))}
+                                    />
+                                    <Label htmlFor="del-branch-entity" className="text-xs font-bold cursor-pointer">
+                                        حذف الفرع/المخزن نفسه نهائياً مع خزينته وكاشيراته وأقسامه (بالإضافة لحركاته)
+                                    </Label>
+                                </div>
+
+                                <div className="space-y-1.5">
+                                    <Label className="text-xs font-bold">نطاق حذف الفرع:</Label>
+                                    <Select value={branchTargetScope} onValueChange={(v: any) => setBranchTargetScope(v)}>
+                                        <SelectTrigger className="h-8 text-xs">
+                                            <SelectValue />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            <SelectItem value="both" className="text-xs">من الإدارة المركزية والفرع معاً (الموصى به)</SelectItem>
+                                            <SelectItem value="local" className="text-xs">من الفرع المحلي فقط</SelectItem>
+                                            <SelectItem value="central" className="text-xs">من الإدارة المركزية فقط</SelectItem>
+                                        </SelectContent>
+                                    </Select>
+                                </div>
+
+                                <div className="pt-2 flex justify-end">
+                                    <AlertDialog open={isBranchDialogOpen} onOpenChange={setIsBranchDialogOpen}>
+                                        <AlertDialogTrigger asChild>
+                                            <Button
+                                                variant="outline"
+                                                disabled={!selectedBranchId}
+                                                className="h-9 px-5 text-xs font-bold gap-2 border-orange-500/40 text-foreground hover:bg-orange-500/10"
+                                            >
+                                                <Trash2 className="h-4 w-4" />
+                                                حذف الفرع المحدد وبياناته
+                                            </Button>
+                                        </AlertDialogTrigger>
+                                        <AlertDialogContent className="text-right" dir="rtl">
+                                            <AlertDialogHeader>
+                                                <AlertDialogTitle className="flex items-center gap-2 text-foreground">
+                                                    <AlertTriangle className="h-5 w-5" />
+                                                    تأكيد حذف: {selectedBranch?.name}
+                                                </AlertDialogTitle>
+                                                <AlertDialogDescription className="text-xs space-y-3 leading-relaxed">
+                                                    <div className="p-3 rounded-lg bg-destructive/10 border border-destructive/20 text-destructive text-[11px] font-medium leading-relaxed">
+                                                        ⚠️ سيتم حذف {deleteBranchEntity ? 'الفرع بالكامل مع خزينته وكاشيراته وكافة حركاته' : 'جميع الحركات والعمليات الخاصة بالفرع'} لـ <strong>{selectedBranch?.name}</strong> بشكل نهائي.
+                                                    </div>
+                                                    <div className="space-y-1.5 pt-2">
+                                                        <Label className="text-xs font-bold text-foreground flex items-center gap-1.5">
+                                                            <Lock className="h-3.5 w-3.5 text-muted-foreground" />
+                                                            أدخل كلمة مرور الإدارة:
+                                                        </Label>
+                                                        <Input
+                                                            type="password"
+                                                            value={branchPassword}
+                                                            onChange={e => setBranchPassword(e.target.value)}
+                                                            placeholder="كلمة مرور الإدارة..."
+                                                            className="h-8 text-xs bg-background"
+                                                            autoFocus
+                                                        />
+                                                    </div>
+                                                </AlertDialogDescription>
+                                            </AlertDialogHeader>
+                                            <AlertDialogFooter className="flex-row-reverse gap-2">
+                                                <AlertDialogCancel className="h-8 text-xs font-bold">إلغاء</AlertDialogCancel>
+                                                <AlertDialogAction
+                                                    onClick={handleExecuteBranchPurge}
+                                                    disabled={!branchPassword.trim() || isLoadingBranchPurge}
+                                                    className="h-8 text-xs font-bold bg-orange-600 hover:bg-orange-700 text-white gap-1.5"
+                                                >
+                                                    {isLoadingBranchPurge ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />}
+                                                    {isLoadingBranchPurge ? 'جارٍ الحذف...' : 'تأكيد الحذف'}
+                                                </AlertDialogAction>
+                                            </AlertDialogFooter>
+                                        </AlertDialogContent>
+                                    </AlertDialog>
+                                </div>
+                            </div>
+                        </div>
+                    </CardContent>
+                </Card>
+
+                {/* القسم 1 و 2: النسخ الاحتياطي والاستعادة */}
                 <div className="grid gap-6 md:grid-cols-2">
                     {/* القسم 1: إنشاء النسخ الاحتياطية */}
                     <Card className="border shadow-xs flex flex-col justify-between">
                         <CardHeader>
                             <CardTitle className="text-base font-bold flex items-center gap-2">
                                 <Download className="h-5 w-5 text-foreground" />
-                                1. إنشاء وتنزيل نسخة احتياطية
+                                إنشاء وتنزيل نسخة احتياطية
                             </CardTitle>
                             <CardDescription className="text-xs">
                                 يمكنك تصدير كافة بيانات الجداول والعمليات بصيغة JSON شاملة وقابلة للنقل، أو حفظ نسخة أصلية (.bak) مباشرة على سيرفر SQL.
                             </CardDescription>
                         </CardHeader>
                         <CardContent className="space-y-4">
-                            {/* الخيار الأول: تصدير JSON فوري */}
                             <div className="p-3.5 rounded-xl border bg-muted/30 space-y-2.5">
                                 <div className="flex items-center justify-between">
                                     <span className="font-bold text-xs flex items-center gap-1.5">
@@ -473,7 +896,7 @@ export default function BackupPage() {
                                     </Badge>
                                 </div>
                                 <p className="text-[11px] text-muted-foreground leading-relaxed">
-                                    تقوم بسحب كافة الـ 71 جدولاً (الأصناف، الفواتير، الحسابات، الإعدادات، والبنود) في ملف JSON موثق، وتنزيلها مباشرة إلى جهازك بنقرة زر.
+                                    تقوم بسحب كافة الجداول (الأصناف، الفواتير، الحسابات، الإعدادات، والبنود) في ملف JSON موثق، وتنزيلها مباشرة إلى جهازك بنقرة زر.
                                 </p>
                                 <Button 
                                     onClick={handleExportJson} 
@@ -489,7 +912,6 @@ export default function BackupPage() {
                                 </Button>
                             </div>
 
-                            {/* الخيار الثاني: نسخة SQL الأصلية (.BAK) */}
                             <div className="p-3.5 rounded-xl border bg-muted/30 space-y-2.5">
                                 <span className="font-bold text-xs flex items-center gap-1.5">
                                     <Server className="h-4 w-4 text-foreground" />
@@ -508,7 +930,7 @@ export default function BackupPage() {
                                     variant="outline" 
                                     onClick={handleCreateSqlBak} 
                                     disabled={isLoadingBakBackup}
-                                    className="w-full h-8 text-xs font-bold gap-2 border-sky-500/30 hover:bg-sky-500/10 text-foreground dark:text-foreground"
+                                    className="w-full h-8 text-xs font-bold gap-2 border-sky-500/30 hover:bg-sky-500/10 text-foreground"
                                 >
                                     {isLoadingBakBackup ? (
                                         <Loader2 className="h-3.5 w-3.5 animate-spin" />
@@ -540,7 +962,7 @@ export default function BackupPage() {
                         <CardHeader>
                             <CardTitle className="text-base font-bold flex items-center gap-2">
                                 <Upload className="h-5 w-5 text-foreground" />
-                                2. استعادة نسخة احتياطية
+                                استعادة نسخة احتياطية
                             </CardTitle>
                             <CardDescription className="text-xs">
                                 يمكنك استرجاع بياناتك كاملة من أي ملف نسخة احتياطية (.json) محفوظ مسبقاً، مع معالجة وتثبيت القيود آلياً.
@@ -571,10 +993,9 @@ export default function BackupPage() {
                                 </Label>
                             </div>
 
-                            {/* ملخص الفحص للملف المختار */}
                             {restoreFileSummary && (
                                 <div className="p-3 rounded-xl border bg-amber-500/5 border-amber-500/20 space-y-1.5 animate-in fade-in-50">
-                                    <div className="flex items-center gap-1.5 font-bold text-xs text-foreground dark:text-foreground">
+                                    <div className="flex items-center gap-1.5 font-bold text-xs text-foreground">
                                         <FileCheck className="h-4 w-4" />
                                         تم التحقق من سلامة الملف
                                     </div>
@@ -595,7 +1016,6 @@ export default function BackupPage() {
                                 </div>
                             )}
 
-                            {/* زر الاستعادة مع نافذة تأكيد */}
                             <AlertDialog>
                                 <AlertDialogTrigger asChild>
                                     <Button 
@@ -636,259 +1056,6 @@ export default function BackupPage() {
                         </CardContent>
                     </Card>
                 </div>
-
-                {/* القسم 3: حذف وتصفير البيانات الحساسة (إعادة ضبط المصنع) */}
-                <Card className="border-destructive/40 bg-card shadow-xs">
-                    <CardHeader className="border-b pb-4">
-                        <div className="flex items-center justify-between">
-                            <CardTitle className="text-base font-bold text-destructive flex items-center gap-2">
-                                <ShieldAlert className="h-5 w-5" />
-                                3. تصفير وحذف البيانات (إعادة الضبط)
-                            </CardTitle>
-                            <Badge variant="outline" className="text-xs border-destructive/40 text-destructive bg-destructive/5">
-                                إجراء حساس محمي بكلمة مرور
-                            </Badge>
-                        </div>
-                        <CardDescription className="text-xs leading-relaxed mt-1">
-                            يتيح لك النظام تفريغ قاعدة البيانات لبدء سنة مالية جديدة أو تصفير حركات الفروع مع التحكم الكامل فيما ترغب في الاحتفاظ به.
-                        </CardDescription>
-                    </CardHeader>
-                    <CardContent className="p-4 sm:p-6 space-y-5">
-                        <RadioGroup 
-                            value={resetType} 
-                            onValueChange={(v: any) => setResetType(v)}
-                            className="grid grid-cols-1 md:grid-cols-2 gap-4"
-                        >
-                            {/* الخيار أ: تصفير الحركات فقط */}
-                            <Label 
-                                htmlFor="opt-trans"
-                                className={`p-4 rounded-xl border-2 cursor-pointer transition-all flex flex-col gap-2 ${
-                                    resetType === 'transactions_only' 
-                                        ? 'border-primary bg-primary/5 shadow-xs' 
-                                        : 'border-border hover:bg-muted/30 opacity-70'
-                                }`}
-                            >
-                                <div className="flex items-center justify-between">
-                                    <span className="font-bold text-xs text-foreground flex items-center gap-2">
-                                        <RadioGroupItem value="transactions_only" id="opt-trans" />
-                                        تصفير الحركات والعمليات فقط (الموصى به)
-                                    </span>
-                                    <Badge variant="outline" className="text-[10px] bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border-emerald-500/30">
-                                        آمن ومناسب
-                                    </Badge>
-                                </div>
-                                <p className="text-[11px] text-muted-foreground leading-relaxed">
-                                    يحذف جميع الفواتير والسندات وحركات المخزون وأوامر التصنيع وسجل التدقيق، ويصفر أرصدة الخزائن والعدادات.
-                                </p>
-                                <div className="text-[10px] font-bold text-emerald-700 dark:text-emerald-400 pt-1">
-                                    ✅ يتم الحفاظ على: الأصناف، الباركودات، التصنيفات، العملاء، الموردين، الخزائن، الفروع، المخازن، المستخدمين، والإعدادات.
-                                </div>
-                            </Label>
-
-                            {/* الخيار ب: ضبط المصنع الكامل */}
-                            <Label 
-                                htmlFor="opt-factory"
-                                className={`p-4 rounded-xl border-2 cursor-pointer transition-all flex flex-col gap-2 ${
-                                    resetType === 'factory_reset' 
-                                        ? 'border-destructive bg-destructive/5 shadow-xs' 
-                                        : 'border-border hover:bg-muted/30 opacity-70'
-                                }`}
-                            >
-                                <div className="flex items-center justify-between">
-                                    <span className="font-bold text-xs text-destructive flex items-center gap-2">
-                                        <RadioGroupItem value="factory_reset" id="opt-factory" />
-                                        إعادة ضبط المصنع الكاملة (مسح كل شيء)
-                                    </span>
-                                    <Badge variant="destructive" className="text-[10px]">
-                                        شامل وتام
-                                    </Badge>
-                                </div>
-                                <p className="text-[11px] text-muted-foreground leading-relaxed">
-                                    يمسح الحركات والتصنيع وسجل التدقيق، ثم الأصناف والكتالوج والعملاء والموردين والفروع والمخازن والخزائن لبدء النظام من الصفر.
-                                </p>
-                                <div className="text-[10px] font-bold text-foreground dark:text-foreground pt-1">
-                                    🛡️ يتم الاحتفاظ فقط بـ: المستخدمين والأدوار والصلاحيات وإعدادات النظام الأساسية.
-                                </div>
-                            </Label>
-                        </RadioGroup>
-
-                        {/* نافذة التأكيد المحمية بكلمة مرور */}
-                        <div className="pt-2 flex justify-end">
-                            <AlertDialog open={isResetDialogOpen} onOpenChange={setIsResetDialogOpen}>
-                                <AlertDialogTrigger asChild>
-                                    <Button 
-                                        variant="destructive" 
-                                        className="h-9 px-5 text-xs font-bold gap-2 shadow-xs"
-                                    >
-                                        <Trash2 className="h-4 w-4" />
-                                        متابعة إجراء حذف البيانات المحددة
-                                    </Button>
-                                </AlertDialogTrigger>
-                                <AlertDialogContent className="text-right" dir="rtl">
-                                    <AlertDialogHeader>
-                                        <AlertDialogTitle className="flex items-center gap-2 text-destructive">
-                                            <AlertTriangle className="h-5 w-5" />
-                                            تأكيد إذن حذف البيانات (يلزم كلمة مرور الإدارة)
-                                        </AlertDialogTitle>
-                                        <AlertDialogDescription className="text-xs space-y-3 leading-relaxed">
-                                            <span>
-                                                النوع المختار: <strong className="text-foreground">
-                                                    {resetType === 'transactions_only' ? 'تصفير الحركات والتصنيع وسجل التدقيق مع الاحتفاظ بالبيانات الأساسية' : 'إعادة ضبط المصنع: حذف الفروع والمخازن والخزائن والبيانات الأساسية'}
-                                                </strong>
-                                            </span>
-                                            <div className="p-3 rounded-lg bg-destructive/10 border border-destructive/20 text-destructive text-[11px] font-medium leading-relaxed">
-                                                ⚠️ هذا الإجراء لا يمكن التراجع عنه بأي شكل! يُنصح بشدة بأخذ نسخة احتياطية أولاً قبل تنفيذ هذا الإجراء.
-                                            </div>
-                                            <div className="space-y-1.5 pt-2">
-                                                <Label className="text-xs font-bold text-foreground flex items-center gap-1.5">
-                                                    <Lock className="h-3.5 w-3.5 text-muted-foreground" />
-                                                    أدخل كلمة مرور الإدارة للمتابعة:
-                                                </Label>
-                                                <Input 
-                                                    type="password"
-                                                    value={adminPassword}
-                                                    onChange={e => setAdminPassword(e.target.value)}
-                                                    placeholder="كلمة مرور الإدارة..."
-                                                    className="h-8 text-xs bg-background"
-                                                    autoFocus
-                                                />
-                                            </div>
-                                        </AlertDialogDescription>
-                                    </AlertDialogHeader>
-                                    <AlertDialogFooter className="flex-row-reverse gap-2">
-                                        <AlertDialogCancel className="h-8 text-xs font-bold">إلغاء</AlertDialogCancel>
-                                        <AlertDialogAction 
-                                            onClick={handleExecuteReset}
-                                            disabled={!adminPassword.trim() || isLoadingReset}
-                                            className="h-8 text-xs font-bold bg-destructive hover:bg-destructive/90 text-destructive-foreground gap-1.5"
-                                        >
-                                            {isLoadingReset ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />}
-                                            {isLoadingReset ? 'جارٍ تنفيذ الحذف والتصفير...' : 'تأكيد وحذف البيانات الآن'}
-                                        </AlertDialogAction>
-                                    </AlertDialogFooter>
-                                </AlertDialogContent>
-                            </AlertDialog>
-                        </div>
-                    </CardContent>
-                </Card>
-
-                {/* القسم 4: حذف بيانات فرع محدد (C) */}
-                <Card className="border-orange-400/40 bg-card shadow-xs">
-                    <CardHeader className="border-b pb-4">
-                        <div className="flex items-center justify-between">
-                            <CardTitle className="text-base font-bold text-foreground dark:text-foreground flex items-center gap-2">
-                                <Building2 className="h-5 w-5" />
-                                4. حذف بيانات فرع محدد فقط
-                            </CardTitle>
-                            <Badge variant="outline" className="text-xs border-orange-400/40 text-foreground dark:text-foreground bg-orange-500/5">
-                                حذف انتقائي
-                            </Badge>
-                        </div>
-                        <CardDescription className="text-xs leading-relaxed mt-1">
-                            يتيح حذف جميع الحركات والعمليات المرتبطة بفرع أو مستودع معين فقط، دون المساس بباقي الفروع أو البيانات الأساسية.
-                        </CardDescription>
-                    </CardHeader>
-                    <CardContent className="p-4 sm:p-6 space-y-5">
-                        <div className="grid gap-4 md:grid-cols-2">
-                            {/* معلومات ما يُحذف */}
-                            <div className="p-4 rounded-xl border bg-orange-50/40 dark:bg-orange-950/20 space-y-2">
-                                <p className="text-xs font-bold text-foreground dark:text-foreground flex items-center gap-1.5">
-                                    <Trash2 className="h-3.5 w-3.5" /> ما يتم حذفه للفرع المحدد:
-                                </p>
-                                <ul className="text-[11px] text-muted-foreground space-y-1 list-disc list-inside">
-                                    <li>فواتير المبيعات وبنودها</li>
-                                    <li>فواتير المشتريات وبنودها</li>
-                                    <li>حركات المخزون (استلام، صرف، تسوية)</li>
-                                    <li>المرتجعات وأوامر الشراء</li>
-                                    <li>جلسات نقطة البيع</li>
-                                    <li>سجلات الإكراميات</li>
-                                </ul>
-                                <p className="text-[10px] font-bold text-emerald-700 dark:text-emerald-400 pt-1">
-                                    ✅ تبقى: العملاء، الموردين، الأصناف، الفرع نفسه، والإعدادات.
-                                </p>
-                            </div>
-
-                            {/* اختيار الفرع والتنفيذ */}
-                            <div className="space-y-3">
-                                <div className="space-y-1.5">
-                                    <Label className="text-xs font-bold">اختر الفرع / المستودع:</Label>
-                                    <Select value={selectedBranchId} onValueChange={setSelectedBranchId}>
-                                        <SelectTrigger className="h-9 text-xs">
-                                            <SelectValue placeholder="-- اختر الفرع المراد حذف بياناته --" />
-                                        </SelectTrigger>
-                                        <SelectContent>
-                                            {allBranches.map((w: any) => (
-                                                <SelectItem key={w.id} value={w.id} className="text-xs">
-                                                    {w.name}
-                                                </SelectItem>
-                                            ))}
-                                        </SelectContent>
-                                    </Select>
-                                </div>
-
-                                {selectedBranch && (
-                                    <div className="p-3 rounded-lg bg-orange-50/60 dark:bg-orange-950/20 border border-orange-200 dark:border-orange-800 text-xs space-y-1 animate-in fade-in-50">
-                                        <p className="font-bold text-foreground dark:text-foreground">الفرع المحدد: {selectedBranch.name}</p>
-                                        <p className="text-muted-foreground">سيتم حذف جميع العمليات والحركات المرتبطة بهذا الفرع.</p>
-                                    </div>
-                                )}
-
-                                <div className="pt-2 flex justify-end">
-                                    <AlertDialog open={isBranchDialogOpen} onOpenChange={setIsBranchDialogOpen}>
-                                        <AlertDialogTrigger asChild>
-                                            <Button
-                                                variant="outline"
-                                                disabled={!selectedBranchId}
-                                                className="h-9 px-5 text-xs font-bold gap-2 border-orange-500/40 text-foreground dark:text-foreground hover:bg-orange-500/10"
-                                            >
-                                                <Trash2 className="h-4 w-4" />
-                                                حذف بيانات هذا الفرع
-                                            </Button>
-                                        </AlertDialogTrigger>
-                                        <AlertDialogContent className="text-right" dir="rtl">
-                                            <AlertDialogHeader>
-                                                <AlertDialogTitle className="flex items-center gap-2 text-foreground">
-                                                    <AlertTriangle className="h-5 w-5" />
-                                                    تأكيد حذف بيانات الفرع: {selectedBranch?.name}
-                                                </AlertDialogTitle>
-                                                <AlertDialogDescription className="text-xs space-y-3 leading-relaxed">
-                                                    <div className="p-3 rounded-lg bg-destructive/10 border border-destructive/20 text-destructive text-[11px] font-medium leading-relaxed">
-                                                        ⚠️ ستُحذف جميع الحركات والعمليات الخاصة بفرع <strong>{selectedBranch?.name}</strong> بشكل نهائي لا يمكن التراجع عنه.
-                                                    </div>
-                                                    <div className="space-y-1.5 pt-2">
-                                                        <Label className="text-xs font-bold text-foreground flex items-center gap-1.5">
-                                                            <Lock className="h-3.5 w-3.5 text-muted-foreground" />
-                                                            أدخل كلمة مرور الإدارة:
-                                                        </Label>
-                                                        <Input
-                                                            type="password"
-                                                            value={branchPassword}
-                                                            onChange={e => setBranchPassword(e.target.value)}
-                                                            placeholder="كلمة مرور الإدارة..."
-                                                            className="h-8 text-xs bg-background"
-                                                            autoFocus
-                                                        />
-                                                    </div>
-                                                </AlertDialogDescription>
-                                            </AlertDialogHeader>
-                                            <AlertDialogFooter className="flex-row-reverse gap-2">
-                                                <AlertDialogCancel className="h-8 text-xs font-bold">إلغاء</AlertDialogCancel>
-                                                <AlertDialogAction
-                                                    onClick={handleExecuteBranchPurge}
-                                                    disabled={!branchPassword.trim() || isLoadingBranchPurge}
-                                                    className="h-8 text-xs font-bold bg-orange-600 hover:bg-orange-700 text-white gap-1.5"
-                                                >
-                                                    {isLoadingBranchPurge ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />}
-                                                    {isLoadingBranchPurge ? 'جارٍ حذف بيانات الفرع...' : 'تأكيد الحذف'}
-                                                </AlertDialogAction>
-                                            </AlertDialogFooter>
-                                        </AlertDialogContent>
-                                    </AlertDialog>
-                                </div>
-                            </div>
-                        </div>
-                    </CardContent>
-                </Card>
             </main>
         </>
     );

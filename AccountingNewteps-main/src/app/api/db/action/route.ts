@@ -3,7 +3,7 @@ import { getDbPool, sql } from '@/lib/db';
 import { logAuditEvent } from '@/lib/audit-logger';
 import { calculateInvoiceReturnTotals } from '@/lib/invoice-return-totals';
 import { logSystemError } from '@/lib/error-logger';
-import { getCentralConfig } from '@/lib/central-sync';
+import { getCentralConfig, connectToCentral } from '@/lib/central-sync';
 
 async function getBranchInfo(pool: sql.ConnectionPool, explicitBranchCode?: string | null, explicitBranchName?: string | null) {
     if (explicitBranchCode && explicitBranchName) {
@@ -2366,18 +2366,32 @@ export async function POST(req: Request) {
                     itemGroups: 'dbo.ItemGroups',
                     itemSubCategories1: 'dbo.ItemSubCategories1',
                     itemSubCategories2: 'dbo.ItemSubCategories2',
+                    itemColors: 'dbo.ItemColors',
+                    itemSizes: 'dbo.ItemSizes',
+                    barcodeDesigns: 'dbo.BarcodeDesigns',
                     customers: 'dbo.Customers',
                     suppliers: 'dbo.Suppliers',
+                    partners: 'dbo.Partners',
+                    sellers: 'dbo.Sellers',
+                    deliveryStaff: 'dbo.DeliveryStaff',
+                    employees: 'dbo.Employees',
+                    paymentMethods: 'dbo.PaymentMethods',
+                    promotions: 'dbo.Promotions',
+                    restaurantTables: 'dbo.RestaurantTables',
+                    targets: 'dbo.Targets',
                     salesInvoices: 'dbo.SalesInvoices',
                     salesReturns: 'dbo.SalesReturns',
                     purchaseInvoices: 'dbo.PurchaseInvoices',
                     purchaseReturns: 'dbo.PurchaseReturns',
+                    purchaseOrders: 'dbo.PurchaseOrders',
+                    requisitions: 'dbo.Requisitions',
                     customerPayments: 'dbo.CustomerPayments',
                     supplierPayments: 'dbo.SupplierPayments',
                     expenses: 'dbo.Expenses',
                     exceptionalIncomes: 'dbo.ExceptionalIncomes',
                     treasuryTransactions: 'dbo.TreasuryTransactions',
                     profitDistributions: 'dbo.ProfitDistributions',
+                    repRemittances: 'dbo.RepRemittances',
                     employeeAdvances: 'dbo.EmployeeAdvances',
                     employeeAdjustments: 'dbo.EmployeeAdjustments',
                     fixedAssets: 'dbo.FixedAssets',
@@ -2399,18 +2413,49 @@ export async function POST(req: Request) {
                     stockReturnsFromReps: 'dbo.StockReturnsFromReps',
                     inventoryClosings: 'dbo.InventoryClosings',
                     posTerminals: 'dbo.PosTerminals',
+                    posSessions: 'dbo.PosSessions',
+                    manufacturingOrders: 'dbo.ManufacturingOrders',
+                    generalLedgerEntries: 'dbo.GeneralLedgerEntries',
                     licenses: 'dbo.Licenses'
                 };
-                if (path === 'posTerminals' && await checkIsCentral()) {
-                    return NextResponse.json({
-                        success: false,
-                        error: "محظور: لا يمكن حذف أجهزة نقاط البيع في الإدارة المركزية."
-                    }, { status: 403 });
-                }
-                if (path === 'users' && removeId) {
-                    await pool.request().input('RepId', sql.NVarChar(64), String(removeId)).query(`DELETE FROM dbo.Warehouses WHERE RepId = @RepId;`);
-                    await pool.request().input('UserId', sql.NVarChar(64), String(removeId)).query(`DELETE FROM dbo.CashAccounts WHERE UserId = @UserId;`);
-                }
+
+                const executeCascadeDeleteOnPool = async (targetPool: sql.ConnectionPool, tableName: string) => {
+                    if (path === 'users' && removeId) {
+                        await targetPool.request().input('RepId', sql.NVarChar(64), String(removeId)).query(`
+                            DELETE FROM dbo.Warehouses WHERE RepId = @RepId;
+                            DELETE FROM dbo.CashAccounts WHERE UserId = @RepId;
+                            DELETE FROM dbo.Employees WHERE Id = @RepId;
+                            DELETE FROM dbo.Sellers WHERE Id = @RepId;
+                        `);
+                    }
+                    if (path === 'warehouses' && removeId) {
+                        await targetPool.request().input('WhId', sql.NVarChar(64), String(removeId)).query(`
+                            DELETE FROM dbo.PosTerminals WHERE WarehouseId = @WhId;
+                            DELETE FROM dbo.CashAccounts WHERE WarehouseId = @WhId;
+                            DELETE FROM dbo.InventorySections WHERE MainWarehouseId = @WhId;
+                            DELETE FROM dbo.InventoryZones WHERE WarehouseId = @WhId;
+                        `);
+                    }
+                    if (path === 'cashAccounts' && removeId) {
+                        await targetPool.request().input('AccId', sql.NVarChar(64), String(removeId)).query(`
+                            UPDATE dbo.PaymentMethods SET AccountId = NULL WHERE AccountId = @AccId;
+                        `);
+                    }
+                    if (path === 'licenses') {
+                        await targetPool.request()
+                            .input('Id', sql.NVarChar(64), String(removeId))
+                            .query(`DELETE FROM dbo.Licenses WHERE Id = @Id OR [Key] = @Id;`);
+                    } else if (path === 'targets') {
+                        await targetPool.request()
+                            .input('Id', sql.NVarChar(64), String(removeId))
+                            .query(`DELETE FROM dbo.Targets WHERE Id = @Id OR TargetKey = @Id;`);
+                    } else {
+                        await targetPool.request()
+                            .input('Id', sql.NVarChar(64), String(removeId))
+                            .query(`DELETE FROM ${tableName} WHERE Id = @Id;`);
+                    }
+                };
+
                 const tableName = tableMap[path];
                 if (tableName) {
                     if (path === 'customerPayments' || path === 'supplierPayments') {
@@ -2433,15 +2478,25 @@ export async function POST(req: Request) {
                             await tx.rollback();
                             throw error;
                         }
-                    } else if (path === 'licenses') {
-                        await pool.request()
-                            .input('Id', sql.NVarChar(64), String(removeId))
-                            .query(`DELETE FROM dbo.Licenses WHERE Id = @Id OR [Key] = @Id;`);
                     } else {
-                        await pool.request()
-                            .input('Id', sql.NVarChar(64), String(removeId))
-                            .query(`DELETE FROM ${tableName} WHERE Id = @Id;`);
+                        await executeCascadeDeleteOnPool(pool, tableName);
                     }
+
+                    // Propagate deletion to Central HQ database so background Auto-Sync never pulls the deleted record back
+                    try {
+                        const cfg = await getCentralConfig();
+                        if (cfg && cfg.centralServerIp) {
+                            const centralPool = await connectToCentral(cfg);
+                            try {
+                                await executeCascadeDeleteOnPool(centralPool, tableName);
+                            } finally {
+                                await centralPool.close();
+                            }
+                        }
+                    } catch {
+                        // Best-effort central delete when central server is offline
+                    }
+
                     return NextResponse.json({ success: true });
                 }
             }
