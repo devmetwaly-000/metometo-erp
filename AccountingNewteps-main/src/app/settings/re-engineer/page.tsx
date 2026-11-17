@@ -55,7 +55,7 @@ function parseConnStrClient(connStr: string): Partial<LocalDbConfigState> {
             }
             if (host) out.server = host;
         } else if (['database', 'initial catalog'].includes(k)) {
-            out.database = v;
+            out.database = v.toLowerCase() === 'master' ? 'MultiBranchPOS_DB' : v;
         } else if (['user id', 'uid', 'user', 'username'].includes(k)) {
             out.user = v;
         } else if (['password', 'pwd'].includes(k)) {
@@ -190,10 +190,11 @@ export default function DatabaseReEngineeringPage() {
         } else if (type === 'aws_rds') {
             const next: LocalDbConfigState = {
                 ...config,
-                server: 'mydb.xxxx.us-east-1.rds.amazonaws.com',
+                server: 'database-1.c9oyqw2ss7c3.eu-north-1.rds.amazonaws.com',
                 port: 1433,
                 database: 'MultiBranchPOS_DB',
                 user: 'admin',
+                password: config.password || 'asSandokane123',
                 encrypt: true,
                 trustServerCertificate: true,
                 connectionString: ''

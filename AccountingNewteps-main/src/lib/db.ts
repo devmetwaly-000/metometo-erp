@@ -63,7 +63,10 @@ export function parseSqlConnectionString(connStr: string): Partial<LocalDbConfig
             }
             if (cleanHost) result.server = cleanHost;
         } else if (['database', 'initial catalog'].includes(rawKey)) {
-            if (rawVal) result.database = rawVal;
+            if (rawVal) {
+                // إذا كان النص المنسوخ من AWS أو SSMS يحتوي على Initial Catalog=master، نستخدم MultiBranchPOS_DB تلقائياً لإنشاء جداول النظام فيها بدلاً من قاعدة النظام master
+                result.database = rawVal.toLowerCase() === 'master' ? 'MultiBranchPOS_DB' : rawVal;
+            }
         } else if (['user id', 'uid', 'user', 'username'].includes(rawKey)) {
             if (rawVal) result.user = rawVal;
         } else if (['password', 'pwd'].includes(rawKey)) {
@@ -136,13 +139,17 @@ function buildMssqlConfig(cfg: LocalDbConfig, targetDatabase?: string): sql.conf
         cleanServer.includes('.database.windows.net') ||
         Boolean(cfg.encrypt);
 
+    const effectiveDb =
+        targetDatabase ||
+        (!cfg.database || cfg.database.toLowerCase() === 'master' ? 'MultiBranchPOS_DB' : cfg.database);
+
     return {
         user: cfg.user,
         password: cfg.password,
         server: cleanServer,
         port,
-        database: targetDatabase || cfg.database || 'MultiBranchPOS_DB',
-        connectionTimeout: Number(cfg.connectionTimeout) || 6000,
+        database: effectiveDb,
+        connectionTimeout: isCloudEndpoint ? Math.max(Number(cfg.connectionTimeout) || 15000, 15000) : (Number(cfg.connectionTimeout) || 6000),
         requestTimeout: 60000,
         options: {
             encrypt: isCloudEndpoint,
@@ -277,12 +284,20 @@ export async function testLocalDbConnection(input?: Partial<LocalDbConfig>): Pro
             } catch {}
         }
 
+        let detailedError = `فشل الاتصال بالسيرفر (${mssqlCfg.server}:${mssqlCfg.port}): ${errMsg}`;
+        if (
+            String(mssqlCfg.server).includes('.rds.amazonaws.com') &&
+            (err.code === 'ETIMEOUT' || errMsg.toLowerCase().includes('timeout') || errMsg.toLowerCase().includes('failed to connect'))
+        ) {
+            detailedError = `انتهت مهلة الاتصال بسيرفر Amazon AWS RDS (${mssqlCfg.server}). السبب: السيرفر في أمازون مضبوط حالياً على وضع داخلي خاص (Private VPC IP) أو جدار الحماية مغلق. للحل من لوحة تحكم AWS RDS: 1) اضغط Modify على القاعدة واجعل "Public access = Publicly accessible". 2) في Security Group (Inbound Rules) أضف قاعدة للنوع MSSQL (Port 1433) من المصدر Anywhere-IPv4 (0.0.0.0/0).`;
+        }
+
         return {
             success: false,
             databaseExists: false,
             server: `${mssqlCfg.server}:${mssqlCfg.port}`,
             database: cfg.database,
-            error: `فشل الاتصال بالسيرفر (${mssqlCfg.server}:${mssqlCfg.port}): ${errMsg}`
+            error: detailedError
         };
     }
 }

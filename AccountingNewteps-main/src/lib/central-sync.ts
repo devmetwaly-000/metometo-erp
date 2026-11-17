@@ -316,27 +316,41 @@ export async function saveCentralConfig(config: Partial<CentralSyncConfig>): Pro
  * إنشاء اتصال منفصل بالسيرفر المركزي للإدارة
  */
 export async function connectToCentral(config: CentralSyncConfig, targetDatabase?: string): Promise<sql.ConnectionPool> {
-    let cleanServer = (config.centralServerIp || '10.110.16.16').trim();
+    let cleanServer = (config.centralServerIp || '10.110.16.16').trim().replace(/^tcp:/i, '');
     let port = Number(config.centralSqlPort) || 1433;
 
-    if (cleanServer.includes(':')) {
+    if (cleanServer.includes(',')) {
+        const [hostPart, portPart] = cleanServer.split(',');
+        cleanServer = hostPart.trim();
+        port = parseInt(portPart, 10) || port;
+    } else if (cleanServer.includes(':')) {
         const [hostPart, portPart] = cleanServer.split(':');
         cleanServer = hostPart.trim();
         port = parseInt(portPart, 10) || port;
     }
     cleanServer = cleanServer.replace(/^https?:\/\//i, '').replace(/\/$/, '');
 
+    const isCloudRds =
+        cleanServer.includes('.rds.amazonaws.com') ||
+        cleanServer.includes('.database.windows.net');
+
+    const effectiveCentralDb =
+        targetDatabase ||
+        (!config.centralDatabase || config.centralDatabase.toLowerCase() === 'master'
+            ? 'MultiBranchPOS_Central_DB'
+            : config.centralDatabase);
+
     const centralSqlConfig: sql.config = {
         user: config.centralUsername,
         password: config.centralPassword,
         server: cleanServer,
         port: port,
-        database: targetDatabase || config.centralDatabase,
+        database: effectiveCentralDb,
         options: {
-            encrypt: false,
+            encrypt: isCloudRds,
             trustServerCertificate: true,
             enableArithAbort: true,
-            connectTimeout: 9000
+            connectTimeout: isCloudRds ? 15000 : 9000
         },
         pool: {
             max: 5,
