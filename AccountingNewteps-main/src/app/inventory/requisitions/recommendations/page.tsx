@@ -48,8 +48,12 @@ interface Recommendation {
   currentStock: number;
   reorderPoint?: number;
   avgDailySales?: number;
+  daysRemaining?: number;
   recommendedQty: number;
   daysToCover?: number;
+  bestSupplierId?: string;
+  bestSupplierName?: string;
+  bestSupplierCost?: number;
   status: 'needed' | 'pending_requisition' | 'pending_purchase';
   referenceId?: string;
 }
@@ -71,7 +75,10 @@ const SalesChartDialog = ({ item, fromDate, toDate }: { item: Recommendation | n
         if (!item) return [];
 
         const salesByDay = new Map<string, number>();
-        const allSales = [...posSales, ...salesInvoices.filter((s: any) => s.status === 'approved')];
+        const approvedInvoices = salesInvoices.filter((s: any) => s.status === 'approved' || s.status === 'completed' || !s.status);
+        const seenSaleIds = new Set(approvedInvoices.map((s: any) => s.id));
+        const standalonePos = (posSales || []).filter((s: any) => !seenSaleIds.has(s.id));
+        const allSales = [...approvedInvoices, ...standalonePos];
 
         const start = fromDate ? new Date(fromDate) : new Date(0);
         const end = toDate ? new Date(toDate) : new Date();
@@ -138,7 +145,7 @@ const SalesChartDialog = ({ item, fromDate, toDate }: { item: Recommendation | n
 
 export default function RecommendationsPage() {
     const {
-        items: allItems, warehouses, inventory, snoozedRecommendations, requisitions,
+        items: allItems, warehouses, suppliers, purchaseInvoices, inventory, snoozedRecommendations, requisitions,
         salesInvoices, posSales,
         dbAction, getNextId, loading,
         purchaseOrders, // Fetch POs
@@ -152,7 +159,7 @@ export default function RecommendationsPage() {
     const searchParams = useSearchParams();
 
     const [warehouseId, setWarehouseId] = useState("");
-    const [method, setMethod] = useState<"reorder_point" | "sales_velocity">("reorder_point");
+    const [method, setMethod] = useState<"reorder_point" | "sales_velocity">("sales_velocity");
     const [daysToCover, setDaysToCover] = useState(15);
     const [recommendations, setRecommendations] = useState<Recommendation[]>([]);
     const [isGenerating, setIsGenerating] = useState(false);
@@ -173,6 +180,28 @@ export default function RecommendationsPage() {
         () => warehouses.filter((w: any) => !w.isMain).map((w: any) => ({ value: w.id, label: w.name })),
         [warehouses]
     );
+
+    // تحديد المورد الأفضل سعراً لكل صنف بناءً على سجل فواتير المشتريات
+    const bestSupplierByItemMap = useMemo(() => {
+        const map = new Map<string, { supplierId: string; supplierName: string; minCost: number }>();
+        const suppliersMap = new Map((suppliers || []).map((s: any) => [s.id, s.name]));
+
+        (purchaseInvoices || []).forEach((pinv: any) => {
+            const supId = pinv.supplierId;
+            const supName = pinv.supplierName || suppliersMap.get(supId) || 'مورد عام';
+            (pinv.items || []).forEach((it: any) => {
+                const id = it.id || it.itemId;
+                const cost = Number(it.cost || it.price || 0);
+                if (!id || cost <= 0) return;
+                const existing = map.get(id);
+                if (!existing || cost < existing.minCost) {
+                    map.set(id, { supplierId: supId, supplierName: supName, minCost: cost });
+                }
+            });
+        });
+
+        return map;
+    }, [purchaseInvoices, suppliers]);
     
     const calculateStockForItemInWarehouse = useCallback((itemId: string, whId: string, allData: any): number => {
       const {
@@ -200,13 +229,15 @@ export default function RecommendationsPage() {
         (stockInRecords || []).filter((si:any) => si.warehouseId === whId && filterTransactions(si)).forEach((si: any) => si.items.forEach((i: any) => { if ((i.id || i.itemId) === itemId) stock += i.qty; }));
         (stockTransferRecords || []).filter((t:any) => t.toSourceId === whId && filterTransactions(t)).forEach((t: any) => t.items.forEach((i: any) => { if (i.id === itemId) stock += i.qty; }));
         (stockAdjustmentRecords || []).filter((adj:any) => adj.warehouseId === whId && filterTransactions(adj)).forEach((adj: any) => adj.items.forEach((i: any) => { if (i.itemId === itemId && i.difference > 0) stock += i.difference; }));
-        (salesReturns || []).filter((sr:any) => sr.warehouseId === whId && filterTransactions(sr)).forEach((sr: any) => sr.items.forEach((i: any) => { if (i.id === itemId) stock += i.qty; }));
-        (posReturns || []).filter((pr:any) => (pr as any).warehouseId === whId && filterTransactions(pr)).forEach((pr: any) => pr.items.forEach((i: any) => { if (i.id === itemId) stock += i.qty; }));
+        const seenRetIds = new Set<string>();
+        (salesReturns || []).filter((sr:any) => sr.warehouseId === whId && filterTransactions(sr)).forEach((sr: any) => { if (sr.id) seenRetIds.add(sr.id); sr.items.forEach((i: any) => { if (i.id === itemId) stock += i.qty; }); });
+        (posReturns || []).filter((pr:any) => (!pr.id || !seenRetIds.has(pr.id)) && (pr as any).warehouseId === whId && filterTransactions(pr)).forEach((pr: any) => pr.items.forEach((i: any) => { if (i.id === itemId) stock += i.qty; }));
         (stockReturnsFromReps || []).filter((rfr:any) => rfr.warehouseId === whId && filterTransactions(rfr)).forEach((rfr: any) => rfr.items.forEach((i: any) => { if (i.id === itemId) stock += i.qty; }));
         
         // OUTGOING
-        (salesInvoices || []).filter((s:any) => s.warehouseId === whId && s.status === 'approved' && filterTransactions(s)).forEach((s: any) => s.items.forEach((i: any) => { if (i.id === itemId) stock -= i.qty; }));
-        (posSales || []).filter((s: any) => s.warehouseId === whId && filterTransactions(s)).forEach((s: any) => s.items.forEach((i: any) => { if (i.id === itemId) stock -= i.qty; }));
+        const seenSaleIds = new Set<string>();
+        (salesInvoices || []).filter((s:any) => s.warehouseId === whId && (s.status === 'approved' || s.status === 'completed' || !s.status) && filterTransactions(s)).forEach((s: any) => { if (s.id) seenSaleIds.add(s.id); s.items.forEach((i: any) => { if (i.id === itemId) stock -= i.qty; }); });
+        (posSales || []).filter((s: any) => (!s.id || !seenSaleIds.has(s.id)) && s.warehouseId === whId && filterTransactions(s)).forEach((s: any) => s.items.forEach((i: any) => { if (i.id === itemId) stock -= i.qty; }));
         (stockOutRecords || []).filter((so:any) => so.sourceId === whId && filterTransactions(so)).forEach((so: any) => so.items.forEach((i:any) => { if (i.id === itemId) stock -= i.qty; }));
         (stockTransferRecords || []).filter((t:any) => t.fromSourceId === whId && filterTransactions(t)).forEach((t: any) => t.items.forEach((i: any) => { if (i.id === itemId) stock -= i.qty; }));
         (stockAdjustmentRecords || []).filter((adj:any) => adj.warehouseId === whId && filterTransactions(adj)).forEach((adj: any) => adj.items.forEach((i: any) => { if (i.itemId === itemId && i.difference < 0) stock += i.difference; }));
@@ -297,16 +328,36 @@ export default function RecommendationsPage() {
                             referenceId = `شراء #${pendingPurchaseItems.get(item.id)}`;
                         }
 
-                        return { itemId: item.id, itemName: item.name, itemCode: item.code, warehouseId, warehouseName, currentStock, reorderPoint: item.reorderPoint, recommendedQty, status, referenceId };
+                        const bestSup = bestSupplierByItemMap.get(item.id);
+                        return {
+                            itemId: item.id,
+                            itemName: item.name,
+                            itemCode: item.code,
+                            warehouseId,
+                            warehouseName,
+                            currentStock,
+                            reorderPoint: item.reorderPoint,
+                            recommendedQty,
+                            bestSupplierId: bestSup?.supplierId,
+                            bestSupplierName: bestSup?.supplierName,
+                            bestSupplierCost: bestSup?.minCost ?? Number(item.cost || 0),
+                            status,
+                            referenceId
+                        };
                     }
                     return null;
                 });
             newRecommendations = recommendationsFromMap.filter(Boolean) as Recommendation[];
 
         } else if (method === "sales_velocity") {
-            const allSales = [...salesInvoices.filter((s: any) => s.status === 'approved'), ...posSales];
+            const approvedInvoices = salesInvoices.filter((s: any) => s.status === 'approved' || s.status === 'completed' || !s.status);
+            const seenSaleIds = new Set(approvedInvoices.map((s: any) => s.id));
+            const standalonePos = (posSales || []).filter((s: any) => !seenSaleIds.has(s.id));
+            const allSales = [...approvedInvoices, ...standalonePos];
             const startDate = new Date(dateRange.from);
             const endDate = new Date(dateRange.to);
+            startDate.setHours(0, 0, 0, 0);
+            endDate.setHours(23, 59, 59, 999);
             
             const salesInPeriod = allSales.filter(s => {
                 const saleDate = new Date(s.date);
@@ -315,10 +366,10 @@ export default function RecommendationsPage() {
 
             const itemSalesMap = new Map<string, { totalSold: number, sellingDays: Set<string> }>();
             salesInPeriod.forEach(s => { 
-                s.items.forEach((item: any) => {
+                (s.items || []).forEach((item: any) => {
                     const saleDateString = new Date(s.date).toISOString().split('T')[0];
                     const current = itemSalesMap.get(item.id) || { totalSold: 0, sellingDays: new Set<string>() };
-                    current.totalSold += item.qty;
+                    current.totalSold += Number(item.qty || 0);
                     current.sellingDays.add(saleDateString);
                     itemSalesMap.set(item.id, current);
                 }); 
@@ -335,6 +386,7 @@ export default function RecommendationsPage() {
                     const isManufactured = item.itemType === 'manufactured';
                     const currentStock = isManufactured ? calculateManufacturableStock(item, warehouseId, allDataForCalc) : calculateStockForItemInWarehouse(item.id, warehouseId, allDataForCalc);
 
+                    const daysRemaining = avgDailySales > 0 ? Math.max(0, Math.round((currentStock / avgDailySales) * 10) / 10) : 0;
                     const targetStock = avgDailySales * daysToCover;
                     if (currentStock < targetStock) {
                         let status: Recommendation['status'] = 'needed';
@@ -348,6 +400,7 @@ export default function RecommendationsPage() {
                             referenceId = `شراء #${pendingPurchaseItems.get(item.id)}`;
                         }
 
+                        const bestSup = bestSupplierByItemMap.get(item.id);
                         return { 
                             itemId: item.id, 
                             itemName: item.name, 
@@ -355,9 +408,13 @@ export default function RecommendationsPage() {
                             warehouseId, 
                             warehouseName, 
                             currentStock, 
-                            avgDailySales, 
+                            avgDailySales,
+                            daysRemaining,
                             recommendedQty: Math.ceil(targetStock - currentStock), 
                             daysToCover,
+                            bestSupplierId: bestSup?.supplierId,
+                            bestSupplierName: bestSup?.supplierName,
+                            bestSupplierCost: bestSup?.minCost ?? Number(item.cost || 0),
                             status, 
                             referenceId 
                         };
@@ -368,7 +425,7 @@ export default function RecommendationsPage() {
         }
         setRecommendations(newRecommendations);
         setIsGenerating(false);
-    }, [warehouseId, method, allItems, snoozedRecommendations, toast, warehouses, requisitions, purchaseOrders, stockInRecords, dateRange, daysToCover, salesInvoices, posSales, calculateStockForItemInWarehouse, calculateManufacturableStock]);
+    }, [warehouseId, method, allItems, snoozedRecommendations, toast, warehouses, requisitions, purchaseOrders, stockInRecords, dateRange, daysToCover, salesInvoices, posSales, calculateStockForItemInWarehouse, calculateManufacturableStock, bestSupplierByItemMap]);
     
     const { newRecommendations, pendingOrders } = useMemo(() => {
         const needed = recommendations.filter(r => r.status === 'needed');
@@ -393,23 +450,53 @@ export default function RecommendationsPage() {
                 });
                 toast({ title: 'تم إنشاء الطلب', description: `تم إرسال طلب بضاعة لـ ${itemsToProcess.length} صنف.` });
             } else if (actionType === 'purchase') {
-                const poNumber = `PO-${await getNextId('purchaseOrder')}`;
-                await dbAction('purchaseOrders', 'add', {
-                    warehouseId: itemsToProcess[0].warehouseId, // Assuming all items are for the same warehouse
-                    orderNumber: poNumber,
-                    date: new Date().toISOString(),
-                    status: 'pending',
-                    fromRecommendation: true,
-                    items: itemsToProcess.map(({ itemId, itemName, recommendedQty }) => ({
-                        id: itemId,
-                        name: itemName,
-                        qty: recommendedQty,
-                        cost: allItems.find((i:any) => i.id === itemId)?.cost || 0,
-                        total: recommendedQty * (allItems.find((i:any) => i.id === itemId)?.cost || 0),
-                    })),
-                    total: itemsToProcess.reduce((sum, item) => sum + (item.recommendedQty * (allItems.find((i:any) => i.id === item.itemId)?.cost || 0)), 0),
+                // تجميع الأصناف تلقائياً حسب المورد الأفضل سعراً لإصدار أمر شراء مخصص لكل مورد بأفضل سعر
+                const bySupplier = new Map<string, { supplierId?: string; supplierName?: string; items: Recommendation[] }>();
+                itemsToProcess.forEach((rec) => {
+                    const key = rec.bestSupplierId || 'general';
+                    const existing = bySupplier.get(key) || {
+                        supplierId: rec.bestSupplierId,
+                        supplierName: rec.bestSupplierName || 'مورد مقترح',
+                        items: [],
+                    };
+                    existing.items.push(rec);
+                    bySupplier.set(key, existing);
                 });
-                toast({ title: 'تم إنشاء أمر الشراء', description: `تم إنشاء أمر شراء ${poNumber} لـ ${itemsToProcess.length} صنف.` });
+
+                let createdPosCount = 0;
+                for (const group of bySupplier.values()) {
+                    const poNumber = `PO-${await getNextId('purchaseOrder')}`;
+                    await dbAction('purchaseOrders', 'add', {
+                        warehouseId: group.items[0].warehouseId,
+                        supplierId: group.supplierId || null,
+                        supplierName: group.supplierName || null,
+                        orderNumber: poNumber,
+                        date: new Date().toISOString(),
+                        status: 'pending',
+                        fromRecommendation: true,
+                        notes: group.supplierName ? `أمر شراء ذكي تلقائي للمورد الأفضل سعراً: ${group.supplierName}` : 'أمر شراء ذكي تلقائي',
+                        items: group.items.map(({ itemId, itemName, recommendedQty, bestSupplierCost }) => {
+                            const unitCost = bestSupplierCost ?? (allItems.find((i:any) => i.id === itemId)?.cost || 0);
+                            return {
+                                id: itemId,
+                                name: itemName,
+                                qty: recommendedQty,
+                                cost: unitCost,
+                                total: recommendedQty * unitCost,
+                            };
+                        }),
+                        total: group.items.reduce((sum, item) => {
+                            const unitCost = item.bestSupplierCost ?? (allItems.find((i:any) => i.id === item.itemId)?.cost || 0);
+                            return sum + (item.recommendedQty * unitCost);
+                        }, 0),
+                    });
+                    createdPosCount++;
+                }
+
+                toast({
+                    title: 'تم إنشاء أوامر الشراء الذكية',
+                    description: `تم إنشاء ${createdPosCount} أمر شراء تلقائي موجه للمورد الأفضل سعراً لـ ${itemsToProcess.length} صنف.`
+                });
             }
              generateRecommendations(); // Refresh recommendations after action
         } catch (error) {
@@ -501,14 +588,41 @@ export default function RecommendationsPage() {
                             <CardContent>
                                 <div className="w-full overflow-auto border rounded-lg">
                                     <Table>
-                                        <TableHeader><TableRow><TableHead>الصنف</TableHead><TableHead className="text-center">الرصيد الحالي</TableHead><TableHead className="text-center">{method === 'reorder_point' ? 'حد الطلب' : 'متوسط البيع اليومي'}</TableHead><TableHead className="text-center">الكمية الموصى بها</TableHead><TableHead className="text-center w-[200px]">الإجراء</TableHead></TableRow></TableHeader>
+                                        <TableHeader>
+                                            <TableRow>
+                                                <TableHead>الصنف</TableHead>
+                                                <TableHead className="text-center">الرصيد الحالي</TableHead>
+                                                <TableHead className="text-center">{method === 'reorder_point' ? 'حد الطلب' : 'معدل البيع اليومي'}</TableHead>
+                                                {method === 'sales_velocity' && <TableHead className="text-center">يكفي لـ (يوم)</TableHead>}
+                                                <TableHead className="text-center">الكمية الموصى بها</TableHead>
+                                                <TableHead className="text-center">المورد الأفضل سعراً</TableHead>
+                                                <TableHead className="text-center w-[200px]">الإجراء</TableHead>
+                                            </TableRow>
+                                        </TableHeader>
                                         <TableBody>
                                             {newRecommendations.map(rec => (
                                                 <TableRow key={rec.itemId}>
                                                     <TableCell><p className="font-semibold">{rec.itemName}</p><p className="text-xs text-muted-foreground font-mono">{rec.itemCode}</p></TableCell>
-                                                    <TableCell className="text-center">{rec.currentStock}</TableCell>
-                                                    <TableCell className="text-center">{method === 'reorder_point' ? rec.reorderPoint : rec.avgDailySales?.toFixed(2)}</TableCell>
-                                                    <TableCell className="text-center font-bold text-lg text-primary">{rec.recommendedQty}</TableCell>
+                                                    <TableCell className="text-center font-mono">{rec.currentStock}</TableCell>
+                                                    <TableCell className="text-center font-mono">{method === 'reorder_point' ? rec.reorderPoint : `${rec.avgDailySales?.toFixed(1)} قطعة/يوم`}</TableCell>
+                                                    {method === 'sales_velocity' && (
+                                                        <TableCell className="text-center">
+                                                            <Badge variant={(rec.daysRemaining ?? 0) <= 3 ? "destructive" : "secondary"} className="font-mono text-xs">
+                                                                {rec.daysRemaining ?? 0} يوم
+                                                            </Badge>
+                                                        </TableCell>
+                                                    )}
+                                                    <TableCell className="text-center font-bold text-lg text-primary font-mono">{rec.recommendedQty}</TableCell>
+                                                    <TableCell className="text-center text-xs">
+                                                        {rec.bestSupplierName ? (
+                                                            <div>
+                                                                <div className="font-semibold text-emerald-500">{rec.bestSupplierName}</div>
+                                                                <div className="font-mono text-muted-foreground">{Number(rec.bestSupplierCost || 0).toLocaleString()} ج.م</div>
+                                                            </div>
+                                                        ) : (
+                                                            <span className="text-muted-foreground">تكلفة قياسية ({Number(rec.bestSupplierCost || 0).toLocaleString()} ج.م)</span>
+                                                        )}
+                                                    </TableCell>
                                                     <TableCell className="text-center">
                                                         <DropdownMenu>
                                                             <DropdownMenuTrigger asChild>
