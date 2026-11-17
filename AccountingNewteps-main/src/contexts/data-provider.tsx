@@ -522,7 +522,9 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     }, [allData?.inventory, stockInRecords, stockOutRecords, stockTransferRecords]);
 
     const unreconciledDeliveryCount = useMemo(() => {
-        const allSales = [...salesInvoices, ...posSales];
+        const seenSaleIds = new Set((salesInvoices || []).map((s: any) => s.id));
+        const standalonePos = (posSales || []).filter((s: any) => !seenSaleIds.has(s.id));
+        const allSales = [...(salesInvoices || []), ...standalonePos];
         return allSales.filter(inv => inv?.isDelivery && !inv?.deliveryReconciled).length;
     }, [salesInvoices, posSales]);
 

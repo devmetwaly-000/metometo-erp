@@ -61,10 +61,10 @@ export default function ItemSalesCountReportPage() {
   const reportData = useMemo(() => {
     if (loading) return [];
     
-    const combinedSales: Sale[] = [
-      ...salesInvoices.filter((inv: any) => inv.status === 'approved'),
-      ...posSales,
-    ];
+    const approvedInvoices = salesInvoices.filter((inv: any) => inv.status === 'approved' || inv.status === 'completed' || !inv.status);
+    const seenSaleIds = new Set(approvedInvoices.map((inv: any) => inv.id));
+    const standalonePos = (posSales || []).filter((s: any) => !seenSaleIds.has(s.id));
+    const combinedSales: Sale[] = [...approvedInvoices, ...standalonePos];
 
     const filteredSales = combinedSales.filter(sale => {
       const saleDate = new Date(sale.date);

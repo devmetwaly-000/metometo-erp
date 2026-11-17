@@ -244,10 +244,12 @@ export default function ManufacturingFeasibilityReportPage() {
 
     // تجميع مبيعات المنتجات في الفترة (Sales Invoices + POS Sales)
     const productSalesMap = new Map<string, { soldQty: number; salesRevenue: number }>();
+    const seenSaleIds = new Set<string>();
 
     (salesInvoices || []).forEach((inv: any) => {
       if ((inv.status && inv.status !== 'approved' && inv.status !== 'completed')) return;
       if (!isDateInRange(inv.date) || !matchesWarehouse(inv.warehouseId)) return;
+      if (inv.id) seenSaleIds.add(inv.id);
 
       (inv.items || []).forEach((item: any) => {
         const id = item.id || item.itemId;
@@ -261,6 +263,7 @@ export default function ManufacturingFeasibilityReportPage() {
     });
 
     (posSales || []).forEach((pos: any) => {
+      if (pos.id && seenSaleIds.has(pos.id)) return;
       if (!isDateInRange(pos.date) || !matchesWarehouse(pos.warehouseId)) return;
 
       (pos.items || []).forEach((item: any) => {
@@ -275,8 +278,10 @@ export default function ManufacturingFeasibilityReportPage() {
     });
 
     // خصم مرتجعات المبيعات
+    const seenReturnIds = new Set<string>();
     (salesReturns || []).forEach((ret: any) => {
       if (!isDateInRange(ret.date) || !matchesWarehouse(ret.warehouseId)) return;
+      if (ret.id) seenReturnIds.add(ret.id);
       (ret.items || []).forEach((item: any) => {
         const id = item.id || item.itemId;
         const qty = Number(item.qty || 0);
@@ -289,6 +294,7 @@ export default function ManufacturingFeasibilityReportPage() {
     });
 
     (posReturns || []).forEach((pret: any) => {
+      if (pret.id && seenReturnIds.has(pret.id)) return;
       if (!isDateInRange(pret.date) || !matchesWarehouse(pret.warehouseId)) return;
       (pret.items || []).forEach((item: any) => {
         const id = item.id || item.itemId;

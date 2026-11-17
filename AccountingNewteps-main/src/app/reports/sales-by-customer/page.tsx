@@ -44,16 +44,21 @@ export default function CustomerPurchasesReport() { // Renamed component
     if (loading) return [];
 
     return customers.map((customer: Customer) => {
-        const approvedSalesInvoices: SaleInvoice[] = salesInvoices.filter((s: SaleInvoice) => s.customerId === customer.id && s.status === 'approved');
-        const customerPosSales: PosSale[] = posSales.filter((s: PosSale) => s.customerId === customer.id);
+        const approvedSalesInvoices: SaleInvoice[] = salesInvoices.filter((s: SaleInvoice) => s.customerId === customer.id && (s.status === 'approved' || s.status === 'completed' || !s.status));
+        const seenCustomerSaleIds = new Set(approvedSalesInvoices.map((s: SaleInvoice) => s.id));
+        const customerPosSales: PosSale[] = (posSales || []).filter((s: PosSale) => s.customerId === customer.id && !seenCustomerSaleIds.has(s.id));
+        
         const filteredPayments: CustomerPayment[] = customerPayments.filter((p: CustomerPayment) => p.customerId === customer.id);
         const filteredReturns: SalesReturn[] = salesReturns.filter((r: SalesReturn) => r.customerId === customer.id);
+        const seenReturnIds = new Set(filteredReturns.map((r: any) => r.id));
+        const customerPosReturns = (posReturns || []).filter((r: any) => r.customerId === customer.id && !seenReturnIds.has(r.id));
+        const allReturns = [...filteredReturns, ...customerPosReturns];
 
         const totalSalesValue = approvedSalesInvoices.reduce((acc, s) => acc + s.total, 0) + customerPosSales.reduce((acc, s) => acc + s.total, 0);
         const totalPayments = filteredPayments.reduce((acc, p) => acc + p.amount, 0) 
                             + approvedSalesInvoices.reduce((acc, s) => acc + (s.paidAmount || 0), 0)
                             + customerPosSales.reduce((acc, s) => acc + (s.paidAmount || 0), 0);
-      const totalReturns = filteredReturns.reduce((acc, r) => acc + r.total, 0);
+      const totalReturns = allReturns.reduce((acc, r) => acc + r.total, 0);
       
       const balance = (customer.openingBalance || 0) + totalSalesValue - totalPayments - totalReturns;
       

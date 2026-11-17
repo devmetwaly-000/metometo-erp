@@ -78,7 +78,10 @@ const ItemSalesDetailsDialog = ({ itemId, itemName, salesData, allItems, promoti
 
     const detailedSales = useMemo(() => {
         const salesForItem: any[] = [];
+        const seenSaleIds = new Set<string>();
         salesData.forEach(sale => {
+            if (sale.id && seenSaleIds.has(sale.id)) return;
+            if (sale.id) seenSaleIds.add(sale.id);
             const itemInSale = sale.items?.find((i: any) => i.id === itemId);
             if (itemInSale) {
                 const masterItem = allItems.find((i: any) => i.id === itemId);
@@ -303,28 +306,38 @@ export default function ItemProfitLossPage() {
         }
 
         const approvedSales = salesInvoices.filter((sale: any) => {
-            if (sale.status !== 'approved') return false;
+            if (sale.status && sale.status !== 'approved' && sale.status !== 'completed') return false;
             if (!filterByDate(sale)) return false;
             if (filters.warehouseId !== 'all' && sale.warehouseId !== filters.warehouseId) return false;
             return true;
         });
 
-        const filteredPosSales = posSales.filter((sale: any) => {
+        const processedSaleIds = new Set(approvedSales.map((s: any) => s.id));
+        const standalonePosSales = (posSales || []).filter((sale: any) => {
+            if (processedSaleIds.has(sale.id)) return false;
             if (!filterByDate(sale)) return false;
             if (filters.warehouseId !== 'all' && sale.warehouseId !== filters.warehouseId) return false;
             return true;
         });
 
-        const allFilteredSales = [...approvedSales, ...filteredPosSales];
+        const allFilteredSales = [...approvedSales, ...standalonePosSales];
         setFilteredSales(allFilteredSales);
 
         const filteredSalesReturns = salesReturns.filter((ret: any) => {
-             if (!filterByDate(ret)) return false;
+            if (!filterByDate(ret)) return false;
             if (filters.warehouseId !== 'all' && ret.warehouseId !== filters.warehouseId) return false;
             return true;
         });
         
-        const filteredPosReturns = posReturns.filter((ret: any) => filterByDate(ret));
+        const processedReturnIds = new Set(filteredSalesReturns.map((r: any) => r.id));
+        const standalonePosReturns = (posReturns || []).filter((ret: any) => {
+            if (processedReturnIds.has(ret.id)) return false;
+            if (!filterByDate(ret)) return false;
+            if (filters.warehouseId !== 'all' && ret.warehouseId !== filters.warehouseId) return false;
+            return true;
+        });
+
+        const allFilteredReturns = [...filteredSalesReturns, ...standalonePosReturns];
         
         const resultsMap = new Map();
         
@@ -352,13 +365,15 @@ export default function ItemProfitLossPage() {
                     if (resultsMap.has(saleItem.id)) {
                         const existing = resultsMap.get(saleItem.id);
                         const masterItem = items.find((i:any) => i.id === saleItem.id);
+                        const qty = Number(saleItem.qty || 1);
+                        const itemTotal = Number(saleItem.total ?? (qty * Number(saleItem.price || 0)));
                         
-                        existing.totalSoldQty += saleItem.qty;
-                        existing.totalSoldValue += saleItem.qty * saleItem.price;
+                        existing.totalSoldQty += qty;
+                        existing.totalSoldValue += itemTotal;
                         existing.totalSoldCount += 1;
                         
-                        const itemCost = saleItem.cost || calculateManufacturedCost(masterItem);
-                        existing.totalCost += saleItem.qty * itemCost;
+                        const itemCost = Number(saleItem.cost) || calculateManufacturedCost(masterItem);
+                        existing.totalCost += qty * itemCost;
                     }
                 });
             });
@@ -374,18 +389,19 @@ export default function ItemProfitLossPage() {
                     if (resultsMap.has(retItem.id)) {
                         const existing = resultsMap.get(retItem.id);
                         const masterItem = items.find((i:any) => i.id === retItem.id);
+                        const qty = Number(retItem.qty || 1);
+                        const retTotal = Number(retItem.total ?? (qty * Number(retItem.price || 0)));
                         
-                        existing.totalReturnedQty += retItem.qty;
-                        existing.totalReturnedValue += retItem.qty * retItem.price;
+                        existing.totalReturnedQty += qty;
+                        existing.totalReturnedValue += retTotal;
 
-                        const itemCost = retItem.cost || calculateManufacturedCost(masterItem);
-                        existing.totalCost -= retItem.qty * itemCost;
+                        const itemCost = Number(retItem.cost) || calculateManufacturedCost(masterItem);
+                        existing.totalCost -= qty * itemCost;
                     }
                 });
             });
         };
-        processReturns(filteredSalesReturns);
-        processReturns(filteredPosReturns);
+        processReturns(allFilteredReturns);
 
 
         const results = Array.from(resultsMap.values())

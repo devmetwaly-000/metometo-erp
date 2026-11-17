@@ -76,9 +76,11 @@ export default function VatDeclarationReportPage() {
     // 1. Output VAT (المبيعات)
     let grossSales = 0;
     let outputTax = 0;
+    const seenSaleIds = new Set<string>();
 
     (salesInvoices || []).forEach((inv: any) => {
       if (!isInRange(inv.date || inv.Date)) return;
+      if (inv.id) seenSaleIds.add(inv.id);
       const total = Number(inv.total || inv.Total) || 0;
       const tax = Number(inv.tax || inv.Tax) || 0;
       grossSales += total;
@@ -86,6 +88,7 @@ export default function VatDeclarationReportPage() {
     });
 
     (posSales || []).forEach((sale: any) => {
+      if (sale.id && seenSaleIds.has(sale.id)) return;
       if (!isInRange(sale.date || sale.Date)) return;
       const total = Number(sale.total || sale.Total) || 0;
       const tax = Number(sale.tax || sale.Tax || sale.taxAmount) || 0;
@@ -96,9 +99,11 @@ export default function VatDeclarationReportPage() {
     // 2. Output VAT Returns Deductions (مردودات المبيعات)
     let grossSalesReturns = 0;
     let salesReturnsTax = 0;
+    const seenReturnIds = new Set<string>();
 
     (salesReturns || []).forEach((ret: any) => {
       if (!isInRange(ret.date || ret.Date)) return;
+      if (ret.id) seenReturnIds.add(ret.id);
       const total = Number(ret.total || ret.Total) || 0;
       const tax = Number(ret.tax || ret.Tax) || 0;
       grossSalesReturns += total;
@@ -106,6 +111,7 @@ export default function VatDeclarationReportPage() {
     });
 
     (posReturns || []).forEach((ret: any) => {
+      if (ret.id && seenReturnIds.has(ret.id)) return;
       if (!isInRange(ret.date || ret.Date)) return;
       const total = Number(ret.total || ret.Total) || 0;
       const tax = Number(ret.tax || ret.Tax) || 0;

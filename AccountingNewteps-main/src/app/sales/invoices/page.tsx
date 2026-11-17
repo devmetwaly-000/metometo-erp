@@ -346,14 +346,17 @@ export default function SalesInvoicePage() {
 
     const lastPriceForCustomer = useMemo<number | null>(() => {
         if (!customerId || !newItem.id) return null;
-        const allSales = [...salesInvoices.filter(s => s.status === 'approved'), ...posSales];
+        const approvedSales = salesInvoices.filter(s => s.status === 'approved' || s.status === 'completed' || !s.status);
+        const seenSaleIds = new Set(approvedSales.map(s => s.id));
+        const standalonePos = (posSales || []).filter(s => !seenSaleIds.has(s.id));
+        const allSales = [...approvedSales, ...standalonePos];
         const customerSales = allSales.filter(s => s.customerId === customerId);
         
         let lastPrice = null;
         customerSales.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
         
         for (const sale of customerSales) {
-            const itemInSale = sale.items.find((i: any) => i.id === newItem.id);
+            const itemInSale = sale.items?.find((i: any) => i.id === newItem.id);
             if (itemInSale) {
                 lastPrice = itemInSale.price;
                 break;
@@ -518,12 +521,14 @@ export default function SalesInvoicePage() {
 
         let balance = Number(c.openingBalance) || 0;
         
-        salesInvoices.filter((inv: any) => inv.customerId === customerId && inv.status === 'approved')
+        const seenSaleIds = new Set<string>();
+        salesInvoices.filter((inv: any) => inv.customerId === customerId && (inv.status === 'approved' || inv.status === 'completed' || !inv.status))
             .forEach((inv: any) => {
+                if (inv.id) seenSaleIds.add(inv.id);
                 balance += (Number(inv.total) - Number(inv.paidAmount || 0));
             });
 
-        posSales.filter((sale: any) => sale.customerId === customerId)
+        posSales.filter((sale: any) => sale.customerId === customerId && (!sale.id || !seenSaleIds.has(sale.id)))
             .forEach((sale: any) => {
                 balance += (Number(sale.total) - Number(sale.paidAmount || 0));
             });
@@ -533,12 +538,14 @@ export default function SalesInvoicePage() {
                 balance -= Number(p.amount);
             });
 
+        const seenReturnIds = new Set<string>();
         salesReturns.filter((r: any) => r.customerId === customerId)
             .forEach((r: any) => {
+                if (r.id) seenReturnIds.add(r.id);
                 balance -= (Number(r.total) - Number(r.paidAmount || 0));
             });
         
-        posReturns.filter((r: any) => r.customerId === customerId)
+        posReturns.filter((r: any) => r.customerId === customerId && (!r.id || !seenReturnIds.has(r.id)))
             .forEach((r: any) => {
                 balance -= (Number(r.total) - Number(r.paidAmount || 0));
             });

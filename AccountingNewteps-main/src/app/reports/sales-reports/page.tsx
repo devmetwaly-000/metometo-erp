@@ -101,9 +101,13 @@ export default function SalesReportPage() {
     const customerMap = new Map(customers.map((c: any) => [c.id, c]));
     const itemMap = new Map(allItems.map((i: any) => [i.id, i]));
 
+    const approvedInvoices = salesInvoices.filter((inv: any) => inv.status === 'approved' || inv.status === 'completed' || !inv.status);
+    const seenSaleIds = new Set(approvedInvoices.map((inv: any) => inv.id));
+    const standalonePos = (posSales || []).filter((sale: any) => !seenSaleIds.has(sale.id));
+
     const combinedSales: any[] = [
-        ...salesInvoices.filter((inv: any) => inv.status === 'approved').map((inv: any) => ({ ...inv, type: 'Invoice' })),
-        ...posSales.map((sale: any) => ({ ...sale, type: 'POS' })),
+        ...approvedInvoices.map((inv: any) => ({ ...inv, type: inv.cashierId ? 'POS' : 'Invoice' })),
+        ...standalonePos.map((sale: any) => ({ ...sale, type: 'POS' })),
     ];
     
     const dailySales = new Map<string, number>();

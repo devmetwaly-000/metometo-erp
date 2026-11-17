@@ -91,11 +91,12 @@ export default function CustomerPurchasesReport() {
     const reportData: Sale[] = useMemo(() => {
         if (!selectedCustomerId || loading) return [];
 
-        const customerSalesInvoices = salesInvoices.filter((inv: any) => inv.customerId === selectedCustomerId && inv.status === 'approved');
-        const customerPosSales = posSales.filter((sale: any) => sale.customerId === selectedCustomerId);
+        const customerSalesInvoices = salesInvoices.filter((inv: any) => inv.customerId === selectedCustomerId && (inv.status === 'approved' || inv.status === 'completed' || !inv.status));
+        const seenSaleIds = new Set(customerSalesInvoices.map((inv: any) => inv.id));
+        const customerPosSales = (posSales || []).filter((sale: any) => sale.customerId === selectedCustomerId && !seenSaleIds.has(sale.id));
 
         const combinedSales = [
-            ...customerSalesInvoices.map((inv: any) => ({ ...inv, type: 'Invoice' })),
+            ...customerSalesInvoices.map((inv: any) => ({ ...inv, type: inv.cashierId ? 'POS' : 'Invoice' })),
             ...customerPosSales.map((sale: any) => ({ ...sale, type: 'POS' })),
         ];
 

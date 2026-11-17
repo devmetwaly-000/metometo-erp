@@ -64,10 +64,10 @@ export default function SalesByCategoryReport() {
             return true;
         }
 
-        const allSales = [
-            ...salesInvoices.filter((s: SaleInvoice) => s.status === 'approved'),
-            ...posSales
-        ];
+        const approvedInvoices = salesInvoices.filter((s: SaleInvoice) => s.status === 'approved' || s.status === 'completed' || !s.status);
+        const seenSaleIds = new Set(approvedInvoices.map((s: SaleInvoice) => s.id));
+        const standalonePos = (posSales || []).filter((s: any) => !seenSaleIds.has(s.id));
+        const allSales = [...approvedInvoices, ...standalonePos];
 
         const filteredSales = allSales.filter(sale => {
             if (!filterByDate(sale)) return false;

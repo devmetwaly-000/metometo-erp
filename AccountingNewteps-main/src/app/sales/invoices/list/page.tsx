@@ -208,12 +208,14 @@ export default function SalesInvoicesListPage() {
 
     let balance = Number(customer.openingBalance) || 0;
     
-    invoices.filter((inv: any) => inv.customerId === customerId && inv.status === 'approved')
+    const seenSaleIds = new Set<string>();
+    invoices.filter((inv: any) => inv.customerId === customerId && (inv.status === 'approved' || inv.status === 'completed' || !inv.status))
         .forEach((inv: any) => {
+            if (inv.id) seenSaleIds.add(inv.id);
             balance += (Number(inv.total) - Number(inv.paidAmount || 0));
         });
 
-    posSales.filter((sale: any) => sale.customerId === customerId)
+    posSales.filter((sale: any) => sale.customerId === customerId && (!sale.id || !seenSaleIds.has(sale.id)))
         .forEach((sale: any) => {
             balance += (Number(sale.total) - Number(sale.paidAmount || 0));
         });
@@ -223,13 +225,15 @@ export default function SalesInvoicesListPage() {
             balance -= Number(p.amount);
         });
 
+    const seenReturnIds = new Set<string>();
     salesReturns.filter((r: any) => r.customerId === customerId)
         .forEach((r: any) => {
+            if (r.id) seenReturnIds.add(r.id);
             // Net impact: reduce debt by total, but increase by cash given back
             balance -= (Number(r.total) - Number(r.paidAmount || 0));
         });
     
-    posReturns.filter((r: any) => r.customerId === customerId)
+    posReturns.filter((r: any) => r.customerId === customerId && (!r.id || !seenReturnIds.has(r.id)))
         .forEach((r: any) => {
             balance -= (Number(r.total) - Number(r.paidAmount || 0));
         });

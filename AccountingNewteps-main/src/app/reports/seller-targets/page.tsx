@@ -84,10 +84,10 @@ export default function SellerTargetReportPage() {
         const startDate = new Date(Number(year), Number(month) - 1, 1);
         const endDate = new Date(Number(year), Number(month), 0, 23, 59, 59);
 
-        const allSales: Sale[] = [
-            ...posSales,
-            ...salesInvoices.filter((inv: any) => inv.status === 'approved')
-        ];
+        const approvedInvoices = salesInvoices.filter((inv: any) => inv.status === 'approved' || inv.status === 'completed' || !inv.status);
+        const seenSaleIds = new Set(approvedInvoices.map((inv: any) => inv.id));
+        const standalonePos = (posSales || []).filter((sale: any) => !seenSaleIds.has(sale.id));
+        const allSales: Sale[] = [...approvedInvoices, ...standalonePos];
 
         const filteredSales = allSales.filter((sale: Sale) => {
             const saleDate = new Date(sale.date);

@@ -85,6 +85,7 @@ export default function FastSlowMovingReportPage() {
     };
 
     // 1. Process Sales Invoices
+    const seenSaleIds = new Set<string>();
     (salesInvoices || []).forEach((inv: any) => {
       const d = new Date(inv.date || inv.Date);
       if (start && d < start) return;
@@ -92,6 +93,7 @@ export default function FastSlowMovingReportPage() {
       if (selectedWarehouseId !== "all" && inv.warehouseId !== selectedWarehouseId && inv.WarehouseId !== selectedWarehouseId) {
         return;
       }
+      if (inv.id || inv.Id) seenSaleIds.add(inv.id || inv.Id);
 
       const items = Array.isArray(inv.items) ? inv.items : (inv.ItemsJson ? JSON.parse(inv.ItemsJson) : []);
       items.forEach((it: any) => {
@@ -105,6 +107,8 @@ export default function FastSlowMovingReportPage() {
 
     // 2. Process POS Sales
     (posSales || []).forEach((sale: any) => {
+      const saleId = sale.id || sale.Id;
+      if (saleId && seenSaleIds.has(saleId)) return;
       const d = new Date(sale.date || sale.Date);
       if (start && d < start) return;
       if (end && d > end) return;
