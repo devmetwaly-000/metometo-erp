@@ -249,33 +249,104 @@ const InnerDatabaseGate = ({ children }: { children: React.ReactNode }) => {
         retryDatabaseConnection, databaseSetupError, isCreatingLocalDatabase
     } = useData();
     const [bypassSetup, setBypassSetup] = useState(false);
+    const [showConnForm, setShowConnForm] = useState(false);
+    const [connStrInput, setConnStrInput] = useState('Server=localhost,1433;Database=MultiBranchPOS_DB;User Id=meto_pos;Password=MetoPosPass123!;Encrypt=false;TrustServerCertificate=true;');
+    const [isSavingConn, setIsSavingConn] = useState(false);
+    const [connMsg, setConnMsg] = useState<string | null>(null);
 
     const isEmergencyAdmin =
         user?.id === 'superadmin' ||
         user?.id === 'admin_master' ||
         (user?.loginName && user.loginName.toLowerCase().trim() === 'admin');
 
+    const handleSaveAndInitCustomServer = async () => {
+        setIsSavingConn(true);
+        setConnMsg(null);
+        try {
+            const res = await fetch('/api/db/init', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    action: 'init',
+                    config: {
+                        connectionMode: 'connectionString',
+                        connectionString: connStrInput
+                    }
+                })
+            });
+            const data = await res.json();
+            if (data.success) {
+                setConnMsg(data.message);
+                await retryDatabaseConnection();
+            } else {
+                setConnMsg(`خطأ: ${data.error || data.message}`);
+            }
+        } catch (e: any) {
+            setConnMsg(`خطأ: ${e.message}`);
+        } finally {
+            setIsSavingConn(false);
+        }
+    };
+
     // Emergency Admin (Admin / 200300400) always connects and enters immediately without any database
     if (databaseSetupRequired && !isEmergencyAdmin && !bypassSetup) {
         return (
             <main className="flex min-h-screen items-center justify-center bg-background px-4 py-8">
-                <section className="w-full max-w-xl rounded-2xl border bg-card p-6 text-center shadow-xl sm:p-9">
+                <section className="w-full max-w-2xl rounded-2xl border bg-card p-6 text-center shadow-xl sm:p-9">
                     <div className="mx-auto mb-5 flex h-16 w-16 items-center justify-center rounded-2xl bg-primary/10 text-primary">
                         <Database className="h-8 w-8" />
                     </div>
-                    <h1 className="text-2xl font-bold">إعداد قاعدة البيانات المحلية</h1>
+                    <h1 className="text-2xl font-bold">إعداد قاعدة البيانات (محلي / IP خارجي / Amazon AWS)</h1>
                     <p className="mt-3 text-muted-foreground">
-                        لم يتم العثور على قاعدة البيانات المحلية <span className="font-semibold text-foreground">{databaseName}</span>.
-                        هل تريد إنشاءها على هذا الجهاز لمتابعة تشغيل البرنامج؟
-                    </p>
-                    <p className="mt-2 text-sm text-muted-foreground">
-                        سيتم إنشاء الجداول والإعدادات الأساسية، أو يمكنك المتابعة مباشرة في وضع الطوارئ بدون قاعدة بيانات.
+                        لم يتم العثور على قاعدة البيانات <span className="font-semibold text-foreground">{databaseName}</span>.
+                        يمكنك إنشاؤها محلياً أو تحديد نص اتصال لسيرفر خارجي أو Amazon AWS RDS.
                     </p>
                     {databaseSetupError && (
                         <div role="alert" className="mt-5 rounded-lg border border-destructive/30 bg-destructive/5 p-3 text-sm text-destructive">
                             {databaseSetupError}
                         </div>
                     )}
+                    {connMsg && (
+                        <div className="mt-4 rounded-lg border bg-muted p-3 text-xs font-mono">
+                            {connMsg}
+                        </div>
+                    )}
+
+                    <div className="mt-4">
+                        <button
+                            type="button"
+                            onClick={() => setShowConnForm(!showConnForm)}
+                            className="text-xs font-bold text-primary underline hover:opacity-80"
+                        >
+                            {showConnForm ? 'إخفاء إعدادات نص الاتصال الخارجي' : '⚙️ تحديد نص الاتصال لسيرفر خارجي (IP / Amazon AWS RDS)'}
+                        </button>
+                    </div>
+
+                    {showConnForm && (
+                        <div className="mt-4 p-4 rounded-xl border bg-muted/30 text-right space-y-3">
+                            <label className="block text-xs font-bold">نص الاتصال الكامل (Connection String):</label>
+                            <textarea
+                                dir="ltr"
+                                rows={3}
+                                value={connStrInput}
+                                onChange={(e) => setConnStrInput(e.target.value)}
+                                className="w-full rounded-lg border bg-background p-2.5 font-mono text-xs"
+                                placeholder="Server=my-aws.rds.amazonaws.com,1433;Database=MultiBranchPOS_DB;User Id=admin;Password=123456;Encrypt=true;TrustServerCertificate=true;"
+                            />
+                            <div className="flex justify-end">
+                                <button
+                                    type="button"
+                                    disabled={isSavingConn}
+                                    onClick={handleSaveAndInitCustomServer}
+                                    className="inline-flex items-center gap-2 rounded-lg bg-emerald-600 px-4 py-2 text-xs font-bold text-white hover:bg-emerald-700 disabled:opacity-60"
+                                >
+                                    {isSavingConn && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+                                    {isSavingConn ? 'جارٍ الاتصال وتأسيس الجداول...' : 'حفظ نص الاتصال وإنشاء/ربط القاعدة على هذا السيرفر'}
+                                </button>
+                            </div>
+                        </div>
+                    )}
+
                     <div className="mt-6 flex flex-col justify-center gap-3 sm:flex-row flex-wrap">
                         <button
                             type="button"

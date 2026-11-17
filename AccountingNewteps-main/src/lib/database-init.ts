@@ -17,6 +17,7 @@ export interface DbInitOptions {
     branchName?: string;
     isCentral?: boolean;
     skipDemoSeed?: boolean;
+    encrypt?: boolean;
 }
 
 export async function createAndInitializeDatabase(options: DbInitOptions): Promise<{
@@ -28,15 +29,32 @@ export async function createAndInitializeDatabase(options: DbInitOptions): Promi
 }> {
     const { server, port, database, user, password, branchCode = '900', branchName = 'الفرع الرأيسي' } = options;
 
+    let cleanServer = (server || 'localhost').trim().replace(/^tcp:/i, '').replace(/^https?:\/\//i, '').replace(/\/$/, '');
+    let cleanPort = Number(port) || 1433;
+    if (cleanServer.includes(',')) {
+        const [h, p] = cleanServer.split(',');
+        cleanServer = h.trim();
+        cleanPort = parseInt(p.trim(), 10) || cleanPort;
+    } else if (cleanServer.includes(':')) {
+        const [h, p] = cleanServer.split(':');
+        cleanServer = h.trim();
+        cleanPort = parseInt(p.trim(), 10) || cleanPort;
+    }
+
+    const useEncrypt =
+        Boolean(options.encrypt) ||
+        cleanServer.includes('.rds.amazonaws.com') ||
+        cleanServer.includes('.database.windows.net');
+
     // 1. Connect to 'master' database first to create database if not exists
     const masterConfig: sql.config = {
         user,
         password,
-        server,
-        port: Number(port) || 1433,
+        server: cleanServer,
+        port: cleanPort,
         database: 'master',
         options: {
-            encrypt: false,
+            encrypt: useEncrypt,
             trustServerCertificate: true,
             enableArithAbort: true,
             connectTimeout: 8000
@@ -47,35 +65,46 @@ export async function createAndInitializeDatabase(options: DbInitOptions): Promi
     let targetPool: sql.ConnectionPool | null = null;
 
     try {
-        masterPool = await sql.connect(masterConfig);
-
         // Sanitize database name (alphanumeric and underscores)
         const cleanDbName = database.replace(/[^a-zA-Z0-9_]/g, '');
         if (!cleanDbName) {
             throw new Error('اسم قاعدة البيانات غير صالح.');
         }
 
-        // Check and create database
-        await masterPool.request().query(`
-            IF NOT EXISTS (SELECT name FROM sys.databases WHERE name = N'${cleanDbName}')
-            BEGIN
-                CREATE DATABASE [${cleanDbName}] COLLATE Arabic_100_CI_AS;
-            END;
+        try {
+            masterPool = await sql.connect(masterConfig);
 
-            -- تفعيل عزل لقطة القراءة الملتزمة (RCSI) لدعم التزامن العالي لـ 200 جهاز وموبايل
-            IF EXISTS (SELECT 1 FROM sys.databases WHERE name = N'${cleanDbName}' AND is_read_committed_snapshot_on = 0)
-            BEGIN
-                ALTER DATABASE [${cleanDbName}] SET READ_COMMITTED_SNAPSHOT ON WITH ROLLBACK AFTER 5 SECONDS;
-            END;
+            // Check and create database
+            await masterPool.request().query(`
+                IF NOT EXISTS (SELECT name FROM sys.databases WHERE name = N'${cleanDbName}')
+                BEGIN
+                    CREATE DATABASE [${cleanDbName}] COLLATE Arabic_100_CI_AS;
+                END;
+            `);
 
-            IF EXISTS (SELECT 1 FROM sys.databases WHERE name = N'${cleanDbName}' AND snapshot_isolation_state = 0)
-            BEGIN
-                ALTER DATABASE [${cleanDbName}] SET ALLOW_SNAPSHOT_ISOLATION ON;
-            END;
-        `);
+            try {
+                await masterPool.request().query(`
+                    IF EXISTS (SELECT 1 FROM sys.databases WHERE name = N'${cleanDbName}' AND is_read_committed_snapshot_on = 0)
+                    BEGIN
+                        ALTER DATABASE [${cleanDbName}] SET READ_COMMITTED_SNAPSHOT ON WITH ROLLBACK AFTER 5 SECONDS;
+                    END;
+                    IF EXISTS (SELECT 1 FROM sys.databases WHERE name = N'${cleanDbName}' AND snapshot_isolation_state = 0)
+                    BEGIN
+                        ALTER DATABASE [${cleanDbName}] SET ALLOW_SNAPSHOT_ISOLATION ON;
+                    END;
+                `);
+            } catch {}
 
-        await masterPool.close();
-        masterPool = null;
+            await masterPool.close();
+            masterPool = null;
+        } catch (masterErr: any) {
+            // In managed cloud environments (like AWS RDS / Azure SQL), master DB creation may be restricted if DB already exists
+            if (masterPool) {
+                try { await masterPool.close(); } catch {}
+                masterPool = null;
+            }
+            console.warn('[Database Init] Master DB step skipped or restricted, attempting direct connection to target DB:', masterErr.message);
+        }
 
         // 2. Connect to the newly created / existing target database
         const targetConfig: sql.config = {

@@ -941,6 +941,15 @@ export default function CentralSyncSettingsPage() {
             <PageHeader title="المزامنة المركزية وإدارة الربط السحابي">
                 <div className="flex items-center gap-2 flex-wrap">
                     <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => window.location.href = '/settings/re-engineer'}
+                        className="gap-1.5 text-xs font-bold h-8 border-primary/40 text-primary hover:bg-primary/10"
+                    >
+                        <Database className="h-3.5 w-3.5" />
+                        اتصال سيرفر الفرع (IP خارجي / AWS)
+                    </Button>
+                    <Button
                         variant="destructive"
                         size="sm"
                         onClick={() => setIsPurgeDialogOpen(true)}

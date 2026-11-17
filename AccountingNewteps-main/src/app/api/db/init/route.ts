@@ -1,10 +1,18 @@
 import { NextResponse } from 'next/server';
-import { getDbPool } from '@/lib/db';
+import {
+    getDbPool,
+    getLocalDbConfig,
+    saveLocalDbConfig,
+    testLocalDbConnection,
+    parseSqlConnectionString,
+    resetDbPool
+} from '@/lib/db';
 import { createAndInitializeDatabase } from '@/lib/database-init';
 
 export const dynamic = 'force-dynamic';
 
 export async function GET() {
+    const localConfig = getLocalDbConfig();
     try {
         const pool = await getDbPool();
         const tablesRes = await pool.request().query(`
@@ -20,57 +28,108 @@ export async function GET() {
         const usersCount = usersRes.recordset[0]?.usersCount || 0;
 
         const dbNameRes = await pool.request().query(`SELECT DB_NAME() as currentDb;`);
-        const currentDb = dbNameRes.recordset[0]?.currentDb || '';
+        const currentDb = dbNameRes.recordset[0]?.currentDb || localConfig.database;
 
         return NextResponse.json({
             success: true,
+            connected: true,
+            localConfig,
             database: currentDb,
+            server: `${localConfig.server}:${localConfig.port}`,
             tablesCount,
             usersCount,
-            status: tablesCount >= 72 ? 'healthy' : 'needs_initialization',
-            message: `قاعدة البيانات [${currentDb}] متصلة وتضم ${tablesCount} جدولاً و ${usersCount} مستخدماً.`
+            status: tablesCount >= 70 ? 'healthy' : 'needs_initialization',
+            message: `قاعدة البيانات [${currentDb}] على السيرفر (${localConfig.server}:${localConfig.port}) متصلة وتضم ${tablesCount} جدولاً و ${usersCount} مستخدماً.`
         });
     } catch (error: any) {
         return NextResponse.json({
             success: false,
+            connected: false,
+            localConfig,
+            server: `${localConfig.server}:${localConfig.port}`,
+            database: localConfig.database,
             error: error.message,
             status: 'connection_failed'
-        }, { status: 500 });
+        }, { status: 200 });
     }
 }
 
 export async function POST(req: Request) {
     try {
         const body = await req.json().catch(() => ({}));
+        const { action } = body;
+
+        // 1. جلب إعدادات الاتصال الحالية
+        if (action === 'get-config') {
+            const localConfig = getLocalDbConfig();
+            return NextResponse.json({ success: true, config: localConfig });
+        }
+
+        // 2. اختبار الاتصال بالسيرفر المحلي / الخارجي / Amazon AWS RDS
+        if (action === 'test') {
+            const testResult = await testLocalDbConnection(body.config || body);
+            return NextResponse.json(testResult);
+        }
+
+        // 3. حفظ نص الاتصال أو إعدادات السيرفر المحلي / السحابي وإعادة ربط النظام فوراً
+        if (action === 'save') {
+            const savedConfig = await saveLocalDbConfig(body.config || body);
+            const testResult = await testLocalDbConnection(savedConfig);
+            return NextResponse.json({
+                success: true,
+                config: savedConfig,
+                connectionTest: testResult,
+                message: testResult.success
+                    ? `تم حفظ إعدادات السيرفر (${savedConfig.server}:${savedConfig.port}) والاتصال بقاعدة البيانات [${savedConfig.database}] بنجاح.`
+                    : `تم حفظ إعدادات الاتصال (${savedConfig.server}:${savedConfig.port})، لكن تعذر الوصول للقاعدة حالياً: ${testResult.error || ''}`
+            });
+        }
+
+        // 4. إنشاء وتهيئة قاعدة البيانات على السيرفر المحدد (مع حفظ الإعدادات أولاً إن تم تمريرها)
+        let currentCfg = getLocalDbConfig();
+        const incoming = body.config || body;
+        if (incoming.connectionString || incoming.server || incoming.database || incoming.user) {
+            currentCfg = await saveLocalDbConfig(incoming);
+        } else if (incoming.connectionString) {
+            const parsed = parseSqlConnectionString(incoming.connectionString);
+            currentCfg = await saveLocalDbConfig(parsed);
+        }
+
         const {
-            server = process.env.DB_SERVER || 'localhost',
-            port = Number(process.env.DB_PORT) || 1433,
-            database = process.env.DB_NAME || 'MultiBranchPOS_DB',
-            user = process.env.DB_USER || 'meto_pos',
-            password = process.env.DB_PASSWORD || 'MetoPosPass123!',
+            server = currentCfg.server,
+            port = Number(currentCfg.port) || 1433,
+            database = currentCfg.database,
+            user = currentCfg.user,
+            password = currentCfg.password,
+            encrypt = currentCfg.encrypt,
             branchCode = '900',
             branchName = 'الفرع الرأيسي',
             isCentral = false
-        } = body;
+        } = incoming.server ? { ...currentCfg, ...incoming } : currentCfg;
 
         const initResult = await createAndInitializeDatabase({
             server,
-            port,
+            port: Number(port) || 1433,
             database,
             user,
             password,
+            encrypt: Boolean(encrypt),
             branchCode,
             branchName,
             isCentral
         });
 
-        return NextResponse.json(initResult, { status: initResult.success ? 200 : 500 });
+        await resetDbPool();
+
+        return NextResponse.json(
+            { ...initResult, config: currentCfg },
+            { status: initResult.success ? 200 : 500 }
+        );
     } catch (error: any) {
         return NextResponse.json({
             success: false,
             error: error.message,
-            message: 'فشلت عملية إنشاء وتهيئة قاعدة البيانات.'
+            message: 'فشلت عملية حفظ أو تهيئة قاعدة البيانات.'
         }, { status: 500 });
     }
 }
-
