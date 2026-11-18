@@ -113,16 +113,26 @@ export async function POST(req: Request) {
         // 1. تهيئة وإنشاء وتأسيس قاعدة البيانات
         if (action === 'init-database') {
             const currentCfg = await getCentralConfig();
+            const rawDb = initOptions?.database || config?.centralDatabase || currentCfg.centralDatabase || 'MultiBranchPOS_Central_DB';
+            const cleanDb = rawDb.toLowerCase() === 'master' ? 'MultiBranchPOS_Central_DB' : rawDb;
+            const serverHost = initOptions?.server || config?.centralServerIp || currentCfg.centralServerIp || '10.110.16.16';
+            const useEncrypt = Boolean(
+                initOptions?.encrypt ??
+                config?.centralEncrypt ??
+                currentCfg.centralEncrypt ??
+                (String(serverHost).includes('.rds.amazonaws.com') || String(serverHost).includes('.database.windows.net'))
+            );
             const options = {
-                server: initOptions?.server || config?.centralServerIp || currentCfg.centralServerIp || '10.110.16.16',
+                server: serverHost,
                 port: Number(initOptions?.port || config?.centralSqlPort || currentCfg.centralSqlPort) || 1433,
-                database: initOptions?.database || config?.centralDatabase || currentCfg.centralDatabase || 'MultiBranchPOS_Central_DB',
+                database: cleanDb,
                 user: initOptions?.user || config?.centralUsername || currentCfg.centralUsername || 'gmlogins',
                 password: (initOptions?.password && initOptions.password.trim() !== '')
                     ? initOptions.password.trim()
                     : (config?.centralPassword && config.centralPassword.trim() !== '')
                         ? config.centralPassword.trim()
                         : currentCfg.centralPassword,
+                encrypt: useEncrypt,
                 branchCode: initOptions?.branchCode || config?.currentBranchCode || currentCfg.currentBranchCode || '900',
                 branchName: initOptions?.branchName || config?.currentBranchName || currentCfg.currentBranchName || 'الفرع الرأيسي',
                 isCentral: true

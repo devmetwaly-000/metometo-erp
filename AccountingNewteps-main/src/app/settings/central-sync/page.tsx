@@ -20,7 +20,7 @@ import {
     ArrowLeftRight, Wallet, Users, UserCheck, Terminal, Search, CheckCircle,
     HardDrive, Cpu, AlertCircle, FileText, CheckCheck, X, ListChecks, ShieldAlert,
     Lock, Key, Building2, Store, Shield, SlidersHorizontal, RotateCcw, PauseCircle, PlayCircle, Filter, ArrowUp, ArrowDown,
-    Eye, EyeOff, Trash2
+    Eye, EyeOff, Trash2, Cloud, Globe
 } from "lucide-react";
 import { CentralSyncConfig, TableSyncMatrixItem, TablesSyncMatrixResponse, SyncDirection } from '@/lib/central-sync';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -493,6 +493,7 @@ export default function CentralSyncSettingsPage() {
                         database: config.centralDatabase,
                         user: config.centralUsername,
                         password: config.centralPassword,
+                        encrypt: Boolean(config.centralEncrypt),
                         branchCode: config.currentBranchCode,
                         branchName: config.currentBranchName,
                         isCentral: true
@@ -2339,25 +2340,142 @@ export default function CentralSyncSettingsPage() {
                                 </div>
 
                                 {/* Section 2: Central SQL Server Credentials */}
-                                <div className="p-4 rounded-xl border bg-muted/20 space-y-3">
-                                    <div className="flex items-center gap-2 border-b pb-2">
-                                        <Server className="h-4 w-4 text-foreground" />
-                                        <span className="font-bold text-sm">2. خادم قاعدة بيانات الإدارة (Central SQL Server)</span>
+                                <div className="p-4 rounded-xl border bg-muted/20 space-y-4">
+                                    <div className="flex flex-wrap items-center justify-between gap-2 border-b pb-2.5">
+                                        <div className="flex items-center gap-2">
+                                            <Server className="h-4 w-4 text-foreground" />
+                                            <span className="font-bold text-sm">2. خادم قاعدة بيانات الإدارة (Central SQL Server — محلي / VPS / Cloud)</span>
+                                        </div>
+                                        <div className="flex flex-wrap items-center gap-1.5">
+                                            <Button
+                                                type="button"
+                                                size="sm"
+                                                variant={(!config.centralHostingType || config.centralHostingType === 'local') ? 'default' : 'outline'}
+                                                className="h-7 text-[11px] font-bold"
+                                                onClick={() => setConfig(prev => ({
+                                                    ...prev,
+                                                    centralHostingType: 'local',
+                                                    centralEncrypt: false,
+                                                    centralTrustServerCertificate: true
+                                                }))}
+                                            >
+                                                <Server className="h-3 w-3 ml-1" />
+                                                محلي / شبكة داخلية
+                                            </Button>
+                                            <Button
+                                                type="button"
+                                                size="sm"
+                                                variant={config.centralHostingType === 'vps' ? 'default' : 'outline'}
+                                                className="h-7 text-[11px] font-bold"
+                                                onClick={() => setConfig(prev => ({
+                                                    ...prev,
+                                                    centralHostingType: 'vps',
+                                                    centralEncrypt: false,
+                                                    centralTrustServerCertificate: true
+                                                }))}
+                                            >
+                                                <Globe className="h-3 w-3 ml-1" />
+                                                سيرفر خارجي / VPS
+                                            </Button>
+                                            <Button
+                                                type="button"
+                                                size="sm"
+                                                variant={config.centralHostingType === 'cloud' ? 'default' : 'outline'}
+                                                className="h-7 text-[11px] font-bold"
+                                                onClick={() => setConfig(prev => ({
+                                                    ...prev,
+                                                    centralHostingType: 'cloud',
+                                                    centralEncrypt: true,
+                                                    centralTrustServerCertificate: true
+                                                }))}
+                                            >
+                                                <Cloud className="h-3 w-3 ml-1" />
+                                                سحابي Cloud (AWS RDS / Azure)
+                                            </Button>
+                                        </div>
                                     </div>
+
+                                    {/* لصق نص الاتصال الكامل للسيرفر المركزي (اختياري) */}
+                                    <div className="space-y-1.5 p-3 rounded-lg border bg-background/60">
+                                        <Label className="text-xs font-bold flex items-center gap-1.5">
+                                            <Terminal className="h-3.5 w-3.5 text-primary" />
+                                            لصق نص اتصال السيرفر المركزي (Connection String) — اختياري:
+                                        </Label>
+                                        <Input
+                                            dir="ltr"
+                                            value={config.centralConnectionString || ''}
+                                            onChange={(e) => {
+                                                const val = e.target.value;
+                                                const updates: Partial<CentralSyncConfig> = { centralConnectionString: val };
+                                                const pairs = val.split(';').map(s => s.trim()).filter(Boolean);
+                                                for (const pair of pairs) {
+                                                    const idx = pair.indexOf('=');
+                                                    if (idx === -1) continue;
+                                                    const k = pair.slice(0, idx).trim().toLowerCase();
+                                                    const v = pair.slice(idx + 1).trim();
+                                                    if (['server', 'data source', 'addr', 'address'].includes(k)) {
+                                                        let host = v.replace(/^tcp:/i, '').trim();
+                                                        if (host.includes(',')) {
+                                                            const [h, p] = host.split(',');
+                                                            host = h.trim();
+                                                            const prt = parseInt(p.trim(), 10);
+                                                            if (!isNaN(prt)) updates.centralSqlPort = prt;
+                                                        } else if (host.includes(':')) {
+                                                            const [h, p] = host.split(':');
+                                                            host = h.trim();
+                                                            const prt = parseInt(p.trim(), 10);
+                                                            if (!isNaN(prt)) updates.centralSqlPort = prt;
+                                                        }
+                                                        if (host) {
+                                                            updates.centralServerIp = host;
+                                                            if (host.includes('.rds.amazonaws.com') || host.includes('.database.windows.net')) {
+                                                                updates.centralHostingType = 'cloud';
+                                                                updates.centralEncrypt = true;
+                                                            }
+                                                        }
+                                                    } else if (['database', 'initial catalog'].includes(k)) {
+                                                        updates.centralDatabase = v.toLowerCase() === 'master' ? 'MultiBranchPOS_Central_DB' : v;
+                                                    } else if (['user id', 'uid', 'user', 'username'].includes(k)) {
+                                                        updates.centralUsername = v;
+                                                    } else if (['password', 'pwd'].includes(k)) {
+                                                        updates.centralPassword = v;
+                                                    } else if (k === 'encrypt') {
+                                                        const enc = ['true', 'yes', '1', 'mandatory'].includes(v.toLowerCase());
+                                                        updates.centralEncrypt = enc;
+                                                        if (enc) updates.centralHostingType = 'cloud';
+                                                    } else if (['trustservercertificate', 'trust server certificate'].includes(k)) {
+                                                        updates.centralTrustServerCertificate = !['false', 'no', '0'].includes(v.toLowerCase());
+                                                    }
+                                                }
+                                                setConfig(prev => ({ ...prev, ...updates }));
+                                            }}
+                                            placeholder="Server=master.xxxx.rds.amazonaws.com,1433;Database=MultiBranchPOS_Central_DB;User Id=admin;Password=***;Encrypt=True;TrustServerCertificate=True;"
+                                            className="h-9 text-xs font-mono"
+                                        />
+                                    </div>
+
                                     <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
                                         <div className="space-y-1.5">
-                                            <Label className="text-xs font-bold">عنوان السيرفر (IP أو اسم الجهاز)</Label>
+                                            <Label className="text-xs font-bold">
+                                                {config.centralHostingType === 'cloud'
+                                                    ? 'عنوان السحابة (AWS RDS / Azure Endpoint)'
+                                                    : config.centralHostingType === 'vps'
+                                                    ? 'عنوان الـ IP الخارجي للـ VPS'
+                                                    : 'عنوان السيرفر (IP أو اسم الجهاز)'}
+                                            </Label>
                                             <Input 
+                                                dir="ltr"
                                                 value={config.centralServerIp} 
                                                 onChange={(e) => handleInputChange('centralServerIp', e.target.value)}
                                                 className="h-9 text-xs font-mono font-semibold"
-                                                placeholder="10.110.16.16"
+                                                placeholder={config.centralHostingType === 'cloud' ? 'mydb.xxxx.eu-north-1.rds.amazonaws.com' : '10.110.16.16'}
                                             />
                                         </div>
 
                                         <div className="space-y-1.5">
                                             <Label className="text-xs font-bold">رقم المنفذ (Port)</Label>
                                             <Input 
+                                                dir="ltr"
                                                 type="number"
                                                 value={config.centralSqlPort} 
                                                 onChange={(e) => handleInputChange('centralSqlPort', parseInt(e.target.value) || 1433)}
@@ -2369,6 +2487,7 @@ export default function CentralSyncSettingsPage() {
                                         <div className="space-y-1.5">
                                             <Label className="text-xs font-bold">اسم قاعدة البيانات المركزية</Label>
                                             <Input 
+                                                dir="ltr"
                                                 value={config.centralDatabase} 
                                                 onChange={(e) => handleInputChange('centralDatabase', e.target.value)}
                                                 className="h-9 text-xs font-mono font-bold text-foreground"
@@ -2379,6 +2498,7 @@ export default function CentralSyncSettingsPage() {
                                         <div className="space-y-1.5">
                                             <Label className="text-xs font-bold">اسم مستخدم SQL</Label>
                                             <Input 
+                                                dir="ltr"
                                                 value={config.centralUsername} 
                                                 onChange={(e) => handleInputChange('centralUsername', e.target.value)}
                                                 className="h-9 text-xs font-mono"
@@ -2389,6 +2509,7 @@ export default function CentralSyncSettingsPage() {
                                         <div className="space-y-1.5">
                                             <Label className="text-xs font-bold">كلمة المرور</Label>
                                             <Input 
+                                                dir="ltr"
                                                 type="password"
                                                 value={config.centralPassword} 
                                                 onChange={(e) => handleInputChange('centralPassword', e.target.value)}
@@ -2406,6 +2527,27 @@ export default function CentralSyncSettingsPage() {
                                                     onCheckedChange={(checked) => handleInputChange('autoSync', checked)} 
                                                 />
                                             </div>
+                                        </div>
+                                    </div>
+
+                                    <div className="flex flex-wrap items-center gap-6 pt-1 text-xs">
+                                        <div className="flex items-center gap-2">
+                                            <Switch
+                                                checked={Boolean(config.centralEncrypt)}
+                                                onCheckedChange={(checked) => handleInputChange('centralEncrypt', checked)}
+                                            />
+                                            <Label className="text-xs font-semibold cursor-pointer">
+                                                تفعيل التشفير السحابي (Encrypt=True — مطلوب لـ AWS RDS / Azure)
+                                            </Label>
+                                        </div>
+                                        <div className="flex items-center gap-2">
+                                            <Switch
+                                                checked={config.centralTrustServerCertificate !== false}
+                                                onCheckedChange={(checked) => handleInputChange('centralTrustServerCertificate', checked)}
+                                            />
+                                            <Label className="text-xs font-semibold cursor-pointer">
+                                                الوثوق بشهادة السيرفر (TrustServerCertificate=True)
+                                            </Label>
                                         </div>
                                     </div>
                                 </div>

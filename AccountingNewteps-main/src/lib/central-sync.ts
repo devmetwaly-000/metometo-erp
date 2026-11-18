@@ -12,6 +12,10 @@ import { getDbPool } from '@/lib/db';
 
 export interface CentralSyncConfig {
     systemRole?: 'branch' | 'central';
+    centralHostingType?: 'local' | 'vps' | 'cloud';
+    centralConnectionString?: string;
+    centralEncrypt?: boolean;
+    centralTrustServerCertificate?: boolean;
     currentBranchId: string;
     currentBranchCode: string;
     currentBranchName: string;
@@ -31,6 +35,10 @@ export interface CentralSyncConfig {
 
 const DEFAULT_CONFIG: CentralSyncConfig = {
     systemRole: 'branch',
+    centralHostingType: 'local',
+    centralConnectionString: '',
+    centralEncrypt: false,
+    centralTrustServerCertificate: true,
     currentBranchId: '-OmnkFba_GsEb0rfdzyA',
     currentBranchCode: '900',
     currentBranchName: 'الفرع الرأيسي',
@@ -331,6 +339,8 @@ export async function connectToCentral(config: CentralSyncConfig, targetDatabase
     cleanServer = cleanServer.replace(/^https?:\/\//i, '').replace(/\/$/, '');
 
     const isCloudRds =
+        Boolean(config.centralEncrypt) ||
+        config.centralHostingType === 'cloud' ||
         cleanServer.includes('.rds.amazonaws.com') ||
         cleanServer.includes('.database.windows.net');
 
@@ -346,11 +356,12 @@ export async function connectToCentral(config: CentralSyncConfig, targetDatabase
         server: cleanServer,
         port: port,
         database: effectiveCentralDb,
+        connectionTimeout: isCloudRds || config.centralHostingType === 'vps' ? 20000 : 9000,
+        requestTimeout: 60000,
         options: {
             encrypt: isCloudRds,
-            trustServerCertificate: true,
+            trustServerCertificate: config.centralTrustServerCertificate !== false,
             enableArithAbort: true,
-            connectTimeout: isCloudRds ? 15000 : 9000
         },
         pool: {
             max: 5,
@@ -359,9 +370,23 @@ export async function connectToCentral(config: CentralSyncConfig, targetDatabase
         }
     };
 
-    const centralPool = new sql.ConnectionPool(centralSqlConfig);
-    await centralPool.connect();
-    return centralPool;
+    let lastErr: any;
+    for (let attempt = 1; attempt <= 2; attempt++) {
+        try {
+            const centralPool = new sql.ConnectionPool(centralSqlConfig);
+            await centralPool.connect();
+            return centralPool;
+        } catch (err: any) {
+            lastErr = err;
+            const msg = String(err?.message || '').toLowerCase();
+            if ((err?.code === 'EAI_AGAIN' || msg.includes('eai_again')) && attempt < 2) {
+                await new Promise(r => setTimeout(r, 800));
+                continue;
+            }
+            throw err;
+        }
+    }
+    throw lastErr;
 }
 
 /**
@@ -408,7 +433,13 @@ export async function testCentralConnection(configOverride?: Partial<CentralSync
         }
 
         const errMsg: string = err.message || '';
-        if (errMsg.toLowerCase().includes('cannot open database') || errMsg.includes('4060')) {
+        const lowerErr = errMsg.toLowerCase();
+        if (
+            err.number === 4060 ||
+            err.number === 18456 ||
+            lowerErr.includes('cannot open database') ||
+            lowerErr.includes('login failed')
+        ) {
             try {
                 const masterPool = await connectToCentral(config, 'master');
                 const masterRes = await masterPool.request().query('SELECT @@VERSION as version;');
@@ -421,7 +452,7 @@ export async function testCentralConnection(configOverride?: Partial<CentralSync
                     latencyMs,
                     serverVersion: masterRes.recordset[0]?.version?.split('\n')[0] || 'Microsoft SQL Server',
                     database: config.centralDatabase,
-                    message: `تم الاتصال بالسيرفر (${config.centralServerIp}) بنجاح! لكن قاعدة البيانات (${config.centralDatabase}) غير موجودة بعد.`
+                    message: `تم الاتصال بالسيرفر (${config.centralServerIp}) بنجاح! لكن قاعدة البيانات (${config.centralDatabase}) غير موجودة بعد — اضغط "تأسيس وبناء قاعدة البيانات الآن" لإنشائها.`
                 };
             } catch {}
         }
