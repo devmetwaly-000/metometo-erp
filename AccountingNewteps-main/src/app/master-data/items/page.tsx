@@ -1,6 +1,7 @@
 "use client";
 
-import React, { useState, useMemo, useEffect, useCallback } from "react";
+import React, { useState, useMemo, useEffect, useCallback, useRef } from "react";
+import { useIsMobile } from "@/hooks/use-mobile";
 import PageHeader from "@/components/page-header";
 import { Button } from "@/components/ui/button";
 import {
@@ -1926,6 +1927,9 @@ export default function ItemsPage() {
     const [itemToDelete, setItemToDelete] = useState<any>(null);
     const [currentPage, setCurrentPage] = useState(1);
     const [pageSize, setPageSize] = useState(50);
+    const [mobileLimit, setMobileLimit] = useState(50);
+    const isMobile = useIsMobile();
+    const loadMoreRef = useRef<HTMLDivElement | null>(null);
     const router = useRouter();
     useEffect(() => {
         const url = new URL(window.location.href);
@@ -2224,15 +2228,35 @@ export default function ItemsPage() {
   
   useEffect(() => {
     setCurrentPage(1);
+    setMobileLimit(50);
   }, [searchTerm, filters]);
+
+  useEffect(() => {
+    if (!isMobile || mobileLimit >= filteredItems.length) return;
+    const node = loadMoreRef.current;
+    if (!node) return;
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0]?.isIntersecting) {
+          setMobileLimit((prev) => Math.min(filteredItems.length, prev + 50));
+        }
+      },
+      { rootMargin: '200px' }
+    );
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, [isMobile, mobileLimit, filteredItems.length]);
 
   const totalPages = Math.max(1, Math.ceil(filteredItems.length / (pageSize === -1 ? (filteredItems.length || 1) : pageSize)));
 
   const paginatedItems = useMemo(() => {
+    if (isMobile) {
+      return filteredItems.slice(0, mobileLimit);
+    }
     if (pageSize === -1) return filteredItems;
     const start = (currentPage - 1) * pageSize;
     return filteredItems.slice(start, start + pageSize);
-  }, [filteredItems, currentPage, pageSize]);
+  }, [filteredItems, currentPage, pageSize, isMobile, mobileLimit]);
 
   const handleSelectAll = (checked: boolean) => {
     setSelectedItems(checked ? paginatedItems.map((item: any) => item.id) : []);
@@ -2478,89 +2502,103 @@ export default function ItemsPage() {
                   </Table>
                 </div>
 
-                {/* شريط ترقيم الصفحات والتحكم في حجم العرض السريع */}
-                <div className="flex flex-col sm:flex-row items-center justify-between gap-3 pt-2 px-1 text-sm text-muted-foreground">
-                  <div className="flex items-center gap-2">
-                    <span>عرض</span>
-                    <span className="font-semibold text-foreground">
-                      {filteredItems.length === 0 ? 0 : (currentPage - 1) * pageSize + 1}
+                {/* شريط التمرير اللانهائي في الموبايل / ترقيم الصفحات في الكمبيوتر */}
+                {isMobile ? (
+                  <div ref={loadMoreRef} className="flex flex-col items-center justify-center gap-1.5 pt-3 pb-1 text-xs text-muted-foreground">
+                    <span>
+                      تم عرض <strong className="text-foreground">{Math.min(mobileLimit, filteredItems.length)}</strong> من أصل <Badge variant="secondary" className="font-bold text-foreground mx-1">{filteredItems.length}</Badge> صنف
                     </span>
-                    <span>إلى</span>
-                    <span className="font-semibold text-foreground">
-                      {pageSize === -1 ? filteredItems.length : Math.min(currentPage * pageSize, filteredItems.length)}
-                    </span>
-                    <span>من أصل</span>
-                    <Badge variant="secondary" className="font-bold text-foreground">
-                      {filteredItems.length}
-                    </Badge>
-                    <span>صنف</span>
+                    {mobileLimit < filteredItems.length ? (
+                      <div className="flex items-center gap-1.5 text-primary font-semibold">
+                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                        <span>اسحب لأسفل لتحميل المزيد...</span>
+                      </div>
+                    ) : null}
                   </div>
-
-                  <div className="flex items-center gap-3">
-                    <div className="flex items-center gap-1.5">
-                      <span className="text-xs">لكل صفحة:</span>
-                      <Select 
-                        value={String(pageSize)} 
-                        onValueChange={(v) => { 
-                          setPageSize(Number(v)); 
-                          setCurrentPage(1); 
-                        }}
-                      >
-                        <SelectTrigger className="h-8 w-20 text-xs">
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="25">25</SelectItem>
-                          <SelectItem value="50">50</SelectItem>
-                          <SelectItem value="100">100</SelectItem>
-                          <SelectItem value="-1">الكل</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
-
-                    <div className="flex items-center gap-1">
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        className="h-8 px-2 text-xs"
-                        disabled={currentPage <= 1}
-                        onClick={() => setCurrentPage(1)}
-                      >
-                        الأولى
-                      </Button>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        className="h-8 px-2 text-xs"
-                        disabled={currentPage <= 1}
-                        onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
-                      >
-                        السابق
-                      </Button>
-                      <span className="px-2 text-xs font-semibold text-foreground">
-                        {currentPage} / {totalPages}
+                ) : (
+                  <div className="flex flex-col sm:flex-row items-center justify-between gap-3 pt-2 px-1 text-sm text-muted-foreground">
+                    <div className="flex items-center gap-2">
+                      <span>عرض</span>
+                      <span className="font-semibold text-foreground">
+                        {filteredItems.length === 0 ? 0 : (currentPage - 1) * pageSize + 1}
                       </span>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        className="h-8 px-2 text-xs"
-                        disabled={currentPage >= totalPages}
-                        onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
-                      >
-                        التالي
-                      </Button>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        className="h-8 px-2 text-xs"
-                        disabled={currentPage >= totalPages}
-                        onClick={() => setCurrentPage(totalPages)}
-                      >
-                        الأخيرة
-                      </Button>
+                      <span>إلى</span>
+                      <span className="font-semibold text-foreground">
+                        {pageSize === -1 ? filteredItems.length : Math.min(currentPage * pageSize, filteredItems.length)}
+                      </span>
+                      <span>من أصل</span>
+                      <Badge variant="secondary" className="font-bold text-foreground">
+                        {filteredItems.length}
+                      </Badge>
+                      <span>صنف</span>
+                    </div>
+
+                    <div className="flex items-center gap-3">
+                      <div className="flex items-center gap-1.5">
+                        <span className="text-xs">لكل صفحة:</span>
+                        <Select 
+                          value={String(pageSize)} 
+                          onValueChange={(v) => { 
+                            setPageSize(Number(v)); 
+                            setCurrentPage(1); 
+                          }}
+                        >
+                          <SelectTrigger className="h-8 w-20 text-xs">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="25">25</SelectItem>
+                            <SelectItem value="50">50</SelectItem>
+                            <SelectItem value="100">100</SelectItem>
+                            <SelectItem value="-1">الكل</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+
+                      <div className="flex items-center gap-1">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="h-8 px-2 text-xs"
+                          disabled={currentPage <= 1}
+                          onClick={() => setCurrentPage(1)}
+                        >
+                          الأولى
+                        </Button>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="h-8 px-2 text-xs"
+                          disabled={currentPage <= 1}
+                          onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
+                        >
+                          السابق
+                        </Button>
+                        <span className="px-2 text-xs font-semibold text-foreground">
+                          {currentPage} / {totalPages}
+                        </span>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="h-8 px-2 text-xs"
+                          disabled={currentPage >= totalPages}
+                          onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
+                        >
+                          التالي
+                        </Button>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="h-8 px-2 text-xs"
+                          disabled={currentPage >= totalPages}
+                          onClick={() => setCurrentPage(totalPages)}
+                        >
+                          الأخيرة
+                        </Button>
+                      </div>
                     </div>
                   </div>
-                </div>
+                )}
               </div>
             )}
           </CardContent>
