@@ -1,12 +1,12 @@
 {
   "connectionMode": "fields",
-  "connectionString": "Server=database-1.c9oyqw2ss7c3.eu-north-1.rds.amazonaws.com,1433;Database=master;User Id=admin;Password=asSandokane123;Encrypt=true;TrustServerCertificate=true;",
-  "server": "database-1.c9oyqw2ss7c3.eu-north-1.rds.amazonaws.com",
+  "connectionString": "Server=localhost,1433;Database=MultiBranchPOS_DB;User Id=meto_pos;Password=123123;Encrypt=false;TrustServerCertificate=true;",
+  "server": "localhost",
   "port": 1433,
-  "database": "master",
-  "user": "admin",
-  "password": "asSandokane123",
-  "encrypt": true,
+  "database": "MultiBranchPOS_DB",
+  "user": "meto_pos",
+  "password": "123123",
+  "encrypt": false,
   "trustServerCertificate": true,
   "connectionTimeout": 6000
 }

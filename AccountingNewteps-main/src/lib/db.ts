@@ -280,10 +280,17 @@ export async function testLocalDbConnection(input?: Partial<LocalDbConfig>): Pro
         }
 
         const errMsg: string = err.message || '';
-        if (err.number === 4060 || errMsg.toLowerCase().includes('cannot open database')) {
+        const lowerErr = errMsg.toLowerCase();
+        // AWS RDS SQL Server masks non-existent database errors as 18456 ("Login failed for user") instead of 4060
+        if (
+            err.number === 4060 ||
+            err.number === 18456 ||
+            lowerErr.includes('cannot open database') ||
+            lowerErr.includes('login failed')
+        ) {
             try {
                 const masterCfg = buildMssqlConfig(cfg, 'master');
-                const masterPool = await new sql.ConnectionPool(masterCfg).connect();
+                const masterPool = await connectAttempt(masterCfg);
                 const masterRes = await masterPool.request().query('SELECT @@VERSION as version;');
                 const latencyMs = Date.now() - startTime;
                 await masterPool.close();
@@ -293,9 +300,9 @@ export async function testLocalDbConnection(input?: Partial<LocalDbConfig>): Pro
                     databaseExists: false,
                     latencyMs,
                     server: `${mssqlCfg.server}:${mssqlCfg.port}`,
-                    database: cfg.database,
+                    database: mssqlCfg.database,
                     serverVersion: masterRes.recordset[0]?.version?.split('\n')[0] || 'Microsoft SQL Server',
-                    message: `تم الاتصال بالسيرفر (${mssqlCfg.server}:${mssqlCfg.port}) بنجاح! لكن قاعدة البيانات [${cfg.database}] غير موجودة بعد (يمكنك إنشاؤها وتأسيسها الآن بضغطة زر).`
+                    message: `تم الاتصال بالسيرفر (${mssqlCfg.server}:${mssqlCfg.port}) بنجاح! قاعدة البيانات [${mssqlCfg.database}] غير موجودة بعد — اضغط "3. إنشاء وتأسيس قاعدة البيانات والجداول" لإنشائها الآن.`
                 };
             } catch {}
         }
@@ -378,7 +385,13 @@ export async function getDbPool(): Promise<sql.ConnectionPool> {
                 return localPool;
             } catch (connErr: any) {
                 let isDbMissing = false;
-                if (connErr.number === 4060 || (connErr.message && connErr.message.includes('Cannot open database'))) {
+                const connErrLower = String(connErr?.message || '').toLowerCase();
+                if (
+                    connErr.number === 4060 ||
+                    connErr.number === 18456 ||
+                    connErrLower.includes('cannot open database') ||
+                    connErrLower.includes('login failed')
+                ) {
                     let masterPool: sql.ConnectionPool | null = null;
                     try {
                         masterPool = await new sql.ConnectionPool({
