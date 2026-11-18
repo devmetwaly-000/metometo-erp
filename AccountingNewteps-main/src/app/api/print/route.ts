@@ -130,10 +130,18 @@ function buildEscPosReceiptBuffer(
   return Buffer.concat(chunks);
 }
 
-function sendRawTcpToIpPrinter(host: string, port: number, payload: Buffer, timeoutMs = 5000): Promise<void> {
+function sendRawTcpToIpPrinter(host: string, port: number, payload: Buffer, timeoutMs = 8000): Promise<void> {
   return new Promise((resolve, reject) => {
     const socket = new net.Socket();
     let settled = false;
+
+    const finishSuccess = () => {
+      if (!settled) {
+        settled = true;
+        try { socket.destroy(); } catch {}
+        resolve();
+      }
+    };
 
     const cleanup = () => {
       try { socket.destroy(); } catch {}
@@ -151,21 +159,21 @@ function sendRawTcpToIpPrinter(host: string, port: number, payload: Buffer, time
           }
           return;
         }
-        socket.end(() => {
-          if (!settled) {
-            settled = true;
-            cleanup();
-            resolve();
-          }
-        });
+        // بعض الطابعات الحرارية لا ترد بحزمة FIN بسرعة بعد استلام البيانات، لذا ننهي الاتصال ونؤكد النجاح بعد تفريغ الـ Buffer
+        try { socket.end(); } catch {}
+        setTimeout(finishSuccess, 200);
       });
+    });
+
+    socket.on('close', () => {
+      // Only resolve on close if connect/write already started; otherwise error handler rejects first
     });
 
     socket.on('timeout', () => {
       if (!settled) {
         settled = true;
         cleanup();
-        reject(new Error(`انتهت مهلة الاتصال بطابعة الشبكة (${host}:${port}). تأكد أن الطابعة تعمل ومتصلة بنفس الشبكة.`));
+        reject(new Error(`انتهت مهلة الاتصال بطابعة الشبكة (${host}:${port}). تأكد أن الطابعة تعمل ومتصلة بنفس الشبكة وأن المنفذ 9100 مفتوح.`));
       }
     });
 
