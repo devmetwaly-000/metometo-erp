@@ -55,7 +55,7 @@ export async function GET(request: Request) {
                 ORDER BY TotalSoldValue DESC
             `);
 
-            let detailedRepSummary = null;
+            let detailedRepSummary: Record<string, any> | null = null;
             if (salesRepId && salesRepId !== 'all') {
                 const req = pool.request()
                     .input('RepId', sql.NVarChar(64), salesRepId)

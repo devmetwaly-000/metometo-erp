@@ -20,7 +20,7 @@ import { useAuth } from "@/contexts/auth-context";
 interface Item { id: string; name: string; sectionId?: string; categoryId?: string; cost?: number; }
 interface ItemSection { id: string; name: string; }
 interface ItemCategory { id: string; name: string; }
-interface SaleInvoice { date: string; warehouseId: string; items: { id: string; qty: number; price: number; cost?: number; }[]; status?: 'approved' | 'pending'; }
+interface SaleInvoice { id?: string; date: string; warehouseId: string; items: { id: string; qty: number; price: number; cost?: number; }[]; status?: 'approved' | 'pending' | 'completed' | string; }
 interface PosSale { date: string; warehouseId?: string; items: { id: string; qty: number; price: number; cost?: number; }[]; }
 interface Warehouse { id: string; name: string; }
 

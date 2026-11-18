@@ -44,7 +44,7 @@ interface License {
     createdAt: string;
     startDate?: string;
     endDate?: string;
-    status: 'available' | 'assigned';
+    status: 'available' | 'assigned' | 'active';
     assignedTo?: string;
     enabledModules?: Record<string, boolean>;
     assignedWarehouseIds?: string[]; // New field

@@ -32,13 +32,13 @@ interface Customer {
   name: string;
   openingBalance: number;
 }
-interface SaleInvoice { id: string; customerId: string; total: number; paidAmount?: number; status?: 'pending' | 'approved'; }
+interface SaleInvoice { id: string; customerId: string; total: number; paidAmount?: number; status?: 'pending' | 'approved' | 'completed' | string; }
 interface PosSale { id: string; customerId?: string; total: number; paidAmount?: number; }
 interface CustomerPayment { id: string; customerId: string; amount: number; }
 interface SalesReturn { id: string; customerId: string; total: number; }
 
 export default function CustomerPurchasesReport() { // Renamed component
-  const { customers, salesInvoices, posSales, customerPayments, salesReturns, loading } = useData();
+  const { customers, salesInvoices, posSales, customerPayments, salesReturns, posReturns, loading } = useData();
 
   const reportData = useMemo(() => {
     if (loading) return [];

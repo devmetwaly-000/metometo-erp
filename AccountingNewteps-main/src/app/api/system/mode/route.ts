@@ -5,7 +5,7 @@ import { getLocalDbConfig } from '@/lib/db';
 
 export const dynamic = 'force-dynamic';
 
-export function detectDbHosting(server: string, encrypt?: boolean): {
+function detectDbHosting(server: string, encrypt?: boolean): {
     type: 'aws' | 'azure' | 'vps' | 'local';
     label: string;
 } {

@@ -20,7 +20,7 @@ import { useData } from "@/contexts/data-provider";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/contexts/auth-context";
 import { useRouter } from "next/navigation";
-import { calculateDistanceMeters, getFieldSalesConfig } from "@/app/sales/field-sales-management/page";
+import { calculateDistanceMeters, getFieldSalesConfig } from "@/lib/field-sales";
 
 export default function RecordVisitPage() {
     const { customers, settings, dbAction, loading } = useData();
