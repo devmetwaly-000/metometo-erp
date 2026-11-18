@@ -632,15 +632,34 @@ export function AppLayoutContent({ children }: { children: React.ReactNode }) {
   const [systemMode, setSystemMode] = useState<'production' | 'development'>(
     process.env.NODE_ENV === 'production' ? 'production' : 'development'
   );
+  const [dbHosting, setDbHosting] = useState<{
+    type: 'aws' | 'azure' | 'vps' | 'local';
+    label: string;
+    server: string;
+    database: string;
+  }>({
+    type: 'local',
+    label: 'Local (محلي)',
+    server: 'localhost:1433',
+    database: 'MultiBranchPOS_DB'
+  });
 
   useEffect(() => {
-    fetch('/api/system/mode')
+    fetch('/api/system/mode', { cache: 'no-store' })
       .then(res => res.json())
       .then(data => {
         if (data?.mode) setSystemMode(data.mode);
+        if (data?.dbHostingType) {
+          setDbHosting({
+            type: data.dbHostingType,
+            label: data.dbHostingLabel || 'Local (محلي)',
+            server: data.dbServer || 'localhost:1433',
+            database: data.dbName || 'MultiBranchPOS_DB'
+          });
+        }
       })
       .catch(() => {});
-  }, []);
+  }, [pathname]);
 
   const [openTabs, setOpenTabs] = useState<{title: string, href: string}[]>([]);
   const openTabsStorageKey = user?.id ? `app_open_tabs_${user.id}` : null;
@@ -1170,6 +1189,44 @@ export function AppLayoutContent({ children }: { children: React.ReactNode }) {
                          </Tooltip>
                        </TooltipProvider>
                      )}
+                     {/* إشارة نوع سيرفر قاعدة البيانات: AWS RDS أو محلي Local أو VPS */}
+                     <TooltipProvider>
+                       <Tooltip>
+                         <TooltipTrigger asChild>
+                           <Link
+                             href="/settings/re-engineer"
+                             className={cn(
+                               "flex items-center gap-1.5 px-2.5 py-1 rounded-full border text-[11px] font-bold select-none transition-colors",
+                               dbHosting.type === 'aws' || dbHosting.type === 'azure'
+                                 ? "border-amber-500/40 bg-amber-500/10 text-amber-600 dark:text-amber-300 hover:bg-amber-500/20"
+                                 : dbHosting.type === 'vps'
+                                 ? "border-sky-500/40 bg-sky-500/10 text-sky-600 dark:text-sky-300 hover:bg-sky-500/20"
+                                 : "border-emerald-500/40 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-500/20"
+                             )}
+                           >
+                             {dbHosting.type === 'aws' || dbHosting.type === 'azure' ? (
+                               <Cloud className="h-3.5 w-3.5 shrink-0" />
+                             ) : (
+                               <DatabaseBackup className="h-3.5 w-3.5 shrink-0" />
+                             )}
+                             <span>{dbHosting.label}</span>
+                           </Link>
+                         </TooltipTrigger>
+                         <TooltipContent side="bottom" className="text-xs max-w-xs text-center space-y-1">
+                           <div className="font-bold">
+                             {dbHosting.type === 'aws'
+                               ? 'متصل بسحابة Amazon AWS RDS'
+                               : dbHosting.type === 'vps'
+                               ? 'متصل بسيرفر خارجي (VPS / IP)'
+                               : 'متصل بسيرفر SQL محلي (Local)'}
+                           </div>
+                           <div className="font-mono text-[10px] opacity-80" dir="ltr">
+                             {dbHosting.server} ({dbHosting.database})
+                           </div>
+                         </TooltipContent>
+                       </Tooltip>
+                     </TooltipProvider>
+
                      {/* إشارة نمط التشغيل: Production أو Development بجانب أيقونة المزامنة */}
                      <TooltipProvider>
                        <Tooltip>

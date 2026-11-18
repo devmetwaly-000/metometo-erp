@@ -327,10 +327,24 @@ export default function DatabaseReEngineeringPage() {
             {/* شريط الحالة الحالي */}
             <Alert className={connectedStatus?.connected ? "border-emerald-500/40 bg-emerald-500/10" : "border-amber-500/40 bg-amber-500/10"}>
                 <Server className="h-5 w-5" />
-                <AlertTitle className="flex items-center gap-2 font-bold">
+                <AlertTitle className="flex flex-wrap items-center gap-2 font-bold">
                     <span>
                         حالة السيرفر الحالي: {connectedStatus?.server || `${config.server}:${config.port}`} — [{connectedStatus?.database || config.database}]
                     </span>
+                    {(() => {
+                        const srv = (connectedStatus?.server || config.server || '').toLowerCase();
+                        if (srv.includes('.rds.amazonaws.com')) {
+                            return <Badge className="bg-amber-600 text-white text-[10px]">☁️ متصل على Amazon AWS RDS</Badge>;
+                        }
+                        if (srv.includes('.database.windows.net')) {
+                            return <Badge className="bg-sky-600 text-white text-[10px]">☁️ متصل على Azure SQL</Badge>;
+                        }
+                        const hostOnly = srv.split(':')[0];
+                        const isLocal = hostOnly === 'localhost' || hostOnly === '.' || hostOnly.startsWith('127.') || hostOnly.startsWith('192.168.') || hostOnly.startsWith('10.');
+                        return isLocal
+                            ? <Badge variant="outline" className="border-emerald-600 text-emerald-700 dark:text-emerald-300 text-[10px]">🖥️ سيرفر محلي (Local)</Badge>
+                            : <Badge variant="outline" className="border-sky-600 text-sky-700 dark:text-sky-300 text-[10px]">🌐 سيرفر خارجي (VPS / IP)</Badge>;
+                    })()}
                     {connectedStatus?.connected ? (
                         <Badge className="bg-emerald-600 text-white text-[10px]">متصل ونشط ✅ ({connectedStatus.tablesCount || 72} جدول)</Badge>
                     ) : (
