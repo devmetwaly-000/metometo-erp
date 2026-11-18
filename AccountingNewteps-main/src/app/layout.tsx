@@ -203,6 +203,22 @@ const PWALifecycle = () => {
           </DialogHeader>
 
           <div className="space-y-4 py-2 text-sm text-foreground">
+            {typeof window !== 'undefined' && !window.isSecureContext && (
+              <div className="p-3 rounded-lg border border-rose-500/30 bg-rose-500/10 space-y-1.5 text-xs">
+                <p className="font-bold text-rose-600 dark:text-rose-400">
+                  ⚠️ تنبيه هام للتثبيت عبر شبكة المحل (HTTP):
+                </p>
+                <p className="text-[11px] text-muted-foreground leading-relaxed">
+                  متصفح Chrome على أندرويد يمنع التثبيت الكامل (PWA) على الروابط غير المشفرة (<code dir="ltr">http://</code>). لتفعيل التثبيت الفوري على الموبايل:
+                </p>
+                <ol className="list-decimal list-inside text-[11px] space-y-1 text-muted-foreground pr-1">
+                  <li>افتح في Chrome على الموبايل: <code dir="ltr" className="font-bold text-foreground">chrome://flags/#unsafely-treat-insecure-origin-as-secure</code></li>
+                  <li>فعّل الخيار إلى <strong>Enabled</strong> وأضف هذا الرابط: <code dir="ltr" className="font-bold text-primary">{window.location.origin}</code></li>
+                  <li>أعد تشغيل Chrome واضغط تثبيت — أو استخدم رابط <strong>HTTPS</strong>.</li>
+                </ol>
+              </div>
+            )}
+
             <div className="p-3 rounded-lg border bg-muted/30 space-y-1.5">
               <p className="font-bold text-xs text-primary flex items-center gap-1.5">
                 <span>🤖</span> هواتف أندرويد (متصفح Chrome / Edge):
