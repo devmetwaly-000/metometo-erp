@@ -127,6 +127,7 @@ interface DataContextType {
 
     loading: boolean;
     isOnline: boolean;
+    hasCheckedConnection: boolean;
     databaseSetupRequired: boolean;
     databaseName: string;
     createLocalDatabase: () => Promise<void>;
@@ -149,6 +150,7 @@ const CACHE_KEY = 'multibranch-pos-sql-cache-v5';
 export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
     const [allData, setAllData] = useState<any>({});
     const [isOnline, setIsOnline] = useState(true);
+    const [hasCheckedConnection, setHasCheckedConnection] = useState(false);
     const [isLoading, setIsLoading] = useState(true);
     const [databaseSetupRequired, setDatabaseSetupRequired] = useState(false);
     const [databaseName, setDatabaseName] = useState('MultiBranchPOS_DB');
@@ -158,7 +160,7 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     const refreshDataFromSqlServer = useCallback(async (): Promise<boolean> => {
         let connected = false;
         const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 5000);
+        const timeoutId = setTimeout(() => controller.abort(), 25000);
         try {
             const res = await fetch('/api/db/sync', { cache: 'no-store', signal: controller.signal });
             clearTimeout(timeoutId);
@@ -197,6 +199,7 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
                 }
             } catch {}
         } finally {
+            setHasCheckedConnection(true);
             setIsLoading(false);
         }
         return connected;
@@ -614,6 +617,7 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         dbAction, getNextId,
         loading: isLoading,
         isOnline,
+        hasCheckedConnection,
         databaseSetupRequired,
         databaseName,
         createLocalDatabase,

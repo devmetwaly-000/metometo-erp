@@ -132,12 +132,12 @@ const Logo = () => {
   const companyName = settings?.main?.general?.companyName || "Meto";
 
   return (
-    <div className="flex items-center gap-2" >
-        <Scale className="h-5 w-5 text-green-500 shrink-0"/>
-        <Laptop className="h-5 w-5 text-green-500 shrink-0"/>
-        <div className="flex flex-col">
-            <h1 className="text-base font-bold text-primary leading-none">{companyName}</h1>
-            {!isOnline && <span className="text-[10px] text-destructive font-semibold">وضع الأوفلاين</span>}
+    <div className="flex items-center gap-1.5 sm:gap-2 min-w-0 max-w-full">
+        <Scale className="h-4 w-4 sm:h-5 sm:w-5 text-green-500 shrink-0"/>
+        <Laptop className="h-4 w-4 sm:h-5 sm:w-5 text-green-500 shrink-0 hidden sm:block"/>
+        <div className="flex flex-col min-w-0">
+            <h1 className="text-sm sm:text-base font-bold text-primary leading-none truncate">{companyName}</h1>
+            {!isOnline && <span className="text-[9px] sm:text-[10px] text-destructive font-semibold truncate">وضع الأوفلاين</span>}
         </div>
     </div>
   );
@@ -1133,8 +1133,8 @@ export function AppLayoutContent({ children }: { children: React.ReactNode }) {
          )}
         
         {showHeader && (
-            <header className="flex h-14 items-center justify-between gap-4 border-b bg-background px-4 shrink-0 sticky top-0 z-30">
-                <div className="flex items-center gap-2">
+            <header className="flex h-14 items-center justify-between gap-2 sm:gap-4 border-b bg-background px-2 sm:px-4 shrink-0 sticky top-0 z-30">
+                <div className="flex items-center gap-1 sm:gap-2 shrink-0">
                     {desktopLayout === 'sidebar' && (
                         <Button 
                             variant="ghost" 
@@ -1149,21 +1149,23 @@ export function AppLayoutContent({ children }: { children: React.ReactNode }) {
                         variant="ghost" 
                         size="icon" 
                         onClick={() => router.back()}
+                        className="h-8 w-8 sm:h-9 sm:w-9"
                     >
-                        <ArrowLeft />
+                        <ArrowLeft className="h-4 w-4 sm:h-5 sm:w-5" />
                     </Button>
                      {isHubLayout && (
                         <Button 
                             variant="ghost" 
                             size="icon" 
                             onClick={() => router.push('/')}
+                            className="h-8 w-8 sm:h-9 sm:w-9"
                         >
-                            <Home />
+                            <Home className="h-4 w-4 sm:h-5 sm:w-5" />
                         </Button>
                     )}
                 </div>
                 
-                 <div className="hidden md:flex flex-1 justify-center">
+                 <div className="hidden md:flex flex-1 justify-center min-w-0">
                     {desktopLayout === 'menubar' ? (
                         <AppMenubar navStructure={memoizedNavStructure} />
                     ) : (
@@ -1171,15 +1173,16 @@ export function AppLayoutContent({ children }: { children: React.ReactNode }) {
                     )}
                  </div>
 
-                 <div className="flex items-center gap-2 justify-end">
-                    <div className="md:hidden absolute left-1/2 -translate-x-1/2">
-                        <Logo/>
-                    </div>
+                 <div className="md:hidden flex-1 min-w-0 flex items-center justify-center px-1">
+                    <Logo />
+                 </div>
+
+                 <div className="flex items-center gap-1 sm:gap-2 justify-end shrink-0">
                      {can('add', 'inventory_items_list') && (
                        <TooltipProvider>
                          <Tooltip>
                            <TooltipTrigger asChild>
-                             <Button asChild variant="ghost" size="icon" aria-label="إضافة صنف جديد">
+                             <Button asChild variant="ghost" size="icon" aria-label="إضافة صنف جديد" className="hidden sm:inline-flex">
                                <Link href="/master-data/items?newGood=1">
                                  <PackagePlus className="h-5 w-5" />
                                </Link>
@@ -1196,7 +1199,7 @@ export function AppLayoutContent({ children }: { children: React.ReactNode }) {
                            <Link
                              href="/settings/re-engineer"
                              className={cn(
-                               "flex items-center gap-1.5 px-2.5 py-1 rounded-full border text-[11px] font-bold select-none transition-colors",
+                               "flex items-center gap-1 px-2 py-0.5 sm:px-2.5 sm:py-1 rounded-full border text-[10px] sm:text-[11px] font-bold select-none transition-colors whitespace-nowrap shrink-0",
                                dbHosting.type === 'aws' || dbHosting.type === 'azure'
                                  ? "border-amber-500/40 bg-amber-500/10 text-amber-600 dark:text-amber-300 hover:bg-amber-500/20"
                                  : dbHosting.type === 'vps'
@@ -1205,9 +1208,9 @@ export function AppLayoutContent({ children }: { children: React.ReactNode }) {
                              )}
                            >
                              {dbHosting.type === 'aws' || dbHosting.type === 'azure' ? (
-                               <Cloud className="h-3.5 w-3.5 shrink-0" />
+                               <Cloud className="h-3 w-3 sm:h-3.5 sm:w-3.5 shrink-0" />
                              ) : (
-                               <DatabaseBackup className="h-3.5 w-3.5 shrink-0" />
+                               <DatabaseBackup className="h-3 w-3 sm:h-3.5 sm:w-3.5 shrink-0" />
                              )}
                              <span>{dbHosting.label}</span>
                            </Link>
@@ -1227,11 +1230,11 @@ export function AppLayoutContent({ children }: { children: React.ReactNode }) {
                        </Tooltip>
                      </TooltipProvider>
 
-                     {/* إشارة نمط التشغيل: Production أو Development بجانب أيقونة المزامنة */}
+                     {/* إشارة نمط التشغيل: Production أو Development (تظهر على الشاشات المتوسطة والكبيرة لتجنب تداخل الموبايل) */}
                      <TooltipProvider>
                        <Tooltip>
                          <TooltipTrigger asChild>
-                           <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full border border-border bg-muted/40 text-[11px] font-mono select-none cursor-default transition-colors">
+                           <div className="hidden lg:flex items-center gap-1.5 px-2.5 py-1 rounded-full border border-border bg-muted/40 text-[11px] font-mono select-none cursor-default transition-colors shrink-0">
                              <span className={cn(
                                "h-2 w-2 rounded-full",
                                systemMode === 'production' ? "bg-emerald-500 animate-pulse" : "bg-amber-500"

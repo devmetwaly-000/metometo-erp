@@ -45,6 +45,7 @@ import { useToast } from '@/hooks/use-toast';
 import { cn } from '@/lib/utils';
 import { ScrollArea, ScrollBar } from '@/components/ui/scroll-area';
 import { renderToString } from 'react-dom/server';
+import { useIsMobile } from '@/hooks/use-mobile';
 
 interface SaleInvoice {
   id: string;
@@ -107,6 +108,9 @@ export default function SalesInvoicesListPage() {
   });
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize, setPageSize] = useState(50);
+  const [mobileLimit, setMobileLimit] = useState(50);
+  const isMobile = useIsMobile();
+  const loadMoreRef = useRef<HTMLDivElement | null>(null);
 
   const [printModal, setPrintModal] = useState<{ open: boolean, type: 'A4' | 'Thermal', invoice: SaleInvoice | null }>({
     open: false,
@@ -276,9 +280,35 @@ export default function SalesInvoicesListPage() {
 
   const totalPages = Math.max(1, Math.ceil(filteredInvoices.length / pageSize));
   const paginatedInvoices = useMemo(() => {
+    if (isMobile) {
+      return filteredInvoices.slice(0, mobileLimit);
+    }
     const startIndex = (currentPage - 1) * pageSize;
     return filteredInvoices.slice(startIndex, startIndex + pageSize);
-  }, [filteredInvoices, currentPage, pageSize]);
+  }, [filteredInvoices, currentPage, pageSize, isMobile, mobileLimit]);
+
+  // إعادة ضبط حد العرض في الموبايل عند تغيير الفلاتر
+  useEffect(() => {
+    setMobileLimit(50);
+  }, [filters]);
+
+  // التحميل التلقائي عند السحب لأسفل (Scroll Down) في وضع الموبايل
+  useEffect(() => {
+    if (!isMobile || mobileLimit >= filteredInvoices.length) return;
+    const node = loadMoreRef.current;
+    if (!node) return;
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0]?.isIntersecting) {
+          setMobileLimit((prev) => Math.min(filteredInvoices.length, prev + 50));
+        }
+      },
+      { rootMargin: '200px' }
+    );
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, [isMobile, mobileLimit, filteredInvoices.length]);
 
   const companySettings = useMemo(() => settings?.main?.general || {}, [settings]);
   const posReceiptDesign = useMemo(() => settings?.main?.posReceipts?.defaultReceiptDesign || {}, [settings]);
@@ -573,20 +603,36 @@ export default function SalesInvoicesListPage() {
                 </Table>
               </div>
               {filteredInvoices.length > 0 && (
-                <div className="flex flex-col sm:flex-row items-center justify-between gap-4 p-4 border-t md:border-t-0 mt-2">
-                  <div className="text-xs text-muted-foreground">
-                    عرض <span className="font-bold text-foreground">{(currentPage - 1) * pageSize + 1}</span> إلى <span className="font-bold text-foreground">{Math.min(currentPage * pageSize, filteredInvoices.length)}</span> من إجمالي <span className="font-bold text-foreground">{filteredInvoices.length}</span> فاتورة
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <Button variant="outline" size="sm" onClick={() => setCurrentPage(1)} disabled={currentPage === 1}>الأولى</Button>
-                    <Button variant="outline" size="sm" onClick={() => setCurrentPage(p => Math.max(1, p - 1))} disabled={currentPage === 1}>السابق</Button>
-                    <span className="text-xs font-medium px-3">
-                      صفحة {currentPage} من {totalPages}
+                isMobile ? (
+                  <div ref={loadMoreRef} className="flex flex-col items-center justify-center gap-2 p-4 border-t mt-2 text-xs text-muted-foreground">
+                    <span>
+                      تم عرض <strong className="text-foreground">{Math.min(mobileLimit, filteredInvoices.length)}</strong> من إجمالي <strong className="text-foreground">{filteredInvoices.length}</strong> فاتورة
                     </span>
-                    <Button variant="outline" size="sm" onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))} disabled={currentPage >= totalPages}>التالي</Button>
-                    <Button variant="outline" size="sm" onClick={() => setCurrentPage(totalPages)} disabled={currentPage >= totalPages}>الأخيرة</Button>
+                    {mobileLimit < filteredInvoices.length ? (
+                      <div className="flex items-center gap-1.5 text-primary font-semibold">
+                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                        <span>اسحب لأسفل لعرض السطور التالية...</span>
+                      </div>
+                    ) : (
+                      <span className="text-emerald-600 dark:text-emerald-400 font-semibold">تم عرض جميع الفواتير ✅</span>
+                    )}
                   </div>
-                </div>
+                ) : (
+                  <div className="flex flex-col sm:flex-row items-center justify-between gap-4 p-4 border-t md:border-t-0 mt-2">
+                    <div className="text-xs text-muted-foreground">
+                      عرض <span className="font-bold text-foreground">{(currentPage - 1) * pageSize + 1}</span> إلى <span className="font-bold text-foreground">{Math.min(currentPage * pageSize, filteredInvoices.length)}</span> من إجمالي <span className="font-bold text-foreground">{filteredInvoices.length}</span> فاتورة
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Button variant="outline" size="sm" onClick={() => setCurrentPage(1)} disabled={currentPage === 1}>الأولى</Button>
+                      <Button variant="outline" size="sm" onClick={() => setCurrentPage(p => Math.max(1, p - 1))} disabled={currentPage === 1}>السابق</Button>
+                      <span className="text-xs font-medium px-3">
+                        صفحة {currentPage} من {totalPages}
+                      </span>
+                      <Button variant="outline" size="sm" onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))} disabled={currentPage >= totalPages}>التالي</Button>
+                      <Button variant="outline" size="sm" onClick={() => setCurrentPage(totalPages)} disabled={currentPage >= totalPages}>الأخيرة</Button>
+                    </div>
+                  </div>
+                )
               )}
               </>
             )}

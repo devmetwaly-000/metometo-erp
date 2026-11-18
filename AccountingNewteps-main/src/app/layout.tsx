@@ -19,7 +19,7 @@ import { Button } from "@/components/ui/button";
 // New component to handle PWA lifecycle events and Mobile Install Banner
 const PWALifecycle = () => {
   const { toast } = useToast();
-  const { isOnline } = useData();
+  const { isOnline, hasCheckedConnection } = useData();
   const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
   const [showInstallBanner, setShowInstallBanner] = useState(false);
   const [showGuideModal, setShowGuideModal] = useState(false);
@@ -83,7 +83,7 @@ const PWALifecycle = () => {
   };
 
   useEffect(() => {
-    if (!isOnline) {
+    if (hasCheckedConnection && !isOnline) {
         toast({
             variant: "destructive",
             title: "أنت في وضع عدم الاتصال",
@@ -91,7 +91,7 @@ const PWALifecycle = () => {
             duration: 5000,
         });
     }
-  }, [isOnline, toast]);
+  }, [hasCheckedConnection, isOnline, toast]);
 
   useEffect(() => {
     if (typeof window !== 'undefined' && 'serviceWorker' in navigator) {
