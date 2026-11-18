@@ -1,6 +1,6 @@
 "use client";
 
-import React, { createContext, useContext, ReactNode, useEffect, useMemo, useState, useCallback } from 'react';
+import React, { createContext, useContext, ReactNode, useEffect, useMemo, useState, useCallback, useRef } from 'react';
 import { Loader2 } from 'lucide-react';
 import localforage from 'localforage';
 
@@ -156,6 +156,13 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     const [databaseName, setDatabaseName] = useState('MultiBranchPOS_DB');
     const [databaseSetupError, setDatabaseSetupError] = useState<string | null>(null);
     const [isCreatingLocalDatabase, setIsCreatingLocalDatabase] = useState(false);
+    const isOnlineRef = useRef(isOnline);
+    const isCheckingHealthRef = useRef(false);
+    const lastHealthCheckAtRef = useRef(0);
+
+    useEffect(() => {
+        isOnlineRef.current = isOnline;
+    }, [isOnline]);
 
     const refreshDataFromSqlServer = useCallback(async (): Promise<boolean> => {
         let connected = false;
@@ -259,6 +266,86 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         };
     }, [refreshDataFromSqlServer]);
 
+    const checkServerHealth = useCallback(async (force = false) => {
+        const now = Date.now();
+        if (isCheckingHealthRef.current) return;
+        if (!force && now - lastHealthCheckAtRef.current < 2000) return;
+
+        isCheckingHealthRef.current = true;
+        lastHealthCheckAtRef.current = now;
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 10000);
+
+        try {
+            const res = await fetch('/api/db/health', {
+                cache: 'no-store',
+                signal: controller.signal,
+            });
+            clearTimeout(timeoutId);
+            const json = await res.json().catch(() => null);
+
+            if (res.ok && json?.ok) {
+                const wasOffline = !isOnlineRef.current;
+                setIsOnline(true);
+                setDatabaseSetupRequired(false);
+                setDatabaseSetupError(null);
+                if (wasOffline) {
+                    // Re-sync latest data automatically as soon as the server comes back online
+                    await refreshDataFromSqlServer();
+                }
+            } else {
+                setIsOnline(false);
+                if (json?.code === 'LOCAL_DATABASE_MISSING') {
+                    setDatabaseName(json.database || 'MultiBranchPOS_DB');
+                    setDatabaseSetupRequired(true);
+                }
+            }
+        } catch {
+            clearTimeout(timeoutId);
+            setIsOnline(false);
+        } finally {
+            setHasCheckedConnection(true);
+            isCheckingHealthRef.current = false;
+        }
+    }, [refreshDataFromSqlServer]);
+
+    useEffect(() => {
+        if (!hasCheckedConnection) return;
+
+        const intervalMs = isOnline ? 15000 : 5000;
+        const intervalId = setInterval(() => {
+            void checkServerHealth();
+        }, intervalMs);
+
+        const handleBrowserOnline = () => {
+            void checkServerHealth(true);
+        };
+        const handleBrowserOffline = () => {
+            void checkServerHealth(true);
+        };
+        const handleVisibilityChange = () => {
+            if (document.visibilityState === 'visible') {
+                void checkServerHealth();
+            }
+        };
+        const handleWindowFocus = () => {
+            void checkServerHealth();
+        };
+
+        window.addEventListener('online', handleBrowserOnline);
+        window.addEventListener('offline', handleBrowserOffline);
+        document.addEventListener('visibilitychange', handleVisibilityChange);
+        window.addEventListener('focus', handleWindowFocus);
+
+        return () => {
+            clearInterval(intervalId);
+            window.removeEventListener('online', handleBrowserOnline);
+            window.removeEventListener('offline', handleBrowserOffline);
+            document.removeEventListener('visibilitychange', handleVisibilityChange);
+            window.removeEventListener('focus', handleWindowFocus);
+        };
+    }, [hasCheckedConnection, isOnline, checkServerHealth]);
+
     const getNextId = useCallback(async (counterName: string, startFrom = 1): Promise<number | null> => {
         try {
             const res = await fetch('/api/db/action', {
@@ -347,6 +434,9 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
             if (res.ok) {
                 const json = await res.json();
                 if (json.success) {
+                    if (!isOnlineRef.current) {
+                        setIsOnline(true);
+                    }
                     if (path === 'settings' || path === 'licenses') {
                         setTimeout(() => refreshDataFromSqlServer?.(), 200);
                     }

@@ -9,7 +9,7 @@ import { PermissionsProvider } from "@/contexts/permissions-context";
 import { AuthProvider, useAuth } from "@/contexts/auth-context";
 import { DataProvider, useData } from "@/contexts/data-provider";
 import { NotificationProvider } from "@/contexts/notification-context";
-import React, { ReactNode, useEffect, useState } from "react";
+import React, { ReactNode, useEffect, useRef, useState } from "react";
 import { useToast } from "@/hooks/use-toast";
 import { Loader2, Download, Smartphone, X, Database } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
@@ -23,6 +23,7 @@ const PWALifecycle = () => {
   const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
   const [showInstallBanner, setShowInstallBanner] = useState(false);
   const [showGuideModal, setShowGuideModal] = useState(false);
+  const wasOfflineRef = useRef(false);
 
   useEffect(() => {
     // Check if running in standalone mode (already installed)
@@ -83,13 +84,23 @@ const PWALifecycle = () => {
   };
 
   useEffect(() => {
-    if (hasCheckedConnection && !isOnline) {
-        toast({
-            variant: "destructive",
-            title: "أنت في وضع عدم الاتصال",
-            description: "يتم استخدام البيانات والصفحات المخزنة محلياً.",
-            duration: 5000,
-        });
+    if (!hasCheckedConnection) return;
+
+    if (!isOnline) {
+      wasOfflineRef.current = true;
+      toast({
+        variant: "destructive",
+        title: "أنت في وضع عدم الاتصال",
+        description: "يتم استخدام البيانات والصفحات المخزنة محلياً.",
+        duration: 5000,
+      });
+    } else if (wasOfflineRef.current) {
+      wasOfflineRef.current = false;
+      toast({
+        title: "تمت استعادة الاتصال بالسيرفر",
+        description: "عاد الاتصال بقاعدة البيانات وتمت مزامنة البيانات تلقائياً.",
+        duration: 4000,
+      });
     }
   }, [hasCheckedConnection, isOnline, toast]);
 

@@ -2676,12 +2676,7 @@ export default function PosPage() {
             )}>
                 <div 
                     className="w-full pos-cart-panel flex flex-col gap-4 md:overflow-hidden" 
-                    style={{ 
-                        '--cart-width': `${cartWidth}%`,
-                        flex: `0 0 calc(${cartWidth}% - 0.5rem)`,
-                        maxWidth: `calc(${cartWidth}% - 0.5rem)`,
-                        width: `calc(${cartWidth}% - 0.5rem)`
-                    } as React.CSSProperties}
+                    style={{ '--cart-width': `${cartWidth}%` } as React.CSSProperties}
                 >
                     <Card className="flex-1 flex flex-col md:overflow-hidden">
                         <CardHeader className="shrink-0 p-3 flex-col gap-2">
@@ -2860,13 +2855,8 @@ export default function PosPage() {
                 </div>
                 
                 <div 
-                    className={cn("w-full pos-items-panel flex flex-col md:overflow-hidden gap-3", paymentPosition === 'top' ? 'flex-col-reverse' : '')} 
-                    style={{ 
-                        '--items-width': `${itemsWidth}%`,
-                        flex: `0 0 calc(${itemsWidth}% - 0.5rem)`,
-                        maxWidth: `calc(${itemsWidth}% - 0.5rem)`,
-                        width: `calc(${itemsWidth}% - 0.5rem)`
-                    } as React.CSSProperties}
+                    className={cn("w-full flex-1 pos-items-panel flex flex-col md:overflow-hidden gap-3", paymentPosition === 'top' ? 'md:flex-col-reverse' : '')} 
+                    style={{ '--items-width': `${itemsWidth}%` } as React.CSSProperties}
                 >
                     <div className="shrink-0 flex items-center gap-2">
                         <Button variant="ghost" size="icon" className="h-12 w-12 shrink-0 hidden md:flex" onClick={() => router.push('/')}>
