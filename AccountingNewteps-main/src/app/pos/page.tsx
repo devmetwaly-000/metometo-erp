@@ -1805,18 +1805,26 @@ export default function PosPage() {
                 }
             }, 75);
         } else if (settingsToUse === 'ip' && addressToUse) {
-             const controller = new AbortController();
-             const timeoutId = setTimeout(() => controller.abort(), 5000);
             try {
-                await fetch(`http://${addressToUse}`, { mode: 'no-cors', signal: controller.signal });
-                toast({ title: 'تم إرسال الطباعة', description: `تم إرسال الطلب إلى الطابعة ${addressToUse}` });
+                const res = await fetch('/api/print', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        printer: addressToUse,
+                        printerType: 'ip',
+                        content: {
+                            title: companySettings.companyName || 'إيصال مبيعات',
+                            lines: [{ left: 'تم إصدار الإيصال', right: new Date().toLocaleTimeString('ar-EG') }],
+                            footer: 'شكراً لزيارتكم'
+                        }
+                    })
+                });
+                const data = await res.json();
+                if (!res.ok || data?.ok === false) throw new Error(data?.error || 'فشل الاتصال بطابعة الشبكة');
+                toast({ title: 'تم إرسال الطباعة', description: `تم الإرسال إلى الطابعة ${addressToUse}` });
             } catch (e: any) {
-                if (e.name === 'AbortError') {
-                    toast({ variant: 'destructive', title: 'فشل الطباعة', description: 'انتهت مهلة الاتصال بالطابعة.' });
-                } else {
-                    toast({ variant: 'destructive', title: 'فشل الطباعة', description: 'تعذر الوصول إلى طابعة الشبكة.' });
-                }
-            } finally { clearTimeout(timeoutId); }
+                toast({ variant: 'destructive', title: 'فشل الطباعة عبر IP', description: e?.message || 'تعذر الوصول إلى طابعة الشبكة.' });
+            }
         }
     }, [settings, warehouseForSession, toast]);
     
@@ -1833,7 +1841,7 @@ export default function PosPage() {
         const posPrinterType = terminalForSession?.posPrinterType ?? printerSettings.posPrinterType;
         const posPrinterAddress = terminalForSession?.posPrinterAddress ?? printerSettings.posPrinterAddress;
 
-        if (posPrinterType === 'system' && posPrinterAddress) {
+        if ((posPrinterType === 'system' || posPrinterType === 'ip') && posPrinterAddress) {
             const lines = saleData.items.map((item: PosItem) => ({
                 left: `${item.qty} × ${item.name}`,
                 right: (item.total).toFixed(roundingPrecision)
@@ -1851,23 +1859,29 @@ export default function PosPage() {
                 const res = await fetch('/api/print', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ printer: posPrinterAddress, content: { title, lines, footer: `رقم: ${saleData.invoiceNumber || ''}` } })
+                    body: JSON.stringify({
+                        printer: posPrinterAddress,
+                        printerType: posPrinterType,
+                        content: { title, lines, footer: `رقم: ${saleData.invoiceNumber || ''}` }
+                    })
                 });
                 const data = await res.json();
-                if (!res.ok) throw new Error(data?.error || 'فشل إرسال أمر طباعة');
+                if (!res.ok || data?.ok === false) throw new Error(data?.error || 'فشل إرسال أمر طباعة');
                 toast({ title: 'تمت الطباعة بنجاح', description: `تمت الطباعة على ${posPrinterAddress}` });
             } catch (e: any) {
-                toast({ variant: 'destructive', title: 'خطأ الطباعة المباشرة', description: e?.message || 'تعذر الطباعة على طابعة النظام المحددة.' });
-                const posReceiptFallback = (
-                    <PosReceipt
-                        invoice={saleData}
-                        company={companySettings}
-                        design={receiptDesign}
-                        warehouse={warehouseForSession}
-                        customer={saleData.customerId ? customers.find((c: any) => c.id === saleData.customerId) : null}
-                    />
-                );
-                await sendToPrinter(posReceiptFallback, 'pos');
+                toast({ variant: 'destructive', title: 'خطأ الطباعة المباشرة', description: e?.message || 'تعذر الطباعة على الطابعة المحددة.' });
+                if (posPrinterType === 'system') {
+                    const posReceiptFallback = (
+                        <PosReceipt
+                            invoice={saleData}
+                            company={companySettings}
+                            design={receiptDesign}
+                            warehouse={warehouseForSession}
+                            customer={saleData.customerId ? customers.find((c: any) => c.id === saleData.customerId) : null}
+                        />
+                    );
+                    await sendToPrinter(posReceiptFallback, 'pos');
+                }
             }
         } else {
             const posReceiptComponent = (
@@ -1902,7 +1916,7 @@ export default function PosPage() {
                     const kitchenType = printer.type;
                     const kitchenAddress = printer.address;
                     
-                    if (kitchenType === 'system' && kitchenAddress) {
+                    if ((kitchenType === 'system' || kitchenType === 'ip') && kitchenAddress) {
                         const lines = kitchenItems.map((item: PosItem) => ({
                             left: `${item.qty} × ${item.name}`,
                             right: (item.total).toFixed(roundingPrecision)
@@ -1911,20 +1925,28 @@ export default function PosPage() {
                             const res = await fetch('/api/print', {
                                 method: 'POST',
                                 headers: { 'Content-Type': 'application/json' },
-                                body: JSON.stringify({ printer: kitchenAddress, content: { title: `طلب مطبخ - ${printer.name}`, lines, footer: '' } })
+                                body: JSON.stringify({
+                                    printer: kitchenAddress,
+                                    printerType: kitchenType,
+                                    content: { title: `طلب مطبخ - ${printer.name}`, lines, footer: `رقم: ${saleData.invoiceNumber || ''}` }
+                                })
                             });
                             const data = await res.json();
-                            if (!res.ok) throw new Error(data?.error || 'فشل إرسال أمر الطباعة للمطبخ');
+                            if (!res.ok || data?.ok === false) throw new Error(data?.error || 'فشل إرسال أمر الطباعة للمطبخ');
                         } catch (e: any) {
-                            const kitchenOrderComponent = (
-                                <KitchenReceipt 
-                                    invoice={{ ...saleData, items: kitchenItems }}
-                                    design={kitchenReceiptDesign}
-                                    customer={saleData.customerId ? customers.find((c: any) => c.id === saleData.customerId) : null}
-                                    printerName={printer.name}
-                                />
-                            );
-                            await sendToPrinter(kitchenOrderComponent, 'kitchen', { type: kitchenType, address: kitchenAddress });
+                            if (kitchenType === 'system') {
+                                const kitchenOrderComponent = (
+                                    <KitchenReceipt 
+                                        invoice={{ ...saleData, items: kitchenItems }}
+                                        design={kitchenReceiptDesign}
+                                        customer={saleData.customerId ? customers.find((c: any) => c.id === saleData.customerId) : null}
+                                        printerName={printer.name}
+                                    />
+                                );
+                                await sendToPrinter(kitchenOrderComponent, 'kitchen', { type: kitchenType, address: kitchenAddress });
+                            } else {
+                                toast({ variant: 'destructive', title: 'فشل طباعة المطبخ (IP)', description: e?.message || 'تعذر الوصول لطابعة المطبخ' });
+                            }
                         }
                     } else {
                         const kitchenOrderComponent = (

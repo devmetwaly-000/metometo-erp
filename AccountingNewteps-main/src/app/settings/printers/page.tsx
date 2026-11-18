@@ -150,17 +150,31 @@ const PrinterSelector = ({ type, address, onTypeChange, onAddressChange, onTest,
     }, [address]);
     
     const handleTestIpPrint = async (ipAddress: string) => {
-        if (!ipAddress) return toast({ variant: 'destructive', title: 'خطأ', description: 'الرجاء إدخال عنوان IP أولاً.' });
-        toast({ title: 'جارٍ إرسال الطباعة...', description: `يحاول الاتصال بـ ${ipAddress}` });
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 5000);
+        if (!ipAddress) return toast({ variant: 'destructive', title: 'خطأ', description: 'الرجاء إدخال عنوان IP أولاً (مثال: 192.168.1.100).' });
+        onAddressChange(ipAddress);
+        toast({ title: 'جارٍ إرسال الطباعة عبر الشبكة...', description: `يتصل بـ ${ipAddress} (منفذ 9100)` });
         try {
-            await fetch(`http://${ipAddress}`, { mode: 'no-cors', signal: controller.signal });
-            toast({ title: 'تم إرسال أمر الطباعة بنجاح' });
+            await printService.sendToPrinter(
+                ipAddress,
+                {
+                    title: 'Test Print / طباعة تجريبية',
+                    lines: [
+                        { left: 'Connection Type', right: 'Network IP (TCP 9100)' },
+                        { left: 'Printer Address', right: ipAddress },
+                        { left: 'Date', right: new Date().toLocaleString('ar-EG') }
+                    ],
+                    footer: 'MetoStore POS System'
+                },
+                { width: '80mm', printerType: 'ip' }
+            );
+            toast({ title: 'تمت الطباعة على طابعة الشبكة بنجاح ✅', description: `تم الإرسال إلى ${ipAddress}` });
         } catch (error: any) {
-             if (error.name === 'AbortError') toast({ variant: 'destructive', title: 'فشل الاتصال (مهلة)', description: 'انتهت مهلة الاتصال.' });
-             else toast({ variant: 'destructive', title: 'فشل الاتصال', description: 'تعذر الوصول إلى الطابعة.' });
-        } finally { clearTimeout(timeoutId); }
+            toast({
+                variant: 'destructive',
+                title: 'فشل الطباعة عبر IP',
+                description: error?.message || 'تعذر الوصول إلى طابعة الشبكة. تأكد من الـ IP والمنفذ (9100).'
+            });
+        }
     };
 
     const handleTestSystemPrint = async (printerName: string) => {
@@ -223,7 +237,7 @@ const PrinterSelector = ({ type, address, onTypeChange, onAddressChange, onTest,
                     </Select>
                 ) : type === 'ip' && allowIp ? (
                     <div className="flex gap-2">
-                        <Input value={localAddress} onChange={e => setLocalAddress(e.target.value)} onBlur={() => onAddressChange(localAddress)} placeholder="e.g., 192.168.1.100" />
+                        <Input dir="ltr" value={localAddress} onChange={e => setLocalAddress(e.target.value)} onBlur={() => onAddressChange(localAddress)} placeholder="192.168.1.100 أو 192.168.1.100:9100" />
                         <Button variant="outline" size="icon" onClick={() => handleTestIpPrint(localAddress)} title="طباعة تجريبية"><Printer className="h-4 w-4" /></Button>
                     </div>
                 ) : type === 'system' ? (
