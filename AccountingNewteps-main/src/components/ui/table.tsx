@@ -1,9 +1,11 @@
+"use client";
 
 // استيراد React للسماح باستخدام JSX
 import * as React from "react"
 
 // استيراد دالة cn للمساعدة في دمج أسماء الفئات (classes) بشكل شرطي
 import { cn } from "@/lib/utils"
+import { useIsMobile } from "@/hooks/use-mobile"
 
 // تعريف مكون الجدول الرئيسي (<table>)
 const Table = React.forwardRef<
@@ -27,17 +29,54 @@ const TableHeader = React.forwardRef<
 ))
 TableHeader.displayName = "TableHeader"
 
-// تعريف مكون جسم الجدول (<tbody>)
+// تعريف مكون جسم الجدول (<tbody>) مع دعم التحميل التلقائي بالسحب لأسفل (Infinite Scroll) في وضع الموبايل
 const TableBody = React.forwardRef<
   HTMLTableSectionElement,
   React.HTMLAttributes<HTMLTableSectionElement>
->(({ className, ...props }, ref) => (
-  <tbody
-    ref={ref}
-    className={cn("[&_tr:last-child]:border-0", className)}
-    {...props}
-  />
-))
+>(({ className, children, ...props }, ref) => {
+  const isMobile = useIsMobile()
+  const [mobileLimit, setMobileLimit] = React.useState(50)
+  const sentinelRef = React.useRef<HTMLTableRowElement | null>(null)
+
+  const childArray = React.Children.toArray(children)
+  const shouldChunkOnMobile = isMobile && childArray.length > 50
+
+  React.useEffect(() => {
+    if (!shouldChunkOnMobile || mobileLimit >= childArray.length) return
+    const node = sentinelRef.current
+    if (!node) return
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0]?.isIntersecting) {
+          setMobileLimit((prev) => Math.min(childArray.length, prev + 50))
+        }
+      },
+      { rootMargin: "200px" }
+    )
+    observer.observe(node)
+    return () => observer.disconnect()
+  }, [shouldChunkOnMobile, mobileLimit, childArray.length])
+
+  const renderedChildren = shouldChunkOnMobile ? childArray.slice(0, mobileLimit) : children
+
+  return (
+    <tbody
+      ref={ref}
+      className={cn("[&_tr:last-child]:border-0", className)}
+      {...props}
+    >
+      {renderedChildren}
+      {shouldChunkOnMobile && mobileLimit < childArray.length && (
+        <tr ref={sentinelRef} className="border-0">
+          <td colSpan={99} className="py-3 text-center text-xs text-muted-foreground">
+            جاري تحميل المزيد عند السحب لأسفل ({mobileLimit} / {childArray.length})...
+          </td>
+        </tr>
+      )}
+    </tbody>
+  )
+})
 TableBody.displayName = "TableBody"
 
 // تعريف مكون تذييل الجدول (<tfoot>)
