@@ -1,10 +1,9 @@
-
 "use client";
 
 import React, { useState, useEffect } from 'react';
 import { Loader2, LogIn } from 'lucide-react';
 import { useAuth } from '@/contexts/auth-context';
-import { Card, CardHeader, CardTitle, CardContent, CardFooter } from '@/components/ui/card';
+import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter } from '@/components/ui/card';
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
@@ -20,7 +19,6 @@ export const LoginForm = () => {
     const router = useRouter();
 
     // Aggressive Cleanup for Pointer Events and Scroll
-    // This ensures that even if a modal was open during logout, the body is unlocked.
     useEffect(() => {
         const cleanup = () => {
             if (typeof document !== 'undefined') {
@@ -38,9 +36,7 @@ export const LoginForm = () => {
         setIsLoading(true);
         try {
             await signIn(loginName, password);
-            // On success, the AuthProvider's useEffect will handle the user state update
-            // and the main layout will render.
-             router.push('/');
+            router.push('/');
         } catch (err: any) {
              toast({
                 variant: 'destructive',
@@ -52,10 +48,22 @@ export const LoginForm = () => {
     };
 
     return (
-        <div className="flex items-center justify-center min-h-screen bg-background p-4">
-            <Card className="w-full max-w-sm">
-                <CardHeader>
-                    <CardTitle className="text-2xl">تسجيل الدخول للنظام</CardTitle>
+        <div className="flex flex-col items-center justify-center min-h-screen bg-background p-4">
+            <Card className="w-full max-w-sm shadow-xl border-border/60">
+                <CardHeader className="items-center text-center space-y-3 pb-4">
+                    <div className="h-20 w-20 rounded-2xl overflow-hidden shadow-lg border border-primary/20 bg-slate-950 p-1">
+                        <img
+                            src="/logo.svg"
+                            alt="شعار النظام"
+                            className="h-full w-full object-contain"
+                        />
+                    </div>
+                    <div className="space-y-1">
+                        <CardTitle className="text-2xl font-bold">تسجيل الدخول للنظام</CardTitle>
+                        <CardDescription className="text-sm font-bold text-amber-500 tracking-wide">
+                            Ahmed Metwaly
+                        </CardDescription>
+                    </div>
                 </CardHeader>
                 <form onSubmit={handleSubmit}>
                     <CardContent className="grid gap-4">
@@ -69,7 +77,7 @@ export const LoginForm = () => {
                         </div>
                         {error && <p className="text-destructive text-sm">{error}</p>}
                     </CardContent>
-                    <CardFooter>
+                    <CardFooter className="flex flex-col gap-3">
                         <Button 
                             type="submit" 
                             className="w-full bg-yellow-500 hover:bg-yellow-600 text-black font-bold" 
@@ -78,6 +86,9 @@ export const LoginForm = () => {
                             {isLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <LogIn className="mr-2 h-4 w-4" />}
                             تسجيل الدخول
                         </Button>
+                        <p className="text-[11px] text-muted-foreground text-center">
+                            نظام إدارة الفروع والمخازن والمحاسبة — <strong className="text-foreground">Ahmed Metwaly</strong>
+                        </p>
                     </CardFooter>
                 </form>
             </Card>

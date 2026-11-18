@@ -132,9 +132,8 @@ const Logo = () => {
   const companyName = settings?.main?.general?.companyName || "Meto";
 
   return (
-    <div className="flex items-center gap-1.5 sm:gap-2 min-w-0 max-w-full">
-        <Scale className="h-4 w-4 sm:h-5 sm:w-5 text-green-500 shrink-0"/>
-        <Laptop className="h-4 w-4 sm:h-5 sm:w-5 text-green-500 shrink-0 hidden sm:block"/>
+    <div className="flex items-center gap-2 min-w-0 max-w-full">
+        <img src="/logo.svg" alt="Logo" className="h-7 w-7 sm:h-8 sm:w-8 rounded-lg shrink-0 object-contain" />
         <div className="flex flex-col min-w-0">
             <h1 className="text-sm sm:text-base font-bold text-primary leading-none truncate">{companyName}</h1>
             {!isOnline && <span className="text-[9px] sm:text-[10px] text-destructive font-semibold truncate">وضع الأوفلاين</span>}
