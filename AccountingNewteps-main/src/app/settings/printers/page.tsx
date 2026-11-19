@@ -183,6 +183,12 @@ const PrinterSelector = ({ type, address, onTypeChange, onAddressChange, onTest,
             return;
         }
         if (!printerName) return toast({ variant: 'destructive', title: 'خطأ', description: 'الرجاء اختيار طابعة أولاً.' });
+
+        const clean = printerName.trim().replace(/^https?:\/\//i, '');
+        if (/^(\d{1,3}(?:\.\d{1,3}){3})(?::(\d{1,5}))?$/.test(clean)) {
+            return handleTestIpPrint(clean);
+        }
+
         toast({ title: 'جارٍ إرسال الطباعة...', description: `يتم إرسال أمر طباعة تجريبي إلى ${printerName}` });
         try {
             await printService.sendToPrinter(printerName, {
