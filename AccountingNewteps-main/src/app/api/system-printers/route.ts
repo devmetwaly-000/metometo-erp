@@ -16,32 +16,84 @@ interface SystemPrinterItem {
 }
 
 async function getWindowsPrintersViaPowerShell(): Promise<SystemPrinterItem[]> {
+  const results: SystemPrinterItem[] = [];
+  const seenNames = new Set<string>();
+
+  const addPrinter = (name: string, driverName?: string, portName?: string) => {
+    const clean = name.trim();
+    if (!clean || seenNames.has(clean)) return;
+    seenNames.add(clean);
+    results.push({
+      deviceId: clean,
+      name: clean,
+      driverName: driverName ? String(driverName) : undefined,
+      portName: portName ? String(portName) : undefined,
+    });
+  };
+
+  // Method A: Get-Printer
   try {
     const { stdout } = await execFileAsync(
       'powershell.exe',
       [
         '-NoProfile',
         '-NonInteractive',
+        '-ExecutionPolicy',
+        'Bypass',
         '-Command',
         '[Console]::OutputEncoding = [System.Text.Encoding]::UTF8; Get-Printer | Select-Object Name, DriverName, PortName | ConvertTo-Json -Compress',
       ],
       { timeout: 6000, windowsHide: true }
     );
     const raw = stdout.trim();
-    if (!raw) return [];
-    const parsed = JSON.parse(raw);
-    const list = Array.isArray(parsed) ? parsed : [parsed];
-    return list
-      .filter((p: any) => p && p.Name)
-      .map((p: any) => ({
-        deviceId: String(p.Name),
-        name: String(p.Name),
-        driverName: p.DriverName ? String(p.DriverName) : undefined,
-        portName: p.PortName ? String(p.PortName) : undefined,
-      }));
-  } catch {
-    return [];
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      const list = Array.isArray(parsed) ? parsed : [parsed];
+      list.forEach((p: any) => p?.Name && addPrinter(String(p.Name), p.DriverName, p.PortName));
+    }
+  } catch {}
+
+  // Method B: Win32_Printer (works on all Windows versions even without PrintManagement module)
+  if (results.length === 0) {
+    try {
+      const { stdout } = await execFileAsync(
+        'powershell.exe',
+        [
+          '-NoProfile',
+          '-NonInteractive',
+          '-ExecutionPolicy',
+          'Bypass',
+          '-Command',
+          '[Console]::OutputEncoding = [System.Text.Encoding]::UTF8; Get-CimInstance -ClassName Win32_Printer | Select-Object Name, DriverName, PortName | ConvertTo-Json -Compress',
+        ],
+        { timeout: 6000, windowsHide: true }
+      );
+      const raw = stdout.trim();
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        const list = Array.isArray(parsed) ? parsed : [parsed];
+        list.forEach((p: any) => p?.Name && addPrinter(String(p.Name), p.DriverName, p.PortName));
+      }
+    } catch {}
   }
+
+  // Method C: wmic fallback
+  if (results.length === 0) {
+    try {
+      const { stdout } = await execFileAsync(
+        'cmd.exe',
+        ['/c', 'wmic printer get name'],
+        { timeout: 6000, windowsHide: true }
+      );
+      stdout
+        .split(/\r?\n/)
+        .map((line) => line.trim())
+        .filter((line) => line && line.toLowerCase() !== 'name')
+        .forEach((name) => addPrinter(name));
+    } catch {}
+  }
+
+  return results;
 }
 
 export async function GET() {

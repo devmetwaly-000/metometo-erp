@@ -161,17 +161,31 @@ const TerminalForm = ({ terminal, onSave, onClose, warehouses, allTerminals, sys
   };
 
   const handleTestIpPrint = async (ipAddress: string) => {
-    if (!ipAddress) return toast({ variant: 'destructive', title: 'خطأ', description: 'الرجاء إدخل عنوان IP أولاً.' });
-    toast({ title: 'جارٍ إرسال الطباعة...', description: `يحاول الاتصال بـ ${ipAddress}` });
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 5000);
+    if (!ipAddress) return toast({ variant: 'destructive', title: 'خطأ', description: 'الرجاء إدخال عنوان IP أولاً.' });
+    toast({ title: 'جارٍ إرسال الطباعة...', description: `يتم إرسال اختبار TCP 9100 إلى ${ipAddress}` });
     try {
-        await fetch(`http://${ipAddress}`, { mode: 'no-cors', signal: controller.signal });
-        toast({ title: 'تم إرسال أمر الطباعة بنجاح' });
+        await printService.sendToPrinter(
+            ipAddress,
+            {
+                title: 'Test Print / طباعة تجريبية',
+                lines: [
+                    { left: 'IP Printer', right: ipAddress },
+                    { left: 'Terminal', right: formData.name || 'POS' },
+                    { left: 'Status', right: 'تم الاتصال بنجاح' },
+                    { left: 'Date', right: new Date().toLocaleString('ar-EG') },
+                ],
+                footer: 'NewCashier POS System',
+            },
+            { printerType: 'ip', width: '80mm' }
+        );
+        toast({ title: 'تمت الطباعة بنجاح', description: `تم إرسال الاختبار إلى ${ipAddress}` });
     } catch (error: any) {
-         if (error.name === 'AbortError') toast({ variant: 'destructive', title: 'فشل الاتصال (مهلة)', description: 'انتهت مهلة الاتصال.' });
-         else toast({ variant: 'destructive', title: 'فشل الاتصال', description: 'تعذر الوصول إلى الطابعة.' });
-    } finally { clearTimeout(timeoutId); }
+        toast({
+            variant: 'destructive',
+            title: 'فشل الاتصال بالطابعة',
+            description: error?.message || 'تعذر الوصول إلى طابعة الشبكة على منفذ 9100.',
+        });
+    }
   };
 
 

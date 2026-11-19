@@ -167,17 +167,22 @@ function buildMssqlConfig(cfg: LocalDbConfig, targetDatabase?: string): sql.conf
 
 let localPool: sql.ConnectionPool | null = null;
 let connectingPromise: Promise<sql.ConnectionPool> | null = null;
+let schemaMigratedForKey: string | null = null;
 
 /**
  * إغلاق الاتصال الحالي لإجبار النظام على الاتصال بالسيرفر الجديد فوراً
  */
 export async function resetDbPool(): Promise<void> {
     connectingPromise = null;
-    if (localPool) {
+    const poolToClose = localPool;
+    localPool = null;
+    if (poolToClose) {
         try {
-            await localPool.close();
+            await Promise.race([
+                poolToClose.close().catch(() => {}),
+                new Promise(resolve => setTimeout(resolve, 1000)),
+            ]);
         } catch {}
-        localPool = null;
     }
 }
 
@@ -208,6 +213,7 @@ export async function saveLocalDbConfig(input: Partial<LocalDbConfig>): Promise<
     }
 
     fs.writeFileSync(CONFIG_FILE_PATH, JSON.stringify(updated, null, 2), 'utf8');
+    schemaMigratedForKey = null;
     await resetDbPool();
     return updated;
 }
@@ -350,36 +356,40 @@ export async function getDbPool(): Promise<sql.ConnectionPool> {
                 const pool = new sql.ConnectionPool(sqlConfig);
                 localPool = await pool.connect();
 
-                // Apply idempotent schema migrations on first DB connection
-                try {
-                    const tableCheck = await localPool.request().query(`
-                        SELECT COUNT(*) as cnt FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_TYPE = 'BASE TABLE' AND TABLE_NAME != 'sysdiagrams';
-                    `);
-                    const tablesCount = Number(tableCheck.recordset[0]?.cnt) || 0;
-                    console.log(`[Database Schema] Running compatibility migrations for [${sqlConfig.database}] on [${sqlConfig.server}:${sqlConfig.port}] (${tablesCount} existing tables)...`);
-                    const { createAndInitializeDatabase } = await import('./database-init');
-                    const initResult = await createAndInitializeDatabase({
-                        server: String(sqlConfig.server),
-                        port: Number(sqlConfig.port) || 1433,
-                        database: String(sqlConfig.database),
-                        user: String(sqlConfig.user),
-                        password: String(sqlConfig.password),
-                        branchCode: '900',
-                        branchName: 'الفرع الرأيسي',
-                        isCentral: false,
-                        skipDemoSeed: tablesCount > 0
-                    });
-                    if (!initResult.success) {
-                        throw new Error(initResult.error || initResult.message || 'فشلت ترقية بنية قاعدة البيانات');
+                const dbTargetKey = `${sqlConfig.server}:${sqlConfig.port}/${sqlConfig.database}`;
+                // Apply idempotent schema migrations once per target database per process so reconnects stay fast (< 500ms)
+                if (schemaMigratedForKey !== dbTargetKey) {
+                    try {
+                        const tableCheck = await localPool.request().query(`
+                            SELECT COUNT(*) as cnt FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_TYPE = 'BASE TABLE' AND TABLE_NAME != 'sysdiagrams';
+                        `);
+                        const tablesCount = Number(tableCheck.recordset[0]?.cnt) || 0;
+                        console.log(`[Database Schema] Running compatibility migrations for [${sqlConfig.database}] on [${sqlConfig.server}:${sqlConfig.port}] (${tablesCount} existing tables)...`);
+                        const { createAndInitializeDatabase } = await import('./database-init');
+                        const initResult = await createAndInitializeDatabase({
+                            server: String(sqlConfig.server),
+                            port: Number(sqlConfig.port) || 1433,
+                            database: String(sqlConfig.database),
+                            user: String(sqlConfig.user),
+                            password: String(sqlConfig.password),
+                            branchCode: '900',
+                            branchName: 'الفرع الرأيسي',
+                            isCentral: false,
+                            skipDemoSeed: tablesCount > 0
+                        });
+                        if (!initResult.success) {
+                            throw new Error(initResult.error || initResult.message || 'فشلت ترقية بنية قاعدة البيانات');
+                        }
+                        schemaMigratedForKey = dbTargetKey;
+                        console.log(`[Database Schema] ${initResult.message}`);
+                    } catch (tcErr: any) {
+                        console.error('[Database Schema] Compatibility migration failed:', tcErr.message);
+                        if (localPool) {
+                            try { await localPool.close(); } catch {}
+                        }
+                        localPool = null;
+                        throw tcErr;
                     }
-                    console.log(`[Database Schema] ${initResult.message}`);
-                } catch (tcErr: any) {
-                    console.error('[Database Schema] Compatibility migration failed:', tcErr.message);
-                    if (localPool) {
-                        try { await localPool.close(); } catch {}
-                    }
-                    localPool = null;
-                    throw tcErr;
                 }
 
                 return localPool;
