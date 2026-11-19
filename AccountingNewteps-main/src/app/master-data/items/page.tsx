@@ -2167,31 +2167,80 @@ export default function ItemsPage() {
     const handleCreateDemoItems = async () => {
         if (hasActiveItems || isCreatingDemoItems || !can("add", moduleName)) return;
         setIsCreatingDemoItems(true);
-        const demoItems: Array<Omit<Item, 'id' | 'code'>> = [
-            { name: 'تجريبي - خامة 1', baseUnit: 'kilo', itemType: 'raw_material', cost: 10, price: 0, reorderPoint: 0 },
-            { name: 'تجريبي - خامة 2', baseUnit: 'kilo', itemType: 'raw_material', cost: 15, price: 0, reorderPoint: 0 },
-            { name: 'تجريبي - منتج تصنيع داخلي 1', baseUnit: 'piece', itemType: 'manufactured', cost: 0, price: 0, reorderPoint: 0 },
-            { name: 'تجريبي - منتج تصنيع داخلي 2', baseUnit: 'piece', itemType: 'manufactured', cost: 0, price: 0, reorderPoint: 0 },
-            { name: 'تجريبي - منتج عادي 1', baseUnit: 'piece', itemType: 'standard', cost: 0, price: 0, reorderPoint: 0 },
-            { name: 'تجريبي - منتج عادي 2', baseUnit: 'piece', itemType: 'standard', cost: 0, price: 0, reorderPoint: 0 },
-        ];
+
+        const computeEan13CheckDigit = (base12: string) => {
+            let sum = 0;
+            for (let i = 0; i < 12; i++) {
+                const digit = parseInt(base12[i], 10) || 0;
+                sum += i % 2 === 0 ? digit : digit * 3;
+            }
+            return String((10 - (sum % 10)) % 10);
+        };
+
+        const ensureSection = async (name: string, code: string): Promise<string> => {
+            const existing = (itemSections || []).find((s: any) => s.name?.trim() === name);
+            if (existing?.id) return existing.id;
+            const createdId = await dbAction('itemSections', 'add', { name, code });
+            if (!createdId) throw new Error(`تعذر إنشاء الفئة: ${name}`);
+            return String(createdId);
+        };
+
+        const ensureCategory = async (name: string, sectionId: string, showOnPos: boolean): Promise<string> => {
+            const existing = (itemCategories || []).find((c: any) => c.name?.trim() === name && c.sectionId === sectionId);
+            if (existing?.id) return existing.id;
+            const createdId = await dbAction('itemCategories', 'add', { name, sectionId, showOnPos });
+            if (!createdId) throw new Error(`تعذر إنشاء القسم: ${name}`);
+            return String(createdId);
+        };
 
         try {
+            // 1. إنشاء شجرة الأصناف (الفئة مستوى 1 + القسم مستوى 2)
+            const rawSectionId = await ensureSection('تجريبي - خامات التصنيع', 'DEMO-SEC-1');
+            const rawCategoryId = await ensureCategory('قسم المواد الخام', rawSectionId, false);
+
+            const readySectionId = await ensureSection('تجريبي - منتجات جاهزة ومصنعة', 'DEMO-SEC-2');
+            const mfgCategoryId = await ensureCategory('قسم التصنيع الداخلي', readySectionId, true);
+            const stdCategoryId = await ensureCategory('قسم المنتجات العادية', readySectionId, true);
+
+            const scaleSectionId = await ensureSection('تجريبي - أصناف موزونة', 'DEMO-SEC-3');
+            const scaleCategoryId = await ensureCategory('قسم الميزان والطازج', scaleSectionId, true);
+
+            // 2. قائمة الأصناف التجريبية (شاملة الأسعار والتكاليف والأصناف الموزونة)
+            const demoItems: Array<Omit<Item, 'id' | 'code'>> = [
+                { name: 'تجريبي - خامة 1', baseUnit: 'kilo', itemType: 'raw_material', cost: 25, price: 40, reorderPoint: 10, sectionId: rawSectionId, categoryId: rawCategoryId },
+                { name: 'تجريبي - خامة 2', baseUnit: 'kilo', itemType: 'raw_material', cost: 60, price: 90, reorderPoint: 5, sectionId: rawSectionId, categoryId: rawCategoryId },
+                { name: 'تجريبي - منتج تصنيع داخلي 1', baseUnit: 'piece', itemType: 'manufactured', barcodeType: 'code128', cost: 55, price: 95, reorderPoint: 5, sectionId: readySectionId, categoryId: mfgCategoryId },
+                { name: 'تجريبي - منتج تصنيع داخلي 2', baseUnit: 'piece', itemType: 'manufactured', barcodeType: 'code128', cost: 80, price: 135, reorderPoint: 5, sectionId: readySectionId, categoryId: mfgCategoryId },
+                { name: 'تجريبي - منتج عادي 1', baseUnit: 'piece', itemType: 'standard', barcodeType: 'code128', cost: 30, price: 50, reorderPoint: 10, sectionId: readySectionId, categoryId: stdCategoryId },
+                { name: 'تجريبي - منتج عادي 2', baseUnit: 'piece', itemType: 'standard', barcodeType: 'code128', cost: 45, price: 75, reorderPoint: 10, sectionId: readySectionId, categoryId: stdCategoryId },
+                { name: 'تجريبي - صنف موزون 1', baseUnit: 'kilo', itemType: 'standard', barcodeType: 'ean13_scale', cost: 180, price: 240, reorderPoint: 5, sectionId: scaleSectionId, categoryId: scaleCategoryId },
+                { name: 'تجريبي - صنف موزون 2', baseUnit: 'kilo', itemType: 'standard', barcodeType: 'ean13_scale', cost: 260, price: 340, reorderPoint: 5, sectionId: scaleSectionId, categoryId: scaleCategoryId },
+            ];
+
+            const scalePrefix = String(settings?.main?.financial?.scaleBarcodePrefix || '21').trim() || '21';
+            const stdPrefix = String(settings?.main?.financial?.standardItemBarcodePrefix || '25').trim() || '25';
+
             for (const item of demoItems) {
                 let code: string;
                 if (item.itemType === 'raw_material') {
                     const nextId = await getNextId('rawMaterialCode', 1000);
                     if (nextId == null) throw new Error('تعذر إنشاء كود الخامة');
                     code = `RAW-${nextId}`;
+                } else if (item.barcodeType === 'ean13_scale') {
+                    const nextId = await getNextId('scaleItemCode', 1);
+                    if (nextId == null) throw new Error('تعذر إنشاء كود الصنف الموزون');
+                    const itemPart = String(nextId).padStart(5, '0').slice(-5);
+                    const zeroPad = '0'.repeat(Math.max(0, 12 - scalePrefix.length - 5));
+                    const base12 = `${scalePrefix}${itemPart}${zeroPad}`.slice(0, 12);
+                    code = `${base12}${computeEan13CheckDigit(base12)}`;
                 } else {
-                    const prefix = settings?.main?.financial?.standardItemBarcodePrefix || '25';
                     const nextId = await getNextId('standardItemCode', 1);
                     if (nextId == null) throw new Error('تعذر إنشاء كود الصنف');
-                    code = `${prefix}${String(nextId).padStart(10, '0')}0`;
+                    code = `${stdPrefix}${String(nextId).padStart(10, '0')}0`;
                 }
                 await dbAction('items', 'add', { ...item, code });
             }
-            toast({ title: 'تم إنشاء الأصناف التجريبية', description: 'أُضيف صنفان خامات، وصنفان للتصنيع الداخلي، وصنفان عاديان.' });
+            toast({ title: 'تم إنشاء الأصناف التجريبية بنجاح ✅', description: 'تم إنشاء شجرة التصنيفات (فئات وأقسام) و8 أصناف بالأسعار والتكاليف شاملة الأصناف الموزونة.' });
         } catch {
             toast({ variant: 'destructive', title: 'تعذر إكمال الإضافة', description: 'راجع قائمة الأصناف؛ قد يكون بعضها أُضيف قبل حدوث الخطأ.' });
         } finally {
@@ -2340,13 +2389,13 @@ export default function ItemsPage() {
           <Card className="border-dashed border-primary/40 bg-primary/5">
             <CardContent className="flex flex-col items-center gap-3 py-6 text-center">
               <CardTitle className="text-base">لا توجد أصناف فعّالة مسجلة</CardTitle>
-              <CardDescription>يمكنك إضافة مجموعة تجريبية من 6 أصناف للبدء، دون إنشاء أرصدة مخزنية.</CardDescription>
+              <CardDescription>يمكنك إضافة مجموعة تجريبية من 8 أصناف مع شجرة الفئات والأقسام والأسعار والتكاليف، دون إنشاء أرصدة مخزنية.</CardDescription>
               <Button onClick={handleCreateDemoItems} disabled={dataLoading || isCreatingDemoItems || hasActiveItems || !can("add", moduleName)} className="gap-2">
                 {isCreatingDemoItems ? <Loader2 className="h-4 w-4 animate-spin" /> : <PlusCircle className="h-4 w-4" />}
-                {dataLoading ? 'جارٍ تحميل الأصناف...' : isCreatingDemoItems ? 'جارٍ إنشاء الأصناف...' : 'إضافة 6 أصناف تجريبية'}
+                {dataLoading ? 'جارٍ تحميل الأصناف...' : isCreatingDemoItems ? 'جارٍ إنشاء الأصناف...' : 'إضافة 8 أصناف تجريبية'}
               </Button>
               {!dataLoading && !can("add", moduleName) && <p className="text-xs text-destructive">يلزم منحك صلاحية إضافة الأصناف لاستخدام هذا الزر.</p>}
-              <p className="text-xs text-muted-foreground">2 خامات · 2 تصنيع داخلي · 2 منتج عادي</p>
+              <p className="text-xs text-muted-foreground">2 خامات · 2 تصنيع داخلي · 2 منتج عادي · 2 أصناف موزونة (باركود ميزان) + شجرة فئة وقسم</p>
             </CardContent>
           </Card>
         )}

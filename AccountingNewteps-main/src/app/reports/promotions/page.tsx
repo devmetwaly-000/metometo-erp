@@ -10,13 +10,13 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { useData } from "@/contexts/data-provider";
 import { 
     Tag, Percent, ShoppingBag, TrendingUp, TrendingDown, AlertTriangle, 
     CheckCircle2, Sparkles, Filter, Printer, Download, Eye, Layers, 
     ArrowRightLeft, AlertCircle, Calendar, Store, Search, ExternalLink,
-    HelpCircle, ShieldAlert, BarChart3, Clock, DollarSign, Package, Check
+    HelpCircle, ShieldAlert, BarChart3, Clock, DollarSign, Package, Check, Loader2
 } from "lucide-react";
 import Link from 'next/link';
 import { cn } from "@/lib/utils";
