@@ -168,14 +168,67 @@ export default function CentralSyncSettingsPage() {
     const [authError, setAuthError] = useState<string | null>(null);
     const [showPassword, setShowPassword] = useState(false);
 
+    // Directions Tab Password Gate State (حماية اتجاهات المزامنة بكلمة مرور)
+    const [isDirectionsUnlocked, setIsDirectionsUnlocked] = useState(false);
+    const [directionsPassword, setDirectionsPassword] = useState('');
+    const [isVerifyingDirPass, setIsVerifyingDirPass] = useState(false);
+    const [dirAuthError, setDirAuthError] = useState<string | null>(null);
+    const [showDirPassword, setShowDirPassword] = useState(false);
+
     useEffect(() => {
         if (typeof window !== 'undefined') {
             const stored = sessionStorage.getItem('central_sync_authenticated');
             if (stored === 'true') {
                 setIsUnlocked(true);
             }
+            const dirStored = sessionStorage.getItem('sync_directions_authenticated');
+            if (dirStored === 'true') {
+                setIsDirectionsUnlocked(true);
+            }
         }
     }, []);
+
+    const handleVerifyDirectionsPassword = async (e?: React.FormEvent) => {
+        if (e) e.preventDefault();
+        if (!directionsPassword.trim()) {
+            setDirAuthError('يرجى إدخال كلمة المرور للمتابعة.');
+            return;
+        }
+        setIsVerifyingDirPass(true);
+        setDirAuthError(null);
+        try {
+            const res = await fetch('/api/sync/central', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ action: 'verify-password', password: directionsPassword.trim() })
+            });
+            const data = await res.json();
+            if (data.success) {
+                setIsDirectionsUnlocked(true);
+                sessionStorage.setItem('sync_directions_authenticated', 'true');
+                toast({
+                    title: 'تم التحقق بنجاح ✅',
+                    description: 'تم فتح لوحة التحكم في اتجاهات المزامنة.'
+                });
+            } else {
+                setDirAuthError(data.error || 'كلمة المرور غير صحيحة!');
+            }
+        } catch (err: any) {
+            setDirAuthError(err.message || 'خطأ في الاتصال بالخادم');
+        } finally {
+            setIsVerifyingDirPass(false);
+        }
+    };
+
+    const handleLockDirections = () => {
+        setIsDirectionsUnlocked(false);
+        setDirectionsPassword('');
+        sessionStorage.removeItem('sync_directions_authenticated');
+        toast({
+            title: 'تم قفل اتجاهات المزامنة 🔒',
+            description: 'تم قفل لوحة اتجاهات المزامنة بنجاح لحماية تدفق البيانات.'
+        });
+    };
 
     const handleVerifyAccessPassword = async (e?: React.FormEvent) => {
         if (e) e.preventDefault();
@@ -1124,6 +1177,11 @@ export default function CentralSyncSettingsPage() {
                         <TabsTrigger value="directions" className="gap-2 font-bold text-xs rounded-lg data-[state=active]:shadow-sm py-2 md:py-1.5">
                             <SlidersHorizontal className="h-4 w-4 text-teal-600" />
                             اتجاهات المزامنة 🎛️
+                            {!isDirectionsUnlocked && (
+                                <span title="محمية بكلمة مرور" className="inline-flex items-center">
+                                    <Lock className="h-3 w-3 text-amber-500 mr-0.5" />
+                                </span>
+                            )}
                             {dirStats.disabled > 0 && (
                                 <span className="mr-1 px-1.5 py-0.2 rounded-full text-[10px] bg-rose-600 text-white font-bold">
                                     {dirStats.disabled} معطل
@@ -1474,7 +1532,79 @@ export default function CentralSyncSettingsPage() {
                     {/* TAB 2: SYNC DIRECTIONS CONTROL PANEL (التحكم في اتجاهات المزامنة) */}
                     {/* ========================================================= */}
                     <TabsContent value="directions" className="space-y-5 mt-4">
-                        
+                        {!isDirectionsUnlocked ? (
+                            <div className="flex flex-col w-full items-center justify-center py-12 px-4">
+                                <Card className="w-full max-w-md border border-border shadow-xl bg-card text-card-foreground">
+                                    <CardHeader className="text-center pb-4">
+                                        <div className="mx-auto w-14 h-14 rounded-full bg-teal-500/10 flex items-center justify-center mb-3 text-teal-600 dark:text-teal-400">
+                                            <ShieldAlert className="w-7 h-7" />
+                                        </div>
+                                        <CardTitle className="text-xl font-bold flex items-center justify-center gap-2">
+                                            <span>لوحة اتجاهات المزامنة محمية</span>
+                                        </CardTitle>
+                                        <CardDescription className="text-xs text-muted-foreground mt-1 leading-relaxed">
+                                            تحديد اتجاهات المزامنة (رفع للإدارة / سحب للفرع / متبادل / معطل) يتحكم بمسار تدفق السجلات والوثائق. يرجى إدخال كلمة مرور الإدارة للمتابعة.
+                                        </CardDescription>
+                                    </CardHeader>
+                                    <CardContent>
+                                        <form onSubmit={handleVerifyDirectionsPassword} className="space-y-4">
+                                            <div className="space-y-2">
+                                                <Label className="text-xs font-semibold">كلمة مرور الإدارة / المسؤول</Label>
+                                                <div className="relative">
+                                                    <Input
+                                                        type={showDirPassword ? "text" : "password"}
+                                                        placeholder="أدخل كلمة المرور..."
+                                                        value={directionsPassword}
+                                                        onChange={(e) => {
+                                                            setDirectionsPassword(e.target.value);
+                                                            if (dirAuthError) setDirAuthError(null);
+                                                        }}
+                                                        autoFocus
+                                                        className="h-10 text-center font-mono tracking-widest text-base pl-10"
+                                                    />
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => setShowDirPassword(!showDirPassword)}
+                                                        className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground text-xs p-1"
+                                                        tabIndex={-1}
+                                                    >
+                                                        {showDirPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                                                    </button>
+                                                </div>
+                                                {dirAuthError && (
+                                                    <div className="flex items-center gap-1.5 text-xs text-rose-500 font-medium bg-rose-500/10 p-2.5 rounded-md border border-rose-500/20">
+                                                        <AlertCircle className="h-4 w-4 flex-shrink-0" />
+                                                        <span>{dirAuthError}</span>
+                                                    </div>
+                                                )}
+                                            </div>
+
+                                            <Button 
+                                                type="submit" 
+                                                disabled={isVerifyingDirPass}
+                                                className="w-full font-bold bg-teal-600 hover:bg-teal-700 text-white gap-2 shadow-sm"
+                                            >
+                                                {isVerifyingDirPass ? (
+                                                    <>
+                                                        <Loader2 className="w-4 h-4 animate-spin" />
+                                                        جاري التحقق...
+                                                    </>
+                                                ) : (
+                                                    <>
+                                                        <Key className="w-4 h-4" />
+                                                        تأكيد وفتح اتجاهات المزامنة
+                                                    </>
+                                                )}
+                                            </Button>
+                                        </form>
+                                    </CardContent>
+                                    <CardFooter className="pt-0 justify-center">
+                                        <p className="text-[11px] text-muted-foreground">مسموح لمديري النظام والمسؤولين فقط</p>
+                                    </CardFooter>
+                                </Card>
+                            </div>
+                        ) : (
+                            <>
                         {/* 1. Header Overview & Operational Concept Banner */}
                         <div className="rounded-xl border bg-card p-4 shadow-sm space-y-3">
                             <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
@@ -1488,6 +1618,16 @@ export default function CentralSyncSettingsPage() {
                                     </p>
                                 </div>
                                 <div className="flex items-center gap-2 flex-wrap">
+                                    <Button
+                                        variant="outline"
+                                        size="sm"
+                                        onClick={handleLockDirections}
+                                        className="h-8 text-xs font-semibold gap-1.5 border-border hover:bg-rose-500/10 hover:text-rose-600 hover:border-rose-500/30"
+                                        title="قفل لوحة الاتجاهات بكلمة مرور"
+                                    >
+                                        <Lock className="h-3.5 w-3.5 text-amber-500" />
+                                        قفل الاتجاهات
+                                    </Button>
                                     <Button
                                         variant="outline"
                                         size="sm"
@@ -1838,6 +1978,8 @@ export default function CentralSyncSettingsPage() {
                                 </Table>
                             </div>
                         </div>
+                        </>
+                        )}
                     </TabsContent>
                     <TabsContent value="queue" className="space-y-5 mt-4">
                         

@@ -808,7 +808,7 @@ async function ensureSyncTrackingMatrixTable(pool: sql.ConnectionPool) {
 /**
  * استخراج مصفوفة المزامنة الدقيقة لجميع الجداول وتحديث جدول dbo.SyncTrackingMatrix في قاعدة البيانات
  */
-export async function getTablesSyncMatrix(): Promise<TablesSyncMatrixResponse> {
+export async function getTablesSyncMatrix(options?: { skipCentral?: boolean; centralTimeoutMs?: number }): Promise<TablesSyncMatrixResponse> {
     const localPool = await getDbPool();
     const config = await getCentralConfig();
     const branchCode = config.currentBranchCode || '900';
@@ -890,56 +890,63 @@ export async function getTablesSyncMatrix(): Promise<TablesSyncMatrixResponse> {
         lastCentralModified: string | null;
     }>();
 
-    try {
-        centralPool = await connectToCentral(config);
-        await ensureSyncTrackingMatrixTable(centralPool);
-        
-        const tablesInCentralRes = await centralPool.request().query(`
-            SELECT TABLE_NAME FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_TYPE = 'BASE TABLE'
-        `);
-        const centralExistingTables = new Set(tablesInCentralRes.recordset.map(r => r.TABLE_NAME));
+    if (!options?.skipCentral) {
+        try {
+            const timeoutMs = options?.centralTimeoutMs || 3500;
+            const connectPromise = connectToCentral(config);
+            const timeoutPromise = new Promise<never>((_, reject) =>
+                setTimeout(() => reject(new Error('مهلة الاتصال بالسيرفر المركزي انتهت')), timeoutMs)
+            );
+            centralPool = await Promise.race([connectPromise, timeoutPromise]);
+            await ensureSyncTrackingMatrixTable(centralPool);
+            
+            const tablesInCentralRes = await centralPool.request().query(`
+                SELECT TABLE_NAME FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_TYPE = 'BASE TABLE'
+            `);
+            const centralExistingTables = new Set(tablesInCentralRes.recordset.map(r => r.TABLE_NAME));
 
-        const centralColumnsRes = await centralPool.request().query(`
-            SELECT TABLE_NAME AS TableName, COLUMN_NAME AS ColumnName
-            FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = 'dbo'
-        `);
-        const centralColumns = new Map<string, Set<string>>();
-        for (const row of centralColumnsRes.recordset) {
-            const columns = centralColumns.get(row.TableName) || new Set<string>();
-            columns.add(row.ColumnName);
-            centralColumns.set(row.TableName, columns);
-        }
-        const centralValidTables = localTableEntries.filter(t => centralExistingTables.has(t) && centralColumns.has(t));
-        if (centralValidTables.length > 0) {
-            const centralUnionQueries = centralValidTables.map(table => {
-                const columns = centralColumns.get(table)!;
-                const branchExpr = columns.has('BranchCode')
-                    ? `SUM(CASE WHEN [BranchCode] = '${branchCode.replace(/'/g, "''")}' THEN 1 ELSE 0 END)`
-                    : 'CAST(0 AS INT)';
-                const rowVersionExpr = columns.has('RowVersion') ? 'MAX(CAST([RowVersion] AS BIGINT))' : 'NULL';
-                const updatedExpr = columns.has('UpdatedAt') ? 'MAX([UpdatedAt])' : 'NULL';
-                return `SELECT '${table}' AS tableName, COUNT(*) AS centralTotalRows, ${branchExpr} AS centralBranchRows,
-                    ${rowVersionExpr} AS currentCentralRowVersion, ${updatedExpr} AS lastCentralModified FROM dbo.[${table}]`;
-            }).join(' UNION ALL ');
-
-            const centralRes = await centralPool.request().query(centralUnionQueries);
-            for (const row of centralRes.recordset) {
-                centralDataMap.set(row.tableName, {
-                    centralTotalRows: Number(row.centralTotalRows) || 0,
-                    centralBranchRows: Number(row.centralBranchRows) || 0,
-                    currentCentralRowVersion: row.currentCentralRowVersion ? String(row.currentCentralRowVersion) : null,
-                    lastCentralModified: row.lastCentralModified ? new Date(row.lastCentralModified).toISOString() : null
-                });
+            const centralColumnsRes = await centralPool.request().query(`
+                SELECT TABLE_NAME AS TableName, COLUMN_NAME AS ColumnName
+                FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = 'dbo'
+            `);
+            const centralColumns = new Map<string, Set<string>>();
+            for (const row of centralColumnsRes.recordset) {
+                const columns = centralColumns.get(row.TableName) || new Set<string>();
+                columns.add(row.ColumnName);
+                centralColumns.set(row.TableName, columns);
             }
-        }
+            const centralValidTables = localTableEntries.filter(t => centralExistingTables.has(t) && centralColumns.has(t));
+            if (centralValidTables.length > 0) {
+                const centralUnionQueries = centralValidTables.map(table => {
+                    const columns = centralColumns.get(table)!;
+                    const branchExpr = columns.has('BranchCode')
+                        ? `SUM(CASE WHEN [BranchCode] = '${branchCode.replace(/'/g, "''")}' THEN 1 ELSE 0 END)`
+                        : 'CAST(0 AS INT)';
+                    const rowVersionExpr = columns.has('RowVersion') ? 'MAX(CAST([RowVersion] AS BIGINT))' : 'NULL';
+                    const updatedExpr = columns.has('UpdatedAt') ? 'MAX([UpdatedAt])' : 'NULL';
+                    return `SELECT '${table}' AS tableName, COUNT(*) AS centralTotalRows, ${branchExpr} AS centralBranchRows,
+                        ${rowVersionExpr} AS currentCentralRowVersion, ${updatedExpr} AS lastCentralModified FROM dbo.[${table}]`;
+                }).join(' UNION ALL ');
 
-        centralConnected = true;
-        await centralPool.close();
-    } catch {
-        if (centralPool) {
-            try { await centralPool.close(); } catch {}
+                const centralRes = await centralPool.request().query(centralUnionQueries);
+                for (const row of centralRes.recordset) {
+                    centralDataMap.set(row.tableName, {
+                        centralTotalRows: Number(row.centralTotalRows) || 0,
+                        centralBranchRows: Number(row.centralBranchRows) || 0,
+                        currentCentralRowVersion: row.currentCentralRowVersion ? String(row.currentCentralRowVersion) : null,
+                        lastCentralModified: row.lastCentralModified ? new Date(row.lastCentralModified).toISOString() : null
+                    });
+                }
+            }
+
+            centralConnected = true;
+            await centralPool.close();
+        } catch {
+            if (centralPool) {
+                try { await centralPool.close(); } catch {}
+            }
+            centralConnected = false;
         }
-        centralConnected = false;
     }
 
     // 3. تركيب المصفوفة وتحديث جدول dbo.SyncTrackingMatrix في SQL

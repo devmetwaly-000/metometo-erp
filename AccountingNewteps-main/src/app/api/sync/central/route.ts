@@ -20,10 +20,10 @@ export async function GET() {
         const config = await getCentralConfig();
         const pool = await getDbPool();
 
-        // مصفوفة المزامنة الشاملة المعتمدة على التوقيت الزمني (Sync Matrix) — تقوم أيضاً بإنشاء الجداول الرقابية والمحاسبية إن لم تكن موجودة
+        // مصفوفة المزامنة الشاملة المعتمدة على التوقيت الزمني (Sync Matrix) — نقوم بجلب البيانات المحلية فوراً دون تعطيل الصفحة حتى تفتح الشاشة في أجزاء من الثانية
         let syncMatrix: Awaited<ReturnType<typeof getTablesSyncMatrix>> | null = null;
         try {
-            syncMatrix = await getTablesSyncMatrix();
+            syncMatrix = await getTablesSyncMatrix({ skipCentral: true });
         } catch (tableErr: any) {
             console.warn('Failed to get tables sync matrix:', tableErr.message);
         }
@@ -167,9 +167,9 @@ export async function POST(req: Request) {
             return NextResponse.json(syncResult);
         }
 
-        // 5. جلب وتحديث مصفوفة المزامنة اللحظية
+        // 5. جلب وتحديث مصفوفة المزامنة اللحظية مع الإدارة المركزية
         if (action === 'sync-matrix' || action === 'tables-comparison') {
-            const syncMatrix = await getTablesSyncMatrix();
+            const syncMatrix = await getTablesSyncMatrix({ skipCentral: false, centralTimeoutMs: 4000 });
             return NextResponse.json({ success: true, syncMatrix, tablesComparison: syncMatrix });
         }
 
