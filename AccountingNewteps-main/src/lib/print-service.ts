@@ -19,7 +19,7 @@ export const printService = {
      */
     async getSystemPrinters() {
         try {
-            const response = await fetch('/api/system-printers');
+            const response = await fetch('/api/system-printers', { cache: 'no-store' });
             if (!response.ok) throw new Error('Failed to fetch printers');
             const data = await response.json();
             return data.printers || [];
