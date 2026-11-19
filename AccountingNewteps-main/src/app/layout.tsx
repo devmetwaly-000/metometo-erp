@@ -26,42 +26,11 @@ const PWALifecycle = () => {
   const wasOfflineRef = useRef(false);
 
   useEffect(() => {
-    // Check if running in standalone mode (already installed)
-    const isStandalone = typeof window !== 'undefined' && (
-      window.matchMedia('(display-mode: standalone)').matches ||
-      (window.navigator as any).standalone === true
-    );
-
-    if (isStandalone) {
-      setShowInstallBanner(false);
-      return;
-    }
-
     const handler = (e: Event) => {
       e.preventDefault();
       setDeferredPrompt(e);
-      const dismissed = sessionStorage.getItem('pwa_install_dismissed');
-      if (!dismissed) {
-        setShowInstallBanner(true);
-      }
     };
     window.addEventListener('beforeinstallprompt', handler);
-
-    // Also on mobile devices, if beforeinstallprompt doesn't fire (e.g. iOS or LAN HTTP), show the banner anyway after 1.5s
-    const isMobile = typeof navigator !== 'undefined' && /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
-    if (isMobile) {
-      const dismissed = sessionStorage.getItem('pwa_install_dismissed');
-      if (!dismissed) {
-        const timer = setTimeout(() => {
-          setShowInstallBanner(true);
-        }, 1500);
-        return () => {
-          clearTimeout(timer);
-          window.removeEventListener('beforeinstallprompt', handler);
-        };
-      }
-    }
-
     return () => window.removeEventListener('beforeinstallprompt', handler);
   }, []);
 
@@ -166,41 +135,6 @@ const PWALifecycle = () => {
 
   return (
     <>
-      {showInstallBanner && (
-        <div className="fixed bottom-3 left-3 right-3 md:left-4 md:right-auto md:w-96 z-50 bg-primary text-primary-foreground p-3 rounded-xl shadow-2xl border border-white/20 flex items-center justify-between gap-3 animate-in slide-in-from-bottom-5">
-          <div className="flex items-center gap-2.5 min-w-0">
-            <div className="p-2 rounded-lg bg-white/15 shrink-0">
-              <Smartphone className="h-5 w-5" />
-            </div>
-            <div className="min-w-0">
-              <p className="text-xs font-bold truncate">تثبيت تطبيق MetoStore على جهازك</p>
-              <p className="text-[10px] opacity-90 truncate">سرعة أعلى، عمل أوفلاين، وجرد مباشر بالكاميرا</p>
-            </div>
-          </div>
-          <div className="flex items-center gap-1.5 shrink-0">
-            <button
-              type="button"
-              onClick={handleInstallClick}
-              className="px-3 py-1.5 rounded-lg bg-white text-primary font-bold text-xs flex items-center gap-1 shadow hover:bg-white/90 transition"
-            >
-              <Download className="h-3.5 w-3.5" />
-              تثبيت
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                sessionStorage.setItem('pwa_install_dismissed', '1');
-                setShowInstallBanner(false);
-              }}
-              className="p-1 rounded-md hover:bg-white/15 transition"
-              aria-label="إغلاق"
-            >
-              <X className="h-4 w-4" />
-            </button>
-          </div>
-        </div>
-      )}
-
       <Dialog open={showGuideModal} onOpenChange={setShowGuideModal}>
         <DialogContent className="sm:max-w-md text-right" dir="rtl">
           <DialogHeader>
