@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { getDbPool } from '@/lib/db';
+import { getDbPool, getLocalDbConfig } from '@/lib/db';
 import sql from 'mssql';
 import { getCentralConfig, connectToCentral } from '@/lib/central-sync';
 
@@ -137,7 +137,27 @@ async function queryPoolStats(pool: sql.ConnectionPool) {
 }
 
 /**
- * دالة التصفير والحذف الشامل على قاعدة بيانات محددة (سواء الفرع المحلي أو الإدارة المركزية)
+ * تعطيل أو إعادة تفعيل قيود المفاتيح الأجنبية بأسلوب T-SQL قياسي متوافق مع SQL Server المحلي و AWS RDS و Azure
+ */
+async function setForeignKeysCheck(targetPool: sql.ConnectionPool, enabled: boolean): Promise<void> {
+    try {
+        const stmt = enabled
+            ? `DECLARE @s NVARCHAR(MAX) = N'';
+               SELECT @s += N'ALTER TABLE ' + QUOTENAME(OBJECT_SCHEMA_NAME(parent_object_id)) + N'.' + QUOTENAME(OBJECT_NAME(parent_object_id)) + N' WITH NOCHECK CHECK CONSTRAINT ' + QUOTENAME(name) + N';'
+               FROM sys.foreign_keys WHERE is_disabled = 1;
+               IF LEN(@s) > 0 EXEC sp_executesql @s;`
+            : `DECLARE @s NVARCHAR(MAX) = N'';
+               SELECT @s += N'ALTER TABLE ' + QUOTENAME(OBJECT_SCHEMA_NAME(parent_object_id)) + N'.' + QUOTENAME(OBJECT_NAME(parent_object_id)) + N' NOCHECK CONSTRAINT ' + QUOTENAME(name) + N';'
+               FROM sys.foreign_keys WHERE is_disabled = 0;
+               IF LEN(@s) > 0 EXEC sp_executesql @s;`;
+        await targetPool.request().query(stmt);
+    } catch (e: any) {
+        console.warn(`Foreign key toggle (${enabled}) warning:`, e.message);
+    }
+}
+
+/**
+ * دالة التصفير والحذف الشامل على قاعدة بيانات محددة (سواء الفرع المحلي أو الكلاود AWS RDS أو الإدارة المركزية)
  */
 async function executeDatabaseResetOnPool(
     targetPool: sql.ConnectionPool,
@@ -145,20 +165,25 @@ async function executeDatabaseResetOnPool(
 ): Promise<{ tablesCleared: number }> {
     let tablesCleared = 0;
 
-    // تعطيل كافة القيود الأجنبية مؤقتاً لضمان الحذف السريع بدون تعارضات مفاتيح أجنبية
-    await targetPool.request().query(`EXEC sp_MSforeachtable "ALTER TABLE ? NOCHECK CONSTRAINT all";`);
+    // تعطيل كافة القيود الأجنبية مؤقتاً بأسلوب آمن متوافق مع الكلاود
+    await setForeignKeysCheck(targetPool, false);
 
     try {
-        // 1. حذف كافة الجداول الحركية والعمليات
-        for (const t of TRANSACTION_TABLES) {
-            try {
-                await targetPool.request().query(`
-                    IF OBJECT_ID('dbo.[${t}]', 'U') IS NOT NULL
-                        DELETE FROM dbo.[${t}];
-                `);
-                tablesCleared++;
-            } catch (e: any) {
-                console.warn(`Error clearing transaction table ${t}:`, e.message);
+        // 1. حذف كافة الجداول الحركية والعمليات في حزمة واحدة سريعة (لتفادي بطء الشبكة السحابية)
+        const txBatchSql = TRANSACTION_TABLES.map(t =>
+            `IF OBJECT_ID('dbo.[${t}]', 'U') IS NOT NULL DELETE FROM dbo.[${t}];`
+        ).join('\n');
+        try {
+            await targetPool.request().query(txBatchSql);
+            tablesCleared += TRANSACTION_TABLES.length;
+        } catch {
+            for (const t of TRANSACTION_TABLES) {
+                try {
+                    await targetPool.request().query(`IF OBJECT_ID('dbo.[${t}]', 'U') IS NOT NULL DELETE FROM dbo.[${t}];`);
+                    tablesCleared++;
+                } catch (e: any) {
+                    console.warn(`Error clearing transaction table ${t}:`, e.message);
+                }
             }
         }
 
@@ -218,16 +243,24 @@ async function executeDatabaseResetOnPool(
                 `);
             } catch {}
 
-            // مسح جميع الجداول الأساسية المحددة
-            for (const m of MASTER_CATALOG_TABLES) {
-                try {
-                    await targetPool.request().query(`
-                        IF OBJECT_ID('dbo.[${m}]', 'U') IS NOT NULL
-                            DELETE FROM dbo.[${m}];
-                    `);
-                    tablesCleared++;
-                } catch (e: any) {
-                    console.warn(`Error clearing master table ${m}:`, e.message);
+            // مسح جميع الجداول الأساسية المحددة في حزمة واحدة سريعة
+            const masterBatchSql = MASTER_CATALOG_TABLES.map(m =>
+                `IF OBJECT_ID('dbo.[${m}]', 'U') IS NOT NULL DELETE FROM dbo.[${m}];`
+            ).join('\n');
+            try {
+                await targetPool.request().query(masterBatchSql);
+                tablesCleared += MASTER_CATALOG_TABLES.length;
+            } catch {
+                for (const m of MASTER_CATALOG_TABLES) {
+                    try {
+                        await targetPool.request().query(`
+                            IF OBJECT_ID('dbo.[${m}]', 'U') IS NOT NULL
+                                DELETE FROM dbo.[${m}];
+                        `);
+                        tablesCleared++;
+                    } catch (e: any) {
+                        console.warn(`Error clearing master table ${m}:`, e.message);
+                    }
                 }
             }
 
@@ -337,8 +370,8 @@ async function executeDatabaseResetOnPool(
         } catch {}
 
     } finally {
-        // إعادة تفعيل كافة القيود الأجنبية
-        await targetPool.request().query(`EXEC sp_MSforeachtable "ALTER TABLE ? WITH CHECK CHECK CONSTRAINT all";`);
+        // إعادة تفعيل كافة القيود الأجنبية بأسلوب آمن
+        await setForeignKeysCheck(targetPool, true);
     }
 
     return { tablesCleared };
@@ -352,7 +385,7 @@ async function executeBranchPurgeOnPool(
     warehouseId: string,
     deleteBranchEntity: boolean
 ): Promise<Record<string, number>> {
-    await targetPool.request().query(`EXEC sp_MSforeachtable "ALTER TABLE ? NOCHECK CONSTRAINT all";`);
+    await setForeignKeysCheck(targetPool, false);
 
     const deleted: Record<string, number> = {};
     const branchTables: Array<{ table: string; col: string }> = [
@@ -480,9 +513,17 @@ export async function GET() {
             lastBackupAt = sRes.recordset[0]?.SettingValue || null;
         } catch {}
 
+        const localCfg = getLocalDbConfig();
+        const isCloudLocal =
+            localCfg.server.includes('.rds.amazonaws.com') ||
+            localCfg.server.includes('.database.windows.net') ||
+            Boolean(localCfg.encrypt);
+
         return NextResponse.json({
             success: true,
-            database: 'MultiBranchPOS_DB',
+            database: localCfg.database || 'MultiBranchPOS_DB',
+            localServer: `${localCfg.server}:${localCfg.port}`,
+            isCloudLocal,
             centralDatabase: config.centralDatabase || 'MultiBranchPOS_Central_DB',
             centralServer: `${config.centralServerIp}:${config.centralSqlPort}`,
             centralConnected,
@@ -580,7 +621,7 @@ export async function POST(req: Request) {
             const tablesObj = backupData.tables as Record<string, any[]>;
             const tableNames = Object.keys(tablesObj);
 
-            await pool.request().query(`EXEC sp_MSforeachtable "ALTER TABLE ? NOCHECK CONSTRAINT all";`);
+            await setForeignKeysCheck(pool, false);
 
             let restoredCount = 0;
             let totalRowsRestored = 0;
@@ -661,7 +702,7 @@ export async function POST(req: Request) {
                 } catch {}
 
             } finally {
-                await pool.request().query(`EXEC sp_MSforeachtable "ALTER TABLE ? WITH CHECK CHECK CONSTRAINT all";`);
+                await setForeignKeysCheck(pool, true);
             }
 
             return NextResponse.json({

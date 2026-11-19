@@ -41,6 +41,8 @@ interface DbStats {
 
 interface BackupInfo {
     database: string;
+    localServer?: string;
+    isCloudLocal?: boolean;
     centralDatabase?: string;
     centralServer?: string;
     centralConnected?: boolean;
@@ -458,9 +460,9 @@ export default function BackupPage() {
                                         <Database className="h-5 w-5" />
                                     </div>
                                     <div>
-                                        <div className="flex items-center gap-2">
+                                        <div className="flex items-center gap-2 flex-wrap">
                                             <h2 className="text-sm font-bold text-foreground">
-                                                قاعدة الفرع المحلي: {backupInfo?.database || 'MultiBranchPOS_DB'}
+                                                {backupInfo?.isCloudLocal ? 'قاعدة الفرع (الكلاود AWS / سحابي):' : 'قاعدة الفرع المحلي:'} {backupInfo?.database || 'MultiBranchPOS_DB'}
                                             </h2>
                                             <Badge variant="outline" className="text-[10px] bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border-emerald-500/30">
                                                 متصلة ✅
@@ -468,6 +470,11 @@ export default function BackupPage() {
                                         </div>
                                         <p className="text-[11px] text-muted-foreground">
                                             الفرع النشط: <strong className="text-foreground">{backupInfo?.branchName || 'الفرع الرئيسي'} ({backupInfo?.branchCode || '900'})</strong>
+                                            {backupInfo?.localServer && (
+                                                <span className="block font-mono text-[10px] text-muted-foreground/90 mt-0.5" dir="ltr">
+                                                    {backupInfo.localServer}
+                                                </span>
+                                            )}
                                         </p>
                                     </div>
                                 </div>
