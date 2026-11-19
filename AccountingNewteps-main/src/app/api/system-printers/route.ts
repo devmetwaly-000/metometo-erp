@@ -1,11 +1,11 @@
 import { NextResponse } from 'next/server';
-import { exec } from 'child_process';
+import { execFile } from 'child_process';
 import { promisify } from 'util';
 import { getPrinters } from 'pdf-to-printer';
 
 export const dynamic = 'force-dynamic';
 
-const execAsync = promisify(exec);
+const execFileAsync = promisify(execFile);
 
 interface SystemPrinterItem {
   deviceId: string;
@@ -17,9 +17,16 @@ interface SystemPrinterItem {
 
 async function getWindowsPrintersViaPowerShell(): Promise<SystemPrinterItem[]> {
   try {
-    const cmd =
-      'powershell -NoProfile -NonInteractive -Command "[Console]::OutputEncoding = [System.Text.Encoding]::UTF8; Get-Printer | Select-Object Name, DriverName, PortName | ConvertTo-Json -Compress"';
-    const { stdout } = await execAsync(cmd, { timeout: 6000, windowsHide: true });
+    const { stdout } = await execFileAsync(
+      'powershell.exe',
+      [
+        '-NoProfile',
+        '-NonInteractive',
+        '-Command',
+        '[Console]::OutputEncoding = [System.Text.Encoding]::UTF8; Get-Printer | Select-Object Name, DriverName, PortName | ConvertTo-Json -Compress',
+      ],
+      { timeout: 6000, windowsHide: true }
+    );
     const raw = stdout.trim();
     if (!raw) return [];
     const parsed = JSON.parse(raw);

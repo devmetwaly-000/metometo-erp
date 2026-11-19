@@ -248,26 +248,19 @@ const TerminalForm = ({ terminal, onSave, onClose, warehouses, allTerminals, sys
             </div>
         ) : (formData.posPrinterType || 'system') === 'system' ? (
             <div className="flex gap-2">
-                {systemPrinters.length > 0 ? (
-                    <Select value={formData.posPrinterAddress || ''} onValueChange={(v) => setFormData({ ...formData, posPrinterAddress: v })}>
-                        <SelectTrigger className="flex-1"><SelectValue placeholder="اختر طابعة النظام لهذه النقطة" /></SelectTrigger>
-                        <SelectContent>
-                            {formData.posPrinterAddress && !systemPrinters.some(p => p.name === formData.posPrinterAddress) && (
-                                <SelectItem value={formData.posPrinterAddress}>{formData.posPrinterAddress}</SelectItem>
-                            )}
-                            {systemPrinters.map((p) => (
-                                <SelectItem key={p.deviceId || p.name} value={p.name}>{p.name}</SelectItem>
-                            ))}
-                        </SelectContent>
-                    </Select>
-                ) : (
-                    <Input
-                        className="flex-1"
-                        value={formData.posPrinterAddress || ''}
-                        onChange={e => setFormData({ ...formData, posPrinterAddress: e.target.value })}
-                        placeholder="أدخل اسم طابعة النظام أو اضغط تحديث..."
-                    />
-                )}
+                <Select value={formData.posPrinterAddress || ''} onValueChange={(v) => setFormData({ ...formData, posPrinterAddress: v })}>
+                    <SelectTrigger className="flex-1"><SelectValue placeholder="اختر طابعة النظام لهذه النقطة" /></SelectTrigger>
+                    <SelectContent>
+                        {formData.posPrinterAddress && !systemPrinters.some(p => p.name === formData.posPrinterAddress) && (
+                            <SelectItem value={formData.posPrinterAddress}>{formData.posPrinterAddress}</SelectItem>
+                        )}
+                        {systemPrinters.length > 0 ? systemPrinters.map((p) => (
+                            <SelectItem key={p.deviceId || p.name} value={p.name}>{p.name}</SelectItem>
+                        )) : (
+                            <div className="p-2 text-sm text-muted-foreground">لا توجد طابعات نظام متاحة.</div>
+                        )}
+                    </SelectContent>
+                </Select>
                 <Button type="button" variant="outline" size="icon" onClick={handleRefresh} disabled={isRefreshingPrinters} title="تحديث قائمة طابعات النظام">
                     <RefreshCw className={`h-4 w-4 ${isRefreshingPrinters ? 'animate-spin' : ''}`} />
                 </Button>
@@ -314,26 +307,19 @@ const TerminalForm = ({ terminal, onSave, onClose, warehouses, allTerminals, sys
                     </div>
                 ) : (formData.kitchenPrinterType || 'system') === 'system' ? (
                     <div className="flex gap-2">
-                        {systemPrinters.length > 0 ? (
-                            <Select value={formData.kitchenPrinterAddress || ''} onValueChange={(v) => setFormData({ ...formData, kitchenPrinterAddress: v })}>
-                                <SelectTrigger className="flex-1"><SelectValue placeholder="اختر طابعة النظام للمطبخ" /></SelectTrigger>
-                                <SelectContent>
-                                    {formData.kitchenPrinterAddress && !systemPrinters.some(p => p.name === formData.kitchenPrinterAddress) && (
-                                        <SelectItem value={formData.kitchenPrinterAddress}>{formData.kitchenPrinterAddress}</SelectItem>
-                                    )}
-                                    {systemPrinters.map((p) => (
-                                        <SelectItem key={p.deviceId || p.name} value={p.name}>{p.name}</SelectItem>
-                                    ))}
-                                </SelectContent>
-                            </Select>
-                        ) : (
-                            <Input
-                                className="flex-1"
-                                value={formData.kitchenPrinterAddress || ''}
-                                onChange={e => setFormData({ ...formData, kitchenPrinterAddress: e.target.value })}
-                                placeholder="أدخل اسم طابعة المطبخ أو اضغط تحديث..."
-                            />
-                        )}
+                        <Select value={formData.kitchenPrinterAddress || ''} onValueChange={(v) => setFormData({ ...formData, kitchenPrinterAddress: v })}>
+                            <SelectTrigger className="flex-1"><SelectValue placeholder="اختر طابعة النظام للمطبخ" /></SelectTrigger>
+                            <SelectContent>
+                                {formData.kitchenPrinterAddress && !systemPrinters.some(p => p.name === formData.kitchenPrinterAddress) && (
+                                    <SelectItem value={formData.kitchenPrinterAddress}>{formData.kitchenPrinterAddress}</SelectItem>
+                                )}
+                                {systemPrinters.length > 0 ? systemPrinters.map((p) => (
+                                    <SelectItem key={p.deviceId || p.name} value={p.name}>{p.name}</SelectItem>
+                                )) : (
+                                    <div className="p-2 text-sm text-muted-foreground">لا توجد طابعات نظام متاحة.</div>
+                                )}
+                            </SelectContent>
+                        </Select>
                         <Button type="button" variant="outline" size="icon" onClick={handleRefresh} disabled={isRefreshingPrinters} title="تحديث قائمة طابعات النظام">
                             <RefreshCw className={`h-4 w-4 ${isRefreshingPrinters ? 'animate-spin' : ''}`} />
                         </Button>

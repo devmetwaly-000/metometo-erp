@@ -84,6 +84,7 @@ const nextConfig = {
   webpack: (config) => { config.parallelism = 1; config.resolve.alias = { ...config.resolve.alias, "@": path.resolve(process.cwd(), "src") }; return config; },
   eslint: { ignoreDuringBuilds: true },
   typescript: { ignoreBuildErrors: true },
+  serverExternalPackages: ['pdf-to-printer'],
   reactStrictMode: false,
   experimental: {
     cpus: 1,
