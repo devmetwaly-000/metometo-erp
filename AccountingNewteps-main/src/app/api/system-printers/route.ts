@@ -58,8 +58,8 @@ export async function GET() {
     console.warn('[system-printers] pdf-to-printer failed, falling back to PowerShell:', e);
   }
 
-  // Fallback / merge with Windows PowerShell Get-Printer (works on Windows 10/11 & bundled Next.js builds)
-  if (seen.size === 0 && process.platform === 'win32') {
+  // Merge with Windows PowerShell Get-Printer (works on Windows 10/11, network printers & bundled Next.js builds)
+  if (process.platform === 'win32') {
     const psPrinters = await getWindowsPrintersViaPowerShell();
     for (const p of psPrinters) {
       if (p.name && !seen.has(p.name)) {

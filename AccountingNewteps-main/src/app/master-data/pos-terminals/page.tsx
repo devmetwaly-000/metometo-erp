@@ -19,7 +19,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { MoreHorizontal, PlusCircle, Edit, Trash2, Loader2, Printer, Building2 } from "lucide-react";
+import { MoreHorizontal, PlusCircle, Edit, Trash2, Loader2, Printer, Building2, RefreshCw } from "lucide-react";
 import { useData } from "@/contexts/data-provider";
 import { useAuth } from "@/contexts/auth-context";
 import {
@@ -96,13 +96,29 @@ const normalizeTerminal = (t?: any): Partial<PosTerminal> => {
   };
 };
 
-const TerminalForm = ({ terminal, onSave, onClose, warehouses, allTerminals, systemPrinters }: { terminal?: PosTerminal; onSave: (data: Partial<PosTerminal>) => void; onClose: () => void; warehouses: Warehouse[], allTerminals: PosTerminal[], systemPrinters: Array<{ deviceId?: string, name: string }> }) => {
+const TerminalForm = ({ terminal, onSave, onClose, warehouses, allTerminals, systemPrinters, onRefreshPrinters }: { terminal?: PosTerminal; onSave: (data: Partial<PosTerminal>) => void; onClose: () => void; warehouses: Warehouse[], allTerminals: PosTerminal[], systemPrinters: Array<{ deviceId?: string, name: string }>, onRefreshPrinters?: () => Promise<void> }) => {
   const [formData, setFormData] = useState<Partial<PosTerminal>>(() => {
     const norm = normalizeTerminal(terminal);
     if (!norm.warehouseId && warehouses.length === 1) norm.warehouseId = warehouses[0].id;
     return norm;
   });
   const { toast } = useToast();
+  const [isRefreshingPrinters, setIsRefreshingPrinters] = useState(false);
+
+  const handleRefresh = async () => {
+    if (!onRefreshPrinters) return;
+    setIsRefreshingPrinters(true);
+    try {
+      await onRefreshPrinters();
+    } finally {
+      setIsRefreshingPrinters(false);
+    }
+  };
+
+  useEffect(() => {
+    void handleRefresh();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   useEffect(() => {
     if (terminal) {
@@ -232,17 +248,30 @@ const TerminalForm = ({ terminal, onSave, onClose, warehouses, allTerminals, sys
             </div>
         ) : (formData.posPrinterType || 'system') === 'system' ? (
             <div className="flex gap-2">
-                <Select value={formData.posPrinterAddress || ''} onValueChange={(v) => setFormData({ ...formData, posPrinterAddress: v })}>
-                    <SelectTrigger className="flex-1"><SelectValue placeholder="اختر طابعة النظام لهذه النقطة" /></SelectTrigger>
-                    <SelectContent>
-                        {systemPrinters.length > 0 ? systemPrinters.map((p) => (
-                            <SelectItem key={p.deviceId || p.name} value={p.name}>{p.name}</SelectItem>
-                        )) : (
-                            <div className="p-2 text-sm text-muted-foreground">لا توجد طابعات نظام متاحة.</div>
-                        )}
-                    </SelectContent>
-                </Select>
-                <Button variant="outline" size="icon" onClick={() => handleTestSystemPrint(formData.posPrinterAddress || '')} title="طباعة تجريبية">
+                {systemPrinters.length > 0 ? (
+                    <Select value={formData.posPrinterAddress || ''} onValueChange={(v) => setFormData({ ...formData, posPrinterAddress: v })}>
+                        <SelectTrigger className="flex-1"><SelectValue placeholder="اختر طابعة النظام لهذه النقطة" /></SelectTrigger>
+                        <SelectContent>
+                            {formData.posPrinterAddress && !systemPrinters.some(p => p.name === formData.posPrinterAddress) && (
+                                <SelectItem value={formData.posPrinterAddress}>{formData.posPrinterAddress}</SelectItem>
+                            )}
+                            {systemPrinters.map((p) => (
+                                <SelectItem key={p.deviceId || p.name} value={p.name}>{p.name}</SelectItem>
+                            ))}
+                        </SelectContent>
+                    </Select>
+                ) : (
+                    <Input
+                        className="flex-1"
+                        value={formData.posPrinterAddress || ''}
+                        onChange={e => setFormData({ ...formData, posPrinterAddress: e.target.value })}
+                        placeholder="أدخل اسم طابعة النظام أو اضغط تحديث..."
+                    />
+                )}
+                <Button type="button" variant="outline" size="icon" onClick={handleRefresh} disabled={isRefreshingPrinters} title="تحديث قائمة طابعات النظام">
+                    <RefreshCw className={`h-4 w-4 ${isRefreshingPrinters ? 'animate-spin' : ''}`} />
+                </Button>
+                <Button type="button" variant="outline" size="icon" onClick={() => handleTestSystemPrint(formData.posPrinterAddress || '')} title="طباعة تجريبية">
                     <Printer className="h-4 w-4" />
                 </Button>
             </div>
@@ -285,17 +314,30 @@ const TerminalForm = ({ terminal, onSave, onClose, warehouses, allTerminals, sys
                     </div>
                 ) : (formData.kitchenPrinterType || 'system') === 'system' ? (
                     <div className="flex gap-2">
-                        <Select value={formData.kitchenPrinterAddress || ''} onValueChange={(v) => setFormData({ ...formData, kitchenPrinterAddress: v })}>
-                            <SelectTrigger className="flex-1"><SelectValue placeholder="اختر طابعة النظام للمطبخ" /></SelectTrigger>
-                            <SelectContent>
-                                {systemPrinters.length > 0 ? systemPrinters.map((p) => (
-                                    <SelectItem key={p.deviceId || p.name} value={p.name}>{p.name}</SelectItem>
-                                )) : (
-                                    <div className="p-2 text-sm text-muted-foreground">لا توجد طابعات نظام متاحة.</div>
-                                )}
-                            </SelectContent>
-                        </Select>
-                        <Button variant="outline" size="icon" onClick={() => handleTestSystemPrint(formData.kitchenPrinterAddress || '')} title="طباعة تجريبية">
+                        {systemPrinters.length > 0 ? (
+                            <Select value={formData.kitchenPrinterAddress || ''} onValueChange={(v) => setFormData({ ...formData, kitchenPrinterAddress: v })}>
+                                <SelectTrigger className="flex-1"><SelectValue placeholder="اختر طابعة النظام للمطبخ" /></SelectTrigger>
+                                <SelectContent>
+                                    {formData.kitchenPrinterAddress && !systemPrinters.some(p => p.name === formData.kitchenPrinterAddress) && (
+                                        <SelectItem value={formData.kitchenPrinterAddress}>{formData.kitchenPrinterAddress}</SelectItem>
+                                    )}
+                                    {systemPrinters.map((p) => (
+                                        <SelectItem key={p.deviceId || p.name} value={p.name}>{p.name}</SelectItem>
+                                    ))}
+                                </SelectContent>
+                            </Select>
+                        ) : (
+                            <Input
+                                className="flex-1"
+                                value={formData.kitchenPrinterAddress || ''}
+                                onChange={e => setFormData({ ...formData, kitchenPrinterAddress: e.target.value })}
+                                placeholder="أدخل اسم طابعة المطبخ أو اضغط تحديث..."
+                            />
+                        )}
+                        <Button type="button" variant="outline" size="icon" onClick={handleRefresh} disabled={isRefreshingPrinters} title="تحديث قائمة طابعات النظام">
+                            <RefreshCw className={`h-4 w-4 ${isRefreshingPrinters ? 'animate-spin' : ''}`} />
+                        </Button>
+                        <Button type="button" variant="outline" size="icon" onClick={() => handleTestSystemPrint(formData.kitchenPrinterAddress || '')} title="طباعة تجريبية">
                             <Printer className="h-4 w-4" />
                         </Button>
                     </div>
@@ -357,13 +399,14 @@ export default function PosTerminalsPage() {
 
   const [systemPrinters, setSystemPrinters] = useState<Array<{ deviceId?: string, name: string }>>([]);
   
-  useEffect(() => {
-    const fetchPrinters = async () => {
-      const printers = await printService.getSystemPrinters();
-      if (printers.length) setSystemPrinters(printers);
-    };
-    fetchPrinters();
+  const fetchPrinters = React.useCallback(async () => {
+    const printers = await printService.getSystemPrinters();
+    setSystemPrinters(Array.isArray(printers) ? printers : []);
   }, []);
+
+  useEffect(() => {
+    void fetchPrinters();
+  }, [fetchPrinters]);
 
   const handleSave = async (data: Partial<PosTerminal>) => {
     if (isCentral) {
@@ -442,7 +485,8 @@ export default function PosTerminalsPage() {
                 onClose={() => setIsAddOpen(false)} 
                 warehouses={authorizedWarehouses} 
                 allTerminals={posTerminals} 
-                systemPrinters={systemPrinters} 
+                systemPrinters={systemPrinters}
+                onRefreshPrinters={fetchPrinters}
               />
             </DialogContent>
           </Dialog>
@@ -554,6 +598,7 @@ export default function PosTerminalsPage() {
               warehouses={authorizedWarehouses} 
               allTerminals={posTerminals} 
               systemPrinters={systemPrinters}
+              onRefreshPrinters={fetchPrinters}
             />
           )}
         </DialogContent>
