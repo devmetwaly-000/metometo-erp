@@ -74,6 +74,7 @@ const reportCategories = [
             { title: "تقرير العجز والزيادة", description: "ملخص الفروقات في ورديات الكاشيرات اليومية.", href: "/reports/cashier-discrepancies", icon: <TrendingDown />, module: "reports_pos" },
             { title: "تقرير طرق الدفع", description: "إجمالي المبالغ المحصلة من كل طريقة دفع.", href: "/reports/payment-methods-report", icon: <Coins />, module: "reports_pos" },
             { title: "تقرير أهداف البائعين", description: "متابعة أداء البائعين مقارنة بالأهداف المحددة.", href: "/reports/seller-targets", icon: <Percent />, module: "reports_sellerTargets" },
+            { title: "تقرير مبيعات العروض والخصومات المرتبطة", description: "تحليل ربحية ومبيعات العروض الترويجية والارتباط بين الأصناف وتدقيقها.", href: "/reports/promotions", icon: <Percent />, module: "marketing_promotions" },
         ]
     },
     {

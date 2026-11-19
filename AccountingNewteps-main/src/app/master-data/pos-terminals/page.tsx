@@ -96,7 +96,7 @@ const normalizeTerminal = (t?: any): Partial<PosTerminal> => {
   };
 };
 
-const TerminalForm = ({ terminal, onSave, onClose, warehouses, allTerminals, systemPrinters, onRefreshPrinters }: { terminal?: PosTerminal; onSave: (data: Partial<PosTerminal>) => void; onClose: () => void; warehouses: Warehouse[], allTerminals: PosTerminal[], systemPrinters: Array<{ deviceId?: string, name: string }>, onRefreshPrinters?: () => Promise<void> }) => {
+const TerminalForm = ({ terminal, onSave, onClose, warehouses, allTerminals, systemPrinters, onRefreshPrinters }: { terminal?: PosTerminal; onSave: (data: Partial<PosTerminal>) => void; onClose: () => void; warehouses: Warehouse[], allTerminals: PosTerminal[], systemPrinters: Array<{ deviceId?: string, name: string, portName?: string, ipHint?: string, isDefault?: boolean }>, onRefreshPrinters?: () => Promise<void> }) => {
   const [formData, setFormData] = useState<Partial<PosTerminal>>(() => {
     const norm = normalizeTerminal(terminal);
     if (!norm.warehouseId && warehouses.length === 1) norm.warehouseId = warehouses[0].id;
@@ -104,6 +104,8 @@ const TerminalForm = ({ terminal, onSave, onClose, warehouses, allTerminals, sys
   });
   const { toast } = useToast();
   const [isRefreshingPrinters, setIsRefreshingPrinters] = useState(false);
+  const [manualInputPos, setManualInputPos] = useState(false);
+  const [manualInputKitchen, setManualInputKitchen] = useState(false);
 
   const handleRefresh = async () => {
     if (!onRefreshPrinters) return;
@@ -186,12 +188,12 @@ const TerminalForm = ({ terminal, onSave, onClose, warehouses, allTerminals, sys
             },
             { printerType: 'ip', width: '80mm' }
         );
-        toast({ title: 'تمت الطباعة بنجاح', description: `تم إرسال الاختبار إلى ${ipAddress}` });
+        toast({ title: 'تمت الطباعة بنجاح ✅', description: `تم إرسال الاختبار إلى ${ipAddress}:9100` });
     } catch (error: any) {
         toast({
             variant: 'destructive',
-            title: 'فشل الاتصال بالطابعة',
-            description: error?.message || 'تعذر الوصول إلى طابعة الشبكة على منفذ 9100.',
+            title: 'فشل الاتصال بطابعة الشبكة (IP)',
+            description: error?.message || `تعذر الوصول إلى طابعة الشبكة على ${ipAddress}:9100. إذا كانت الطابعة مثبتة على ويندوز، جرب اختيارها كطابعة نظام أو طابعة ويب.`,
         });
     }
   };
@@ -218,13 +220,37 @@ const TerminalForm = ({ terminal, onSave, onClose, warehouses, allTerminals, sys
         return;
     }
 
-    if (formData.posPrinterType === 'ip' && !formData.posPrinterAddress) {
+    const finalData = { ...formData };
+    
+    // Auto-detect IP vs System Printer
+    const posAddr = String(finalData.posPrinterAddress || '').trim();
+    const isPosIp = /^(\d{1,3}(?:\.\d{1,3}){3})/.test(posAddr);
+    if ((finalData.posPrinterType || 'system') === 'system' && isPosIp) {
+        const matchingPrinter = systemPrinters.find(p => p.ipHint === posAddr);
+        if (matchingPrinter) {
+            finalData.posPrinterAddress = matchingPrinter.name;
+        } else {
+            finalData.posPrinterType = 'ip';
+        }
+    }
+
+    if (finalData.posPrinterType === 'ip' && !finalData.posPrinterAddress) {
         toast({ variant: "destructive", title: "خطأ", description: "يجب إدخال عنوان IP لطابعة نقطة البيع." });
         return;
     }
 
-    if (formData.enableKitchenPrinter) {
-        if (formData.kitchenPrinterType === 'ip' && !formData.kitchenPrinterAddress) {
+    if (finalData.enableKitchenPrinter) {
+        const kitchenAddr = String(finalData.kitchenPrinterAddress || '').trim();
+        const isKitchenIp = /^(\d{1,3}(?:\.\d{1,3}){3})/.test(kitchenAddr);
+        if ((finalData.kitchenPrinterType || 'system') === 'system' && isKitchenIp) {
+            const matchingPrinter = systemPrinters.find(p => p.ipHint === kitchenAddr);
+            if (matchingPrinter) {
+                finalData.kitchenPrinterAddress = matchingPrinter.name;
+            } else {
+                finalData.kitchenPrinterType = 'ip';
+            }
+        }
+        if (finalData.kitchenPrinterType === 'ip' && !finalData.kitchenPrinterAddress) {
             toast({ variant: "destructive", title: "خطأ", description: "يجب إدخال عنوان IP لطابعة المطبخ." });
             return;
         }
@@ -241,7 +267,7 @@ const TerminalForm = ({ terminal, onSave, onClose, warehouses, allTerminals, sys
         return;
     }
 
-    onSave({ ...formData, id: termId });
+    onSave({ ...finalData, id: termId });
     onClose();
   };
 
@@ -267,12 +293,25 @@ const TerminalForm = ({ terminal, onSave, onClose, warehouses, allTerminals, sys
         </Select>
       </div>
       <div className="space-y-2">
-        <Label>إعدادات الطابعة لهذه النقطة</Label>
+        <div className="flex items-center justify-between">
+          <Label>إعدادات الطابعة لهذه النقطة</Label>
+          {(formData.posPrinterType || 'system') === 'system' && (
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              onClick={() => setManualInputPos(!manualInputPos)}
+              className="text-xs text-primary h-auto py-0.5 px-1.5 hover:underline"
+            >
+              {manualInputPos ? 'اختيار من قائمة ويندوز' : 'كتابة اسم الطابعة يدوياً'}
+            </Button>
+          )}
+        </div>
         <Select value={formData.posPrinterType || 'system'} onValueChange={(v: any) => setFormData({ ...formData, posPrinterType: v })}>
             <SelectTrigger><SelectValue placeholder="اختر نوع الطابعة" /></SelectTrigger>
             <SelectContent>
-                <SelectItem value="system">طابعة النظام (طباعة يدوية)</SelectItem>
-                <SelectItem value="ip">شبكة (IP)</SelectItem>
+                <SelectItem value="system">طابعة النظام (طباعة يدوية عبر ويندوز)</SelectItem>
+                <SelectItem value="ip">شبكة مباشرة (IP / TCP 9100)</SelectItem>
                 <SelectItem value="browser">طابعة الويب / المتصفح (Web Printer)</SelectItem>
             </SelectContent>
         </Select>
@@ -295,21 +334,37 @@ const TerminalForm = ({ terminal, onSave, onClose, warehouses, allTerminals, sys
         ) : (formData.posPrinterType || 'system') === 'system' ? (
             <div className="space-y-2">
               <div className="flex gap-2">
-                <Select value={formData.posPrinterAddress || ''} onValueChange={(v) => setFormData({ ...formData, posPrinterAddress: v })}>
-                    <SelectTrigger className="flex-1"><SelectValue placeholder="اختر طابعة النظام لهذه النقطة" /></SelectTrigger>
-                    <SelectContent>
-                        {formData.posPrinterAddress && !systemPrinters.some(p => p.name === formData.posPrinterAddress) && (
-                            <SelectItem value={formData.posPrinterAddress}>{formData.posPrinterAddress}</SelectItem>
-                        )}
-                        {systemPrinters.length > 0 ? systemPrinters.map((p) => (
-                            <SelectItem key={p.deviceId || p.name} value={p.name}>
-                              {p.name}
-                            </SelectItem>
-                        )) : (
-                            <div className="p-2 text-sm text-muted-foreground">لا توجد طابعات نظام متاحة. اضغط تحديث 🔄</div>
-                        )}
-                    </SelectContent>
-                </Select>
+                {manualInputPos ? (
+                  <Input
+                    className="flex-1 font-mono text-sm"
+                    value={formData.posPrinterAddress || ''}
+                    onChange={(e) => setFormData({ ...formData, posPrinterAddress: e.target.value })}
+                    placeholder="اكتب اسم الطابعة كما هو في ويندوز (مثال: EPSON TM-T20 ReceiptE4)"
+                  />
+                ) : (
+                  <Select value={formData.posPrinterAddress || ''} onValueChange={(v) => setFormData({ ...formData, posPrinterAddress: v })}>
+                      <SelectTrigger className="flex-1"><SelectValue placeholder="اختر طابعة النظام لهذه النقطة" /></SelectTrigger>
+                      <SelectContent>
+                          {formData.posPrinterAddress && !systemPrinters.some(p => p.name === formData.posPrinterAddress) && (
+                              <SelectItem value={formData.posPrinterAddress}>{formData.posPrinterAddress}</SelectItem>
+                          )}
+                          {systemPrinters.length > 0 ? systemPrinters.map((p) => (
+                              <SelectItem key={p.deviceId || p.name} value={p.name}>
+                                <div className="flex items-center justify-between gap-2 w-full text-right">
+                                  <span>{p.name}{p.isDefault ? ' ⭐(الافتراضية)' : ''}</span>
+                                  {p.ipHint ? (
+                                    <span className="text-[10px] text-muted-foreground font-mono bg-muted px-1.5 py-0.5 rounded">IP: {p.ipHint}</span>
+                                  ) : p.portName && !p.portName.startsWith('Ne0') ? (
+                                    <span className="text-[10px] text-muted-foreground font-mono bg-muted px-1.5 py-0.5 rounded">{p.portName}</span>
+                                  ) : null}
+                                </div>
+                              </SelectItem>
+                          )) : (
+                              <div className="p-2 text-sm text-muted-foreground">لا توجد طابعات نظام متاحة. اضغط تحديث 🔄 أو اكتب الاسم يدوياً.</div>
+                          )}
+                      </SelectContent>
+                  </Select>
+                )}
                 <Button type="button" variant="outline" size="icon" onClick={handleRefresh} disabled={isRefreshingPrinters} title="تحديث قائمة طابعات النظام">
                     <RefreshCw className={`h-4 w-4 ${isRefreshingPrinters ? 'animate-spin' : ''}`} />
                 </Button>
@@ -317,18 +372,38 @@ const TerminalForm = ({ terminal, onSave, onClose, warehouses, allTerminals, sys
                     <Printer className="h-4 w-4" />
                 </Button>
               </div>
+
               {formData.posPrinterAddress && /^(\d{1,3}(?:\.\d{1,3}){3})/.test(formData.posPrinterAddress.trim()) && (
-                <div className="text-xs text-amber-500 bg-amber-500/10 p-2 rounded flex items-center justify-between">
-                  <span>العنوان المحدد ({formData.posPrinterAddress}) هو عنوان IP شبكة.</span>
-                  <Button type="button" variant="link" size="sm" className="h-auto p-0 text-amber-600 underline text-xs" onClick={() => setFormData({ ...formData, posPrinterType: 'ip' })}>
-                    التحويل إلى اتصال شبكة (IP)
-                  </Button>
+                <div className="text-xs p-2.5 rounded-lg border bg-amber-500/10 border-amber-500/30 text-amber-600 dark:text-amber-400 space-y-1.5">
+                  <div className="flex items-center justify-between flex-wrap gap-1">
+                    <span className="font-semibold">العنوان المحدد ({formData.posPrinterAddress}) هو عنوان IP شبكة.</span>
+                    <Button type="button" variant="link" size="sm" className="h-auto p-0 text-amber-600 dark:text-amber-300 underline font-semibold text-xs" onClick={() => setFormData({ ...formData, posPrinterType: 'ip' })}>
+                      التحويل إلى اتصال شبكة (IP)
+                    </Button>
+                  </div>
+                  {systemPrinters.find(p => p.ipHint === formData.posPrinterAddress?.trim()) && (
+                    <div className="flex items-center justify-between pt-1 border-t border-amber-500/20">
+                      <span>طابعة ويندوز المقترنة بهذا العنوان:</span>
+                      <Button
+                        type="button"
+                        variant="link"
+                        size="sm"
+                        className="h-auto p-0 text-primary underline font-bold text-xs"
+                        onClick={() => {
+                          const matched = systemPrinters.find(p => p.ipHint === formData.posPrinterAddress?.trim());
+                          if (matched) setFormData({ ...formData, posPrinterAddress: matched.name });
+                        }}
+                      >
+                        اختيار &quot;{systemPrinters.find(p => p.ipHint === formData.posPrinterAddress?.trim())?.name}&quot;
+                      </Button>
+                    </div>
+                  )}
                 </div>
               )}
             </div>
         ) : (
             <div className="flex gap-2">
-                <Input className="flex-1" value={formData.posPrinterAddress || ''} onChange={e => setFormData({ ...formData, posPrinterAddress: e.target.value })} placeholder="أدخل عنوان IP للطابعة (مثال: 10.110.16.119)" />
+                <Input className="flex-1 font-mono" value={formData.posPrinterAddress || ''} onChange={e => setFormData({ ...formData, posPrinterAddress: e.target.value })} placeholder="أدخل عنوان IP للطابعة (مثال: 10.110.16.119)" />
                 <Button variant="outline" size="icon" onClick={() => handleTestIpPrint(formData.posPrinterAddress || '')} title="طباعة تجريبية">
                     <Printer className="h-4 w-4" />
                 </Button>
@@ -347,12 +422,25 @@ const TerminalForm = ({ terminal, onSave, onClose, warehouses, allTerminals, sys
 
         {formData.enableKitchenPrinter && (
             <div className="space-y-2 border p-4 rounded-md bg-muted/20">
-                <Label>إعدادات طابعة المطبخ</Label>
+                <div className="flex items-center justify-between">
+                    <Label>إعدادات طابعة المطبخ</Label>
+                    {(formData.kitchenPrinterType || 'system') === 'system' && (
+                        <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => setManualInputKitchen(!manualInputKitchen)}
+                            className="text-xs text-primary h-auto py-0.5 px-1.5 hover:underline"
+                        >
+                            {manualInputKitchen ? 'اختيار من قائمة ويندوز' : 'كتابة اسم الطابعة يدوياً'}
+                        </Button>
+                    )}
+                </div>
                 <Select value={formData.kitchenPrinterType || 'system'} onValueChange={(v: any) => setFormData({ ...formData, kitchenPrinterType: v })}>
                     <SelectTrigger><SelectValue placeholder="اختر نوع طابعة المطبخ" /></SelectTrigger>
                     <SelectContent>
-                        <SelectItem value="system">طابعة النظام (طباعة يدوية)</SelectItem>
-                        <SelectItem value="ip">شبكة (IP)</SelectItem>
+                        <SelectItem value="system">طابعة النظام (طباعة يدوية عبر ويندوز)</SelectItem>
+                        <SelectItem value="ip">شبكة مباشرة (IP / TCP 9100)</SelectItem>
                         <SelectItem value="browser">طابعة الويب / المتصفح (Web Printer)</SelectItem>
                     </SelectContent>
                 </Select>
@@ -375,19 +463,33 @@ const TerminalForm = ({ terminal, onSave, onClose, warehouses, allTerminals, sys
                 ) : (formData.kitchenPrinterType || 'system') === 'system' ? (
                     <div className="space-y-2">
                         <div className="flex gap-2">
-                            <Select value={formData.kitchenPrinterAddress || ''} onValueChange={(v) => setFormData({ ...formData, kitchenPrinterAddress: v })}>
-                                <SelectTrigger className="flex-1"><SelectValue placeholder="اختر طابعة النظام للمطبخ" /></SelectTrigger>
-                                <SelectContent>
-                                    {formData.kitchenPrinterAddress && !systemPrinters.some(p => p.name === formData.kitchenPrinterAddress) && (
-                                        <SelectItem value={formData.kitchenPrinterAddress}>{formData.kitchenPrinterAddress}</SelectItem>
-                                    )}
-                                    {systemPrinters.length > 0 ? systemPrinters.map((p) => (
-                                        <SelectItem key={p.deviceId || p.name} value={p.name}>{p.name}</SelectItem>
-                                    )) : (
-                                        <div className="p-2 text-sm text-muted-foreground">لا توجد طابعات نظام متاحة. اضغط تحديث 🔄</div>
-                                    )}
-                                </SelectContent>
-                            </Select>
+                            {manualInputKitchen ? (
+                                <Input
+                                    className="flex-1 font-mono text-sm"
+                                    value={formData.kitchenPrinterAddress || ''}
+                                    onChange={(e) => setFormData({ ...formData, kitchenPrinterAddress: e.target.value })}
+                                    placeholder="اكتب اسم طابعة المطبخ في ويندوز"
+                                />
+                            ) : (
+                                <Select value={formData.kitchenPrinterAddress || ''} onValueChange={(v) => setFormData({ ...formData, kitchenPrinterAddress: v })}>
+                                    <SelectTrigger className="flex-1"><SelectValue placeholder="اختر طابعة النظام للمطبخ" /></SelectTrigger>
+                                    <SelectContent>
+                                        {formData.kitchenPrinterAddress && !systemPrinters.some(p => p.name === formData.kitchenPrinterAddress) && (
+                                            <SelectItem value={formData.kitchenPrinterAddress}>{formData.kitchenPrinterAddress}</SelectItem>
+                                        )}
+                                        {systemPrinters.length > 0 ? systemPrinters.map((p) => (
+                                            <SelectItem key={p.deviceId || p.name} value={p.name}>
+                                                <div className="flex items-center justify-between gap-2 w-full text-right">
+                                                    <span>{p.name}{p.isDefault ? ' ⭐(الافتراضية)' : ''}</span>
+                                                    {p.ipHint && <span className="text-[10px] text-muted-foreground font-mono bg-muted px-1.5 py-0.5 rounded">IP: {p.ipHint}</span>}
+                                                </div>
+                                            </SelectItem>
+                                        )) : (
+                                            <div className="p-2 text-sm text-muted-foreground">لا توجد طابعات نظام متاحة. اضغط تحديث 🔄 أو اكتب الاسم يدوياً.</div>
+                                        )}
+                                    </SelectContent>
+                                </Select>
+                            )}
                             <Button type="button" variant="outline" size="icon" onClick={handleRefresh} disabled={isRefreshingPrinters} title="تحديث قائمة طابعات النظام">
                                 <RefreshCw className={`h-4 w-4 ${isRefreshingPrinters ? 'animate-spin' : ''}`} />
                             </Button>
@@ -396,17 +498,36 @@ const TerminalForm = ({ terminal, onSave, onClose, warehouses, allTerminals, sys
                             </Button>
                         </div>
                         {formData.kitchenPrinterAddress && /^(\d{1,3}(?:\.\d{1,3}){3})/.test(formData.kitchenPrinterAddress.trim()) && (
-                            <div className="text-xs text-amber-500 bg-amber-500/10 p-2 rounded flex items-center justify-between">
-                                <span>العنوان المحدد ({formData.kitchenPrinterAddress}) هو عنوان IP شبكة.</span>
-                                <Button type="button" variant="link" size="sm" className="h-auto p-0 text-amber-600 underline text-xs" onClick={() => setFormData({ ...formData, kitchenPrinterType: 'ip' })}>
-                                    التحويل إلى اتصال شبكة (IP)
-                                </Button>
+                            <div className="text-xs p-2.5 rounded-lg border bg-amber-500/10 border-amber-500/30 text-amber-600 dark:text-amber-400 space-y-1.5">
+                                <div className="flex items-center justify-between flex-wrap gap-1">
+                                    <span className="font-semibold">العنوان المحدد ({formData.kitchenPrinterAddress}) هو عنوان IP شبكة.</span>
+                                    <Button type="button" variant="link" size="sm" className="h-auto p-0 text-amber-600 underline text-xs font-semibold" onClick={() => setFormData({ ...formData, kitchenPrinterType: 'ip' })}>
+                                        التحويل إلى اتصال شبكة (IP)
+                                    </Button>
+                                </div>
+                                {systemPrinters.find(p => p.ipHint === formData.kitchenPrinterAddress?.trim()) && (
+                                    <div className="flex items-center justify-between pt-1 border-t border-amber-500/20">
+                                        <span>طابعة ويندوز المقترنة بهذا العنوان:</span>
+                                        <Button
+                                            type="button"
+                                            variant="link"
+                                            size="sm"
+                                            className="h-auto p-0 text-primary underline font-bold text-xs"
+                                            onClick={() => {
+                                                const matched = systemPrinters.find(p => p.ipHint === formData.kitchenPrinterAddress?.trim());
+                                                if (matched) setFormData({ ...formData, kitchenPrinterAddress: matched.name });
+                                            }}
+                                        >
+                                            اختيار &quot;{systemPrinters.find(p => p.ipHint === formData.kitchenPrinterAddress?.trim())?.name}&quot;
+                                        </Button>
+                                    </div>
+                                )}
                             </div>
                         )}
                     </div>
                 ) : (
                     <div className="flex gap-2">
-                        <Input className="flex-1" value={formData.kitchenPrinterAddress || ''} onChange={e => setFormData({ ...formData, kitchenPrinterAddress: e.target.value })} placeholder="أدخل عنوان IP لطابعة المطبخ" />
+                        <Input className="flex-1 font-mono" value={formData.kitchenPrinterAddress || ''} onChange={e => setFormData({ ...formData, kitchenPrinterAddress: e.target.value })} placeholder="أدخل عنوان IP لطابعة المطبخ (مثال: 10.110.16.119)" />
                         <Button variant="outline" size="icon" onClick={() => handleTestIpPrint(formData.kitchenPrinterAddress || '')} title="طباعة تجريبية">
                             <Printer className="h-4 w-4" />
                         </Button>
@@ -460,7 +581,7 @@ export default function PosTerminalsPage() {
     return permitted.length > 0 ? permitted : salesBranches;
   }, [allWarehouseList, user]);
 
-  const [systemPrinters, setSystemPrinters] = useState<Array<{ deviceId?: string, name: string }>>([]);
+  const [systemPrinters, setSystemPrinters] = useState<Array<{ deviceId?: string, name: string, portName?: string, ipHint?: string, isDefault?: boolean }>>([]);
   
   const fetchPrinters = React.useCallback(async () => {
     const printers = await printService.getSystemPrinters();

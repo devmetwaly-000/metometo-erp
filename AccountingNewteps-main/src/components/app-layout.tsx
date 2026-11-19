@@ -102,6 +102,7 @@ import {
   HeartHandshake,
   ChevronLeft,
   ChevronRight,
+  RefreshCw,
   X
 } from "lucide-react";
 import Link from "next/link";
@@ -128,15 +129,38 @@ import { Progress } from "@/components/ui/progress";
 
 
 const Logo = () => {
-  const { settings, isOnline } = useData();
+  const { settings, isOnline, retryDatabaseConnection } = useData();
   const companyName = settings?.main?.general?.companyName || "Meto";
+  const [retrying, setRetrying] = useState(false);
+
+  const handleRetry = async (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (retrying) return;
+    setRetrying(true);
+    try {
+      await retryDatabaseConnection();
+    } finally {
+      setTimeout(() => setRetrying(false), 500);
+    }
+  };
 
   return (
     <div className="flex items-center gap-2 min-w-0 max-w-full">
         <img src="/logo.svg" alt="Logo" className="h-7 w-7 sm:h-8 sm:w-8 rounded-lg shrink-0 object-contain" />
         <div className="flex flex-col min-w-0">
             <h1 className="text-sm sm:text-base font-bold text-primary leading-none truncate">{companyName}</h1>
-            {!isOnline && <span className="text-[9px] sm:text-[10px] text-destructive font-semibold truncate">وضع الأوفلاين</span>}
+            {!isOnline ? (
+              <button
+                type="button"
+                onClick={handleRetry}
+                className="flex items-center gap-1 text-[9px] sm:text-[10px] text-destructive hover:text-destructive/80 font-semibold truncate hover:underline cursor-pointer"
+                title="اضغط هنا لإعادة فحص الاتصال وتحديث الحالة فوراً"
+              >
+                <span>وضع الأوفلاين</span>
+                <RefreshCw className={`h-2.5 w-2.5 shrink-0 ${retrying ? 'animate-spin' : ''}`} />
+              </button>
+            ) : null}
         </div>
     </div>
   );
@@ -344,6 +368,7 @@ export const navStructure = [
     ]},
     { type: 'collapsible', title: dictionary.nav.marketing, icon: <Percent />, modules: ['marketing_promotions', 'inventory_priceUpdate', 'marketing_targets', 'sellers_data'], children: [
         { type: 'link', href: '/marketing/promotions', module: 'marketing_promotions', title: dictionary.nav.promotions },
+        { type: 'link', href: '/reports/promotions', module: 'marketing_promotions', title: 'تحليلات وتدقيق العروض' },
         { type: 'link', href: '/marketing/price-adjustments', module: 'inventory_priceUpdate', title: dictionary.nav.priceAdjustments },
         { type: 'link', href: '/master-data/sellers', module: 'sellers_data', title: dictionary.nav.sellersAdmin },
         { type: 'link', href: '/marketing/targets', module: 'marketing_targets', title: dictionary.nav.targetsAdmin },

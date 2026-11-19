@@ -194,8 +194,17 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
             }
         } catch (error) {
             clearTimeout(timeoutId);
-            setIsOnline(false);
-            console.warn('Could not sync with SQL Server, operating in offline/emergency mode:', error);
+            // Only mark offline if /api/db/health is also failing, so a heavy sync timeout does not mistakenly force offline
+            try {
+                const healthRes = await fetch('/api/db/health', { cache: 'no-store' });
+                const healthJson = await healthRes.json().catch(() => null);
+                if (!healthRes.ok || !healthJson?.ok) {
+                    setIsOnline(false);
+                }
+            } catch {
+                setIsOnline(false);
+            }
+            console.warn('Could not sync with SQL Server, operating with cached data:', error);
             try {
                 const cached = await Promise.race([
                     localforage.getItem<any>(CACHE_KEY),
@@ -290,8 +299,10 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
                 setDatabaseSetupRequired(false);
                 setDatabaseSetupError(null);
                 if (wasOffline) {
-                    // Re-sync latest data automatically as soon as the server comes back online
-                    await refreshDataFromSqlServer();
+                    // Re-sync latest data in background without blocking online status or flipping back to offline
+                    void refreshDataFromSqlServer().catch((err) => {
+                        console.warn('Background sync after reconnect failed:', err);
+                    });
                 }
             } else {
                 setIsOnline(false);
@@ -697,6 +708,26 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     }, [allData?.settings]);
     const isCentral = systemRole === 'central';
 
+    const retryDatabaseConnection = useCallback(async (): Promise<boolean> => {
+        try {
+            const healthRes = await fetch('/api/db/health', { cache: 'no-store' });
+            const healthJson = await healthRes.json().catch(() => null);
+            if (healthRes.ok && healthJson?.ok) {
+                setIsOnline(true);
+                setDatabaseSetupRequired(false);
+                setDatabaseSetupError(null);
+                void refreshDataFromSqlServer().catch(() => {});
+                return true;
+            } else {
+                setIsOnline(false);
+                return false;
+            }
+        } catch {
+            setIsOnline(false);
+            return false;
+        }
+    }, [refreshDataFromSqlServer]);
+
     const value: DataContextType = {
         allItems, items, customers, suppliers, warehouses, allWarehouses, repWarehouses, cashAccounts, partners, users, deliveryStaff, itemGroups, itemSections, itemCategories, itemSubCategories1, itemSubCategories2, inventoryZones, inventorySections, itemColors, itemSizes, barcodeDesigns, posTerminals, promotions, roles, settings, inventory, restaurantTables, paymentMethods, sellers, targets, licenses, snoozedRecommendations, syncHistory, customerVisits, loginHistory, gratuityLogs, gratuityDistributions,
         stockInRecords, stockOutRecords, stockTransferRecords, stockAdjustmentRecords, stockIssuesToReps, stockReturnsFromReps, inventoryClosings, requisitions,
@@ -711,7 +742,7 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         databaseSetupRequired,
         databaseName,
         createLocalDatabase,
-        retryDatabaseConnection: refreshDataFromSqlServer,
+        retryDatabaseConnection,
         databaseSetupError,
         isCreatingLocalDatabase,
         syncQueueCount: 0,

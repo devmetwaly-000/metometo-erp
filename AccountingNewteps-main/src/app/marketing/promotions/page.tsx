@@ -657,7 +657,13 @@ export default function PromotionsPage() {
     return (
         <>
             <PageHeader title="إدارة العروض والخصومات">
-                <div className="flex gap-2">
+                <div className="flex gap-2 items-center flex-wrap">
+                    <Link href="/reports/promotions">
+                        <Button variant="outline" size="sm" className="gap-1.5 border-primary/40 text-primary hover:bg-primary/10">
+                            <Percent className="h-4 w-4" />
+                            تقارير وتحليلات العروض
+                        </Button>
+                    </Link>
                     <AlertDialog>
                         <AlertDialogTrigger asChild>
                             <Button variant="destructive" size="sm">
