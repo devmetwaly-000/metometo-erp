@@ -196,6 +196,21 @@ const TerminalForm = ({ terminal, onSave, onClose, warehouses, allTerminals, sys
     }
   };
 
+  const handleTestWebPrint = (target: 'pos' | 'kitchen' = 'pos') => {
+    printService.printViaWebBrowser({
+      title: 'طباعة تجريبية - طابعة الويب (Web Printer)',
+      lines: [
+        { left: 'نقطة البيع:', right: formData.name || 'POS Terminal' },
+        { left: 'القسم:', right: target === 'pos' ? 'إيصالات الكاشير' : 'طابعة المطبخ' },
+        { left: 'نوع الاتصال:', right: 'طابعة الويب / المتصفح' },
+        { left: 'الحالة:', right: 'تم الاختبار بنجاح ✅' },
+        { left: 'التاريخ والوقت:', right: new Date().toLocaleString('ar-EG') },
+      ],
+      footer: 'NewCashier POS System - Web Printer'
+    });
+    toast({ title: 'تم فتح نافذة طابعة الويب (Web Printer)', description: 'يمكنك اختيار أي طابعة موصولة بجهازك من نافذة المتصفح.' });
+  };
+
 
   const handleSubmit = () => {
     if (!formData.name || !formData.warehouseId || !formData.code) {
@@ -258,14 +273,23 @@ const TerminalForm = ({ terminal, onSave, onClose, warehouses, allTerminals, sys
             <SelectContent>
                 <SelectItem value="system">طابعة النظام (طباعة يدوية)</SelectItem>
                 <SelectItem value="ip">شبكة (IP)</SelectItem>
-                <SelectItem value="browser">المتصفح (Browser)</SelectItem>
+                <SelectItem value="browser">طابعة الويب / المتصفح (Web Printer)</SelectItem>
             </SelectContent>
         </Select>
         {formData.posPrinterType === 'browser' ? (
-            <div className="flex gap-2 items-center border p-2 rounded bg-muted/50">
-                <span className="text-sm text-muted-foreground flex-1">سيتم استخدام نافذة الطباعة الافتراضية للمتصفح.</span>
-                <Button variant="outline" size="icon" onClick={() => window.print()} title="تجربة طباعة المتصفح">
+            <div className="flex gap-2 items-center justify-between border p-3 rounded-lg bg-primary/5 border-primary/20">
+                <div className="space-y-0.5">
+                    <p className="text-sm font-semibold text-foreground flex items-center gap-1.5">
+                        <Printer className="h-4 w-4 text-primary" />
+                        طابعة الويب / المتصفح (Web Printer)
+                    </p>
+                    <p className="text-xs text-muted-foreground">
+                        تفتح نافذة الطباعة التلقائية للمتصفح (تدعم جميع الطابعات المثبتة أو طابعات PDF دون أي تعريفات إضافية).
+                    </p>
+                </div>
+                <Button type="button" variant="outline" size="sm" onClick={() => handleTestWebPrint('pos')} className="shrink-0 gap-1.5 border-primary/30 hover:bg-primary/10" title="تجربة طباعة المتصفح">
                     <Printer className="h-4 w-4" />
+                    اختبار طابعة الويب
                 </Button>
             </div>
         ) : (formData.posPrinterType || 'system') === 'system' ? (
@@ -329,14 +353,23 @@ const TerminalForm = ({ terminal, onSave, onClose, warehouses, allTerminals, sys
                     <SelectContent>
                         <SelectItem value="system">طابعة النظام (طباعة يدوية)</SelectItem>
                         <SelectItem value="ip">شبكة (IP)</SelectItem>
-                        <SelectItem value="browser">المتصفح (Browser)</SelectItem>
+                        <SelectItem value="browser">طابعة الويب / المتصفح (Web Printer)</SelectItem>
                     </SelectContent>
                 </Select>
                 {formData.kitchenPrinterType === 'browser' ? (
-                     <div className="flex gap-2 items-center border p-2 rounded bg-muted/50">
-                        <span className="text-sm text-muted-foreground flex-1">سيتم استخدام نافذة الطباعة الافتراضية للمتصفح.</span>
-                        <Button variant="outline" size="icon" onClick={() => window.print()} title="تجربة طباعة المتصفح">
+                     <div className="flex gap-2 items-center justify-between border p-3 rounded-lg bg-primary/5 border-primary/20">
+                        <div className="space-y-0.5">
+                            <p className="text-sm font-semibold text-foreground flex items-center gap-1.5">
+                                <Printer className="h-4 w-4 text-primary" />
+                                طابعة الويب / المتصفح (Web Printer)
+                            </p>
+                            <p className="text-xs text-muted-foreground">
+                                تفتح نافذة الطباعة التلقائية للمتصفح لإرسال أوامر تحضير الطلبات للمطبخ.
+                            </p>
+                        </div>
+                        <Button type="button" variant="outline" size="sm" onClick={() => handleTestWebPrint('kitchen')} className="shrink-0 gap-1.5 border-primary/30 hover:bg-primary/10" title="تجربة طباعة المتصفح">
                             <Printer className="h-4 w-4" />
+                            اختبار طابعة الويب
                         </Button>
                     </div>
                 ) : (formData.kitchenPrinterType || 'system') === 'system' ? (

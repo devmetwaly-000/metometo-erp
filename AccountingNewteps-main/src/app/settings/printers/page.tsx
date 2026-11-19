@@ -177,6 +177,19 @@ const PrinterSelector = ({ type, address, onTypeChange, onAddressChange, onTest,
         }
     };
 
+    const handleTestWebPrint = () => {
+        printService.printViaWebBrowser({
+            title: `طباعة تجريبية - ${title}`,
+            lines: [
+                { left: 'نوع الاتصال:', right: 'طابعة الويب / المتصفح (Web Printer)' },
+                { left: 'الحالة:', right: 'تم الاختبار بنجاح ✅' },
+                { left: 'التاريخ والوقت:', right: new Date().toLocaleString('ar-EG') }
+            ],
+            footer: 'NewCashier POS System - Web Printer'
+        });
+        toast({ title: 'تم فتح نافذة طابعة الويب (Web Printer)', description: 'يمكنك اختيار أي طابعة موصولة بجهازك من نافذة المتصفح.' });
+    };
+
     const handleTestSystemPrint = async (printerName: string) => {
         if (onTest) {
             onTest(printerName);
@@ -229,7 +242,7 @@ const PrinterSelector = ({ type, address, onTypeChange, onAddressChange, onTest,
                         <SelectItem value="system">طابعة النظام (طباعة يدوية)</SelectItem>
                         {allowBluetooth && <SelectItem value="bluetooth">بلوتوث</SelectItem>}
                         {allowIp && <SelectItem value="ip">شبكة (IP)</SelectItem>}
-                        <SelectItem value="browser">المتصفح (Browser)</SelectItem>
+                        <SelectItem value="browser">طابعة الويب / المتصفح (Web Printer)</SelectItem>
                     </SelectContent>
                 </Select>
                 {type === 'bluetooth' && allowBluetooth ? (
@@ -263,10 +276,19 @@ const PrinterSelector = ({ type, address, onTypeChange, onAddressChange, onTest,
                         </div>
                     )
                 ) : type === 'browser' ? (
-                    <div className="flex gap-2 items-center border p-2 rounded bg-muted/50">
-                        <span className="text-sm text-muted-foreground flex-1">سيتم استخدام نافذة الطباعة الافتراضية للمتصفح.</span>
-                        <Button variant="outline" size="icon" onClick={() => window.print()} title="تجربة طباعة المتصفح">
+                    <div className="flex gap-2 items-center justify-between border p-3 rounded-lg bg-primary/5 border-primary/20">
+                        <div className="space-y-0.5">
+                            <p className="text-sm font-semibold text-foreground flex items-center gap-1.5">
+                                <Printer className="h-4 w-4 text-primary" />
+                                طابعة الويب / المتصفح (Web Printer)
+                            </p>
+                            <p className="text-xs text-muted-foreground">
+                                تفتح نافذة الطباعة التلقائية للمتصفح للطباعة على أي طابعة موصولة بالجهاز دون تعريفات خاصة.
+                            </p>
+                        </div>
+                        <Button variant="outline" size="sm" onClick={() => handleTestWebPrint()} className="shrink-0 gap-1.5 border-primary/30 hover:bg-primary/10" title="تجربة طباعة المتصفح">
                             <Printer className="h-4 w-4" />
+                            اختبار طابعة الويب
                         </Button>
                     </div>
                 ) : <div className="p-2 text-sm text-muted-foreground flex items-center gap-2"><Printer className="h-4 w-4" />سيتم فتح نافذة الطباعة الخاصة بالمتصفح.</div>}

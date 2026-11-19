@@ -216,6 +216,14 @@ export async function POST(req: NextRequest) {
     lines = body?.content?.lines || [];
     const footer: string = body?.content?.footer || '';
 
+    if (explicitType === 'browser') {
+      return NextResponse.json({
+        ok: true,
+        mode: 'browser',
+        message: 'طابعة الويب (المتصفح) نشطة وجاهزة.'
+      });
+    }
+
     if (!printerName) {
       return NextResponse.json({ ok: false, error: 'اسم أو عنوان الطابعة مطلوب' }, { status: 400 });
     }

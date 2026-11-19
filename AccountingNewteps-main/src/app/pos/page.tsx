@@ -1815,6 +1815,33 @@ export default function PosPage() {
         }
 
         if (settingsToUse === 'system' || settingsToUse === 'browser') {
+            const frame = printFrameRef.current;
+            if (frame && frame.contentWindow) {
+                const doc = frame.contentWindow.document;
+                doc.open();
+                doc.write('<!DOCTYPE html><html dir="rtl" lang="ar"><head><title>Print</title>');
+                doc.write('<style>body { margin: 0; padding: 0; direction: rtl; } @page { size: auto; margin: 0mm; }</style>');
+                doc.write('</head><body><div id="receipt-root"></div></body></html>');
+                doc.close();
+
+                const container = doc.getElementById('receipt-root');
+                if (container) {
+                    const root = createRoot(container);
+                    root.render(content);
+                    setTimeout(() => {
+                        try {
+                            frame.contentWindow?.focus();
+                            frame.contentWindow?.print();
+                        } finally {
+                            setTimeout(() => {
+                                try { root.unmount(); } catch {}
+                            }, 1200);
+                        }
+                    }, 350);
+                    return;
+                }
+            }
+
             setTimeout(() => {
                 const printWindow = window.open('', '_blank');
                 if (printWindow) {
