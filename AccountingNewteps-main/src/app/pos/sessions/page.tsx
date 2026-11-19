@@ -290,16 +290,14 @@ const CloseCashierSessionDialog = ({ cashierSession, onConfirm, onClose }: { cas
 
 const printClosingStatement = (statement: WorkDayClosingStatement, companyName: string) => {
     if (typeof window === 'undefined') return;
-    const printWindow = window.open('', '_blank');
-    if (!printWindow) return;
 
     const methodsHeaders = statement.paymentMethodsList.map(m => 
-        `<th style="padding: 6px 8px; border: 1px solid #cbd5e1; background: #f8fafc; font-size: 11px;">${m}</th>`
+        `<th style="padding: 5px 6px; border: 1px solid #cbd5e1; background: #f8fafc; font-size: 10px;">${m}</th>`
     ).join('');
     
     const cashierRows = statement.cashiers.map((c, i) => {
         const methodCells = statement.paymentMethodsList.map(m => `
-            <td style="padding: 6px 8px; border: 1px solid #cbd5e1; text-align: center; font-size: 11px;">
+            <td style="padding: 5px 6px; border: 1px solid #cbd5e1; text-align: center; font-size: 10px;">
                 ${(c.salesByMethod[m] || 0).toLocaleString()}
             </td>
         `).join('');
@@ -309,36 +307,36 @@ const printClosingStatement = (statement: WorkDayClosingStatement, companyName: 
 
         return `
             <tr>
-                <td style="padding: 6px 8px; border: 1px solid #cbd5e1; text-align: center; font-size: 11px;">${i + 1}</td>
-                <td style="padding: 6px 8px; border: 1px solid #cbd5e1; font-weight: bold; font-size: 11px;">${c.cashierName}</td>
-                <td style="padding: 6px 8px; border: 1px solid #cbd5e1; font-size: 11px;">${c.terminalName}</td>
-                <td style="padding: 6px 8px; border: 1px solid #cbd5e1; text-align: center; font-size: 11px;">${c.openingBalance.toLocaleString()}</td>
+                <td style="padding: 5px 6px; border: 1px solid #cbd5e1; text-align: center; font-size: 10px;">${i + 1}</td>
+                <td style="padding: 5px 6px; border: 1px solid #cbd5e1; font-weight: bold; font-size: 10px;">${c.cashierName}</td>
+                <td style="padding: 5px 6px; border: 1px solid #cbd5e1; font-size: 10px;">${c.terminalName}</td>
+                <td style="padding: 5px 6px; border: 1px solid #cbd5e1; text-align: center; font-size: 10px;">${c.openingBalance.toLocaleString()}</td>
                 ${methodCells}
-                <td style="padding: 6px 8px; border: 1px solid #cbd5e1; text-align: center; font-weight: bold; background: #f1f5f9; font-size: 11px;">${c.totalSales.toLocaleString()}</td>
-                <td style="padding: 6px 8px; border: 1px solid #cbd5e1; text-align: center; color: #dc2626; font-size: 11px;">${c.returnsValue.toLocaleString()}</td>
-                <td style="padding: 6px 8px; border: 1px solid #cbd5e1; text-align: center; font-size: 11px;">${c.expectedCash.toLocaleString()}</td>
-                <td style="padding: 6px 8px; border: 1px solid #cbd5e1; text-align: center; font-weight: bold; font-size: 11px;">${c.actualCash.toLocaleString()}</td>
-                <td style="padding: 6px 8px; border: 1px solid #cbd5e1; text-align: center; font-size: 11px; ${diffStyle}">${diffText}</td>
+                <td style="padding: 5px 6px; border: 1px solid #cbd5e1; text-align: center; font-weight: bold; background: #f1f5f9; font-size: 10px;">${c.totalSales.toLocaleString()}</td>
+                <td style="padding: 5px 6px; border: 1px solid #cbd5e1; text-align: center; color: #dc2626; font-size: 10px;">${c.returnsValue.toLocaleString()}</td>
+                <td style="padding: 5px 6px; border: 1px solid #cbd5e1; text-align: center; font-size: 10px;">${c.expectedCash.toLocaleString()}</td>
+                <td style="padding: 5px 6px; border: 1px solid #cbd5e1; text-align: center; font-weight: bold; font-size: 10px;">${c.actualCash.toLocaleString()}</td>
+                <td style="padding: 5px 6px; border: 1px solid #cbd5e1; text-align: center; font-size: 10px; ${diffStyle}">${diffText}</td>
             </tr>
         `;
     }).join('');
 
     const totalsMethodCells = statement.paymentMethodsList.map(m => `
-        <th style="padding: 8px; border: 1px solid #94a3b8; text-align: center; font-size: 12px; background: #e2e8f0; font-weight: bold;">
+        <th style="padding: 6px; border: 1px solid #94a3b8; text-align: center; font-size: 10px; background: #e2e8f0; font-weight: bold;">
             ${(statement.totals.salesByMethod[m] || 0).toLocaleString()}
         </th>
     `).join('');
 
     const totalsRow = `
         <tr style="background: #e2e8f0; font-weight: bold;">
-            <th colspan="3" style="padding: 8px; border: 1px solid #94a3b8; text-align: center; font-size: 12px;">الإجمالي المجمع لكافة الكاشيرات</th>
-            <th style="padding: 8px; border: 1px solid #94a3b8; text-align: center; font-size: 12px;">${statement.totals.totalOpeningBalance.toLocaleString()}</th>
+            <th colspan="3" style="padding: 6px; border: 1px solid #94a3b8; text-align: center; font-size: 10px;">الإجمالي المجمع لكافة الكاشيرات</th>
+            <th style="padding: 6px; border: 1px solid #94a3b8; text-align: center; font-size: 10px;">${statement.totals.totalOpeningBalance.toLocaleString()}</th>
             ${totalsMethodCells}
-            <th style="padding: 8px; border: 1px solid #94a3b8; text-align: center; font-size: 12px; background: #cbd5e1;">${statement.totals.totalSales.toLocaleString()}</th>
-            <th style="padding: 8px; border: 1px solid #94a3b8; text-align: center; font-size: 12px; color: #dc2626;">${statement.totals.totalReturns.toLocaleString()}</th>
-            <th style="padding: 8px; border: 1px solid #94a3b8; text-align: center; font-size: 12px;">${statement.totals.totalExpectedCash.toLocaleString()}</th>
-            <th style="padding: 8px; border: 1px solid #94a3b8; text-align: center; font-size: 12px;">${statement.totals.totalActualCash.toLocaleString()}</th>
-            <th style="padding: 8px; border: 1px solid #94a3b8; text-align: center; font-size: 12px;">${statement.totals.totalDifference.toLocaleString()}</th>
+            <th style="padding: 6px; border: 1px solid #94a3b8; text-align: center; font-size: 10px; background: #cbd5e1;">${statement.totals.totalSales.toLocaleString()}</th>
+            <th style="padding: 6px; border: 1px solid #94a3b8; text-align: center; font-size: 10px; color: #dc2626;">${statement.totals.totalReturns.toLocaleString()}</th>
+            <th style="padding: 6px; border: 1px solid #94a3b8; text-align: center; font-size: 10px;">${statement.totals.totalExpectedCash.toLocaleString()}</th>
+            <th style="padding: 6px; border: 1px solid #94a3b8; text-align: center; font-size: 10px;">${statement.totals.totalActualCash.toLocaleString()}</th>
+            <th style="padding: 6px; border: 1px solid #94a3b8; text-align: center; font-size: 10px;">${statement.totals.totalDifference.toLocaleString()}</th>
         </tr>
     `;
 
@@ -346,10 +344,10 @@ const printClosingStatement = (statement: WorkDayClosingStatement, companyName: 
         const val = statement.totals.salesByMethod[m] || 0;
         const pct = statement.totals.totalSales > 0 ? ((val / statement.totals.totalSales) * 100).toFixed(1) : '0';
         return `
-            <div style="flex: 1; min-width: 120px; border: 1px solid #cbd5e1; border-radius: 6px; padding: 8px; background: #f8fafc; text-align: center;">
-                <div style="font-size: 11px; color: #64748b; font-weight: bold; margin-bottom: 2px;">مبيعات ${m}</div>
-                <div style="font-size: 15px; font-weight: bold; color: #0f172a;">${val.toLocaleString()} <span style="font-size: 10px;">ج.م</span></div>
-                <div style="font-size: 10px; color: #64748b; margin-top: 2px;">نسبة ${pct}% من المبيعات</div>
+            <div style="flex: 1; min-width: 105px; border: 1px solid #cbd5e1; border-radius: 6px; padding: 8px; background: #f8fafc; text-align: center;">
+                <div style="font-size: 10px; color: #64748b; font-weight: bold; margin-bottom: 2px;">مبيعات ${m}</div>
+                <div style="font-size: 14px; font-weight: bold; color: #0f172a;">${val.toLocaleString()} <span style="font-size: 10px;">ج.م</span></div>
+                <div style="font-size: 9px; color: #64748b; margin-top: 2px;">نسبة ${pct}% من المبيعات</div>
             </div>
         `;
     }).join('');
@@ -361,12 +359,12 @@ const printClosingStatement = (statement: WorkDayClosingStatement, companyName: 
             <meta charset="utf-8">
             <title>بيان إقفال يوم العمل وتجميع طرق الدفع - ${statement.workDayDate}</title>
             <style>
-                @page { size: A4 landscape; margin: 10mm; }
-                body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; margin: 0; padding: 10px; color: #0f172a; direction: rtl; }
-                table { width: 100%; border-collapse: collapse; margin-top: 10px; }
-                .meta-box { display: flex; justify-content: space-between; border-bottom: 2px solid #0f172a; padding-bottom: 10px; margin-bottom: 12px; }
-                .sig-box { display: flex; justify-content: space-between; margin-top: 35px; padding-top: 15px; }
-                .sig-item { text-align: center; width: 28%; border-top: 1px dashed #64748b; padding-top: 6px; font-size: 12px; }
+                @page { size: A4 portrait; margin: 10mm; }
+                body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; margin: 0; padding: 8px; color: #0f172a; direction: rtl; background: #ffffff; }
+                table { width: 100%; border-collapse: collapse; margin-top: 8px; }
+                .meta-box { display: flex; justify-content: space-between; border-bottom: 2px solid #0f172a; padding-bottom: 8px; margin-bottom: 10px; }
+                .sig-box { display: flex; justify-content: space-between; margin-top: 30px; padding-top: 12px; }
+                .sig-item { text-align: center; width: 30%; border-top: 1px dashed #64748b; padding-top: 6px; font-size: 11px; }
                 @media print {
                     .no-print { display: none !important; }
                     body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
@@ -376,11 +374,11 @@ const printClosingStatement = (statement: WorkDayClosingStatement, companyName: 
         <body>
             <div class="meta-box">
                 <div>
-                    <h2 style="margin: 0 0 4px 0; font-size: 18px;">${companyName || 'منظومة نقاط البيع والحسابات'}</h2>
-                    <h3 style="margin: 0; font-size: 14px; color: #0284c7;">بيان إقفال يوم العمل وتجميع مبالغ طرق الدفع للمبيعات</h3>
+                    <h2 style="margin: 0 0 4px 0; font-size: 17px;">${companyName || 'منظومة نقاط البيع والحسابات'}</h2>
+                    <h3 style="margin: 0; font-size: 13px; color: #0284c7;">بيان إقفال يوم العمل وتجميع مبالغ طرق الدفع للمبيعات</h3>
                     <div style="font-size: 11px; color: #64748b; margin-top: 3px;">الفرع: ${statement.branchName || 'الفرع الرئيسي'}</div>
                 </div>
-                <div style="text-align: left; font-size: 11px; line-height: 1.6;">
+                <div style="text-align: left; font-size: 10px; line-height: 1.6;">
                     <div><strong>تاريخ يوم العمل:</strong> ${statement.workDayDate}</div>
                     <div><strong>توقيت الإقفال:</strong> ${new Date(statement.endTime).toLocaleString('ar-EG')}</div>
                     <div><strong>أقفل بواسطة:</strong> ${statement.closedByName}</div>
@@ -388,34 +386,34 @@ const printClosingStatement = (statement: WorkDayClosingStatement, companyName: 
                 </div>
             </div>
 
-            <div style="display: flex; gap: 8px; margin-bottom: 12px; flex-wrap: wrap;">
-                <div style="flex: 1; min-width: 120px; border: 1px solid #cbd5e1; border-radius: 6px; padding: 8px; background: #f0fdf4; text-align: center;">
-                    <div style="font-size: 11px; color: #166534; font-weight: bold; margin-bottom: 2px;">إجمالي المبيعات العامة</div>
-                    <div style="font-size: 16px; font-weight: bold; color: #15803d;">${statement.totals.totalSales.toLocaleString()} <span style="font-size: 10px;">ج.م</span></div>
-                    <div style="font-size: 10px; color: #166534; margin-top: 2px;">صافي الإيراد: ${statement.totals.totalNetRevenue.toLocaleString()} ج.م</div>
+            <div style="display: flex; gap: 8px; margin-bottom: 10px; flex-wrap: wrap;">
+                <div style="flex: 1; min-width: 110px; border: 1px solid #cbd5e1; border-radius: 6px; padding: 8px; background: #f0fdf4; text-align: center;">
+                    <div style="font-size: 10px; color: #166534; font-weight: bold; margin-bottom: 2px;">إجمالي المبيعات العامة</div>
+                    <div style="font-size: 15px; font-weight: bold; color: #15803d;">${statement.totals.totalSales.toLocaleString()} <span style="font-size: 10px;">ج.م</span></div>
+                    <div style="font-size: 9px; color: #166534; margin-top: 2px;">صافي الإيراد: ${statement.totals.totalNetRevenue.toLocaleString()} ج.م</div>
                 </div>
                 ${summaryCards}
-                <div style="flex: 1; min-width: 120px; border: 1px solid #cbd5e1; border-radius: 6px; padding: 8px; background: #eff6ff; text-align: center;">
-                    <div style="font-size: 11px; color: #1e40af; font-weight: bold; margin-bottom: 2px;">النقدية الموردة بالخزينة</div>
-                    <div style="font-size: 16px; font-weight: bold; color: #1d4ed8;">${statement.totals.totalActualCash.toLocaleString()} <span style="font-size: 10px;">ج.م</span></div>
-                    <div style="font-size: 10px; color: #1e40af; margin-top: 2px;">عدد الكاشيرات: ${statement.cashiers.length}</div>
+                <div style="flex: 1; min-width: 110px; border: 1px solid #cbd5e1; border-radius: 6px; padding: 8px; background: #eff6ff; text-align: center;">
+                    <div style="font-size: 10px; color: #1e40af; font-weight: bold; margin-bottom: 2px;">النقدية الموردة بالخزينة</div>
+                    <div style="font-size: 15px; font-weight: bold; color: #1d4ed8;">${statement.totals.totalActualCash.toLocaleString()} <span style="font-size: 10px;">ج.م</span></div>
+                    <div style="font-size: 9px; color: #1e40af; margin-top: 2px;">عدد الكاشيرات: ${statement.cashiers.length}</div>
                 </div>
             </div>
 
-            <h4 style="margin: 10px 0 4px 0; font-size: 12px;">بيان تفصيلي لكل كاشير منفصل وفقاً لطرق الدفع المسددة:</h4>
+            <h4 style="margin: 8px 0 4px 0; font-size: 11px;">بيان تفصيلي لكل كاشير منفصل وفقاً لطرق الدفع المسددة:</h4>
             <table>
                 <thead>
                     <tr style="background: #f1f5f9;">
-                        <th style="padding: 6px 8px; border: 1px solid #cbd5e1; width: 25px; font-size: 11px;">#</th>
-                        <th style="padding: 6px 8px; border: 1px solid #cbd5e1; font-size: 11px;">اسم الكاشير</th>
-                        <th style="padding: 6px 8px; border: 1px solid #cbd5e1; font-size: 11px;">نقطة البيع</th>
-                        <th style="padding: 6px 8px; border: 1px solid #cbd5e1; font-size: 11px;">عهدة البداية</th>
+                        <th style="padding: 5px 6px; border: 1px solid #cbd5e1; width: 22px; font-size: 10px;">#</th>
+                        <th style="padding: 5px 6px; border: 1px solid #cbd5e1; font-size: 10px;">اسم الكاشير</th>
+                        <th style="padding: 5px 6px; border: 1px solid #cbd5e1; font-size: 10px;">نقطة البيع</th>
+                        <th style="padding: 5px 6px; border: 1px solid #cbd5e1; font-size: 10px;">عهدة البداية</th>
                         ${methodsHeaders}
-                        <th style="padding: 6px 8px; border: 1px solid #cbd5e1; font-size: 11px; background: #e2e8f0;">إجمالي المبيعات</th>
-                        <th style="padding: 6px 8px; border: 1px solid #cbd5e1; font-size: 11px;">المرتجعات</th>
-                        <th style="padding: 6px 8px; border: 1px solid #cbd5e1; font-size: 11px;">المتوقع</th>
-                        <th style="padding: 6px 8px; border: 1px solid #cbd5e1; font-size: 11px;">المورد</th>
-                        <th style="padding: 6px 8px; border: 1px solid #cbd5e1; font-size: 11px;">الفارق</th>
+                        <th style="padding: 5px 6px; border: 1px solid #cbd5e1; font-size: 10px; background: #e2e8f0;">إجمالي المبيعات</th>
+                        <th style="padding: 5px 6px; border: 1px solid #cbd5e1; font-size: 10px;">المرتجعات</th>
+                        <th style="padding: 5px 6px; border: 1px solid #cbd5e1; font-size: 10px;">المتوقع</th>
+                        <th style="padding: 5px 6px; border: 1px solid #cbd5e1; font-size: 10px;">المورد</th>
+                        <th style="padding: 5px 6px; border: 1px solid #cbd5e1; font-size: 10px;">الفارق</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -427,30 +425,237 @@ const printClosingStatement = (statement: WorkDayClosingStatement, companyName: 
             <div class="sig-box">
                 <div class="sig-item">
                     <strong>توقيع مسؤولي الكاشيرات</strong>
-                    <div style="margin-top: 20px; color: #94a3b8;">..........................................</div>
+                    <div style="margin-top: 18px; color: #94a3b8;">....................................</div>
                 </div>
                 <div class="sig-item">
                     <strong>توقيع مشرف الفرع والوردية</strong>
-                    <div style="margin-top: 20px; color: #94a3b8;">..........................................</div>
+                    <div style="margin-top: 18px; color: #94a3b8;">....................................</div>
                 </div>
                 <div class="sig-item">
                     <strong>اعتماد الإدارة المالية والحسابات</strong>
-                    <div style="margin-top: 20px; color: #94a3b8;">..........................................</div>
+                    <div style="margin-top: 18px; color: #94a3b8;">....................................</div>
                 </div>
             </div>
-
-            <script>
-                window.onload = function() {
-                    window.print();
-                };
-            </script>
         </body>
         </html>
     `;
 
-    printWindow.document.open();
-    printWindow.document.write(htmlContent);
-    printWindow.document.close();
+    // الطباعة عبر iframe مخفي أولاً حتى لا تتعطل بسبب مانع النوافذ المنبثقة (Popup Blocker) أو عدم تفعيل onload
+    const iframe = document.createElement('iframe');
+    iframe.style.position = 'fixed';
+    iframe.style.right = '0';
+    iframe.style.bottom = '0';
+    iframe.style.width = '0';
+    iframe.style.height = '0';
+    iframe.style.border = '0';
+    document.body.appendChild(iframe);
+
+    const doc = iframe.contentWindow?.document;
+    if (doc) {
+        doc.open();
+        doc.write(htmlContent);
+        doc.close();
+        setTimeout(() => {
+            try {
+                iframe.contentWindow?.focus();
+                iframe.contentWindow?.print();
+            } finally {
+                setTimeout(() => {
+                    if (iframe.parentNode) iframe.parentNode.removeChild(iframe);
+                }, 1500);
+            }
+        }, 250);
+    } else {
+        const printWindow = window.open('', '_blank');
+        if (printWindow) {
+            printWindow.document.open();
+            printWindow.document.write(htmlContent);
+            printWindow.document.close();
+            setTimeout(() => {
+                printWindow.focus();
+                printWindow.print();
+            }, 250);
+        }
+    }
+};
+
+const printClosingStatementReceipt = async (
+    statement: WorkDayClosingStatement,
+    companyName: string,
+    settings: any,
+    toast?: (opts: any) => void
+) => {
+    if (typeof window === 'undefined') return;
+
+    const allPrinterSettings = settings?.main?.printers || {};
+    const branchId = (statement as any).branchId;
+    const branchSettings = branchId ? allPrinterSettings.branchOverrides?.[branchId] : {};
+    const printerSettings = { ...(allPrinterSettings.default || {}), ...branchSettings };
+    const posPrinterType = printerSettings?.posPrinterType || 'browser';
+    const posPrinterAddress = printerSettings?.posPrinterAddress || '';
+
+    // 1. محاولة الطباعة المباشرة على طابعة الإيصالات (IP أو System) إن وُجدت
+    if ((posPrinterType === 'ip' || posPrinterType === 'system') && posPrinterAddress) {
+        const lines: { left: string; right: string }[] = [
+            { left: `الفرع: ${statement.branchName || 'الفرع الرئيسي'}`, right: '' },
+            { left: `تاريخ العمل: ${statement.workDayDate}`, right: '' },
+            { left: `الإقفال: ${new Date(statement.endTime).toLocaleTimeString('ar-EG')}`, right: '' },
+            { left: `بواسطة: ${statement.closedByName}`, right: '' },
+            { left: '--------------------------------', right: '' },
+            { left: 'إجمالي المبيعات:', right: `${statement.totals.totalSales.toLocaleString()} ج.م` },
+            { left: 'المرتجعات:', right: `${statement.totals.totalReturns.toLocaleString()} ج.م` },
+            { left: 'صافي الإيراد:', right: `${statement.totals.totalNetRevenue.toLocaleString()} ج.م` },
+            { left: '--------------------------------', right: '' },
+        ];
+        statement.paymentMethodsList.forEach((m) => {
+            lines.push({
+                left: `${m}:`,
+                right: `${(statement.totals.salesByMethod[m] || 0).toLocaleString()} ج.م`,
+            });
+        });
+        lines.push({ left: '--------------------------------', right: '' });
+        lines.push({ left: 'عهدة البداية:', right: `${statement.totals.totalOpeningBalance.toLocaleString()} ج.م` });
+        lines.push({ left: 'النقدية المتوقعة:', right: `${statement.totals.totalExpectedCash.toLocaleString()} ج.م` });
+        lines.push({ left: 'النقدية الموردة:', right: `${statement.totals.totalActualCash.toLocaleString()} ج.م` });
+        lines.push({
+            left: 'الفارق:',
+            right: `${statement.totals.totalDifference > 0 ? '+' : ''}${statement.totals.totalDifference.toLocaleString()} ج.م`,
+        });
+        lines.push({ left: '--------------------------------', right: '' });
+        statement.cashiers.forEach((c) => {
+            lines.push({ left: `${c.cashierName} (${c.terminalName})`, right: `${c.totalSales.toLocaleString()}` });
+            lines.push({ left: `  مورد: ${c.actualCash.toLocaleString()}`, right: `فارق: ${c.difference}` });
+        });
+
+        try {
+            const res = await fetch('/api/print', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    printer: posPrinterAddress,
+                    type: posPrinterType,
+                    content: {
+                        title: `${companyName || 'بيان إقفال يوم العمل'} - بيان إقفال`,
+                        lines,
+                        footer: `تاريخ: ${statement.workDayDate}`,
+                    },
+                }),
+            });
+            if (res.ok) {
+                toast?.({ title: 'تمت طباعة الإيصال', description: `تم إرسال بيان الإقفال إلى ${posPrinterAddress}` });
+                return;
+            }
+        } catch {
+            // ننتقل لطباعة المتصفح الحرارية كبديل عند تعذر الاتصال المباشر
+        }
+    }
+
+    // 2. طباعة إيصال حراري عبر المتصفح (80mm / 72mm) عبر iframe مخفي
+    const methodRowsHtml = statement.paymentMethodsList
+        .map((m) => {
+            const val = statement.totals.salesByMethod[m] || 0;
+            return `<div class="row"><span>${m}:</span><span class="val">${val.toLocaleString()} ج.م</span></div>`;
+        })
+        .join('');
+
+    const cashierRowsHtml = statement.cashiers
+        .map(
+            (c) => `
+            <div class="cashier-box">
+                <div class="row"><strong>${c.cashierName}</strong><span>${c.terminalName}</span></div>
+                <div class="row"><span>المبيعات: ${c.totalSales.toLocaleString()}</span><span>المرتجع: ${c.returnsValue.toLocaleString()}</span></div>
+                <div class="row"><span>المتوقع: ${c.expectedCash.toLocaleString()}</span><span>المورد: <strong>${c.actualCash.toLocaleString()}</strong></span></div>
+                <div class="row"><span>الفارق:</span><span>${c.difference > 0 ? '+' : ''}${c.difference.toLocaleString()} ج.م</span></div>
+            </div>
+        `
+        )
+        .join('');
+
+    const receiptHtml = `
+        <!DOCTYPE html>
+        <html dir="rtl" lang="ar">
+        <head>
+            <meta charset="utf-8">
+            <title>إيصال إقفال يوم العمل - ${statement.workDayDate}</title>
+            <style>
+                @page { size: 80mm auto; margin: 2mm; }
+                body {
+                    font-family: 'Segoe UI', Tahoma, sans-serif;
+                    width: 72mm;
+                    margin: 0 auto;
+                    padding: 4px;
+                    color: #000;
+                    background: #fff;
+                    font-size: 11px;
+                    line-height: 1.45;
+                    direction: rtl;
+                }
+                .center { text-align: center; }
+                .title { font-size: 14px; font-weight: bold; margin: 2px 0; }
+                .sub { font-size: 11px; margin-bottom: 4px; }
+                .sep { border-top: 1px dashed #000; margin: 6px 0; }
+                .row { display: flex; justify-content: space-between; align-items: center; margin: 2px 0; }
+                .val { font-weight: bold; font-family: monospace; }
+                .big { font-size: 13px; font-weight: bold; }
+                .cashier-box { border: 1px dashed #444; padding: 4px; margin: 4px 0; border-radius: 3px; font-size: 10px; }
+            </style>
+        </head>
+        <body>
+            <div class="center">
+                <div class="title">${companyName || 'منظومة نقاط البيع'}</div>
+                <div class="sub"><strong>بيان إقفال يوم العمل (Z-Report)</strong></div>
+                <div>الفرع: ${statement.branchName || 'الفرع الرئيسي'}</div>
+            </div>
+            <div class="sep"></div>
+            <div class="row"><span>تاريخ اليوم:</span><span class="val">${statement.workDayDate}</span></div>
+            <div class="row"><span>وقت الإقفال:</span><span>${new Date(statement.endTime).toLocaleTimeString('ar-EG')}</span></div>
+            <div class="row"><span>بواسطة:</span><span>${statement.closedByName}</span></div>
+            <div class="sep"></div>
+            <div class="row big"><span>إجمالي المبيعات:</span><span class="val">${statement.totals.totalSales.toLocaleString()} ج.م</span></div>
+            <div class="row"><span>المرتجعات:</span><span class="val">${statement.totals.totalReturns.toLocaleString()} ج.م</span></div>
+            <div class="row"><span>صافي الإيراد:</span><span class="val">${statement.totals.totalNetRevenue.toLocaleString()} ج.م</span></div>
+            <div class="sep"></div>
+            <div class="center"><strong>طرق الدفع</strong></div>
+            ${methodRowsHtml}
+            <div class="sep"></div>
+            <div class="row"><span>عهدة البداية:</span><span class="val">${statement.totals.totalOpeningBalance.toLocaleString()} ج.م</span></div>
+            <div class="row"><span>النقدية المتوقعة:</span><span class="val">${statement.totals.totalExpectedCash.toLocaleString()} ج.م</span></div>
+            <div class="row big"><span>النقدية الموردة:</span><span class="val">${statement.totals.totalActualCash.toLocaleString()} ج.م</span></div>
+            <div class="row"><span>إجمالي الفارق:</span><span class="val">${statement.totals.totalDifference > 0 ? '+' : ''}${statement.totals.totalDifference.toLocaleString()} ج.م</span></div>
+            <div class="sep"></div>
+            <div class="center"><strong>تفصيل الكاشيرات (${statement.cashiers.length})</strong></div>
+            ${cashierRowsHtml}
+            <div class="sep"></div>
+            <div class="center" style="font-size: 10px;">توقيع المستلم: ........................</div>
+        </body>
+        </html>
+    `;
+
+    const iframe = document.createElement('iframe');
+    iframe.style.position = 'fixed';
+    iframe.style.right = '0';
+    iframe.style.bottom = '0';
+    iframe.style.width = '0';
+    iframe.style.height = '0';
+    iframe.style.border = '0';
+    document.body.appendChild(iframe);
+
+    const doc = iframe.contentWindow?.document;
+    if (doc) {
+        doc.open();
+        doc.write(receiptHtml);
+        doc.close();
+        setTimeout(() => {
+            try {
+                iframe.contentWindow?.focus();
+                iframe.contentWindow?.print();
+            } finally {
+                setTimeout(() => {
+                    if (iframe.parentNode) iframe.parentNode.removeChild(iframe);
+                }, 1500);
+            }
+        }, 250);
+    }
 };
 
 const WorkDayClosingStatementDialog = ({
@@ -464,6 +669,8 @@ const WorkDayClosingStatementDialog = ({
     onOpenChange: (open: boolean) => void;
     companyName: string;
 }) => {
+    const { settings } = useData();
+    const { toast } = useToast();
     if (!statement) return null;
 
     return (
@@ -634,16 +841,27 @@ const WorkDayClosingStatementDialog = ({
                     </div>
                 </div>
 
-                <DialogFooter className="flex flex-row items-center justify-between gap-2 border-t pt-3 sm:justify-between">
-                    <Button 
-                        variant="outline" 
-                        size="sm" 
-                        onClick={() => printClosingStatement(statement, companyName)}
-                        className="gap-1.5 font-bold border-primary/40 text-primary hover:bg-primary/10"
-                    >
-                        <Printer className="h-4 w-4" />
-                        طباعة بيان الإقفال (A4 / تقرير رسمي)
-                    </Button>
+                <DialogFooter className="flex flex-wrap flex-row items-center justify-between gap-2 border-t pt-3 sm:justify-between">
+                    <div className="flex flex-wrap items-center gap-2">
+                        <Button 
+                            variant="outline" 
+                            size="sm" 
+                            onClick={() => printClosingStatement(statement, companyName)}
+                            className="gap-1.5 font-bold border-primary/40 text-primary hover:bg-primary/10"
+                        >
+                            <Printer className="h-4 w-4" />
+                            طباعة بيان الإقفال (A4 / تقرير رسمي)
+                        </Button>
+                        <Button 
+                            variant="outline" 
+                            size="sm" 
+                            onClick={() => { void printClosingStatementReceipt(statement, companyName, settings, toast); }}
+                            className="gap-1.5 font-bold border-emerald-500/40 text-emerald-500 hover:bg-emerald-500/10"
+                        >
+                            <ReceiptText className="h-4 w-4" />
+                            طباعة على ورقة إيصال (80mm)
+                        </Button>
+                    </div>
                     <Button 
                         size="sm" 
                         onClick={() => onOpenChange(false)}

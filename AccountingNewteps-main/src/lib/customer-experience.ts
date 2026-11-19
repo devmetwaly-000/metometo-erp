@@ -1,5 +1,18 @@
 "use client";
 
+export interface ProductPointsPromotion {
+    id: string;
+    name: string;
+    targetType: 'item' | 'category';
+    targetId: string;
+    targetName?: string;
+    pointsMode: 'fixed_per_unit' | 'multiplier';
+    pointsValue: number;
+    isActive: boolean;
+    startDate?: string;
+    endDate?: string;
+}
+
 export interface CustomerExperienceConfig {
     loyalty: {
         enabled: boolean;
@@ -7,6 +20,7 @@ export interface CustomerExperienceConfig {
         pointRedeemValue: number;     // مثلاً: كل 1 نقطة = 5 ج.م خصم كاش باك
         minPointsToRedeem: number;    // الحد الأدنى للنقاط المسموح باستبدالها
         awardOnDiscountedItems: boolean;
+        productPointsPromotions?: ProductPointsPromotion[];
     };
     dualScreen: {
         enabled: boolean;
@@ -52,6 +66,7 @@ export const DEFAULT_CUSTOMER_EXPERIENCE_CONFIG: CustomerExperienceConfig = {
         pointRedeemValue: 5,
         minPointsToRedeem: 5,
         awardOnDiscountedItems: true,
+        productPointsPromotions: [],
     },
     dualScreen: {
         enabled: true,
@@ -124,6 +139,62 @@ export function calculateEarnedPoints(invoiceTotal: number, config: CustomerExpe
     if (!config.loyalty.enabled || invoiceTotal <= 0) return 0;
     const rate = Math.max(1, Number(config.loyalty.amountPerPoint) || 100);
     return Math.floor((invoiceTotal / rate) * 10) / 10;
+}
+
+export function getActiveProductPointsPromotions(config: CustomerExperienceConfig): ProductPointsPromotion[] {
+    const list = config?.loyalty?.productPointsPromotions || [];
+    const now = new Date();
+    return list.filter((promo) => {
+        if (!promo || !promo.isActive) return false;
+        if (promo.startDate && new Date(promo.startDate) > now) return false;
+        if (promo.endDate) {
+            const end = new Date(promo.endDate);
+            end.setHours(23, 59, 59, 999);
+            if (end < now) return false;
+        }
+        return Number(promo.pointsValue) > 0;
+    });
+}
+
+export function getItemPointsPromotion(
+    item: { id: string; categoryId?: string },
+    config: CustomerExperienceConfig
+): ProductPointsPromotion | null {
+    if (!config?.loyalty?.enabled) return null;
+    const active = getActiveProductPointsPromotions(config);
+    // الأولوية لعرض الصنف المحدد ثم عرض التصنيف
+    return (
+        active.find((p) => p.targetType === 'item' && p.targetId === item.id) ||
+        active.find((p) => p.targetType === 'category' && Boolean(item.categoryId) && p.targetId === item.categoryId) ||
+        null
+    );
+}
+
+export function calculateInvoiceLoyaltyPoints(params: {
+    invoiceTotal: number;
+    items: { id: string; categoryId?: string; qty: number; total: number }[];
+    config: CustomerExperienceConfig;
+}): number {
+    const { invoiceTotal, items, config } = params;
+    if (!config?.loyalty?.enabled || invoiceTotal <= 0) return 0;
+
+    const rate = Math.max(1, Number(config.loyalty.amountPerPoint) || 100);
+    let totalPoints = invoiceTotal / rate;
+
+    for (const item of items || []) {
+        const promo = getItemPointsPromotion(item, config);
+        if (!promo) continue;
+
+        if (promo.pointsMode === 'fixed_per_unit') {
+            totalPoints += Number(promo.pointsValue) * Math.max(0, Number(item.qty) || 0);
+        } else if (promo.pointsMode === 'multiplier') {
+            const extraMultiplier = Math.max(0, Number(promo.pointsValue) - 1);
+            const itemBasePts = Math.max(0, Number(item.total) || 0) / rate;
+            totalPoints += itemBasePts * extraMultiplier;
+        }
+    }
+
+    return Math.floor(totalPoints * 10) / 10;
 }
 
 export function calculateRedeemableCash(points: number, config: CustomerExperienceConfig): number {
@@ -201,19 +272,69 @@ export function getStoredCustomerDisplayState(): CustomerDisplayPayload | null {
     }
 }
 
-export function openCustomerDisplayWindow(): Window | null {
+export async function openCustomerDisplayWindow(): Promise<Window | null> {
     if (typeof window === 'undefined') return null;
     if (globalCustomerWindow && !globalCustomerWindow.closed) {
-        globalCustomerWindow.focus();
+        try {
+            globalCustomerWindow.focus();
+        } catch {}
         return globalCustomerWindow;
     }
-    const width = Math.min(1280, window.screen.availWidth || 1024);
-    const height = Math.min(800, window.screen.availHeight || 768);
+
+    const screenAny = window.screen as any;
+    let targetLeft = Number(screenAny?.availLeft) || 0;
+    let targetTop = Number(screenAny?.availTop) || 0;
+    let targetWidth = window.screen.availWidth || 1280;
+    let targetHeight = window.screen.availHeight || 800;
+
+    // 1. محاولة استخدام Window Management API لاكتشاف الشاشة الثانوية (Extended Display) بدقة
+    try {
+        const winAny = window as any;
+        if (typeof winAny.getScreenDetails === 'function') {
+            const details = await winAny.getScreenDetails();
+            const screens: any[] = details?.screens || [];
+            const currentScreen = details?.currentScreen;
+            const extendedScreen =
+                screens.find((s) => currentScreen && s !== currentScreen && !s.isPrimary) ||
+                screens.find((s) => !s.isPrimary) ||
+                screens.find((s) => currentScreen && s !== currentScreen);
+
+            if (extendedScreen) {
+                targetLeft = extendedScreen.availLeft ?? extendedScreen.left ?? targetLeft;
+                targetTop = extendedScreen.availTop ?? extendedScreen.top ?? targetTop;
+                targetWidth = extendedScreen.availWidth ?? extendedScreen.width ?? targetWidth;
+                targetHeight = extendedScreen.availHeight ?? extendedScreen.height ?? targetHeight;
+            }
+        } else if ((window.screen as any)?.isExtended) {
+            // 2. Fallback للمتصفحات التي تدعم screen.isExtended بدون getScreenDetails
+            const primaryWidth = window.screen.width || 1366;
+            targetLeft = window.screenX >= primaryWidth ? 0 : primaryWidth;
+            targetTop = 0;
+            targetWidth = window.screen.availWidth || 1280;
+            targetHeight = window.screen.availHeight || 800;
+        }
+    } catch {
+        // Fallback في حال رفض صلاحية Window Management
+        if ((window.screen as any)?.isExtended) {
+            const primaryWidth = window.screen.width || 1366;
+            targetLeft = window.screenX >= primaryWidth ? 0 : primaryWidth;
+            targetTop = 0;
+        }
+    }
+
     globalCustomerWindow = window.open(
         '/pos/customer-display',
         'CustomerDualDisplayWindow',
-        `width=${width},height=${height},menubar=no,toolbar=no,location=no,status=no,resizable=yes,scrollbars=yes`
+        `left=${Math.round(targetLeft)},top=${Math.round(targetTop)},width=${Math.round(targetWidth)},height=${Math.round(targetHeight)},menubar=no,toolbar=no,location=no,status=no,resizable=yes,scrollbars=yes`
     );
+
+    if (globalCustomerWindow) {
+        try {
+            globalCustomerWindow.moveTo(Math.round(targetLeft), Math.round(targetTop));
+            globalCustomerWindow.resizeTo(Math.round(targetWidth), Math.round(targetHeight));
+        } catch {}
+    }
+
     return globalCustomerWindow;
 }
 

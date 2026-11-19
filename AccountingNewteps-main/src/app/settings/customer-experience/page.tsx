@@ -19,10 +19,14 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useData } from "@/contexts/data-provider";
+import { useAuth } from "@/contexts/auth-context";
+import { usePermissions } from "@/contexts/permissions-context";
 import { useToast } from "@/hooks/use-toast";
+import { Combobox } from "@/components/ui/combobox";
 import {
     getCustomerExperienceConfig,
     CustomerExperienceConfig,
+    ProductPointsPromotion,
     calculateRedeemableCash,
     openCustomerDisplayWindow,
     closeCustomerDisplayWindow,
@@ -44,11 +48,22 @@ import {
     CheckCircle2,
     Eye,
     Loader2,
+    PlusCircle,
+    Trash2,
+    Ban,
+    Tag,
 } from "lucide-react";
 
 export default function CustomerExperienceSettingsPage() {
-    const { settings, customers, promotions, dbAction, loading } = useData();
+    const { settings, customers, promotions, items, itemCategories, dbAction, loading } = useData();
+    const { user } = useAuth();
+    const { can } = usePermissions();
     const { toast } = useToast();
+
+    const canManageExperienceSettings = useMemo(() => {
+        const role = String(user?.role || '').toLowerCase();
+        return role === 'مسؤول' || role === 'admin' || can('edit', 'settings_general');
+    }, [user?.role, can]);
 
     const [config, setConfig] = useState<CustomerExperienceConfig>(() => getCustomerExperienceConfig(settings));
     const [isSaving, setIsSaving] = useState(false);
@@ -56,6 +71,15 @@ export default function CustomerExperienceSettingsPage() {
     const [editingPointsCustomerId, setEditingPointsCustomerId] = useState<string | null>(null);
     const [editingPointsValue, setEditingPointsValue] = useState<string>("");
     const [testPhone, setTestPhone] = useState("");
+
+    // حالة إضافة عرض نقاط على منتج أو تصنيف
+    const [promoName, setPromoName] = useState("");
+    const [promoTargetType, setPromoTargetType] = useState<'item' | 'category'>('item');
+    const [promoTargetId, setPromoTargetId] = useState("");
+    const [promoPointsMode, setPromoPointsMode] = useState<'fixed_per_unit' | 'multiplier'>('fixed_per_unit');
+    const [promoPointsValue, setPromoPointsValue] = useState("5");
+    const [promoStartDate, setPromoStartDate] = useState("");
+    const [promoEndDate, setPromoEndDate] = useState("");
 
     useEffect(() => {
         if (settings?.main?.customerExperience) {
@@ -184,9 +208,100 @@ export default function CustomerExperienceSettingsPage() {
         return (customers || []).filter(
             (c: any) =>
                 c.name?.toLowerCase().includes(customerSearch.toLowerCase()) ||
-                (c.phone && c.phone.includes(customerSearch))
+                (c.phone && String(c.phone).includes(customerSearch))
         );
     }, [customers, customerSearch]);
+
+    const targetOptions = useMemo(() => {
+        if (promoTargetType === 'item') {
+            return (items || []).map((it: any) => ({
+                value: it.id,
+                label: `${it.name}${it.code ? ` (${it.code})` : ''}`,
+            }));
+        }
+        return (itemCategories || []).map((cat: any) => ({
+            value: cat.id,
+            label: cat.name,
+        }));
+    }, [promoTargetType, items, itemCategories]);
+
+    const handleAddProductPointsPromo = () => {
+        if (!promoTargetId) {
+            toast({ variant: "destructive", title: "بيانات ناقصة", description: "يرجى اختيار الصنف أو الفئة أولاً." });
+            return;
+        }
+        const val = Number(promoPointsValue);
+        if (isNaN(val) || val <= 0) {
+            toast({ variant: "destructive", title: "قيمة غير صحيحة", description: "يرجى إدخال قيمة نقاط موجبة." });
+            return;
+        }
+        const targetObj = promoTargetType === 'item'
+            ? (items || []).find((i: any) => i.id === promoTargetId)
+            : (itemCategories || []).find((c: any) => c.id === promoTargetId);
+        const targetName = targetObj?.name || 'غير محدد';
+        const newPromo: ProductPointsPromotion = {
+            id: `pts_promo_${Date.now()}`,
+            name: promoName.trim() || (promoPointsMode === 'multiplier' ? `مضاعفة النقاط (${val}x) على ${targetName}` : `+${val} نقطة على ${targetName}`),
+            targetType: promoTargetType,
+            targetId: promoTargetId,
+            targetName,
+            pointsMode: promoPointsMode,
+            pointsValue: val,
+            isActive: true,
+            startDate: promoStartDate || undefined,
+            endDate: promoEndDate || undefined,
+        };
+        setConfig((prev) => ({
+            ...prev,
+            loyalty: {
+                ...prev.loyalty,
+                productPointsPromotions: [newPromo, ...(prev.loyalty.productPointsPromotions || [])],
+            },
+        }));
+        setPromoName("");
+        setPromoTargetId("");
+        toast({ title: "تمت إضافة عرض النقاط", description: "اضغط على (حفظ قواعد نقاط الولاء) لتثبيت العرض على الكاشير." });
+    };
+
+    const handleToggleProductPointsPromo = (promoId: string) => {
+        setConfig((prev) => ({
+            ...prev,
+            loyalty: {
+                ...prev.loyalty,
+                productPointsPromotions: (prev.loyalty.productPointsPromotions || []).map((p) =>
+                    p.id === promoId ? { ...p, isActive: !p.isActive } : p
+                ),
+            },
+        }));
+    };
+
+    const handleDeleteProductPointsPromo = (promoId: string) => {
+        setConfig((prev) => ({
+            ...prev,
+            loyalty: {
+                ...prev.loyalty,
+                productPointsPromotions: (prev.loyalty.productPointsPromotions || []).filter((p) => p.id !== promoId),
+            },
+        }));
+    };
+
+    if (!canManageExperienceSettings) {
+        return (
+            <main className="flex flex-1 items-center justify-center p-6">
+                <Card className="w-full max-w-md border-destructive/40">
+                    <CardHeader>
+                        <CardTitle className="flex items-center gap-2 text-destructive">
+                            <Ban className="h-5 w-5" />
+                            غير مصرح بالدخول
+                        </CardTitle>
+                        <CardDescription>
+                            شاشة إدارة نقاط الولاء وقيم الاستبدال مخصصة للإدارة فقط ولا تظهر للكاشير لمنع التلاعب بالقيم.
+                        </CardDescription>
+                    </CardHeader>
+                </Card>
+            </main>
+        );
+    }
 
     return (
         <>
@@ -683,6 +798,169 @@ export default function CustomerExperienceSettingsPage() {
                         </Card>
 
                         <Card>
+                            <CardHeader>
+                                <CardTitle className="flex items-center gap-2">
+                                    <Tag className="h-5 w-5 text-amber-500" />
+                                    عروض النقاط على المنتجات والفئات
+                                </CardTitle>
+                                <CardDescription>
+                                    امنح نقاطاً إضافية ثابتة لكل قطعة أو ضاعف النقاط على منتجات أو فئات محددة لتنشيط المبيعات.
+                                </CardDescription>
+                            </CardHeader>
+                            <CardContent className="space-y-6">
+                                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 border rounded-xl p-4 bg-muted/20">
+                                    <div className="space-y-2">
+                                        <Label>نطاق العرض</Label>
+                                        <Select
+                                            value={promoTargetType}
+                                            onValueChange={(v: 'item' | 'category') => {
+                                                setPromoTargetType(v);
+                                                setPromoTargetId("");
+                                            }}
+                                        >
+                                            <SelectTrigger>
+                                                <SelectValue />
+                                            </SelectTrigger>
+                                            <SelectContent>
+                                                <SelectItem value="item">منتج / صنف محدد</SelectItem>
+                                                <SelectItem value="category">فئة / تصنيف كامل</SelectItem>
+                                            </SelectContent>
+                                        </Select>
+                                    </div>
+
+                                    <div className="space-y-2">
+                                        <Label>{promoTargetType === 'item' ? 'اختر الصنف' : 'اختر الفئة'}</Label>
+                                        <Combobox
+                                            options={targetOptions}
+                                            value={promoTargetId}
+                                            onValueChange={setPromoTargetId}
+                                            placeholder={promoTargetType === 'item' ? 'ابحث عن صنف...' : 'ابحث عن فئة...'}
+                                            emptyMessage="لا توجد نتائج."
+                                        />
+                                    </div>
+
+                                    <div className="space-y-2">
+                                        <Label>نوع مكافأة النقاط</Label>
+                                        <Select
+                                            value={promoPointsMode}
+                                            onValueChange={(v: 'fixed_per_unit' | 'multiplier') => setPromoPointsMode(v)}
+                                        >
+                                            <SelectTrigger>
+                                                <SelectValue />
+                                            </SelectTrigger>
+                                            <SelectContent>
+                                                <SelectItem value="fixed_per_unit">نقاط إضافية ثابتة لكل وحدة</SelectItem>
+                                                <SelectItem value="multiplier">مضاعفة النقاط (مثل 2x أو 3x)</SelectItem>
+                                            </SelectContent>
+                                        </Select>
+                                    </div>
+
+                                    <div className="space-y-2">
+                                        <Label>{promoPointsMode === 'fixed_per_unit' ? 'عدد النقاط الإضافية للوحدة' : 'معامل المضاعفة (x)'}</Label>
+                                        <Input
+                                            type="number"
+                                            min={1}
+                                            step="0.5"
+                                            value={promoPointsValue}
+                                            onChange={(e) => setPromoPointsValue(e.target.value)}
+                                        />
+                                    </div>
+
+                                    <div className="space-y-2 md:col-span-2">
+                                        <Label>اسم العرض (اختياري)</Label>
+                                        <Input
+                                            placeholder="مثال: عرض الويك إند - نقاط مضاعفة"
+                                            value={promoName}
+                                            onChange={(e) => setPromoName(e.target.value)}
+                                        />
+                                    </div>
+
+                                    <div className="space-y-2">
+                                        <Label>من تاريخ (اختياري)</Label>
+                                        <Input type="date" value={promoStartDate} onChange={(e) => setPromoStartDate(e.target.value)} />
+                                    </div>
+
+                                    <div className="space-y-2">
+                                        <Label>إلى تاريخ (اختياري)</Label>
+                                        <Input type="date" value={promoEndDate} onChange={(e) => setPromoEndDate(e.target.value)} />
+                                    </div>
+
+                                    <div className="md:col-span-2 lg:col-span-4 flex justify-end">
+                                        <Button type="button" onClick={handleAddProductPointsPromo} className="gap-1.5">
+                                            <PlusCircle className="h-4 w-4" />
+                                            إضافة عرض النقاط
+                                        </Button>
+                                    </div>
+                                </div>
+
+                                <div className="w-full overflow-auto border rounded-lg">
+                                    <Table>
+                                        <TableHeader>
+                                            <TableRow>
+                                                <TableHead>اسم العرض</TableHead>
+                                                <TableHead>المنتج / الفئة</TableHead>
+                                                <TableHead className="text-center">المكافأة</TableHead>
+                                                <TableHead className="text-center">الفترة</TableHead>
+                                                <TableHead className="text-center">الحالة</TableHead>
+                                                <TableHead className="text-center">حذف</TableHead>
+                                            </TableRow>
+                                        </TableHeader>
+                                        <TableBody>
+                                            {(config.loyalty.productPointsPromotions || []).length > 0 ? (
+                                                (config.loyalty.productPointsPromotions || []).map((promo) => (
+                                                    <TableRow key={promo.id}>
+                                                        <TableCell className="font-semibold">{promo.name}</TableCell>
+                                                        <TableCell>
+                                                            <Badge variant="outline">
+                                                                {promo.targetType === 'item' ? 'صنف' : 'فئة'}: {promo.targetName || promo.targetId}
+                                                            </Badge>
+                                                        </TableCell>
+                                                        <TableCell className="text-center font-mono font-bold text-amber-500">
+                                                            {promo.pointsMode === 'multiplier' ? `${promo.pointsValue}x نقاط` : `+${promo.pointsValue} نقطة / وحدة`}
+                                                        </TableCell>
+                                                        <TableCell className="text-center text-xs text-muted-foreground">
+                                                            {promo.startDate || promo.endDate
+                                                                ? `${promo.startDate || 'الآن'} → ${promo.endDate || 'مفتوح'}`
+                                                                : 'ساري دائماً'}
+                                                        </TableCell>
+                                                        <TableCell className="text-center">
+                                                            <Switch
+                                                                checked={promo.isActive}
+                                                                onCheckedChange={() => handleToggleProductPointsPromo(promo.id)}
+                                                            />
+                                                        </TableCell>
+                                                        <TableCell className="text-center">
+                                                            <Button
+                                                                variant="ghost"
+                                                                size="icon"
+                                                                className="text-destructive"
+                                                                onClick={() => handleDeleteProductPointsPromo(promo.id)}
+                                                            >
+                                                                <Trash2 className="h-4 w-4" />
+                                                            </Button>
+                                                        </TableCell>
+                                                    </TableRow>
+                                                ))
+                                            ) : (
+                                                <TableRow>
+                                                    <TableCell colSpan={6} className="text-center py-6 text-muted-foreground">
+                                                        لا توجد عروض نقاط مضافة على المنتجات حالياً.
+                                                    </TableCell>
+                                                </TableRow>
+                                            )}
+                                        </TableBody>
+                                    </Table>
+                                </div>
+                            </CardContent>
+                            <CardFooter className="justify-end border-t pt-4">
+                                <Button onClick={handleSaveSettings} disabled={isSaving}>
+                                    <Save className="h-4 w-4 ml-2" />
+                                    حفظ عروض النقاط
+                                </Button>
+                            </CardFooter>
+                        </Card>
+
+                        <Card>
                             <CardHeader className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
                                 <div>
                                     <CardTitle>سجل أرصدة نقاط الولاء للعملاء</CardTitle>
@@ -705,6 +983,8 @@ export default function CustomerExperienceSettingsPage() {
                                             <TableRow>
                                                 <TableHead>العميل</TableHead>
                                                 <TableHead>رقم الهاتف</TableHead>
+                                                <TableHead className="text-center">الرصيد المالي</TableHead>
+                                                <TableHead className="text-center">المكتسب / المستبدل</TableHead>
                                                 <TableHead className="text-center">رصيد النقاط الحالي</TableHead>
                                                 <TableHead className="text-center">قيمة الكاش باك (ج.م)</TableHead>
                                                 <TableHead className="text-center">إجراءات</TableHead>
@@ -714,11 +994,21 @@ export default function CustomerExperienceSettingsPage() {
                                             {filteredCustomers.length > 0 ? (
                                                 filteredCustomers.map((c: any) => {
                                                     const pts = Number(c.loyaltyPoints || 0);
+                                                    const earnedTotal = Number(c.totalEarnedPoints || 0);
+                                                    const redeemedTotal = Number(c.totalRedeemedPoints || 0);
                                                     const cashVal = calculateRedeemableCash(pts, config);
                                                     return (
                                                         <TableRow key={c.id}>
                                                             <TableCell className="font-medium">{c.name}</TableCell>
                                                             <TableCell className="font-mono text-xs">{c.phone || "-"}</TableCell>
+                                                            <TableCell className="text-center font-mono text-xs">
+                                                                {Number(c.currentBalance || 0).toLocaleString()} ج.م
+                                                            </TableCell>
+                                                            <TableCell className="text-center font-mono text-xs">
+                                                                <span className="text-emerald-500">+{earnedTotal.toLocaleString()}</span>
+                                                                {" / "}
+                                                                <span className="text-amber-500">-{redeemedTotal.toLocaleString()}</span>
+                                                            </TableCell>
                                                             <TableCell className="text-center">
                                                                 {editingPointsCustomerId === c.id ? (
                                                                     <div className="flex items-center justify-center gap-1">
@@ -773,7 +1063,7 @@ export default function CustomerExperienceSettingsPage() {
                                                 })
                                             ) : (
                                                 <TableRow>
-                                                    <TableCell colSpan={5} className="text-center py-8 text-muted-foreground">
+                                                    <TableCell colSpan={7} className="text-center py-8 text-muted-foreground">
                                                         لا يوجد عملاء مطابقون للبحث.
                                                     </TableCell>
                                                 </TableRow>

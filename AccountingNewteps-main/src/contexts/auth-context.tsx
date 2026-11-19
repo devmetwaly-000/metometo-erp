@@ -60,6 +60,30 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
+function getOrCreateTabSessionToken(): string {
+    if (typeof window === 'undefined') return 'ssr';
+    try {
+        let token = sessionStorage.getItem('auth_session_token');
+        if (!token) {
+            token = typeof crypto !== 'undefined' && crypto.randomUUID
+                ? crypto.randomUUID()
+                : `sess_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
+            sessionStorage.setItem('auth_session_token', token);
+        }
+        return token;
+    } catch {
+        return `sess_${Date.now()}`;
+    }
+}
+
+function getDeviceDescription(): string {
+    if (typeof navigator === 'undefined') return 'جهاز غير معروف';
+    const ua = navigator.userAgent || '';
+    const isMobile = /Android|iPhone|iPad|iPod/i.test(ua);
+    const platform = (navigator as any).userAgentData?.platform || navigator.platform || (isMobile ? 'Mobile' : 'Desktop');
+    return `${platform} - ${isMobile ? 'موبايل' : 'كمبيوتر'}`;
+}
+
 export const AuthProvider: React.FC<{ children: ReactNode, initialUsers?: any[], initialLicenses?: any[], dbAction?: any }> = ({ children, initialUsers, initialLicenses, dbAction }) => {
     const [user, setUser] = useState<User | null>(null);
     const [loading, setLoading] = useState(true); // Changed initial state to true for session checking
@@ -128,9 +152,24 @@ export const AuthProvider: React.FC<{ children: ReactNode, initialUsers?: any[],
         });
     }, []);
 
-    const signOut = async () => {
+    const signOut = useCallback(async () => {
+        const currentUser = user;
         setUser(null);
         localStorage.removeItem('authUser'); // Clear persisted user
+        if (currentUser?.isCashier && currentUser.id !== 'superadmin') {
+            try {
+                const sessionToken = getOrCreateTabSessionToken();
+                await fetch('/api/auth/session', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        action: 'release',
+                        userId: currentUser.id,
+                        sessionToken,
+                    }),
+                });
+            } catch {}
+        }
         try {
             Object.keys(localStorage).forEach(k => {
                 if (k.startsWith('app_open_tabs_')) localStorage.removeItem(k);
@@ -141,7 +180,61 @@ export const AuthProvider: React.FC<{ children: ReactNode, initialUsers?: any[],
         } catch {}
         document.documentElement.className = 'dark';
         document.documentElement.style.cssText = '';
-    };
+    }, [user]);
+
+    // مراقبة الجلسة النشطة للكاشير (Heartbeat كل 15 ثانية + تحرير الجلسة عند إغلاق المتصفح)
+    useEffect(() => {
+        if (!user || !user.isCashier || user.id === 'superadmin') return;
+
+        const sessionToken = getOrCreateTabSessionToken();
+        const deviceInfo = getDeviceDescription();
+        let cancelled = false;
+
+        const sendHeartbeat = async () => {
+            try {
+                const res = await fetch('/api/auth/session', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        action: 'heartbeat',
+                        userId: user.id,
+                        sessionToken,
+                        deviceInfo,
+                    }),
+                });
+                if (res.status === 409 && !cancelled) {
+                    const data = await res.json().catch(() => null);
+                    setAuthError(
+                        `تم إغلاق الجلسة لأن هذا الحساب مفتوح على جهاز آخر (${data?.deviceInfo || 'جهاز آخر'}).`
+                    );
+                    setUser(null);
+                    localStorage.removeItem('authUser');
+                }
+            } catch {}
+        };
+
+        void sendHeartbeat();
+        const intervalId = setInterval(() => {
+            void sendHeartbeat();
+        }, 15000);
+
+        const handleBeforeUnload = () => {
+            try {
+                const blob = new Blob(
+                    [JSON.stringify({ action: 'release', userId: user.id, sessionToken })],
+                    { type: 'application/json' }
+                );
+                navigator.sendBeacon('/api/auth/session', blob);
+            } catch {}
+        };
+
+        window.addEventListener('beforeunload', handleBeforeUnload);
+        return () => {
+            cancelled = true;
+            clearInterval(intervalId);
+            window.removeEventListener('beforeunload', handleBeforeUnload);
+        };
+    }, [user]);
 
     const signIn = async (loginName: string, pass: string) => {
         const normalizedLoginName = loginName.toLowerCase().trim();
@@ -187,6 +280,30 @@ export const AuthProvider: React.FC<{ children: ReactNode, initialUsers?: any[],
             );
 
             if (foundUser && !foundUser.isDisabled) {
+                // منع دخول نفس الكاشير على أكثر من جهاز/جلسة في نفس الوقت
+                if (foundUser.isCashier) {
+                    const sessionToken = getOrCreateTabSessionToken();
+                    const deviceInfo = getDeviceDescription();
+                    const sessionRes = await fetch('/api/auth/session', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            action: 'acquire',
+                            userId: foundUser.id,
+                            sessionToken,
+                            deviceInfo,
+                        }),
+                    });
+                    if (sessionRes.status === 409) {
+                        const sessionJson = await sessionRes.json().catch(() => null);
+                        const conflictErr: any = new Error(
+                            sessionJson?.error ||
+                            `هذا الحساب (الكاشير) مفتوح حالياً على جهاز آخر (${sessionJson?.deviceInfo || 'جهاز آخر'}). يرجى تسجيل الخروج منه أولاً لمنع التلاعب.`
+                        );
+                        conflictErr.isSessionConflict = true;
+                        throw conflictErr;
+                    }
+                }
                 
                 let userData = { ...foundUser };
                 const licenseKey = (userData.themeSettings?.licenseKey || '').trim().toLowerCase();
@@ -244,7 +361,11 @@ export const AuthProvider: React.FC<{ children: ReactNode, initialUsers?: any[],
                 throw new Error("Invalid credentials or user disabled.");
             }
         } catch (error: any) {
-            setAuthError('اسم الدخول أو كلمة المرور غير صحيحة، أو الحساب معطل.');
+            if (error?.isSessionConflict) {
+                setAuthError(error.message);
+            } else {
+                setAuthError('اسم الدخول أو كلمة المرور غير صحيحة، أو الحساب معطل.');
+            }
             throw error;
         }
     };

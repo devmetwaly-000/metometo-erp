@@ -83,6 +83,7 @@ interface PosSettings {
         cartWidth: number;
         itemsWidth: number;
         groupsPosition: 'left' | 'right';
+        groupsWidth?: number;
         paymentPosition: 'top' | 'bottom';
     };
     showAllItemsInitially: boolean;
@@ -111,10 +112,12 @@ export default function SettingsPage() {
     const { settings: allData, licenses, dbAction, loading: dataLoading, retryDatabaseConnection } = useData();
     const [settings, setSettings] = useState<Settings | null>(null);
     const [loading, setLoading] = useState(true);
+    const [enableDualScreen, setEnableDualScreen] = useState<boolean>(true);
 
     useEffect(() => {
         if (allData?.main) {
             const loadedSettings = allData.main;
+            setEnableDualScreen(loadedSettings.customerExperience?.dualScreen?.enabled ?? true);
             
             const defaultGeneral: GeneralSettings = { 
                 companyName: '', 
@@ -200,7 +203,19 @@ export default function SettingsPage() {
     const handleSave = async () => {
         if (!settings) return;
         try {
-            await dbAction('settings', 'update', { id: 'main', data: settings });
+            const existingMain = allData?.main || {};
+            const mergedMain = {
+                ...existingMain,
+                ...settings,
+                customerExperience: {
+                    ...(existingMain.customerExperience || {}),
+                    dualScreen: {
+                        ...(existingMain.customerExperience?.dualScreen || {}),
+                        enabled: enableDualScreen,
+                    },
+                },
+            };
+            await dbAction('settings', 'update', { id: 'main', data: mergedMain });
             if (typeof window !== 'undefined') {
                 if (settings.general?.toastDuration) {
                     const durMs = Math.round(Number(settings.general.toastDuration) * 1000);
@@ -775,6 +790,15 @@ export default function SettingsPage() {
                     </div>
                     <Switch id="showItemStock" checked={settings.posSettings.showItemStock ?? true} onCheckedChange={checked => handlePosSettingsChange('showItemStock', checked)} />
                 </div>
+                <div className="flex items-center justify-between rounded-lg border p-3 shadow-sm border-emerald-500/30 bg-emerald-500/5">
+                    <div className="space-y-0.5">
+                        <Label htmlFor="enableDualScreen">تفعيل شاشة عرض العميل الثانية (Extended Display)</Label>
+                        <p className="text-xs text-muted-foreground">
+                            عند التفعيل، تفتح شاشة العميل تلقائياً على الشاشة الثانوية عند فتح الكاشير. عند الإيقاف، لن تفتح الشاشة الثانوية.
+                        </p>
+                    </div>
+                    <Switch id="enableDualScreen" checked={enableDualScreen} onCheckedChange={checked => setEnableDualScreen(!!checked)} />
+                </div>
                  
                  {/* إعدادات سلة المبيعات */}
                  <div>
@@ -836,7 +860,7 @@ export default function SettingsPage() {
                                 </SelectContent>
                             </Select>
                         </div>
-                         <div className="grid grid-cols-2 gap-4">
+                         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                              <div className="space-y-2">
                                 <Label>عرض السلة (%)</Label>
                                 <Input type="number" value={settings.posSettings.layout?.cartWidth || 40} onChange={e => handleLayoutChange('cartWidth', Number(e.target.value))} />
@@ -844,6 +868,10 @@ export default function SettingsPage() {
                              <div className="space-y-2">
                                 <Label>عرض منطقة الأصناف (%)</Label>
                                 <Input type="number" value={settings.posSettings.layout?.itemsWidth || 60} onChange={e => handleLayoutChange('itemsWidth', Number(e.target.value))} />
+                            </div>
+                             <div className="space-y-2">
+                                <Label>عرض منطقة المجموعات (px)</Label>
+                                <Input type="number" min={150} max={500} step={10} value={settings.posSettings.layout?.groupsWidth || 240} onChange={e => handleLayoutChange('groupsWidth', Math.max(150, Math.min(500, Number(e.target.value) || 240)))} />
                             </div>
                          </div>
                          <p className="text-xs text-muted-foreground">مجموع النسب يجب أن يكون 100%.</p>

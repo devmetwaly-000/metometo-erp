@@ -5,13 +5,13 @@ import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import PageHeader from "@/components/page-header";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Loader2, Save } from 'lucide-react';
+import { Loader2, Save, ArrowUp, ArrowDown, RotateCcw } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import { useToast } from "@/hooks/use-toast";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
-import { PosReceipt } from '@/components/pos-receipt';
+import { PosReceipt, DEFAULT_RECEIPT_SECTION_ORDER } from '@/components/pos-receipt';
 import { KitchenReceipt } from '@/components/kitchen-receipt';
 import { useData } from '@/contexts/data-provider';
 import { Combobox } from '@/components/ui/combobox';
@@ -39,6 +39,8 @@ interface PosReceiptSettings extends BaseReceiptSettings {
     showInvoiceNumber: boolean;
     showCustomerName: boolean;
     showCustomerPhone: boolean;
+    showEInvoiceQr?: boolean;
+    sectionOrder?: string[];
     fontSizes: {
         companyName: number;
         header: number;
@@ -77,6 +79,8 @@ const DEFAULT_POS_SETTINGS: PosReceiptSettings = {
     showCode: true,
     showCustomerName: true,
     showCustomerPhone: true,
+    showEInvoiceQr: true,
+    sectionOrder: [...DEFAULT_RECEIPT_SECTION_ORDER],
     fontSizes: {
         companyName: 16,
         header: 12,
@@ -153,8 +157,10 @@ export default function ReceiptDesignerPage() {
     useEffect(() => {
         if (user && user.warehouseIds && user.warehouseIds.length === 1 && user.warehouseIds[0] !== 'all') {
             setSelectedWarehouseId(user.warehouseIds[0]);
+        } else if (!selectedWarehouseId && warehouses && warehouses.length > 0) {
+            setSelectedWarehouseId(warehouses[0].id);
         }
-    }, [user]);
+    }, [user, warehouses, selectedWarehouseId]);
 
     useEffect(() => {
         if (!selectedWarehouseId) {
@@ -200,6 +206,33 @@ export default function ReceiptDesignerPage() {
         }
     };
     
+    const sectionLabels: Record<string, string> = {
+        logo: 'الشعار',
+        companyInfo: 'اسم الشركة والعنوان والهاتف',
+        barcode: 'الباركود (صورة ورقم)',
+        invoiceMeta: 'بيانات الفاتورة والعميل والكاشير',
+        items: 'جدول الأصناف',
+        totals: 'الإجماليات والخصم والضريبة',
+        qr: 'رمز QR الإيصال الإلكتروني',
+        footer: 'نص التذييل (الخاتمة)',
+    };
+
+    const currentSectionOrder = useMemo(() => {
+        const saved: string[] = Array.isArray(posDesign.sectionOrder) ? posDesign.sectionOrder : [];
+        const validSaved = saved.filter((k) => (DEFAULT_RECEIPT_SECTION_ORDER as readonly string[]).includes(k));
+        const missing = DEFAULT_RECEIPT_SECTION_ORDER.filter((k) => !validSaved.includes(k));
+        return [...validSaved, ...missing];
+    }, [posDesign.sectionOrder]);
+
+    const moveSection = (index: number, direction: -1 | 1) => {
+        const targetIndex = index + direction;
+        if (targetIndex < 0 || targetIndex >= currentSectionOrder.length) return;
+        const nextOrder = [...currentSectionOrder];
+        const [moved] = nextOrder.splice(index, 1);
+        nextOrder.splice(targetIndex, 0, moved);
+        setPosDesign((p) => ({ ...p, sectionOrder: nextOrder }));
+    };
+
     const companySettings = allData?.main?.general || {};
     const warehouseOptions = useMemo(() => warehouses.map((w: any) => ({ value: w.id, label: w.name })), [warehouses]);
 
@@ -264,6 +297,7 @@ export default function ReceiptDesignerPage() {
                                             <SettingsToggle id="pos-show-code" label="قيمة الباركود (نص)" checked={posDesign.showCode} onCheckedChange={v => setPosDesign(p => ({...p, showCode: v}))} />
                                             <SettingsToggle id="pos-show-invoice-num" label="رقم الفاتورة" checked={posDesign.showInvoiceNumber} onCheckedChange={v => setPosDesign(p => ({...p, showInvoiceNumber: v}))} />
                                             <SettingsToggle id="pos-show-item-price" label="سعر الوحدة" checked={posDesign.showItemPrice} onCheckedChange={v => setPosDesign(p => ({...p, showItemPrice: v}))} />
+                                            <SettingsToggle id="pos-show-einvoice-qr" label="رمز QR الإيصال الإلكتروني" checked={posDesign.showEInvoiceQr ?? true} onCheckedChange={v => setPosDesign(p => ({...p, showEInvoiceQr: v}))} />
                                         </AccordionContent>
                                     </AccordionItem>
                                     <AccordionItem value="item-3">
@@ -274,6 +308,55 @@ export default function ReceiptDesignerPage() {
                                             <FontSizeControl label="بنود الفاتورة" value={posDesign.fontSizes.items} onChange={v => setPosDesign(p => ({...p, fontSizes: {...p.fontSizes, items: v}}))} />
                                             <FontSizeControl label="الإجماليات" value={posDesign.fontSizes.totals} onChange={v => setPosDesign(p => ({...p, fontSizes: {...p.fontSizes, totals: v}}))} />
                                             <FontSizeControl label="نص الباركود" value={posDesign.fontSizes.barcode} onChange={v => setPosDesign(p => ({...p, fontSizes: {...p.fontSizes, barcode: v}}))} />
+                                        </AccordionContent>
+                                    </AccordionItem>
+                                    <AccordionItem value="item-4">
+                                        <AccordionTrigger>ترتيب العناصر عمودياً</AccordionTrigger>
+                                        <AccordionContent className="space-y-2 pt-3">
+                                            <p className="text-xs text-muted-foreground mb-2">
+                                                استخدم الأسهم لتحريك أي قسم للأعلى أو للأسفل في الإيصال:
+                                            </p>
+                                            <div className="space-y-1.5">
+                                                {currentSectionOrder.map((key, idx) => (
+                                                    <div key={key} className="flex items-center justify-between gap-2 rounded-md border px-2.5 py-1.5 bg-muted/20">
+                                                        <span className="text-xs font-medium">{sectionLabels[key] || key}</span>
+                                                        <div className="flex items-center gap-1 shrink-0">
+                                                            <Button
+                                                                type="button"
+                                                                variant="ghost"
+                                                                size="icon"
+                                                                className="h-6 w-6"
+                                                                disabled={idx === 0}
+                                                                onClick={() => moveSection(idx, -1)}
+                                                                title="تحريك لأعلى"
+                                                            >
+                                                                <ArrowUp className="h-3.5 w-3.5" />
+                                                            </Button>
+                                                            <Button
+                                                                type="button"
+                                                                variant="ghost"
+                                                                size="icon"
+                                                                className="h-6 w-6"
+                                                                disabled={idx === currentSectionOrder.length - 1}
+                                                                onClick={() => moveSection(idx, 1)}
+                                                                title="تحريك لأسفل"
+                                                            >
+                                                                <ArrowDown className="h-3.5 w-3.5" />
+                                                            </Button>
+                                                        </div>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                            <Button
+                                                type="button"
+                                                variant="outline"
+                                                size="sm"
+                                                className="w-full mt-2 gap-1.5 text-xs"
+                                                onClick={() => setPosDesign(p => ({ ...p, sectionOrder: [...DEFAULT_RECEIPT_SECTION_ORDER] }))}
+                                            >
+                                                <RotateCcw className="h-3.5 w-3.5" />
+                                                إعادة الترتيب الافتراضي
+                                            </Button>
                                         </AccordionContent>
                                     </AccordionItem>
                                 </Accordion>
@@ -304,8 +387,8 @@ export default function ReceiptDesignerPage() {
                         )}
                     </CardContent>
                 </Card>
-                 <div className="flex-1 flex bg-muted rounded-lg items-center justify-center p-4 overflow-hidden">
-                    <div className="transform scale-125 md:scale-100 lg:scale-125 origin-center space-y-8">
+                 <div className="flex-1 flex bg-muted rounded-lg items-start justify-center p-4 overflow-y-auto">
+                    <div className="my-auto space-y-8">
                         {selectedWarehouseId && posDesign && <PosReceipt invoice={SAMPLE_INVOICE} company={companySettings} design={posDesign} customer={SAMPLE_CUSTOMER} />}
                         {selectedWarehouseId && kitchenDesign && <KitchenReceipt invoice={SAMPLE_INVOICE} design={kitchenDesign} customer={SAMPLE_CUSTOMER} />}
                     </div>

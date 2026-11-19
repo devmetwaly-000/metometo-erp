@@ -1579,7 +1579,19 @@ function ItemForm({ item, onSave, onClose, itemSections, itemCategories, itemGro
           </div>
           <div className="space-y-1.5">
             <Label htmlFor="item-unit" className="text-xs font-medium">الوحدة الأساسية</Label>
-            <Select value={formData.baseUnit} onValueChange={(v: any) => setFormData({ ...formData, baseUnit: v })}>
+            <Select
+              value={formData.baseUnit}
+              onValueChange={(v: any) => {
+                const isScaleUnit = ['kilo', 'gram', 'meter'].includes(v);
+                setFormData(prev => ({
+                  ...prev,
+                  baseUnit: v,
+                  barcodeType: isScaleUnit && prev.itemType !== 'raw_material'
+                    ? 'ean13_scale'
+                    : (prev.barcodeType === 'ean13_scale' ? 'code128' : prev.barcodeType),
+                }));
+              }}
+            >
               <SelectTrigger id="item-unit" className="h-9 text-xs"><SelectValue/></SelectTrigger>
               <SelectContent>
                 <SelectItem value="piece">قطعة</SelectItem>
@@ -2095,7 +2107,31 @@ export default function ItemsPage() {
                      return;
                  }
 
-                 let codeToSave = cleanData.code ? String(cleanData.code) : null;
+                 const isScaleUnit = ['kilo', 'gram', 'meter', 'weight'].includes(String(cleanData.baseUnit || ''));
+                 if (isScaleUnit && cleanData.itemType !== 'raw_material') {
+                     cleanData.barcodeType = 'ean13_scale';
+                 }
+
+                 const computeEan13CheckDigit = (base12: string) => {
+                     let sum = 0;
+                     for (let i = 0; i < 12; i++) {
+                         const d = parseInt(base12[i] || '0', 10) || 0;
+                         sum += i % 2 === 0 ? d : d * 3;
+                     }
+                     return String((10 - (sum % 10)) % 10);
+                 };
+
+                 let codeToSave = cleanData.code ? String(cleanData.code).trim() : null;
+                 const scalePrefix = String(settings?.main?.financial?.scaleBarcodePrefix || '21').trim() || '21';
+
+                 // إذا أدخل المستخدم كوداً من 5 أرقام فقط لصنف ميزان، نحوله تلقائياً إلى باركود 13 رقم بالبادئة المعتمدة
+                 if (codeToSave && (cleanData.barcodeType === 'ean13_scale' || isScaleUnit) && /^\d{1,5}$/.test(codeToSave)) {
+                     const itemPart = codeToSave.padStart(5, '0').slice(-5);
+                     const zeroPad = '0'.repeat(Math.max(0, 12 - scalePrefix.length - 5));
+                     const base12 = `${scalePrefix}${itemPart}${zeroPad}`.slice(0, 12);
+                     codeToSave = `${base12}${computeEan13CheckDigit(base12)}`;
+                 }
+
                  if (!codeToSave) {
                         const { itemType, barcodeType } = cleanData;
                         if (itemType === 'raw_material') {
@@ -2104,17 +2140,20 @@ export default function ItemsPage() {
                         } else if (barcodeType === 'ean13_clothing') {
                            toast({ variant: 'destructive', title: 'خطأ', description: 'يرجى استخدام مولد مصفوفة الأصناف للملابس لضمان إنشاء باركود صحيح.' });
                            return;
-                        } else if (barcodeType === 'ean13_scale') {
-                             toast({ variant: 'destructive', title: 'خطأ', description: 'يجب إدخال كود من 5 أرقام لأصناف الميزان.' });
-                             return;
+                        } else if (barcodeType === 'ean13_scale' || isScaleUnit) {
+                            const nextId = await getNextId('scaleItemCode', 1);
+                            if (nextId === null) throw new Error("Failed to get next ID for scale item");
+                            const itemPart = String(nextId).padStart(5, '0').slice(-5);
+                            const zeroPad = '0'.repeat(Math.max(0, 12 - scalePrefix.length - 5));
+                            const base12 = `${scalePrefix}${itemPart}${zeroPad}`.slice(0, 12);
+                            codeToSave = `${base12}${computeEan13CheckDigit(base12)}`;
                         } else {
                             const standardPrefix = settings?.main?.financial?.standardItemBarcodePrefix || '25';
                             const nextId = await getNextId('standardItemCode', 1);
                             if (nextId === null) throw new Error("Failed to get next ID for standard item");
                             const uniquePart = String(nextId).padStart(10, '0');
-                            const baseCode = `${standardPrefix}${uniquePart}`;
-                            const checkDigit = '0'; 
-                            codeToSave = `${baseCode}${checkDigit}`;
+                            const baseCode = `${standardPrefix}${uniquePart}`.slice(0, 12);
+                            codeToSave = `${baseCode}${computeEan13CheckDigit(baseCode)}`;
                         }
                     }
                 await dbAction('items', 'add', { ...cleanData, code: codeToSave });

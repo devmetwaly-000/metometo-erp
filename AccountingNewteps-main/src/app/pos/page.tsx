@@ -10,16 +10,20 @@ import { Trash2, ShoppingCart, XCircle, Printer, Grip, Dot, Search, Ban, PanelLe
 import {
     getCustomerExperienceConfig,
     calculateEarnedPoints,
+    calculateInvoiceLoyaltyPoints,
+    getItemPointsPromotion,
     calculateRedeemableCash,
     broadcastToCustomerDisplay,
     openCustomerDisplayWindow,
     closeCustomerDisplayWindow,
+    isCustomerDisplayWindowOpen,
     buildWhatsAppInvoiceMessage,
     sendWhatsAppMessage,
 } from '@/lib/customer-experience';
 import { useData } from "@/contexts/data-provider";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from '@/contexts/auth-context';
+import { usePermissions } from '@/contexts/permissions-context';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog';
 import { Dialog, DialogClose, DialogContent as UIDialogContent, DialogFooter as UIDialogFooter, DialogHeader as UIDialogHeader, DialogTitle as UIDialogTitle, DialogTrigger, DialogDescription } from '@/components/ui/dialog';
 import { ScrollArea, ScrollBar } from '@/components/ui/scroll-area';
@@ -1207,6 +1211,13 @@ export default function PosPage() {
     const [currentHeldInvoiceId, setCurrentHeldInvoiceId] = useState<string | null>(null);
     
     const cxConfig = useMemo(() => getCustomerExperienceConfig(settings), [settings]);
+    const { can } = usePermissions();
+    const canManageLoyaltySettings = useMemo(() => {
+        const role = String(user?.role || '').toLowerCase();
+        return role === 'مسؤول' || role === 'admin' || can('edit', 'settings_general');
+    }, [user?.role, can]);
+    const hasAutoOpenedDisplayRef = useRef(false);
+    const hasUserGestureOpenedDisplayRef = useRef(false);
     const [redeemedPoints, setRedeemedPoints] = useState<number>(0);
 
     const subtotal = useMemo(() => cart.reduce((acc, item) => acc + item.originalPrice * item.qty, 0), [cart]);
@@ -1230,7 +1241,10 @@ export default function PosPage() {
         return netAmount + finalTax + Number(tips || 0);
     }, [subtotal, promoDiscount, discount, applyTax, isTaxIncluded, taxAmount, tips]);
 
-    const earnedPoints = useMemo(() => calculateEarnedPoints(total, cxConfig), [total, cxConfig]);
+    const earnedPoints = useMemo(
+        () => calculateInvoiceLoyaltyPoints({ invoiceTotal: total, items: cart, config: cxConfig }),
+        [total, cart, cxConfig]
+    );
 
     const handleToggleLoyaltyRedeem = () => {
         const cust = selectedCustomerId ? customers.find((c: any) => c.id === selectedCustomerId) : null;
@@ -1651,6 +1665,55 @@ export default function PosPage() {
             }
         }
     
+        // 1. فحص باركود الميزان أولاً (13 رقماً يبدأ ببادئة الميزان المعتمدة) لتقسيمه إلى صنف ووزن/سعر مباشرة
+        if (code.length === 13 && scaleBarcodePrefix && code.startsWith(scaleBarcodePrefix)) {
+            const prefixLen = scaleBarcodePrefix.length;
+            const itemCodePart = code.substring(prefixLen, prefixLen + 5);
+            const valuePartRaw = code.substring(prefixLen + 5, 12);
+            const valuePart = parseInt(valuePartRaw, 10);
+
+            const itemForScale = availableItemsWithStock.find((item: any) => {
+                const isScaleCapable =
+                    item.barcodeType === 'ean13_scale' ||
+                    ['kilo', 'gram', 'meter', 'weight'].includes(String(item.baseUnit || '').toLowerCase());
+                if (!isScaleCapable) return false;
+
+                const itemCode = String(item.code || '').trim();
+                const itemBarcode = String(item.barcode || '').trim();
+
+                return (
+                    (itemCode.length === 13 && itemCode.startsWith(scaleBarcodePrefix) && itemCode.substring(prefixLen, prefixLen + 5) === itemCodePart) ||
+                    (itemCode.length === 5 && itemCode === itemCodePart) ||
+                    (itemBarcode.length === 13 && itemBarcode.startsWith(scaleBarcodePrefix) && itemBarcode.substring(prefixLen, prefixLen + 5) === itemCodePart)
+                );
+            });
+
+            if (itemForScale) {
+                if (isNaN(valuePart) || valuePart === 0) {
+                    setItemForManualEntry(itemForScale);
+                } else {
+                    const isPrice = financialSettings.scaleBarcodeValueType === 'price';
+                    if (isPrice) {
+                        const priceValue = valuePart / (10 ** roundingPrecision);
+                        if (itemForScale.price > 0) {
+                            const calculatedQty = priceValue / itemForScale.price;
+                            addItemToCart(itemForScale, calculatedQty);
+                        } else {
+                            toast({ variant: 'destructive', title: 'خطأ', description: `سعر الصنف ${itemForScale.name} غير محدد.` });
+                        }
+                    } else {
+                        const unitLower = String(itemForScale.baseUnit || '').toLowerCase();
+                        // أصناف الجرام تُحسب بالجرام مباشرة إذا كانت مقومة بالجرام، وإلا بالكيلو/المتر (تقسيم 1000)
+                        const calculatedQty = unitLower === 'gram' ? valuePart : valuePart / 1000.0;
+                        addItemToCart(itemForScale, calculatedQty);
+                    }
+                }
+                if (barcodeInputRef.current) barcodeInputRef.current.value = "";
+                setSearchTerm('');
+                return;
+            }
+        }
+
         let itemToAdd = availableItemsWithStock.find((item: any) => item.code === code || item.barcode === code);
         if (itemToAdd) {
             addItemToCart(itemToAdd, 1);
@@ -1670,41 +1733,9 @@ export default function PosPage() {
             return;
         }
     
-        if (code.length === 13 && code.startsWith(scaleBarcodePrefix)) {
-            const itemCodePart = code.substring(scaleBarcodePrefix.length, scaleBarcodePrefix.length + 5);
-            
-            const itemForScale = availableItemsWithStock.find((item: any) => 
-                item.barcodeType === 'ean13_scale' && 
-                item.code && 
-                item.code.substring(2, 7) === itemCodePart
-            );
-            
-            if (itemForScale) {
-                const valuePart = parseInt(code.substring(scaleBarcodePrefix.length + 5, 12), 10);
-                 if (valuePart === 0) {
-                    setItemForManualEntry(itemForScale);
-                 } else {
-                    const isPrice = financialSettings.scaleBarcodeValueType === 'price';
-                    if (isPrice) {
-                        const priceValue = valuePart / (10 ** roundingPrecision);
-                        if (itemForScale.price > 0) {
-                            const calculatedQty = priceValue / itemForScale.price;
-                            addItemToCart(itemForScale, calculatedQty);
-                        } else {
-                            toast({ variant: 'destructive', title: 'خطأ', description: `سعر الصنف ${itemForScale.name} غير محدد.` });
-                        }
-                    } else {
-                        const weightInKg = valuePart / 1000.0;
-                        addItemToCart(itemForScale, weightInKg);
-                    }
-                 }
-                if (barcodeInputRef.current) barcodeInputRef.current.value = "";
-                return;
-            }
-        }
-    
         toast({ variant: 'destructive', title: 'خطأ', description: `الصنف بالكود ${code} غير موجود.` });
         if (barcodeInputRef.current) barcodeInputRef.current.value = "";
+        setSearchTerm('');
     };
     
     const handleShortClick = (item: any) => {
@@ -2004,6 +2035,14 @@ export default function PosPage() {
     }, [selectedCustomerId, customers, salesInvoices, posSales, posReturns, customerPayments, salesReturns]);
 
     // البث اللحظي لشاشة عرض العميل الثانية مع كل حركة في السلة أو الدفع
+    useEffect(() => {
+        if (!cxConfig.dualScreen.enabled || !openWorkDay || !hasOpenCashierSession) return;
+        if (!hasAutoOpenedDisplayRef.current && !isCustomerDisplayWindowOpen()) {
+            hasAutoOpenedDisplayRef.current = true;
+            void openCustomerDisplayWindow();
+        }
+    }, [cxConfig.dualScreen.enabled, openWorkDay, hasOpenCashierSession]);
+
     useEffect(() => {
         if (!cxConfig.dualScreen.enabled) return;
         const cust = selectedCustomerId ? customers.find((c: any) => c.id === selectedCustomerId) : null;
@@ -2435,6 +2474,14 @@ export default function PosPage() {
     };
 
     const handleScreenClick = (e: React.MouseEvent<HTMLDivElement>) => {
+        if (
+            cxConfig.dualScreen.enabled &&
+            !hasUserGestureOpenedDisplayRef.current &&
+            !isCustomerDisplayWindowOpen()
+        ) {
+            hasUserGestureOpenedDisplayRef.current = true;
+            void openCustomerDisplayWindow();
+        }
         const target = e.target as HTMLElement;
         if (
             target.closest('button') ||
@@ -2461,17 +2508,31 @@ export default function PosPage() {
     }
     
     const customerOptions = useMemo(() => {
-        if (!customers || customerSearch.length < 3) return [];
-        return customers
-            .filter((c: any) => 
-                c.name.toLowerCase().includes(customerSearch.toLowerCase()) || 
-                (c.phone && c.phone.includes(customerSearch))
-            )
-            .map((c: any) => ({
-                value: c.id, 
-                label: `${c.name} (${c.phone})`
-            }));
-    }, [customers, customerSearch]);
+        if (!customers || !Array.isArray(customers)) return [];
+        const q = customerSearch.trim().toLowerCase();
+        const filtered = q
+            ? customers.filter((c: any) =>
+                (c.name || '').toLowerCase().includes(q) ||
+                (c.phone && String(c.phone).includes(q))
+              )
+            : customers.slice(0, 60);
+
+        const list = [...filtered];
+        if (selectedCustomerId && !list.some((c: any) => c.id === selectedCustomerId)) {
+            const current = customers.find((c: any) => c.id === selectedCustomerId);
+            if (current) list.unshift(current);
+        }
+
+        return list.map((c: any) => {
+            const pts = Number(c.loyaltyPoints || 0);
+            const phonePart = c.phone ? ` (${c.phone})` : '';
+            const ptsPart = cxConfig.loyalty.enabled && pts > 0 ? ` • ⭐ ${pts}` : '';
+            return {
+                value: c.id,
+                label: `${c.name}${phonePart}${ptsPart}`
+            };
+        });
+    }, [customers, customerSearch, selectedCustomerId, cxConfig.loyalty.enabled]);
 
     const selectedCustomer = useMemo(() => {
         if (!selectedCustomerId) return null;
@@ -2621,7 +2682,25 @@ export default function PosPage() {
     }
 
     const { widthName = 35, widthBarcode = 20, widthPrice = 15, widthQty = 15, widthTotal = 15 } = posSettings.cartColumns || {};
-    const { layout = 'cart-left', cartWidth = 40, itemsWidth = 60, groupsPosition = 'left', paymentPosition = 'bottom' } = posSettings.layout || {};
+    const { layout = 'cart-left', cartWidth = 40, itemsWidth = 60, groupsPosition = 'left', groupsWidth = 240, paymentPosition = 'bottom' } = posSettings.layout || {};
+    const [customGroupsWidth, setCustomGroupsWidth] = useState<number | null>(() => {
+        if (typeof window === 'undefined') return null;
+        try {
+            const saved = localStorage.getItem('pos_groups_width');
+            const parsed = saved ? Number(saved) : NaN;
+            return !isNaN(parsed) && parsed >= 150 && parsed <= 500 ? parsed : null;
+        } catch {
+            return null;
+        }
+    });
+    const effectiveGroupsWidth = customGroupsWidth ?? (Number(groupsWidth) || 240);
+    const updateGroupsWidth = (nextWidth: number) => {
+        const clamped = Math.max(150, Math.min(500, nextWidth));
+        setCustomGroupsWidth(clamped);
+        try {
+            localStorage.setItem('pos_groups_width', String(clamped));
+        } catch {}
+    };
     const isCartOnLeft = layout === 'cart-right' || layout === 'left';
 
     return (
@@ -2803,16 +2882,22 @@ export default function PosPage() {
                                         <TableHead style={{ width: '40px' }} className="w-10 p-1 text-center"></TableHead>
                                     </TableRow>
                                 </TableHeader>
-                                <TableBody>
+                                 <TableBody>
                                     {cart.map(item => {
                                         const lastPrice = getItemLastPrice(item.id);
+                                        const itemPtsPromo = getItemPointsPromotion(item, cxConfig);
                                         return (
                                         <TableRow key={item.uniqueId}>
                                             <TableCell style={{ width: `${widthName}%` }} className='px-2 py-2 truncate text-right'>
                                                 <div className="flex flex-col overflow-hidden text-right">
                                                     <span className="truncate font-medium">{item.name}</span>
-                                                    <div className="flex items-center gap-1 justify-start">
+                                                    <div className="flex items-center gap-1 justify-start flex-wrap">
                                                         {item.discountApplied > 0 && <span className="inline-flex items-center rounded-full px-1.5 py-0.5 text-[10px] font-semibold bg-green-100 text-green-700"><Percent className="h-2 w-2 mr-0.5"/> خصم</span>}
+                                                        {itemPtsPromo && (
+                                                            <span className="inline-flex items-center rounded-full px-1.5 py-0.5 text-[10px] font-semibold bg-amber-500/20 text-amber-400 border border-amber-500/30">
+                                                                ⭐ {itemPtsPromo.pointsMode === 'multiplier' ? `${itemPtsPromo.pointsValue}x نقاط` : `+${itemPtsPromo.pointsValue} نقطة`}
+                                                            </span>
+                                                        )}
                                                         {lastPrice !== null && (
                                                             <div className="flex items-center gap-0.5 text-[9px] text-primary font-bold">
                                                                 <History className="h-2 w-2" />
@@ -2934,71 +3019,6 @@ export default function PosPage() {
                         <Button variant="outline" size="icon" className="h-12 w-12 shrink-0" onClick={() => setIsQueryModalOpen(true)} title="استعلام المخزون">
                             <Boxes className="h-6 w-6" />
                         </Button>
-                        {cxConfig.dualScreen.enabled && (
-                            <>
-                                <Button
-                                    variant="outline"
-                                    size="icon"
-                                    className="h-12 w-12 shrink-0 border-emerald-500/40 text-emerald-500 hover:bg-emerald-500/10"
-                                    onClick={() => {
-                                        openCustomerDisplayWindow();
-                                        setTimeout(() => {
-                                            broadcastToCustomerDisplay({
-                                                step: cart.length === 0 ? 'idle' : (isPaymentDialogOpen || payments.length > 0 ? 'payment' : 'scanning'),
-                                                timestamp: Date.now(),
-                                                companyName: companySettings.companyName || 'متجرنا',
-                                                branchName: warehouseForSession?.name || '',
-                                                items: cart.map(it => ({
-                                                    id: it.id,
-                                                    name: it.name,
-                                                    qty: it.qty,
-                                                    price: it.price,
-                                                    originalPrice: it.originalPrice,
-                                                    total: it.total,
-                                                    discountApplied: it.discountApplied,
-                                                    promoApplied: it.promoApplied,
-                                                })),
-                                                subtotal,
-                                                discount: promoDiscount + discount,
-                                                loyaltyDiscount,
-                                                redeemedPoints,
-                                                tax: taxAmount,
-                                                total,
-                                                customer: selectedCustomer ? {
-                                                    id: selectedCustomer.id,
-                                                    name: selectedCustomer.name,
-                                                    phone: selectedCustomer.phone,
-                                                    loyaltyPoints: Number(selectedCustomer.loyaltyPoints || 0),
-                                                } : null,
-                                                earnedPoints,
-                                                invoiceNumber: currentInvoiceNumber,
-                                            });
-                                        }, 300);
-                                    }}
-                                    title="فتح شاشة عرض العميل الثانية"
-                                >
-                                    <Monitor className="h-5 w-5" />
-                                </Button>
-                                <Button
-                                    variant="outline"
-                                    size="icon"
-                                    className="h-12 w-12 shrink-0 border-destructive/30 text-destructive hover:bg-destructive/10"
-                                    onClick={() => closeCustomerDisplayWindow()}
-                                    title="إغلاق شاشة عرض العميل الثانية"
-                                >
-                                    <PowerOff className="h-5 w-5" />
-                                </Button>
-                            </>
-                        )}
-                        <Button
-                            variant="outline"
-                            size="icon"
-                            className="h-12 w-12 shrink-0"
-                            onClick={() => router.push('/settings/customer-experience')}
-                            title="إعدادات شاشة العميل ونقاط الولاء والواتساب"
-                        >
-                            <Settings2 className="h-5 w-5" />
-                        </Button>
                     </div>
                     
                     <div className="flex-1 flex flex-col md:flex-row gap-3 overflow-y-auto md:overflow-hidden min-h-[25vh] md:min-h-0">
@@ -3008,37 +3028,75 @@ export default function PosPage() {
                                      <Button size="lg" variant={activeGroupId === 'all' ? 'secondary' : 'ghost'} onClick={() => { setActiveGroupId('all'); setActiveGroupType('all'); setSearchTerm(''); setExplicitShowAll(true); }} className="h-14 shrink-0">
                                         <Grip className="ml-2 h-5 w-5" /> كل الأصناف
                                     </Button>
-                                    {groupsToShow.map((group: any) => (
-                                        <Button key={group.id} size="lg" variant={activeGroupId === group.id ? 'secondary' : 'ghost'} onClick={() => { setActiveGroupId(group.id!); setActiveGroupType(group.type); setSearchTerm(''); }} className="h-14 shrink-0">
-                                            <span className={`ml-2 h-5 w-5 rounded-full ${group.color || 'bg-gray-400'}`} />
-                                            {group.name}
-                                        </Button>
-                                    ))}
+                                    {groupsToShow.map((group: any) => {
+                                        const isHex = group.color && (group.color.startsWith('#') || group.color.startsWith('rgb') || group.color.startsWith('hsl'));
+                                        const borderClass = !group.color ? 'border-primary/50' : (!isHex ? (group.color.startsWith('bg-') ? group.color.replace(/^bg-/, 'border-') : group.color) : '');
+                                        return (
+                                            <Button
+                                                key={group.id}
+                                                size="lg"
+                                                variant={activeGroupId === group.id ? 'secondary' : 'outline'}
+                                                onClick={() => { setActiveGroupId(group.id!); setActiveGroupType(group.type); setSearchTerm(''); }}
+                                                className={cn("h-12 shrink-0 border-2 px-3", borderClass, activeGroupId === group.id && "ring-2 ring-primary/50")}
+                                                style={isHex ? { borderColor: group.color } : undefined}
+                                            >
+                                                {group.name}
+                                            </Button>
+                                        );
+                                    })}
                                 </div>
                                 <ScrollBar orientation="horizontal" />
                            </ScrollArea>
                         </div>
                         
-                         <div className="flex-1 flex flex-row gap-3 overflow-hidden">
-                            <div className={cn("hidden md:flex flex-col w-56 shrink-0",
-                                groupsPosition === 'left' ? 'order-2' : 'order-1'
-                            )}>
-                                <Card className="flex-1 flex flex-col">
-                                 <CardHeader className="p-2 border-b"><CardTitle className="text-base text-center">المجموعات</CardTitle></CardHeader>
-                                 <ScrollArea dir="rtl" className="flex-1">
-                                     <div className="p-2 grid grid-cols-2 gap-2">
-                                         <Button variant={activeGroupId === 'all' ? 'secondary' : 'outline'} onClick={() => { setActiveGroupId('all'); setActiveGroupType('all'); setSearchTerm(''); setExplicitShowAll(true); }} className="h-16 flex-col gap-1 text-xs">
-                                             <Grip className="h-5 w-5" /> كل الأصناف
+                         <div className="flex-1 flex flex-row gap-3 overflow-hidden min-h-0">
+                            <div
+                                className={cn("hidden md:flex flex-col shrink-0 min-h-0 h-full",
+                                    groupsPosition === 'left' ? 'order-2' : 'order-1'
+                                )}
+                                style={{ width: `${effectiveGroupsWidth}px` }}
+                            >
+                                <Card className="flex-1 flex flex-col min-h-0 overflow-hidden">
+                                 <CardHeader className="p-2 border-b shrink-0 flex flex-row items-center justify-between gap-1 space-y-0">
+                                     <button
+                                         type="button"
+                                         onClick={() => updateGroupsWidth(effectiveGroupsWidth - 25)}
+                                         className="h-6 w-6 rounded border text-xs font-bold hover:bg-accent flex items-center justify-center shrink-0"
+                                         title="تصغير عرض المجموعات"
+                                     >
+                                         -
+                                     </button>
+                                     <CardTitle className="text-sm md:text-base text-center truncate">المجموعات</CardTitle>
+                                     <button
+                                         type="button"
+                                         onClick={() => updateGroupsWidth(effectiveGroupsWidth + 25)}
+                                         className="h-6 w-6 rounded border text-xs font-bold hover:bg-accent flex items-center justify-center shrink-0"
+                                         title="تكبير عرض المجموعات"
+                                     >
+                                         +
+                                     </button>
+                                 </CardHeader>
+                                 <ScrollArea dir="rtl" className="flex-1 min-h-0">
+                                     <div className={cn("p-2 grid gap-2", effectiveGroupsWidth >= 340 ? "grid-cols-3" : "grid-cols-2")}>
+                                         <Button variant={activeGroupId === 'all' ? 'secondary' : 'outline'} onClick={() => { setActiveGroupId('all'); setActiveGroupType('all'); setSearchTerm(''); setExplicitShowAll(true); }} className="h-16 flex-col gap-1 text-xs px-1">
+                                             <Grip className="h-5 w-5 shrink-0" />
+                                             <span className="leading-tight line-clamp-2">كل الأصناف</span>
                                          </Button>
-                                         {groupsToShow.map((group: any) => (
-                                             <Button key={group.id} variant={activeGroupId === group.id ? 'secondary' : 'outline'} onClick={() => { setActiveGroupId(group.id!); setActiveGroupType(group.type); setSearchTerm(''); }} className="h-16 flex-col gap-1 text-xs justify-center">
-                                                 <span
-                                                     className={`h-4 w-4 rounded-full shrink-0 ${group.color && !group.color.startsWith('#') ? group.color : (!group.color ? 'bg-primary' : '')}`}
-                                                     style={group.color && group.color.startsWith('#') ? { backgroundColor: group.color } : undefined}
-                                                 />
-                                                 <span className="truncate max-w-full">{group.name}</span>
-                                             </Button>
-                                         ))}
+                                         {groupsToShow.map((group: any) => {
+                                             const isHex = group.color && (group.color.startsWith('#') || group.color.startsWith('rgb') || group.color.startsWith('hsl'));
+                                             const borderClass = !group.color ? 'border-primary/50' : (!isHex ? (group.color.startsWith('bg-') ? group.color.replace(/^bg-/, 'border-') : group.color) : '');
+                                             return (
+                                                 <Button
+                                                     key={group.id}
+                                                     variant={activeGroupId === group.id ? 'secondary' : 'outline'}
+                                                     onClick={() => { setActiveGroupId(group.id!); setActiveGroupType(group.type); setSearchTerm(''); }}
+                                                     className={cn("min-h-[4rem] h-auto py-1.5 px-1.5 text-xs justify-center items-center border-2", borderClass, activeGroupId === group.id && "ring-2 ring-primary/50")}
+                                                     style={isHex ? { borderColor: group.color } : undefined}
+                                                 >
+                                                     <span className="line-clamp-3 leading-snug text-center max-w-full whitespace-normal font-medium">{group.name}</span>
+                                                 </Button>
+                                             );
+                                         })}
                                      </div>
                                  </ScrollArea>
                                 </Card>
