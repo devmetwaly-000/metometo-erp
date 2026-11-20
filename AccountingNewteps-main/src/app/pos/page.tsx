@@ -1229,6 +1229,7 @@ export default function PosPage() {
     const [showBackButton, setShowBackButton] = useState(false);
     const [currentHeldInvoiceId, setCurrentHeldInvoiceId] = useState<string | null>(null);
     const [isExitDialogOpen, setIsExitDialogOpen] = useState(false);
+    const allowExitRef = useRef(false);
 
     const handleAttemptExit = useCallback(() => {
         setIsExitDialogOpen(true);
@@ -1237,7 +1238,7 @@ export default function PosPage() {
     // حماية الخروج من شاشة البيع: منع إغلاق المتصفح أو إعادة التحميل أثناء وجود أصناف في الفاتورة
     useEffect(() => {
         const handleBeforeUnload = (e: BeforeUnloadEvent) => {
-            if (cart.length > 0) {
+            if (!allowExitRef.current && cart.length > 0) {
                 e.preventDefault();
                 e.returnValue = '';
                 return '';
@@ -1247,17 +1248,21 @@ export default function PosPage() {
         return () => window.removeEventListener('beforeunload', handleBeforeUnload);
     }, [cart.length]);
 
-    // اعتراض زر الرجوع للخلف بالمتصفح (Browser Back / PopState) لمنع الخروج غير المقصود
+    // اعتراض زر الرجوع للخلف بالمتصفح (Browser Back / PopState) في مرحلة Capture لمنع Next.js Router من الخروج
     useEffect(() => {
-        window.history.pushState({ posScreen: true }, '', window.location.href);
+        const currentState = window.history.state;
+        window.history.pushState(currentState, '', window.location.href);
 
-        const handlePopState = () => {
-            window.history.pushState({ posScreen: true }, '', window.location.href);
+        const handlePopState = (e: PopStateEvent) => {
+            if (allowExitRef.current) return;
+            e.preventDefault();
+            e.stopImmediatePropagation();
+            window.history.pushState(currentState, '', window.location.href);
             setIsExitDialogOpen(true);
         };
 
-        window.addEventListener('popstate', handlePopState);
-        return () => window.removeEventListener('popstate', handlePopState);
+        window.addEventListener('popstate', handlePopState, true);
+        return () => window.removeEventListener('popstate', handlePopState, true);
     }, []);
     
     const cxConfig = useMemo(() => getCustomerExperienceConfig(settings), [settings]);
@@ -3512,6 +3517,7 @@ export default function PosPage() {
                                 onClick={async () => {
                                     setIsExitDialogOpen(false);
                                     await handleHoldInvoice();
+                                    allowExitRef.current = true;
                                     router.push('/');
                                 }}
                             >
@@ -3527,6 +3533,7 @@ export default function PosPage() {
                                     className="font-bold"
                                     onClick={() => {
                                         setIsExitDialogOpen(false);
+                                        allowExitRef.current = true;
                                         router.push('/');
                                     }}
                                 >
