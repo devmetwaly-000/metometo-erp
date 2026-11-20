@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState, useEffect, useMemo } from 'react';
+import Link from 'next/link';
 import PageHeader from "@/components/page-header";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -2336,6 +2337,25 @@ export default function CentralSyncSettingsPage() {
                     {/* TAB 3: CONNECTION & DATABASE PROVISIONING (إعدادات الربط ونمط النظام) */}
                     {/* ========================================================= */}
                     <TabsContent value="config" className="space-y-5 mt-4">
+                        {/* تنبيه بالمركز الموحد للسيرفرات وقواعد البيانات */}
+                        <div className="p-4 rounded-xl border-2 border-primary/30 bg-primary/5 flex flex-wrap items-center justify-between gap-3">
+                            <div className="flex items-center gap-3">
+                                <div className="h-10 w-10 rounded-xl bg-primary/20 text-primary flex items-center justify-center shrink-0">
+                                    <Server className="h-5 w-5" />
+                                </div>
+                                <div>
+                                    <span className="font-bold text-sm text-foreground block">مركز إدارة السيرفرات وقواعد البيانات الموحد</span>
+                                    <span className="text-xs text-muted-foreground">
+                                        تم توحيد إدارة اتصالات السيرفرات (الفرع والإدارة المركزية: محلي، سحابي AWS RDS، أو سيرفر IP) في شاشة موحدة وشاملة.
+                                    </span>
+                                </div>
+                            </div>
+                            <Button asChild size="sm" className="h-8 text-xs font-bold gap-1.5 shadow-sm">
+                                <Link href="/settings/re-engineer">
+                                    فتح مركز إدارة السيرفرات الموحد 🚀
+                                </Link>
+                            </Button>
+                        </div>
                         
                         {/* Settings & Configuration Card */}
                         <Card className="border shadow-sm">

@@ -471,6 +471,28 @@ async function executeBranchPurgeOnPool(
     return deleted;
 }
 
+function detectHostingInfo(server: string, encrypt?: boolean) {
+    const s = (server || 'localhost').toLowerCase().trim();
+    if (s.includes('.rds.amazonaws.com')) {
+        return { type: 'cloud' as const, label: 'سحابي (AWS RDS)', isCloud: true };
+    }
+    if (s.includes('.database.windows.net')) {
+        return { type: 'cloud' as const, label: 'سحابي (Azure SQL)', isCloud: true };
+    }
+    const hostOnly = s.split(':')[0].split(',')[0].replace(/^tcp:/i, '').trim();
+    const isLocal =
+        hostOnly === 'localhost' ||
+        hostOnly === '.' ||
+        hostOnly === '(local)' ||
+        hostOnly.startsWith('127.') ||
+        (!hostOnly.includes('.') && !hostOnly.includes(':'));
+
+    if (isLocal && !encrypt) {
+        return { type: 'local' as const, label: 'محلي (Localhost)', isCloud: false };
+    }
+    return { type: 'ip' as const, label: 'سيرفر IP / شبكة', isCloud: Boolean(encrypt) };
+}
+
 // -------------------------------------------------------------
 // GET: إحصائيات ومعلومات النسخ الاحتياطي وحالة قاعدة البيانات (الفرع + المركزية)
 // -------------------------------------------------------------
@@ -488,7 +510,7 @@ export async function GET() {
             }
         } catch {}
 
-        // 2. إحصائيات قاعدة بيانات الفرع المحلي
+        // 2. إحصائيات قاعدة بيانات الفرع
         const localStats = await queryPoolStats(pool);
 
         // 3. إحصائيات قاعدة بيانات الإدارة المركزية (إن كانت متصلة)
@@ -514,19 +536,29 @@ export async function GET() {
         } catch {}
 
         const localCfg = getLocalDbConfig();
-        const isCloudLocal =
-            localCfg.server.includes('.rds.amazonaws.com') ||
-            localCfg.server.includes('.database.windows.net') ||
-            Boolean(localCfg.encrypt);
+        const branchH = detectHostingInfo(localCfg.server, localCfg.encrypt);
+        const centralH = detectHostingInfo(config.centralServerIp, config.centralEncrypt);
 
         return NextResponse.json({
             success: true,
             database: localCfg.database || 'MultiBranchPOS_DB',
             localServer: `${localCfg.server}:${localCfg.port}`,
-            isCloudLocal,
+            isCloudLocal: branchH.isCloud,
+            branchHosting: {
+                type: branchH.type,
+                label: branchH.label,
+                server: `${localCfg.server}:${localCfg.port}`,
+                database: localCfg.database || 'MultiBranchPOS_DB'
+            },
             centralDatabase: config.centralDatabase || 'MultiBranchPOS_Central_DB',
             centralServer: `${config.centralServerIp}:${config.centralSqlPort}`,
             centralConnected,
+            centralHosting: {
+                type: centralH.type,
+                label: centralH.label,
+                server: `${config.centralServerIp}:${config.centralSqlPort}`,
+                database: config.centralDatabase || 'MultiBranchPOS_Central_DB'
+            },
             branchCode: config.currentBranchCode,
             branchName: config.currentBranchName,
             defaultBackupPath,
@@ -548,69 +580,91 @@ export async function POST(req: Request) {
         const { action } = body;
         const pool = await getDbPool();
         const config = await getCentralConfig();
+        const localCfg = getLocalDbConfig();
+        const branchH = detectHostingInfo(localCfg.server, localCfg.encrypt);
+        const centralH = detectHostingInfo(config.centralServerIp, config.centralEncrypt);
 
         // =========================================================
-        // 1. تصدير نسخة احتياطية كاملة (JSON Backup)
+        // 1. تصدير نسخة احتياطية كاملة (JSON Backup) - للفرع أو للإدارة المركزية
         // =========================================================
         if (action === 'export-json') {
-            const tablesRes = await pool.request().query(`
-                SELECT TABLE_NAME 
-                FROM INFORMATION_SCHEMA.TABLES 
-                WHERE TABLE_TYPE = 'BASE TABLE'
-                ORDER BY TABLE_NAME;
-            `);
-            const allTableNames = tablesRes.recordset.map(r => r.TABLE_NAME);
+            const target = body.target === 'central' ? 'central' : 'branch';
+            let activePool: sql.ConnectionPool = pool;
+            let centralPoolToClose: sql.ConnectionPool | null = null;
 
-            const tablesData: Record<string, any[]> = {};
-            let totalRecords = 0;
-
-            for (const tName of allTableNames) {
-                try {
-                    const rowRes = await pool.request().query(`SELECT * FROM dbo.[${tName}]`);
-                    tablesData[tName] = rowRes.recordset;
-                    totalRecords += rowRes.recordset.length;
-                } catch (e: any) {
-                    console.warn(`Error reading table ${tName}:`, e.message);
-                    tablesData[tName] = [];
-                }
+            if (target === 'central') {
+                centralPoolToClose = await connectToCentral(config);
+                activePool = centralPoolToClose;
             }
 
-            const nowIso = new Date().toISOString();
-
             try {
-                await pool.request()
-                    .input('Key', sql.NVarChar(128), 'last_backup_time')
-                    .input('Val', sql.NVarChar(sql.MAX), nowIso)
-                    .query(`
-                        MERGE dbo.AppSettings AS target
-                        USING (SELECT @Key as SettingKey) AS source
-                        ON (target.SettingKey = source.SettingKey)
-                        WHEN MATCHED THEN UPDATE SET SettingValue = @Val, UpdatedAt = SYSUTCDATETIME()
-                        WHEN NOT MATCHED THEN INSERT (SettingKey, SettingValue, CreatedAt, UpdatedAt) VALUES (@Key, @Val, SYSUTCDATETIME(), SYSUTCDATETIME());
-                    `);
-            } catch {}
+                const tablesRes = await activePool.request().query(`
+                    SELECT TABLE_NAME 
+                    FROM INFORMATION_SCHEMA.TABLES 
+                    WHERE TABLE_TYPE = 'BASE TABLE'
+                    ORDER BY TABLE_NAME;
+                `);
+                const allTableNames = tablesRes.recordset.map(r => r.TABLE_NAME);
 
-            return NextResponse.json({
-                success: true,
-                metadata: {
-                    version: '2.0',
-                    appName: 'MultiBranch POS ERP',
-                    createdAt: nowIso,
-                    database: 'MultiBranchPOS_DB',
-                    branchCode: config.currentBranchCode,
-                    branchName: config.currentBranchName,
-                    tablesCount: Object.keys(tablesData).length,
-                    totalRecords
-                },
-                tables: tablesData
-            });
+                const tablesData: Record<string, any[]> = {};
+                let totalRecords = 0;
+
+                for (const tName of allTableNames) {
+                    try {
+                        const rowRes = await activePool.request().query(`SELECT * FROM dbo.[${tName}]`);
+                        tablesData[tName] = rowRes.recordset;
+                        totalRecords += rowRes.recordset.length;
+                    } catch (e: any) {
+                        console.warn(`Error reading table ${tName}:`, e.message);
+                        tablesData[tName] = [];
+                    }
+                }
+
+                const nowIso = new Date().toISOString();
+
+                try {
+                    await activePool.request()
+                        .input('Key', sql.NVarChar(128), 'last_backup_time')
+                        .input('Val', sql.NVarChar(sql.MAX), nowIso)
+                        .query(`
+                            MERGE dbo.AppSettings AS target
+                            USING (SELECT @Key as SettingKey) AS source
+                            ON (target.SettingKey = source.SettingKey)
+                            WHEN MATCHED THEN UPDATE SET SettingValue = @Val, UpdatedAt = SYSUTCDATETIME()
+                            WHEN NOT MATCHED THEN INSERT (SettingKey, SettingValue, CreatedAt, UpdatedAt) VALUES (@Key, @Val, SYSUTCDATETIME(), SYSUTCDATETIME());
+                        `);
+                } catch {}
+
+                return NextResponse.json({
+                    success: true,
+                    target,
+                    metadata: {
+                        version: '2.0',
+                        appName: 'MultiBranch POS ERP',
+                        createdAt: nowIso,
+                        targetScope: target,
+                        database: target === 'central' ? (config.centralDatabase || 'MultiBranchPOS_Central_DB') : (localCfg.database || 'MultiBranchPOS_DB'),
+                        server: target === 'central' ? `${config.centralServerIp}:${config.centralSqlPort}` : `${localCfg.server}:${localCfg.port}`,
+                        hostingType: target === 'central' ? centralH.label : branchH.label,
+                        branchCode: config.currentBranchCode,
+                        branchName: config.currentBranchName,
+                        tablesCount: Object.keys(tablesData).length,
+                        totalRecords
+                    },
+                    tables: tablesData
+                });
+            } finally {
+                if (centralPoolToClose) {
+                    try { await centralPoolToClose.close(); } catch {}
+                }
+            }
         }
 
         // =========================================================
-        // 2. استعادة نسخة احتياطية (Restore JSON) إلى قاعدة البيانات
+        // 2. استعادة نسخة احتياطية (Restore JSON) إلى قاعدة بيانات الفرع أو الإدارة المركزية
         // =========================================================
         if (action === 'restore-json') {
-            const { backupData } = body;
+            const { backupData, target = 'branch' } = body;
             if (!backupData || !backupData.tables || typeof backupData.tables !== 'object') {
                 return NextResponse.json({
                     success: false,
@@ -618,10 +672,19 @@ export async function POST(req: Request) {
                 }, { status: 400 });
             }
 
+            const targetIsCentral = target === 'central';
+            let activePool: sql.ConnectionPool = pool;
+            let centralPoolToClose: sql.ConnectionPool | null = null;
+
+            if (targetIsCentral) {
+                centralPoolToClose = await connectToCentral(config);
+                activePool = centralPoolToClose;
+            }
+
             const tablesObj = backupData.tables as Record<string, any[]>;
             const tableNames = Object.keys(tablesObj);
 
-            await setForeignKeysCheck(pool, false);
+            await setForeignKeysCheck(activePool, false);
 
             let restoredCount = 0;
             let totalRowsRestored = 0;
@@ -633,7 +696,7 @@ export async function POST(req: Request) {
                     if (!Array.isArray(rows)) continue;
 
                     try {
-                        await pool.request().query(`DELETE FROM dbo.[${tName}];`);
+                        await activePool.request().query(`DELETE FROM dbo.[${tName}];`);
                     } catch (delErr: any) {
                         console.warn(`Could not clear table ${tName}:`, delErr.message);
                     }
@@ -643,7 +706,7 @@ export async function POST(req: Request) {
                         continue;
                     }
 
-                    const colRes = await pool.request()
+                    const colRes = await activePool.request()
                         .input('Tbl', sql.NVarChar(128), tName)
                         .query(`SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = @Tbl`);
                     const validCols = new Set(colRes.recordset.map(r => r.COLUMN_NAME));
@@ -651,7 +714,7 @@ export async function POST(req: Request) {
                     const hasIdentity = IDENTITY_TABLES.has(tName);
                     if (hasIdentity) {
                         try {
-                            await pool.request().query(`SET IDENTITY_INSERT dbo.[${tName}] ON;`);
+                            await activePool.request().query(`SET IDENTITY_INSERT dbo.[${tName}] ON;`);
                         } catch {}
                     }
 
@@ -668,7 +731,7 @@ export async function POST(req: Request) {
                             const insertCols = keys.map(k => `[${k}]`).join(', ');
                             const paramCols = keys.map(k => `@${k}`).join(', ');
 
-                            const req = pool.request();
+                            const req = activePool.request();
                             for (const k of keys) {
                                 req.input(k, row[k] === undefined ? null : row[k]);
                             }
@@ -685,7 +748,7 @@ export async function POST(req: Request) {
 
                     if (hasIdentity) {
                         try {
-                            await pool.request().query(`SET IDENTITY_INSERT dbo.[${tName}] OFF;`);
+                            await activePool.request().query(`SET IDENTITY_INSERT dbo.[${tName}] OFF;`);
                         } catch {}
                     }
 
@@ -693,7 +756,7 @@ export async function POST(req: Request) {
                 }
 
                 try {
-                    await pool.request().query(`
+                    await activePool.request().query(`
                         UPDATE dbo.SyncTrackingMatrix
                         SET PendingChangesCount = 0,
                             SyncStatus = 'synced',
@@ -702,12 +765,20 @@ export async function POST(req: Request) {
                 } catch {}
 
             } finally {
-                await setForeignKeysCheck(pool, true);
+                await setForeignKeysCheck(activePool, true);
+                if (centralPoolToClose) {
+                    try { await centralPoolToClose.close(); } catch {}
+                }
             }
+
+            const targetName = targetIsCentral
+                ? `قاعدة الإدارة المركزية [${config.centralDatabase} على ${centralH.label}]`
+                : `قاعدة بيانات الفرع [${localCfg.database} على ${branchH.label}]`;
 
             return NextResponse.json({
                 success: true,
-                message: `تم استعادة ${restoredCount} جدولاً و ${totalRowsRestored} حركة وسجل بنجاح إلى قاعدة البيانات.`,
+                message: `تم استعادة ${restoredCount} جدولاً و ${totalRowsRestored} حركة وسجل بنجاح إلى ${targetName}.`,
+                target,
                 restoredTablesCount: restoredCount,
                 totalRowsRestored,
                 errors: errors.slice(0, 10)
@@ -789,10 +860,10 @@ export async function POST(req: Request) {
             const purgedTargets: string[] = [];
             const warnings: string[] = [];
 
-            // أ) تنفيذ الحذف على قاعدة بيانات الفرع المحلي (إذا كان النطاق local أو both)
-            if (targetScope === 'local' || targetScope === 'both') {
+            // أ) تنفيذ الحذف على قاعدة بيانات الفرع (إذا كان النطاق local أو branch أو both)
+            if (targetScope === 'local' || targetScope === 'branch' || targetScope === 'both') {
                 await executeDatabaseResetOnPool(pool, resetType);
-                purgedTargets.push(`قاعدة بيانات الفرع المحلي (${config.currentBranchName || 'MultiBranchPOS_DB'})`);
+                purgedTargets.push(`قاعدة بيانات الفرع [${localCfg.database} على ${branchH.label}]`);
             }
 
             // ب) تنفيذ الحذف على قاعدة بيانات الإدارة المركزية (إذا كان النطاق central أو both)
@@ -801,7 +872,7 @@ export async function POST(req: Request) {
                 try {
                     centralPool = await connectToCentral(config);
                     await executeDatabaseResetOnPool(centralPool, resetType);
-                    purgedTargets.push(`قاعدة بيانات الإدارة المركزية (${config.centralDatabase || 'MultiBranchPOS_Central_DB'})`);
+                    purgedTargets.push(`قاعدة بيانات الإدارة المركزية [${config.centralDatabase} على ${centralH.label}]`);
                 } catch (centralErr: any) {
                     if (targetScope === 'central') {
                         return NextResponse.json({

@@ -528,9 +528,8 @@ export const navStructure = [
       { type: 'link', href: '/settings/license-keys', module: 'settings_licenses', title: dictionary.nav.licenseKeys },
       { type: 'link', href: '/settings/backup', module: 'settings_backup', title: dictionary.nav.backupAndRestore },
       { type: 'link', href: '/settings/period-closing', module: 'settings_periodClosing', title: dictionary.nav.periodClosing },
-      { type: 'link', href: '/settings/sync', module: 'settings_sync', title: dictionary.nav.syncStatus },
-      { type: 'link', href: '/settings/central-sync', module: 'settings_sync', title: 'المزامنة والسيرفر المركزي' },
-      { type: 'link', href: '/settings/re-engineer', module: 'settings_sync', title: 'اتصال سيرفر الفرع (IP / AWS)' },
+      { type: 'link', href: '/settings/central-sync', module: 'settings_sync', title: 'المزامنة المركزية والجدولة' },
+      { type: 'link', href: '/settings/re-engineer', module: 'settings_sync', title: 'إدارة السيرفرات وقواعد البيانات (الفرع والإدارة)' },
     ]},
 ] as const;
 
@@ -667,19 +666,35 @@ export function AppLayoutContent({ children }: { children: React.ReactNode }) {
     server: 'localhost:1433',
     database: 'MultiBranchPOS_DB'
   });
+  const [centralHosting, setCentralHosting] = useState<{
+    type: 'aws' | 'azure' | 'vps' | 'local';
+    label: string;
+    server: string;
+    database: string;
+  }>({
+    type: 'local',
+    label: 'محلي (Localhost)',
+    server: 'localhost:1433',
+    database: 'MultiBranchPOS_Central_DB'
+  });
 
   useEffect(() => {
     fetch('/api/system/mode', { cache: 'no-store' })
       .then(res => res.json())
       .then(data => {
         if (data?.mode) setSystemMode(data.mode);
-        if (data?.dbHostingType) {
+        if (data?.branchHosting) {
+          setDbHosting(data.branchHosting);
+        } else if (data?.dbHostingType) {
           setDbHosting({
             type: data.dbHostingType,
             label: data.dbHostingLabel || 'Local (محلي)',
             server: data.dbServer || 'localhost:1433',
             database: data.dbName || 'MultiBranchPOS_DB'
           });
+        }
+        if (data?.centralHosting) {
+          setCentralHosting(data.centralHosting);
         }
       })
       .catch(() => {});
@@ -1232,23 +1247,49 @@ export function AppLayoutContent({ children }: { children: React.ReactNode }) {
                              )}
                            >
                              {dbHosting.type === 'aws' || dbHosting.type === 'azure' ? (
-                               <Cloud className="h-3 w-3 sm:h-3.5 sm:w-3.5 shrink-0" />
+                               <Cloud className="h-3 w-3 sm:h-3.5 sm:w-3.5 shrink-0 text-amber-500" />
                              ) : (
                                <DatabaseBackup className="h-3 w-3 sm:h-3.5 sm:w-3.5 shrink-0" />
                              )}
-                             <span>{dbHosting.label}</span>
+                             <span>
+                               {dbHosting.type === 'aws'
+                                 ? 'الفرع: AWS RDS ☁️'
+                                 : dbHosting.type === 'azure'
+                                 ? 'الفرع: Azure ☁️'
+                                 : dbHosting.type === 'vps'
+                                 ? 'الفرع: IP خارجي 🌐'
+                                 : 'الفرع: محلي 💻'}
+                             </span>
                            </Link>
                          </TooltipTrigger>
-                         <TooltipContent side="bottom" className="text-xs max-w-xs text-center space-y-1">
-                           <div className="font-bold">
-                             {dbHosting.type === 'aws'
-                               ? 'متصل بسحابة Amazon AWS RDS'
-                               : dbHosting.type === 'vps'
-                               ? 'متصل بسيرفر خارجي (VPS / IP)'
-                               : 'متصل بسيرفر SQL محلي (Local)'}
+                         <TooltipContent side="bottom" className="text-xs max-w-sm text-right space-y-1.5 p-3">
+                           <div className="font-bold text-foreground border-b pb-1 text-center">
+                             حالة السيرفرات وقواعد البيانات (الفرع والإدارة)
                            </div>
-                           <div className="font-mono text-[10px] opacity-80" dir="ltr">
-                             {dbHosting.server} ({dbHosting.database})
+                           <div className="space-y-0.5 text-[11px]">
+                             <div className="flex items-center justify-between gap-2">
+                               <span className="font-bold">🏪 سيرفر الفرع:</span>
+                               <Badge variant="outline" className="text-[9px] py-0 px-1 font-mono">
+                                 {dbHosting.type === 'aws' ? 'سحابي (AWS RDS)' : dbHosting.type === 'vps' ? 'سيرفر IP' : 'محلي'}
+                               </Badge>
+                             </div>
+                             <div className="font-mono text-[10px] text-muted-foreground truncate" dir="ltr">
+                               {dbHosting.server} ({dbHosting.database})
+                             </div>
+                           </div>
+                           <div className="space-y-0.5 text-[11px] pt-1 border-t">
+                             <div className="flex items-center justify-between gap-2">
+                               <span className="font-bold">🏢 سيرفر الإدارة:</span>
+                               <Badge variant="outline" className="text-[9px] py-0 px-1 font-mono">
+                                 {centralHosting.type === 'aws' ? 'سحابي (AWS RDS)' : centralHosting.type === 'vps' ? 'سيرفر IP' : 'محلي'}
+                               </Badge>
+                             </div>
+                             <div className="font-mono text-[10px] text-muted-foreground truncate" dir="ltr">
+                               {centralHosting.server} ({centralHosting.database})
+                             </div>
+                           </div>
+                           <div className="text-[10px] text-primary text-center font-bold pt-1 border-t">
+                             💡 اضغط لفتح مركز إدارة السيرفرات وقواعد البيانات
                            </div>
                          </TooltipContent>
                        </Tooltip>

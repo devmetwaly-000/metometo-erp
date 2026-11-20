@@ -24,6 +24,7 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import localforage from 'localforage';
+import { cn } from "@/lib/utils";
 
 interface DbStats {
     salesCount: number;
@@ -39,13 +40,22 @@ interface DbStats {
     usersCount: number;
 }
 
+interface HostingDetail {
+    type: 'local' | 'cloud' | 'ip';
+    label: string;
+    server: string;
+    database: string;
+}
+
 interface BackupInfo {
     database: string;
     localServer?: string;
     isCloudLocal?: boolean;
+    branchHosting?: HostingDetail;
     centralDatabase?: string;
     centralServer?: string;
     centralConnected?: boolean;
+    centralHosting?: HostingDetail;
     branchCode: string;
     branchName: string;
     defaultBackupPath: string;
@@ -62,6 +72,8 @@ export default function BackupPage() {
     const [isLoadingInfo, setIsLoadingInfo] = useState(false);
 
     // Backup states
+    const [exportTarget, setExportTarget] = useState<'branch' | 'central'>('branch');
+    const [restoreTarget, setRestoreTarget] = useState<'branch' | 'central'>('branch');
     const [isLoadingJsonBackup, setIsLoadingJsonBackup] = useState(false);
     const [isLoadingBakBackup, setIsLoadingBakBackup] = useState(false);
     const [lastBakPath, setLastBakPath] = useState<string | null>(null);
@@ -114,14 +126,14 @@ export default function BackupPage() {
         fetchBackupInfo();
     }, [fetchBackupInfo]);
 
-    // 1. تصدير وتحميل النسخة الاحتياطية الشاملة (JSON)
+    // 1. تصدير وتحميل النسخة الاحتياطية الشاملة (JSON) - للفرع أو للإدارة المركزية
     const handleExportJson = async () => {
         setIsLoadingJsonBackup(true);
         try {
             const res = await fetch('/api/db/backup', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ action: 'export-json' })
+                body: JSON.stringify({ action: 'export-json', target: exportTarget })
             });
 
             if (!res.ok) {
@@ -136,15 +148,17 @@ export default function BackupPage() {
                 const link = document.createElement("a");
                 link.href = url;
                 const dateStr = new Date().toISOString().split('T')[0];
-                link.download = `MultiBranchPOS_${backupInfo?.branchCode || '900'}_Backup_${dateStr}.json`;
+                const targetTag = exportTarget === 'central' ? 'CentralHQ' : (backupInfo?.branchCode || 'Branch');
+                link.download = `MultiBranchPOS_${targetTag}_Backup_${dateStr}.json`;
                 document.body.appendChild(link);
                 link.click();
                 document.body.removeChild(link);
                 URL.revokeObjectURL(url);
 
+                const targetLabel = exportTarget === 'central' ? 'قاعدة الإدارة المركزية' : 'قاعدة بيانات الفرع';
                 toast({
-                    title: "تم استخراج النسخة الاحتياطية بنجاح 💾",
-                    description: `تم تصدير ${data.metadata?.tablesCount || 72} جدولاً بإجمالي ${data.metadata?.totalRecords || 0} حركة وسجل.`
+                    title: `تم استخراج النسخة الاحتياطية بنجاح 💾`,
+                    description: `تم تصدير ${data.metadata?.tablesCount || 72} جدولاً بإجمالي ${data.metadata?.totalRecords || 0} حركة وسجل من [${targetLabel}].`
                 });
                 await fetchBackupInfo();
             } else {
@@ -244,7 +258,7 @@ export default function BackupPage() {
         }
     };
 
-    // 4. تنفيذ الاستعادة الفعلية إلى SQL Server
+    // 4. تنفيذ الاستعادة الفعلية إلى SQL Server (للفرع أو للإدارة المركزية)
     const handleRestoreConfirm = async () => {
         if (!parsedBackupData) {
             toast({ variant: "destructive", title: "خطأ", description: "يرجى تحديد ملف نسخة احتياطية صالح أولاً." });
@@ -258,6 +272,7 @@ export default function BackupPage() {
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     action: 'restore-json',
+                    target: restoreTarget,
                     backupData: parsedBackupData
                 })
             });
@@ -436,22 +451,35 @@ export default function BackupPage() {
     return (
         <>
             <PageHeader title="النسخ الاحتياطي وحذف وإعادة ضبط البيانات (الإدارة المركزية والفرع)">
-                <Button 
-                    variant="outline" 
-                    size="sm" 
-                    onClick={fetchBackupInfo} 
-                    disabled={isLoadingInfo}
-                    className="gap-1.5 text-xs font-bold"
-                >
-                    <RefreshCw className={`h-3.5 w-3.5 ${isLoadingInfo ? 'animate-spin' : ''}`} />
-                    تحديث إحصائيات الفرع والمركزية
-                </Button>
+                <div className="flex items-center gap-2">
+                    <Button 
+                        asChild
+                        variant="outline" 
+                        size="sm" 
+                        className="gap-1.5 text-xs font-bold"
+                    >
+                        <a href="/settings/re-engineer">
+                            <Server className="h-3.5 w-3.5 text-primary" />
+                            مركز إدارة السيرفرات وقواعد البيانات
+                        </a>
+                    </Button>
+                    <Button 
+                        variant="outline" 
+                        size="sm" 
+                        onClick={fetchBackupInfo} 
+                        disabled={isLoadingInfo}
+                        className="gap-1.5 text-xs font-bold"
+                    >
+                        <RefreshCw className={`h-3.5 w-3.5 ${isLoadingInfo ? 'animate-spin' : ''}`} />
+                        تحديث الإحصائيات
+                    </Button>
+                </div>
             </PageHeader>
 
             <main className="flex flex-1 flex-col gap-6 p-4 md:gap-6 md:p-6 max-w-7xl mx-auto w-full">
                 {/* شريط معلومات قاعدة بيانات الفرع والإدارة المركزية */}
                 <div className="grid gap-4 lg:grid-cols-2">
-                    {/* بطاقة قاعدة بيانات الفرع المحلي */}
+                    {/* بطاقة قاعدة بيانات الفرع */}
                     <Card className="border bg-card/60 backdrop-blur-xs shadow-xs">
                         <CardContent className="p-4 space-y-3">
                             <div className="flex items-center justify-between gap-2">
@@ -462,8 +490,18 @@ export default function BackupPage() {
                                     <div>
                                         <div className="flex items-center gap-2 flex-wrap">
                                             <h2 className="text-sm font-bold text-foreground">
-                                                {backupInfo?.isCloudLocal ? 'قاعدة الفرع (الكلاود AWS / سحابي):' : 'قاعدة الفرع المحلي:'} {backupInfo?.database || 'MultiBranchPOS_DB'}
+                                                قاعدة بيانات الفرع: {backupInfo?.database || 'MultiBranchPOS_DB'}
                                             </h2>
+                                            <Badge variant="outline" className={cn(
+                                                "text-[10px] font-bold",
+                                                backupInfo?.branchHosting?.type === 'cloud' || backupInfo?.isCloudLocal
+                                                    ? "bg-amber-500/10 text-amber-700 dark:text-amber-300 border-amber-500/30"
+                                                    : backupInfo?.branchHosting?.type === 'ip'
+                                                    ? "bg-sky-500/10 text-sky-700 dark:text-sky-300 border-sky-500/30"
+                                                    : "bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border-emerald-500/30"
+                                            )}>
+                                                {backupInfo?.branchHosting?.label || (backupInfo?.isCloudLocal ? '☁️ سحابي (AWS RDS)' : '💻 محلي (Localhost)')}
+                                            </Badge>
                                             <Badge variant="outline" className="text-[10px] bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border-emerald-500/30">
                                                 متصلة ✅
                                             </Badge>
@@ -472,7 +510,7 @@ export default function BackupPage() {
                                             الفرع النشط: <strong className="text-foreground">{backupInfo?.branchName || 'الفرع الرئيسي'} ({backupInfo?.branchCode || '900'})</strong>
                                             {backupInfo?.localServer && (
                                                 <span className="block font-mono text-[10px] text-muted-foreground/90 mt-0.5" dir="ltr">
-                                                    {backupInfo.localServer}
+                                                    السيرفر: {backupInfo.localServer}
                                                 </span>
                                             )}
                                         </p>
@@ -492,10 +530,20 @@ export default function BackupPage() {
                                         <Globe className="h-5 w-5" />
                                     </div>
                                     <div>
-                                        <div className="flex items-center gap-2">
+                                        <div className="flex items-center gap-2 flex-wrap">
                                             <h2 className="text-sm font-bold text-foreground">
                                                 قاعدة الإدارة المركزية: {backupInfo?.centralDatabase || 'MultiBranchPOS_Central_DB'}
                                             </h2>
+                                            <Badge variant="outline" className={cn(
+                                                "text-[10px] font-bold",
+                                                backupInfo?.centralHosting?.type === 'cloud'
+                                                    ? "bg-amber-500/10 text-amber-700 dark:text-amber-300 border-amber-500/30"
+                                                    : backupInfo?.centralHosting?.type === 'ip'
+                                                    ? "bg-sky-500/10 text-sky-700 dark:text-sky-300 border-sky-500/30"
+                                                    : "bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border-emerald-500/30"
+                                            )}>
+                                                {backupInfo?.centralHosting?.label || '🌐 سيرفر IP / شبكة'}
+                                            </Badge>
                                             {backupInfo?.centralConnected ? (
                                                 <Badge variant="outline" className="text-[10px] bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border-emerald-500/30">
                                                     متصلة بالسيرفر المركزي ✅
@@ -567,7 +615,7 @@ export default function BackupPage() {
                                         <Badge variant="destructive" className="text-[10px]">الموصى به</Badge>
                                     </div>
                                     <p className="text-[11px] text-muted-foreground">
-                                        يحذف البيانات من قاعدة الفرع المحلي ومن السيرفر المركزي في نفس اللحظة لمنع عودتها بالمزامنة.
+                                        يحذف البيانات من قاعدة بيانات الفرع [{backupInfo?.database || 'MultiBranchPOS_DB'} على {backupInfo?.branchHosting?.label || 'السيرفر'}] ومن قاعدة الإدارة المركزية [{backupInfo?.centralDatabase || 'MultiBranchPOS_Central_DB'} على {backupInfo?.centralHosting?.label || 'السيرفر'}] في نفس اللحظة لمنع عودتها بالمزامنة.
                                     </p>
                                 </Label>
 
@@ -582,11 +630,14 @@ export default function BackupPage() {
                                     <div className="flex items-center justify-between">
                                         <span className="font-bold text-xs text-foreground flex items-center gap-2">
                                             <RadioGroupItem value="local" id="scope-local" />
-                                            قاعدة بيانات الفرع المحلي فقط
+                                            قاعدة بيانات الفرع فقط
                                         </span>
+                                        <Badge variant="outline" className="text-[9px]">
+                                            {backupInfo?.branchHosting?.label || 'سيرفر الفرع'}
+                                        </Badge>
                                     </div>
                                     <p className="text-[11px] text-muted-foreground">
-                                        يمسح بيانات قاعدة الفرع الحالية ({backupInfo?.database || 'MultiBranchPOS_DB'}) فقط.
+                                        يمسح بيانات قاعدة الفرع الحالية ({backupInfo?.database || 'MultiBranchPOS_DB'} على {backupInfo?.localServer || 'السيرفر'}) فقط دون المساس بالإدارة المركزية.
                                     </p>
                                 </Label>
 
@@ -603,9 +654,12 @@ export default function BackupPage() {
                                             <RadioGroupItem value="central" id="scope-central" />
                                             قاعدة الإدارة المركزية فقط
                                         </span>
+                                        <Badge variant="outline" className="text-[9px]">
+                                            {backupInfo?.centralHosting?.label || 'السيرفر المركزي'}
+                                        </Badge>
                                     </div>
                                     <p className="text-[11px] text-muted-foreground">
-                                        يمسح بيانات السيرفر المركزي ({backupInfo?.centralDatabase || 'MultiBranchPOS_Central_DB'}) فقط.
+                                        يمسح بيانات قاعدة الإدارة المركزية ({backupInfo?.centralDatabase || 'MultiBranchPOS_Central_DB'} على {backupInfo?.centralServer || 'السيرفر'}) فقط دون المساس بقاعدة الفرع.
                                     </p>
                                 </Label>
                             </RadioGroup>
@@ -892,6 +946,32 @@ export default function BackupPage() {
                             </CardDescription>
                         </CardHeader>
                         <CardContent className="space-y-4">
+                            {/* اختيار قاعدة البيانات المراد نسخها */}
+                            <div className="space-y-1.5 p-2.5 rounded-lg border bg-muted/20">
+                                <Label className="text-xs font-bold text-foreground">تحديد قاعدة البيانات المراد نسخها:</Label>
+                                <div className="grid grid-cols-2 gap-2">
+                                    <Button
+                                        type="button"
+                                        size="sm"
+                                        variant={exportTarget === 'branch' ? 'default' : 'outline'}
+                                        className="h-8 text-[11px] font-bold"
+                                        onClick={() => setExportTarget('branch')}
+                                    >
+                                        قاعدة الفرع ({backupInfo?.database || 'MultiBranchPOS_DB'})
+                                    </Button>
+                                    <Button
+                                        type="button"
+                                        size="sm"
+                                        variant={exportTarget === 'central' ? 'default' : 'outline'}
+                                        className="h-8 text-[11px] font-bold"
+                                        disabled={!backupInfo?.centralConnected}
+                                        onClick={() => setExportTarget('central')}
+                                    >
+                                        قاعدة الإدارة ({backupInfo?.centralDatabase || 'MultiBranchPOS_Central_DB'})
+                                    </Button>
+                                </div>
+                            </div>
+
                             <div className="p-3.5 rounded-xl border bg-muted/30 space-y-2.5">
                                 <div className="flex items-center justify-between">
                                     <span className="font-bold text-xs flex items-center gap-1.5">
@@ -899,11 +979,11 @@ export default function BackupPage() {
                                         نسخة احتياطية ذكية شاملة (.json)
                                     </span>
                                     <Badge variant="outline" className="text-[10px] bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border-emerald-500/30">
-                                        الموصى بها
+                                        الموصى بها (تعمل سحابياً ومحلياً)
                                     </Badge>
                                 </div>
                                 <p className="text-[11px] text-muted-foreground leading-relaxed">
-                                    تقوم بسحب كافة الجداول (الأصناف، الفواتير، الحسابات، الإعدادات، والبنود) في ملف JSON موثق، وتنزيلها مباشرة إلى جهازك بنقرة زر.
+                                    تقوم بسحب كافة الجداول في ملف JSON موثق، وتنزيلها مباشرة إلى جهازك بنقرة زر. تعمل بكفاءة تامة على خوادم AWS RDS السحابية والسيرفرات المحلية دون قيود صلاحيات.
                                 </p>
                                 <Button 
                                     onClick={handleExportJson} 
@@ -915,15 +995,23 @@ export default function BackupPage() {
                                     ) : (
                                         <Download className="h-4 w-4" />
                                     )}
-                                    {isLoadingJsonBackup ? 'جارٍ تجميع وتجهيز الملف...' : 'تنزيل النسخة الاحتياطية الكاملة الآن'}
+                                    {isLoadingJsonBackup ? 'جارٍ تجميع وتجهيز الملف...' : `تنزيل نسخة [${exportTarget === 'central' ? 'الإدارة المركزية' : 'قاعدة الفرع'}] الآن`}
                                 </Button>
                             </div>
 
                             <div className="p-3.5 rounded-xl border bg-muted/30 space-y-2.5">
-                                <span className="font-bold text-xs flex items-center gap-1.5">
-                                    <Server className="h-4 w-4 text-foreground" />
-                                    نسخة احتياطية أصلية للسيرفر (Native SQL .BAK)
-                                </span>
+                                <div className="flex items-center justify-between">
+                                    <span className="font-bold text-xs flex items-center gap-1.5">
+                                        <Server className="h-4 w-4 text-foreground" />
+                                        نسخة احتياطية أصلية للسيرفر (Native SQL .BAK)
+                                    </span>
+                                    <Badge variant="outline" className="text-[9px]">خاصة بالسيرفر المحلي / VPS</Badge>
+                                </div>
+                                {(backupInfo?.branchHosting?.type === 'cloud' || backupInfo?.isCloudLocal) && (
+                                    <div className="p-2 rounded bg-amber-500/10 border border-amber-500/20 text-amber-800 dark:text-amber-300 text-[10px] leading-relaxed">
+                                        💡 <strong>تنبيه السحابة:</strong> قاعدة بيانات الفرع مستضافة على سحابة Amazon AWS RDS. خوادم AWS تمنع أخذ ملفات .BAK المحلية على القرص وتتطلب S3 Bucket. يُرجى استخدام [النسخ الاحتياطي الذكي .json] أعلاه فهو يعمل بسلاسة على السحابي والمحلي.
+                                    </div>
+                                )}
                                 <div className="space-y-1">
                                     <Label className="text-[10px] text-muted-foreground">مسار المجلد على السيرفر (اختياري):</Label>
                                     <Input 
@@ -936,7 +1024,7 @@ export default function BackupPage() {
                                 <Button 
                                     variant="outline" 
                                     onClick={handleCreateSqlBak} 
-                                    disabled={isLoadingBakBackup}
+                                    disabled={isLoadingBakBackup || Boolean(backupInfo?.branchHosting?.type === 'cloud' || backupInfo?.isCloudLocal)}
                                     className="w-full h-8 text-xs font-bold gap-2 border-sky-500/30 hover:bg-sky-500/10 text-foreground"
                                 >
                                     {isLoadingBakBackup ? (
@@ -972,10 +1060,36 @@ export default function BackupPage() {
                                 استعادة نسخة احتياطية
                             </CardTitle>
                             <CardDescription className="text-xs">
-                                يمكنك استرجاع بياناتك كاملة من أي ملف نسخة احتياطية (.json) محفوظ مسبقاً، مع معالجة وتثبيت القيود آلياً.
+                                يمكنك استرجاع بياناتك كاملة من أي ملف نسخة احتياطية (.json) محفوظ مسبقاً، مع تحديد القاعدة المستهدفة (الفرع أو الإدارة المركزية).
                             </CardDescription>
                         </CardHeader>
                         <CardContent className="space-y-4">
+                            {/* اختيار قاعدة البيانات المستهدفة للاستعادة */}
+                            <div className="space-y-1.5 p-2.5 rounded-lg border bg-muted/20">
+                                <Label className="text-xs font-bold text-foreground">تحديد قاعدة البيانات المستهدفة للاستعادة إليها:</Label>
+                                <div className="grid grid-cols-2 gap-2">
+                                    <Button
+                                        type="button"
+                                        size="sm"
+                                        variant={restoreTarget === 'branch' ? 'default' : 'outline'}
+                                        className="h-8 text-[11px] font-bold"
+                                        onClick={() => setRestoreTarget('branch')}
+                                    >
+                                        قاعدة الفرع ({backupInfo?.database || 'MultiBranchPOS_DB'})
+                                    </Button>
+                                    <Button
+                                        type="button"
+                                        size="sm"
+                                        variant={restoreTarget === 'central' ? 'default' : 'outline'}
+                                        className="h-8 text-[11px] font-bold"
+                                        disabled={!backupInfo?.centralConnected}
+                                        onClick={() => setRestoreTarget('central')}
+                                    >
+                                        قاعدة الإدارة ({backupInfo?.centralDatabase || 'MultiBranchPOS_Central_DB'})
+                                    </Button>
+                                </div>
+                            </div>
+
                             <div className="space-y-2 border-2 border-dashed rounded-xl p-4 text-center bg-muted/20">
                                 <input
                                     id="restore-file"
@@ -1030,7 +1144,7 @@ export default function BackupPage() {
                                         className="w-full h-9 text-xs font-bold bg-amber-600 hover:bg-amber-700 text-white gap-2 shadow-sm"
                                     >
                                         {isLoadingRestore ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}
-                                        {isLoadingRestore ? 'جارٍ استعادة البيانات إلى SQL...' : 'استعادة ملف النسخة الاحتياطية'}
+                                        {isLoadingRestore ? 'جارٍ استعادة البيانات إلى SQL...' : `استعادة النسخة إلى [${restoreTarget === 'central' ? 'الإدارة المركزية' : 'قاعدة الفرع'}]`}
                                     </Button>
                                 </AlertDialogTrigger>
                                 <AlertDialogContent className="text-right" dir="rtl">
@@ -1041,11 +1155,11 @@ export default function BackupPage() {
                                         </AlertDialogTitle>
                                         <AlertDialogDescription className="text-xs space-y-2 leading-relaxed">
                                             <span>
-                                                أنت على وشك استعادة <strong>{restoreFileSummary?.totalRecords}</strong> حركة وسجل عبر <strong>{restoreFileSummary?.totalTables}</strong> جدولاً في قاعدة البيانات الحالية.
+                                                أنت على وشك استعادة <strong>{restoreFileSummary?.totalRecords}</strong> حركة وسجل عبر <strong>{restoreFileSummary?.totalTables}</strong> جدولاً إلى <strong>[{restoreTarget === 'central' ? 'قاعدة بيانات الإدارة المركزية' : 'قاعدة بيانات الفرع'}]</strong>.
                                             </span>
                                             <br />
                                             <span className="font-bold text-destructive block mt-2">
-                                                ⚠️ تنبيه: سيتم استبدال البيانات المسجلة بالبيانات الواردة في ملف النسخة الاحتياطية. يرجى التأكد قبل المتابعة.
+                                                ⚠️ تنبيه: سيتم استبدال البيانات المسجلة في القاعدة المستهدفة بالبيانات الواردة في ملف النسخة الاحتياطية. يرجى التأكد قبل المتابعة.
                                             </span>
                                         </AlertDialogDescription>
                                     </AlertDialogHeader>
