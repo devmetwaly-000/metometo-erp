@@ -13,10 +13,10 @@ function detectDbHosting(server: string, encrypt?: boolean): {
 } {
     const s = (server || 'localhost').toLowerCase().trim();
     if (s.includes('.rds.amazonaws.com')) {
-        return { type: 'aws', label: 'AWS RDS (سحابي)', details: server };
+        return { type: 'aws', label: 'سيرفر سحابي (Cloud)', details: server };
     }
     if (s.includes('.database.windows.net')) {
-        return { type: 'azure', label: 'Azure SQL (سحابي)', details: server };
+        return { type: 'azure', label: 'سيرفر سحابي (Cloud)', details: server };
     }
     const hostOnly = s.split(':')[0].split(',')[0].replace(/^tcp:/i, '').trim();
     const isLocal =
@@ -27,9 +27,9 @@ function detectDbHosting(server: string, encrypt?: boolean): {
         (!hostOnly.includes('.') && !hostOnly.includes(':'));
 
     if (isLocal && !encrypt) {
-        return { type: 'local', label: 'محلي (Localhost)', details: server };
+        return { type: 'local', label: 'سيرفر محلي (Localhost)', details: server };
     }
-    return { type: 'vps', label: encrypt ? 'Cloud / خارجي' : 'سيرفر IP / شبكة', details: server };
+    return { type: 'vps', label: encrypt ? 'سيرفر سحابي' : 'سيرفر شبكة / IP', details: server };
 }
 
 export async function GET() {

@@ -6,7 +6,7 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Trash2, ShoppingCart, XCircle, Printer, Grip, Dot, Search, Ban, PanelLeft, Boxes, SquareCheck, ListRestart, FileClock, Eye, Loader2, Undo2, PlusCircle, UserPlus, LogOut, Percent, Truck, ArrowLeft, Banknote, Landmark, Wallet, Phone, CircleDollarSign, FileText, CreditCard, UserRound, User as UserIcon, PlayCircle, History, Coins, Building2, LayoutDashboard, Monitor, Gift, MessageCircle, Settings2, PowerOff, Camera } from "lucide-react";
+import { Trash2, ShoppingCart, XCircle, Printer, Grip, Dot, Search, Ban, PanelLeft, Boxes, SquareCheck, ListRestart, FileClock, Eye, Loader2, Undo2, PlusCircle, UserPlus, LogOut, Percent, Truck, ArrowLeft, Banknote, Landmark, Wallet, Phone, CircleDollarSign, FileText, CreditCard, UserRound, User as UserIcon, PlayCircle, History, Coins, Building2, LayoutDashboard, Monitor, Gift, MessageCircle, Settings2, PowerOff, Camera, AlertTriangle, PauseCircle } from "lucide-react";
 import CameraBarcodeScanner from '@/components/camera-barcode-scanner';
 import {
     getCustomerExperienceConfig,
@@ -410,7 +410,7 @@ const StockQueryDialog = ({
                 <div className="relative flex-1">
                     <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                     <Input 
-                        placeholder="أدخل جزءاً من اسم الصنف أو الكود (مثال: شيك)..." 
+                        placeholder="ابحث باسم الصنف أو الكود أو الباركود..." 
                         value={searchTerm} 
                         onChange={e => setSearchTerm(e.target.value)} 
                         autoFocus
@@ -1228,6 +1228,37 @@ export default function PosPage() {
     const tableData = useMemo(() => restaurantTables.find((t: any) => t.id === tableId), [tableId, restaurantTables]);
     const [showBackButton, setShowBackButton] = useState(false);
     const [currentHeldInvoiceId, setCurrentHeldInvoiceId] = useState<string | null>(null);
+    const [isExitDialogOpen, setIsExitDialogOpen] = useState(false);
+
+    const handleAttemptExit = useCallback(() => {
+        setIsExitDialogOpen(true);
+    }, []);
+
+    // حماية الخروج من شاشة البيع: منع إغلاق المتصفح أو إعادة التحميل أثناء وجود أصناف في الفاتورة
+    useEffect(() => {
+        const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+            if (cart.length > 0) {
+                e.preventDefault();
+                e.returnValue = '';
+                return '';
+            }
+        };
+        window.addEventListener('beforeunload', handleBeforeUnload);
+        return () => window.removeEventListener('beforeunload', handleBeforeUnload);
+    }, [cart.length]);
+
+    // اعتراض زر الرجوع للخلف بالمتصفح (Browser Back / PopState) لمنع الخروج غير المقصود
+    useEffect(() => {
+        window.history.pushState({ posScreen: true }, '', window.location.href);
+
+        const handlePopState = () => {
+            window.history.pushState({ posScreen: true }, '', window.location.href);
+            setIsExitDialogOpen(true);
+        };
+
+        window.addEventListener('popstate', handlePopState);
+        return () => window.removeEventListener('popstate', handlePopState);
+    }, []);
     
     const cxConfig = useMemo(() => getCustomerExperienceConfig(settings), [settings]);
     const { can } = usePermissions();
@@ -3098,7 +3129,13 @@ export default function PosPage() {
                     style={{ '--items-width': `${itemsWidth}%` } as React.CSSProperties}
                 >
                     <div className="shrink-0 flex items-center gap-2">
-                        <Button variant="ghost" size="icon" className="h-12 w-12 shrink-0 hidden md:flex" onClick={() => router.push('/')}>
+                        <Button 
+                            variant="ghost" 
+                            size="icon" 
+                            className="h-12 w-12 shrink-0 flex hover:bg-muted/60" 
+                            onClick={handleAttemptExit}
+                            title="الرجوع إلى لوحة التحكم (الرئيسية)"
+                        >
                             <Undo2 className="h-6 w-6" />
                         </Button>
                         <form onSubmit={handleBarcodeSubmit} className="flex-1">
@@ -3109,7 +3146,8 @@ export default function PosPage() {
                                     placeholder="امسح الباركود أو ابحث بالاسم..." 
                                     className="h-12 text-lg pl-10 pr-9" 
                                     onChange={(e: any) => setSearchTerm(e.target.value)} 
-                                    onFocus={(e: any) => { e.target.select(); setIsSearchFocused(true); }}
+                                    onFocus={() => setIsSearchFocused(true)}
+                                    onClick={(e: any) => e.currentTarget.select()}
                                     onBlur={() => setTimeout(() => setIsSearchFocused(false), 250)}
                                     onKeyDown={handleInputKeyDown}
                                 />
@@ -3430,6 +3468,81 @@ export default function PosPage() {
                 handleBarcodeSubmitRef.current(fakeEvent);
             }}
         />
+
+        {/* نافذة حماية وتأكيد الخروج من شاشة البيع */}
+        <AlertDialog open={isExitDialogOpen} onOpenChange={setIsExitDialogOpen}>
+            <AlertDialogContent className="max-w-md text-right" dir="rtl">
+                <AlertDialogHeader>
+                    <AlertDialogTitle className="flex items-center gap-2 text-base font-bold">
+                        {cart.length > 0 ? (
+                            <>
+                                <AlertTriangle className="h-5 w-5 text-destructive shrink-0" />
+                                <span className="text-destructive">تنبيه: لا يمكن الخروج - توجد أصناف في الفاتورة</span>
+                            </>
+                        ) : (
+                            <>
+                                <LogOut className="h-5 w-5 text-primary shrink-0" />
+                                <span>تأكيد الخروج من شاشة البيع</span>
+                            </>
+                        )}
+                    </AlertDialogTitle>
+                    <AlertDialogDescription className="text-sm pt-2 text-foreground/80 leading-relaxed">
+                        {cart.length > 0 ? (
+                            <>
+                                توجد حالياً <strong className="text-destructive font-bold">{cart.length} أصناف</strong> في سلة الفاتورة الحالية بقيمة إجمالية <strong className="text-destructive font-mono font-bold">{total.toFixed(roundingPrecision)} ج.م</strong>.
+                                <br /><br />
+                                لحماية المبيعات ومنع ضياع البيانات، يرجى إتمام عملية البيع أو تعليق الفاتورة أو إلغاؤها أولاً قبل الخروج.
+                            </>
+                        ) : (
+                            'هل أنت متأكد من الخروج من شاشة البيع والعودة إلى لوحة التحكم الرئيسية؟'
+                        )}
+                    </AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter className="flex-row-reverse justify-start gap-2 pt-4">
+                    {cart.length > 0 ? (
+                        <>
+                            <AlertDialogCancel asChild>
+                                <Button variant="default" className="font-bold flex-1">
+                                    متابعة البيع (البقاء في الفاتورة)
+                                </Button>
+                            </AlertDialogCancel>
+                            <Button 
+                                variant="outline" 
+                                className="font-bold border-amber-500/40 text-amber-700 dark:text-amber-300 hover:bg-amber-500/10"
+                                onClick={async () => {
+                                    setIsExitDialogOpen(false);
+                                    await handleHoldInvoice();
+                                    router.push('/');
+                                }}
+                            >
+                                <PauseCircle className="h-4 w-4 ml-1.5 text-amber-500" />
+                                تعليق الفاتورة والخروج
+                            </Button>
+                        </>
+                    ) : (
+                        <>
+                            <AlertDialogAction asChild>
+                                <Button 
+                                    variant="destructive" 
+                                    className="font-bold"
+                                    onClick={() => {
+                                        setIsExitDialogOpen(false);
+                                        router.push('/');
+                                    }}
+                                >
+                                    نعم، الخروج للرئيسية
+                                </Button>
+                            </AlertDialogAction>
+                            <AlertDialogCancel asChild>
+                                <Button variant="outline" className="font-bold">
+                                    البقاء في شاشة البيع
+                                </Button>
+                            </AlertDialogCancel>
+                        </>
+                    )}
+                </AlertDialogFooter>
+            </AlertDialogContent>
+        </AlertDialog>
         </>
     );
 }

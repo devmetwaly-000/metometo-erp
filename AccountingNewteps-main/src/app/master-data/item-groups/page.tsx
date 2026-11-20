@@ -795,7 +795,7 @@ export default function PosItemGroupsPage() {
                 <Label htmlFor="group-name">اسم المجموعة في الكاشير *</Label>
                 <Input
                   id="group-name"
-                  placeholder="مثال: مشروبات ساخنة / عروض سريعة"
+                  placeholder="اسم المجموعة"
                   value={formName}
                   onChange={(e) => setFormName(e.target.value)}
                 />

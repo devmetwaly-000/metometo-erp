@@ -257,10 +257,10 @@ const InnerDatabaseGate = ({ children }: { children: React.ReactNode }) => {
                     <div className="mx-auto mb-5 flex h-16 w-16 items-center justify-center rounded-2xl bg-primary/10 text-primary">
                         <Database className="h-8 w-8" />
                     </div>
-                    <h1 className="text-2xl font-bold">إعداد قاعدة البيانات (محلي / IP خارجي / Amazon AWS)</h1>
+                    <h1 className="text-2xl font-bold">إعداد قاعدة البيانات</h1>
                     <p className="mt-3 text-muted-foreground">
                         لم يتم العثور على قاعدة البيانات <span className="font-semibold text-foreground">{databaseName}</span>.
-                        يمكنك إنشاؤها محلياً أو تحديد نص اتصال لسيرفر خارجي أو Amazon AWS RDS.
+                        يمكنك إنشاؤها محلياً أو تحديد نص اتصال لسيرفر خارجي أو سحابي.
                     </p>
                     {databaseSetupError && (
                         <div role="alert" className="mt-5 rounded-lg border border-destructive/30 bg-destructive/5 p-3 text-sm text-destructive">
@@ -279,7 +279,7 @@ const InnerDatabaseGate = ({ children }: { children: React.ReactNode }) => {
                             onClick={() => setShowConnForm(!showConnForm)}
                             className="text-xs font-bold text-primary underline hover:opacity-80"
                         >
-                            {showConnForm ? 'إخفاء إعدادات نص الاتصال الخارجي' : '⚙️ تحديد نص الاتصال لسيرفر خارجي (IP / Amazon AWS RDS)'}
+                            {showConnForm ? 'إخفاء إعدادات نص الاتصال الخارجي' : '⚙️ تحديد نص الاتصال لسيرفر خارجي أو سحابي'}
                         </button>
                     </div>
 

@@ -473,11 +473,8 @@ async function executeBranchPurgeOnPool(
 
 function detectHostingInfo(server: string, encrypt?: boolean) {
     const s = (server || 'localhost').toLowerCase().trim();
-    if (s.includes('.rds.amazonaws.com')) {
-        return { type: 'cloud' as const, label: 'سحابي (AWS RDS)', isCloud: true };
-    }
-    if (s.includes('.database.windows.net')) {
-        return { type: 'cloud' as const, label: 'سحابي (Azure SQL)', isCloud: true };
+    if (s.includes('.rds.amazonaws.com') || s.includes('.database.windows.net') || encrypt) {
+        return { type: 'cloud' as const, label: 'سحابي', isCloud: true };
     }
     const hostOnly = s.split(':')[0].split(',')[0].replace(/^tcp:/i, '').trim();
     const isLocal =
@@ -488,9 +485,9 @@ function detectHostingInfo(server: string, encrypt?: boolean) {
         (!hostOnly.includes('.') && !hostOnly.includes(':'));
 
     if (isLocal && !encrypt) {
-        return { type: 'local' as const, label: 'محلي (Localhost)', isCloud: false };
+        return { type: 'local' as const, label: 'محلي', isCloud: false };
     }
-    return { type: 'ip' as const, label: 'سيرفر IP / شبكة', isCloud: Boolean(encrypt) };
+    return { type: 'ip' as const, label: 'سيرفر شبكة / IP', isCloud: Boolean(encrypt) };
 }
 
 // -------------------------------------------------------------

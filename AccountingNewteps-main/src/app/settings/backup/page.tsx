@@ -500,7 +500,7 @@ export default function BackupPage() {
                                                     ? "bg-sky-500/10 text-sky-700 dark:text-sky-300 border-sky-500/30"
                                                     : "bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border-emerald-500/30"
                                             )}>
-                                                {backupInfo?.branchHosting?.label || (backupInfo?.isCloudLocal ? '☁️ سحابي (AWS RDS)' : '💻 محلي (Localhost)')}
+                                                {backupInfo?.branchHosting?.label || (backupInfo?.isCloudLocal ? '☁️ سحابي' : '💻 محلي')}
                                             </Badge>
                                             <Badge variant="outline" className="text-[10px] bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border-emerald-500/30">
                                                 متصلة ✅
@@ -773,7 +773,7 @@ export default function BackupPage() {
                                             <div className="space-y-1.5 pt-2">
                                                 <Label className="text-xs font-bold text-foreground flex items-center gap-1.5">
                                                     <Lock className="h-3.5 w-3.5 text-muted-foreground" />
-                                                    أدخل كلمة مرور الإدارة للمتابعة (مثل كلمة مرور admin):
+                                                    أدخل كلمة مرور الإدارة للمتابعة:
                                                 </Label>
                                                 <Input 
                                                     type="password"
@@ -983,7 +983,7 @@ export default function BackupPage() {
                                     </Badge>
                                 </div>
                                 <p className="text-[11px] text-muted-foreground leading-relaxed">
-                                    تقوم بسحب كافة الجداول في ملف JSON موثق، وتنزيلها مباشرة إلى جهازك بنقرة زر. تعمل بكفاءة تامة على خوادم AWS RDS السحابية والسيرفرات المحلية دون قيود صلاحيات.
+                                    تقوم بسحب كافة الجداول في ملف JSON موثق، وتنزيلها مباشرة إلى جهازك بنقرة زر. تعمل بكفاءة تامة على الخوادم السحابية والسيرفرات المحلية دون قيود صلاحيات.
                                 </p>
                                 <Button 
                                     onClick={handleExportJson} 
@@ -1009,7 +1009,7 @@ export default function BackupPage() {
                                 </div>
                                 {(backupInfo?.branchHosting?.type === 'cloud' || backupInfo?.isCloudLocal) && (
                                     <div className="p-2 rounded bg-amber-500/10 border border-amber-500/20 text-amber-800 dark:text-amber-300 text-[10px] leading-relaxed">
-                                        💡 <strong>تنبيه السحابة:</strong> قاعدة بيانات الفرع مستضافة على سحابة Amazon AWS RDS. خوادم AWS تمنع أخذ ملفات .BAK المحلية على القرص وتتطلب S3 Bucket. يُرجى استخدام [النسخ الاحتياطي الذكي .json] أعلاه فهو يعمل بسلاسة على السحابي والمحلي.
+                                        💡 <strong>تنبيه السيرفرات السحابية:</strong> خوادم قواعد البيانات السحابية تمنع إنشاء ملفات .BAK المحلية المباشرة على القرص. يُرجى استخدام [النسخ الاحتياطي الذكي .json] أعلاه فهو يعمل بسلاسة على كافة أنواع السيرفرات.
                                     </div>
                                 )}
                                 <div className="space-y-1">

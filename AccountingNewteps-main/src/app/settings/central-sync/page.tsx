@@ -163,7 +163,7 @@ export default function CentralSyncSettingsPage() {
     const [roleSwitchError, setRoleSwitchError] = useState<string | null>(null);
 
     // Password Protection Gate State
-    const [isUnlocked, setIsUnlocked] = useState(true);
+    const [isUnlocked, setIsUnlocked] = useState(false);
     const [accessPassword, setAccessPassword] = useState('');
     const [isCheckingPassword, setIsCheckingPassword] = useState(false);
     const [authError, setAuthError] = useState<string | null>(null);
@@ -240,18 +240,29 @@ export default function CentralSyncSettingsPage() {
         setIsCheckingPassword(true);
         setAuthError(null);
         try {
-            const res = await fetch('/api/sync/central', {
+            let res = await fetch('/api/sync/central', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ action: 'verify-password', password: accessPassword.trim() })
             });
-            const data = await res.json();
+            let data = await res.json();
+            if (!data.success) {
+                const res2 = await fetch('/api/auth/verify-admin', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ password: accessPassword.trim() })
+                });
+                const data2 = await res2.json();
+                if (data2.success) {
+                    data = { success: true };
+                }
+            }
             if (data.success) {
                 setIsUnlocked(true);
                 sessionStorage.setItem('central_sync_authenticated', 'true');
                 toast({
                     title: 'تم التحقق بنجاح',
-                    description: 'مرحباً بك في شاشة إعدادات المزامنة والسيرفر المركزي.'
+                    description: 'تم فتح شاشة إعدادات المزامنة.'
                 });
             } else {
                 setAuthError(data.error || 'كلمة المرور غير صحيحة!');
@@ -1002,7 +1013,7 @@ export default function CentralSyncSettingsPage() {
                         className="gap-1.5 text-xs font-bold h-8 border-primary/40 text-primary hover:bg-primary/10"
                     >
                         <Database className="h-3.5 w-3.5" />
-                        اتصال سيرفر الفرع (IP خارجي / AWS)
+                        اتصال سيرفر الفرع
                     </Button>
                     <Button
                         variant="destructive"
@@ -2346,7 +2357,7 @@ export default function CentralSyncSettingsPage() {
                                 <div>
                                     <span className="font-bold text-sm text-foreground block">مركز إدارة السيرفرات وقواعد البيانات الموحد</span>
                                     <span className="text-xs text-muted-foreground">
-                                        تم توحيد إدارة اتصالات السيرفرات (الفرع والإدارة المركزية: محلي، سحابي AWS RDS، أو سيرفر IP) في شاشة موحدة وشاملة.
+                                        إدارة اتصالات السيرفرات وقواعد البيانات للفرع والإدارة المركزية.
                                     </span>
                                 </div>
                             </div>
@@ -2552,7 +2563,7 @@ export default function CentralSyncSettingsPage() {
                                                 }))}
                                             >
                                                 <Cloud className="h-3 w-3 ml-1" />
-                                                سحابي Cloud (AWS RDS / Azure)
+                                                سحابي
                                             </Button>
                                         </div>
                                     </div>
@@ -2611,7 +2622,7 @@ export default function CentralSyncSettingsPage() {
                                                 }
                                                 setConfig(prev => ({ ...prev, ...updates }));
                                             }}
-                                            placeholder="Server=master.xxxx.rds.amazonaws.com,1433;Database=MultiBranchPOS_Central_DB;User Id=admin;Password=***;Encrypt=True;TrustServerCertificate=True;"
+                                            placeholder="Server=192.168.1.10,1433;Database=MultiBranchPOS_Central_DB;User Id=sa;Password=***;"
                                             className="h-9 text-xs font-mono"
                                         />
                                     </div>
@@ -2620,7 +2631,7 @@ export default function CentralSyncSettingsPage() {
                                         <div className="space-y-1.5">
                                             <Label className="text-xs font-bold">
                                                 {config.centralHostingType === 'cloud'
-                                                    ? 'عنوان السحابة (AWS RDS / Azure Endpoint)'
+                                                    ? 'عنوان السيرفر السحابي'
                                                     : config.centralHostingType === 'vps'
                                                     ? 'عنوان الـ IP الخارجي للـ VPS'
                                                     : 'عنوان السيرفر (IP أو اسم الجهاز)'}
@@ -2699,7 +2710,7 @@ export default function CentralSyncSettingsPage() {
                                                 onCheckedChange={(checked) => handleInputChange('centralEncrypt', checked)}
                                             />
                                             <Label className="text-xs font-semibold cursor-pointer">
-                                                تفعيل التشفير السحابي (Encrypt=True — مطلوب لـ AWS RDS / Azure)
+                                                تفعيل تشفير الاتصال (Encrypt=True)
                                             </Label>
                                         </div>
                                         <div className="flex items-center gap-2">
@@ -3003,7 +3014,7 @@ export default function CentralSyncSettingsPage() {
                                 type="password"
                                 value={purgePassword}
                                 onChange={(e) => setPurgePassword(e.target.value)}
-                                placeholder="أدخل كلمة مرور الإدارة (مثل admin)..."
+                                placeholder="أدخل كلمة مرور الإدارة..."
                                 className="h-9 text-xs"
                             />
                         </div>

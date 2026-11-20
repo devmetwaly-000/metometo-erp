@@ -1253,12 +1253,12 @@ export function AppLayoutContent({ children }: { children: React.ReactNode }) {
                              )}
                              <span>
                                {dbHosting.type === 'aws'
-                                 ? 'الفرع: AWS RDS ☁️'
+                                 ? 'سحابي ☁️'
                                  : dbHosting.type === 'azure'
-                                 ? 'الفرع: Azure ☁️'
+                                 ? 'سحابي ☁️'
                                  : dbHosting.type === 'vps'
-                                 ? 'الفرع: IP خارجي 🌐'
-                                 : 'الفرع: محلي 💻'}
+                                 ? 'سيرفر شبكة 🌐'
+                                 : 'محلي 💻'}
                              </span>
                            </Link>
                          </TooltipTrigger>
@@ -1270,7 +1270,7 @@ export function AppLayoutContent({ children }: { children: React.ReactNode }) {
                              <div className="flex items-center justify-between gap-2">
                                <span className="font-bold">🏪 سيرفر الفرع:</span>
                                <Badge variant="outline" className="text-[9px] py-0 px-1 font-mono">
-                                 {dbHosting.type === 'aws' ? 'سحابي (AWS RDS)' : dbHosting.type === 'vps' ? 'سيرفر IP' : 'محلي'}
+                                 {dbHosting.type === 'aws' ? 'سحابي' : dbHosting.type === 'vps' ? 'سيرفر IP' : 'محلي'}
                                </Badge>
                              </div>
                              <div className="font-mono text-[10px] text-muted-foreground truncate" dir="ltr">
@@ -1281,7 +1281,7 @@ export function AppLayoutContent({ children }: { children: React.ReactNode }) {
                              <div className="flex items-center justify-between gap-2">
                                <span className="font-bold">🏢 سيرفر الإدارة:</span>
                                <Badge variant="outline" className="text-[9px] py-0 px-1 font-mono">
-                                 {centralHosting.type === 'aws' ? 'سحابي (AWS RDS)' : centralHosting.type === 'vps' ? 'سيرفر IP' : 'محلي'}
+                                 {centralHosting.type === 'aws' ? 'سحابي' : centralHosting.type === 'vps' ? 'سيرفر IP' : 'محلي'}
                                </Badge>
                              </div>
                              <div className="font-mono text-[10px] text-muted-foreground truncate" dir="ltr">

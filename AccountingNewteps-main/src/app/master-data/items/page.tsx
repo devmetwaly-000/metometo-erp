@@ -545,7 +545,7 @@ function BulkCategoryUpdateDialog({
                             <div className="flex items-center justify-between">
                                 <Label className="text-xs font-bold flex items-center gap-1.5">
                                     <span>القسم الرئيسي (Section)</span>
-                                    <span className="text-muted-foreground text-[10px] font-normal">(مستوى 1 - مثل: مكملات، أغذية، أدوات)</span>
+                                    <span className="text-muted-foreground text-[10px] font-normal">(مستوى 1)</span>
                                 </Label>
                                 <Button 
                                     type="button" 
@@ -628,7 +628,7 @@ function BulkCategoryUpdateDialog({
                             <div className="flex items-center justify-between">
                                 <Label className="text-xs font-bold flex items-center gap-1.5">
                                     <span>الفئة / التصنيف (Category)</span>
-                                    <span className="text-muted-foreground text-[10px] font-normal">(مستوى 2 - مثل: بروتينات، كرياتين، فيتامينات)</span>
+                                    <span className="text-muted-foreground text-[10px] font-normal">(مستوى 2)</span>
                                 </Label>
                                 <Button 
                                     type="button" 
@@ -713,7 +713,7 @@ function BulkCategoryUpdateDialog({
                             <div className="flex items-center justify-between">
                                 <Label className="text-xs font-bold flex items-center gap-1.5">
                                     <span>المجموعة العامة (Item Group)</span>
-                                    <span className="text-muted-foreground text-[10px] font-normal">(مستوى 3 - مجموعة تفصيلية تابعة للفئة)</span>
+                                    <span className="text-muted-foreground text-[10px] font-normal">(مستوى 3)</span>
                                 </Label>
                                 <Button 
                                     type="button" 
@@ -796,7 +796,7 @@ function BulkCategoryUpdateDialog({
                         {/* تصنيفات فرعية إضافية (ماركة وموديل) */}
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2 border-t">
                             <div className="space-y-1.5">
-                                <Label className="text-xs font-bold">تصنيف فرعي 1 (ماركة / UDF1)</Label>
+                                <Label className="text-xs font-bold">تصنيف فرعي 1 (UDF1)</Label>
                                 <Select value={subCategoryId1} onValueChange={setSubCategoryId1}>
                                     <SelectTrigger className="h-8 text-xs">
                                         <SelectValue placeholder="اختر تصنيف فرعي 1..." />
@@ -815,7 +815,7 @@ function BulkCategoryUpdateDialog({
                             </div>
 
                             <div className="space-y-1.5">
-                                <Label className="text-xs font-bold">تصنيف فرعي 2 (موديل / UDF2)</Label>
+                                <Label className="text-xs font-bold">تصنيف فرعي 2 (UDF2)</Label>
                                 <Select value={subCategoryId2} onValueChange={setSubCategoryId2}>
                                     <SelectTrigger className="h-8 text-xs">
                                         <SelectValue placeholder="اختر تصنيف فرعي 2..." />

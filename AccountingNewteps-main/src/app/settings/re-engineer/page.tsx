@@ -98,11 +98,8 @@ function buildConnStr(cfg: BranchDbConfigState): string {
 
 function detectHosting(server: string, encrypt?: boolean): { type: 'local' | 'cloud' | 'ip'; label: string; icon: any } {
     const s = (server || '').toLowerCase().trim();
-    if (s.includes('.rds.amazonaws.com')) {
-        return { type: 'cloud', label: 'سحابي (Amazon AWS RDS)', icon: Cloud };
-    }
-    if (s.includes('.database.windows.net')) {
-        return { type: 'cloud', label: 'سحابي (Azure SQL)', icon: Cloud };
+    if (s.includes('.rds.amazonaws.com') || s.includes('.database.windows.net') || encrypt) {
+        return { type: 'cloud', label: 'سحابي', icon: Cloud };
     }
     const hostOnly = s.split(':')[0].split(',')[0].replace(/^tcp:/i, '').trim();
     const isLocal =
@@ -112,15 +109,67 @@ function detectHosting(server: string, encrypt?: boolean): { type: 'local' | 'cl
         hostOnly.startsWith('127.') ||
         (!hostOnly.includes('.') && !hostOnly.includes(':'));
 
-    if (isLocal && !encrypt) {
-        return { type: 'local', label: 'سيرفر محلي (Localhost)', icon: Server };
+    if (isLocal) {
+        return { type: 'local', label: 'سيرفر محلي', icon: Server };
     }
-    return { type: 'ip', label: 'سيرفر شبكة / خارجي (IP Server)', icon: Globe };
+    return { type: 'ip', label: 'سيرفر شبكة / IP', icon: Globe };
 }
 
 export default function DatabaseReEngineeringPage() {
     const { processSyncQueue } = useData();
     const { toast } = useToast();
+
+    // Password lock state
+    const [isUnlocked, setIsUnlocked] = useState(false);
+    const [accessPassword, setAccessPassword] = useState('');
+    const [isCheckingPassword, setIsCheckingPassword] = useState(false);
+    const [authError, setAuthError] = useState<string | null>(null);
+    const [showPassword, setShowPassword] = useState(false);
+
+    useEffect(() => {
+        if (typeof window !== 'undefined') {
+            const stored = sessionStorage.getItem('central_sync_authenticated');
+            if (stored === 'true') {
+                setIsUnlocked(true);
+            }
+        }
+    }, []);
+
+    const handleVerifyAccessPassword = async (e?: React.FormEvent) => {
+        if (e) e.preventDefault();
+        if (!accessPassword.trim()) {
+            setAuthError('يرجى إدخال كلمة المرور للمتابعة.');
+            return;
+        }
+        setIsCheckingPassword(true);
+        setAuthError(null);
+        try {
+            const res = await fetch('/api/auth/verify-admin', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ password: accessPassword.trim() })
+            });
+            const data = await res.json();
+            if (data.success) {
+                setIsUnlocked(true);
+                sessionStorage.setItem('central_sync_authenticated', 'true');
+                toast({ title: 'تم التحقق بنجاح' });
+            } else {
+                setAuthError(data.error || 'كلمة المرور غير صحيحة!');
+            }
+        } catch (err: any) {
+            setAuthError(err.message || 'خطأ في الاتصال');
+        } finally {
+            setIsCheckingPassword(false);
+        }
+    };
+
+    const handleLockScreen = () => {
+        setIsUnlocked(false);
+        setAccessPassword('');
+        sessionStorage.removeItem('central_sync_authenticated');
+        toast({ title: 'تم قفل الشاشة 🔒' });
+    };
 
     const [activeTab, setActiveTab] = useState<'branch' | 'central' | 'topology'>('branch');
 
@@ -591,11 +640,83 @@ export default function DatabaseReEngineeringPage() {
     const branchHosting = detectHosting(branchConfig.server, branchConfig.encrypt);
     const centralHosting = detectHosting(centralConfig.centralServerIp, centralConfig.centralEncrypt);
 
+    if (!isUnlocked) {
+        return (
+            <div className="flex flex-col w-full min-h-[75vh] items-center justify-center p-4">
+                <Card className="w-full max-w-md border border-border shadow-xl bg-card text-card-foreground">
+                    <CardHeader className="text-center pb-4">
+                        <div className="mx-auto w-14 h-14 rounded-full bg-amber-500/10 flex items-center justify-center mb-3 text-amber-600 dark:text-amber-400">
+                            <Lock className="w-7 h-7" />
+                        </div>
+                        <CardTitle className="text-xl font-bold">
+                            شاشة إعدادات السيرفرات محمية
+                        </CardTitle>
+                        <CardDescription className="text-xs text-muted-foreground mt-1 leading-relaxed">
+                            إعدادات السيرفر وقواعد البيانات حساسة. يرجى إدخال كلمة مرور الإدارة للمتابعة.
+                        </CardDescription>
+                    </CardHeader>
+                    <CardContent>
+                        <form onSubmit={handleVerifyAccessPassword} className="space-y-4">
+                            <div className="space-y-2">
+                                <Label className="text-xs font-semibold">كلمة مرور الإدارة / النظام</Label>
+                                <div className="relative">
+                                    <Input
+                                        type={showPassword ? "text" : "password"}
+                                        placeholder="أدخل كلمة المرور..."
+                                        value={accessPassword}
+                                        onChange={(e) => {
+                                            setAccessPassword(e.target.value);
+                                            if (authError) setAuthError(null);
+                                        }}
+                                        autoFocus
+                                        className="h-10 text-center font-mono tracking-widest text-base pl-10"
+                                    />
+                                    <button
+                                        type="button"
+                                        onClick={() => setShowPassword(!showPassword)}
+                                        className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground text-xs p-1"
+                                        tabIndex={-1}
+                                    >
+                                        {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                                    </button>
+                                </div>
+                                {authError && (
+                                    <div className="flex items-center gap-1.5 text-xs text-rose-500 font-medium bg-rose-500/10 p-2.5 rounded-md border border-rose-500/20">
+                                        <AlertTriangle className="h-4 w-4 flex-shrink-0" />
+                                        <span>{authError}</span>
+                                    </div>
+                                )}
+                            </div>
+
+                            <Button 
+                                type="submit" 
+                                className="w-full h-10 font-bold gap-2 text-sm"
+                                disabled={isCheckingPassword || !accessPassword.trim()}
+                            >
+                                {isCheckingPassword ? (
+                                    <>
+                                        <Loader2 className="h-4 w-4 animate-spin" />
+                                        <span>جارٍ التحقق...</span>
+                                    </>
+                                ) : (
+                                    <>
+                                        <ShieldCheck className="h-4 w-4" />
+                                        <span>تأكيد والدخول للإعدادات</span>
+                                    </>
+                                )}
+                            </Button>
+                        </form>
+                    </CardContent>
+                </Card>
+            </div>
+        );
+    }
+
     return (
         <div className="space-y-6 p-4 md:p-6 max-w-7xl mx-auto">
             <PageHeader
                 title="مركز إدارة السيرفرات وقواعد البيانات (الفرع والإدارة المركزية)"
-                description="إدارة شاملة وموحدة لاتصال قاعدة بيانات الفرع وقاعدة بيانات الإدارة المركزية (محلي Localhost، سيرفر شبكة / VPS، وسحابي Amazon AWS RDS / Azure SQL)"
+                description="إدارة اتصال قاعدة بيانات الفرع وقاعدة بيانات الإدارة المركزية"
             >
                 <div className="flex items-center gap-2">
                     <Button asChild variant="outline" size="sm" className="gap-1.5 text-xs font-bold">
@@ -609,6 +730,10 @@ export default function DatabaseReEngineeringPage() {
                             <ArrowLeftRight className="h-3.5 w-3.5 text-primary" />
                             المزامنة المركزية اللحظية
                         </Link>
+                    </Button>
+                    <Button variant="outline" size="sm" onClick={handleLockScreen} className="gap-1.5 text-xs font-bold text-rose-500 hover:text-rose-600">
+                        <Lock className="h-3.5 w-3.5" />
+                        قفل الشاشة
                     </Button>
                     <Button variant="outline" size="sm" onClick={loadAllConfigs} className="gap-1.5 text-xs font-bold">
                         <RefreshCw className="h-3.5 w-3.5" />
@@ -711,15 +836,15 @@ export default function DatabaseReEngineeringPage() {
                 <TabsList className="grid w-full grid-cols-3 h-11 p-1 bg-muted/60">
                     <TabsTrigger value="branch" className="text-xs font-bold gap-2">
                         <Store className="h-4 w-4" />
-                        1. سيرفر وقاعدة بيانات الفرع (Branch DB)
+                        1. قاعدة بيانات الفرع
                     </TabsTrigger>
                     <TabsTrigger value="central" className="text-xs font-bold gap-2">
                         <Building2 className="h-4 w-4" />
-                        2. سيرفر وقاعدة الإدارة المركزية (Central DB)
+                        2. قاعدة الإدارة المركزية
                     </TabsTrigger>
                     <TabsTrigger value="topology" className="text-xs font-bold gap-2">
                         <ArrowLeftRight className="h-4 w-4" />
-                        3. نظرة عامة وتخطيط الربط (Architecture)
+                        3. تخطيط الربط
                     </TabsTrigger>
                 </TabsList>
 
@@ -733,22 +858,22 @@ export default function DatabaseReEngineeringPage() {
                                 <div>
                                     <CardTitle className="text-base font-bold flex items-center gap-2">
                                         <Store className="h-5 w-5 text-primary" />
-                                        إعدادات اتصال سيرفر الفرع (يدعم Localhost و IP خارجي و Amazon AWS RDS)
+                                        إعدادات اتصال سيرفر الفرع
                                     </CardTitle>
                                     <CardDescription className="text-xs mt-1">
-                                        هذه هي قاعدة البيانات التي يعمل عليها البرنامج حالياً ككاشير أو نقطة بيع أو إدارة فرعية.
+                                        قاعدة البيانات المحلية المخصصة للفرع ونقطة البيع.
                                     </CardDescription>
                                 </div>
                                 <div className="flex flex-wrap items-center gap-1.5">
                                     <Button type="button" variant="outline" size="sm" className="h-7 text-[11px] font-bold" onClick={() => applyBranchPreset('local')}>
-                                        💻 قالب محلي (Localhost)
+                                        💻 محلي
                                     </Button>
                                     <Button type="button" variant="outline" size="sm" className="h-7 text-[11px] font-bold" onClick={() => applyBranchPreset('external_ip')}>
-                                        🌐 قالب IP خارجي (VPS)
+                                        🌐 سيرفر شبكة / IP
                                     </Button>
                                     <Button type="button" variant="outline" size="sm" className="h-7 text-[11px] font-bold" onClick={() => applyBranchPreset('aws_rds')}>
                                         <Cloud className="h-3 w-3 ml-1 text-amber-500" />
-                                        ☁️ قالب Amazon AWS RDS
+                                        ☁️ سحابي
                                     </Button>
                                 </div>
                             </div>
@@ -792,7 +917,7 @@ export default function DatabaseReEngineeringPage() {
                                             rows={3}
                                             value={branchConfig.connectionString}
                                             onChange={(e) => handleBranchConnStrChange(e.target.value)}
-                                            placeholder="Server=my-db.xxxx.rds.amazonaws.com,1433;Database=MultiBranchPOS_DB;User Id=admin;Password=YourPass;Encrypt=true;TrustServerCertificate=true;"
+                                            placeholder="Server=localhost,1433;Database=MultiBranchPOS_DB;User Id=sa;Password=***;"
                                             className="font-mono text-xs leading-relaxed"
                                         />
                                     </div>
@@ -801,12 +926,12 @@ export default function DatabaseReEngineeringPage() {
                                 <TabsContent value="fields" className="space-y-4">
                                     <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                                         <div className="md:col-span-2 space-y-1.5">
-                                            <Label className="text-xs font-bold">عنوان السيرفر (Localhost أو IP خارجي أو AWS RDS Endpoint):</Label>
+                                            <Label className="text-xs font-bold">عنوان السيرفر:</Label>
                                             <Input
                                                 dir="ltr"
                                                 value={branchConfig.server}
                                                 onChange={(e) => handleBranchFieldChange('server', e.target.value)}
-                                                placeholder="localhost أو 192.168.1.100 أو mydb.rds.amazonaws.com"
+                                                placeholder="localhost أو 192.168.1.100"
                                                 className="h-9 font-mono text-xs"
                                             />
                                         </div>
@@ -873,7 +998,7 @@ export default function DatabaseReEngineeringPage() {
                                         <div className="flex items-center justify-between p-3 rounded-lg border bg-muted/20">
                                             <div className="space-y-0.5">
                                                 <Label className="text-xs font-bold">تشفير الاتصال (Encrypt SSL):</Label>
-                                                <p className="text-[10px] text-muted-foreground">يلزم تفعيله (True) لـ Amazon AWS RDS و Azure SQL</p>
+                                                <p className="text-[10px] text-muted-foreground">يلزم تفعيله (True) للسيرفرات السحابية المشفرة</p>
                                             </div>
                                             <Switch
                                                 checked={branchConfig.encrypt}
@@ -965,22 +1090,22 @@ export default function DatabaseReEngineeringPage() {
                                 <div>
                                     <CardTitle className="text-base font-bold flex items-center gap-2">
                                         <Building2 className="h-5 w-5 text-indigo-600" />
-                                        إعدادات اتصال سيرفر الإدارة المركزية (Central HQ SQL Server)
+                                        إعدادات اتصال سيرفر الإدارة المركزية
                                     </CardTitle>
                                     <CardDescription className="text-xs mt-1">
-                                        قاعدة البيانات الرئيسية التي تتجمع فيها مبيعات وحركات كافة الفروع (تدعم محلي Localhost و IP سيرفر وسحابي AWS RDS).
+                                        قاعدة البيانات الرئيسية التي تتجمع فيها حركات ومبيعات الفروع.
                                     </CardDescription>
                                 </div>
                                 <div className="flex flex-wrap items-center gap-1.5">
                                     <Button type="button" variant="outline" size="sm" className="h-7 text-[11px] font-bold" onClick={() => applyCentralPreset('local')}>
-                                        💻 قالب محلي (Localhost)
+                                        💻 محلي
                                     </Button>
                                     <Button type="button" variant="outline" size="sm" className="h-7 text-[11px] font-bold" onClick={() => applyCentralPreset('external_ip')}>
-                                        🌐 قالب مركزي (10.110.16.16)
+                                        🌐 سيرفر شبكة / IP
                                     </Button>
                                     <Button type="button" variant="outline" size="sm" className="h-7 text-[11px] font-bold" onClick={() => applyCentralPreset('aws_rds')}>
                                         <Cloud className="h-3 w-3 ml-1 text-amber-500" />
-                                        ☁️ قالب Amazon AWS RDS
+                                        ☁️ سحابي
                                     </Button>
                                 </div>
                             </div>
@@ -990,9 +1115,9 @@ export default function DatabaseReEngineeringPage() {
                             {/* خيار دور النظام المحمي */}
                             <div className="p-3.5 rounded-xl border-2 border-indigo-500/20 bg-indigo-500/5 flex flex-wrap items-center justify-between gap-3">
                                 <div>
-                                    <span className="font-bold text-xs text-foreground block">دور النظام ونمط التشغيل (System Role Mode):</span>
+                                    <span className="font-bold text-xs text-foreground block">دور النظام:</span>
                                     <span className="text-[11px] text-muted-foreground">
-                                        الوضع الحالي: <strong>{centralConfig.systemRole === 'central' ? '🏢 إدارة مركزية (Central HQ)' : '🏪 فرع محلي (Sub-Branch)'}</strong>
+                                        الوضع الحالي: <strong>{centralConfig.systemRole === 'central' ? 'إدارة مركزية' : 'فرع محلي'}</strong>
                                     </span>
                                 </div>
                                 <div className="flex items-center gap-2">
@@ -1007,7 +1132,7 @@ export default function DatabaseReEngineeringPage() {
                                         }}
                                     >
                                         <Store className="h-3.5 w-3.5 ml-1" />
-                                        نمط فرع (Branch)
+                                        نمط فرع
                                     </Button>
                                     <Button
                                         type="button"
@@ -1020,7 +1145,7 @@ export default function DatabaseReEngineeringPage() {
                                         }}
                                     >
                                         <Building2 className="h-3.5 w-3.5 ml-1" />
-                                        نمط إدارة مركزية (HQ)
+                                        نمط إدارة مركزية
                                     </Button>
                                 </div>
                             </div>
@@ -1028,12 +1153,12 @@ export default function DatabaseReEngineeringPage() {
                             {/* الحقول التفصيلية للسيرفر المركزي */}
                             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                                 <div className="md:col-span-2 space-y-1.5">
-                                    <Label className="text-xs font-bold">عنوان السيرفر المركزي (IP أو نطاق AWS RDS أو Localhost):</Label>
+                                    <Label className="text-xs font-bold">عنوان السيرفر المركزي (IP أو النطاق أو Localhost):</Label>
                                     <Input
                                         dir="ltr"
                                         value={centralConfig.centralServerIp}
                                         onChange={(e) => handleCentralFieldChange('centralServerIp', e.target.value)}
-                                        placeholder="10.110.16.16 أو mydb.rds.amazonaws.com"
+                                        placeholder="10.110.16.16 أو central-db.example.com"
                                         className="h-9 font-mono text-xs font-bold"
                                     />
                                 </div>
@@ -1100,7 +1225,7 @@ export default function DatabaseReEngineeringPage() {
                                 <div className="flex items-center justify-between p-3 rounded-lg border bg-muted/20">
                                     <div className="space-y-0.5">
                                         <Label className="text-xs font-bold">تشفير الاتصال للسيرفر المركزي (Encrypt SSL):</Label>
-                                        <p className="text-[10px] text-muted-foreground">يُفعل في حالة السيرفرات السحابية AWS RDS و Azure</p>
+                                        <p className="text-[10px] text-muted-foreground">يُفعل في حالة الاتصال بالسيرفرات السحابية المشفرة</p>
                                     </div>
                                     <Switch
                                         checked={centralConfig.centralEncrypt}
