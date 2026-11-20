@@ -1737,6 +1737,114 @@ export default function PosPage() {
         if (barcodeInputRef.current) barcodeInputRef.current.value = "";
         setSearchTerm('');
     };
+
+    const handleBarcodeSubmitRef = useRef(handleBarcodeSubmit);
+    useEffect(() => {
+        handleBarcodeSubmitRef.current = handleBarcodeSubmit;
+    });
+
+    // Auto-focus barcode input on mount and keep focus ready
+    useEffect(() => {
+        const timer = setTimeout(() => {
+            barcodeInputRef.current?.focus();
+        }, 200);
+        return () => clearTimeout(timer);
+    }, []);
+
+    // Global keyboard listener: Intercept typing and barcode scanner input when no other input is focused
+    useEffect(() => {
+        const handleGlobalPosKeyDown = (e: KeyboardEvent) => {
+            // Ignore system hotkeys / combinations (Ctrl+C, Ctrl+V, Alt+Tab, etc.)
+            if (e.ctrlKey || e.altKey || e.metaKey) return;
+
+            const target = e.target as HTMLElement | null;
+            const active = document.activeElement as HTMLElement | null;
+
+            // Check if active target or activeElement is an editable field
+            const isTargetEditable = target && (
+                target.tagName === 'INPUT' ||
+                target.tagName === 'TEXTAREA' ||
+                target.tagName === 'SELECT' ||
+                target.isContentEditable ||
+                target.getAttribute('role') === 'textbox' ||
+                Boolean(target.closest('input, textarea, select, [contenteditable="true"]'))
+            );
+
+            const isActiveEditable = active && (
+                active.tagName === 'INPUT' ||
+                active.tagName === 'TEXTAREA' ||
+                active.tagName === 'SELECT' ||
+                active.isContentEditable ||
+                active.getAttribute('role') === 'textbox'
+            );
+
+            // If user is intentionally interacting with an input/textarea/select
+            if (isTargetEditable || isActiveEditable) {
+                // If it is already the barcode input, let standard typing proceed
+                return;
+            }
+
+            // Check if any modal dialog / sheet / popover is open
+            const isModalOpen = document.querySelector('[role="dialog"], [role="alertdialog"], [data-state="open"][aria-modal="true"], .dialog-content');
+            if (isModalOpen) {
+                return;
+            }
+
+            // Enter key from keyboard or barcode scanner
+            if (e.key === 'Enter') {
+                if (barcodeInputRef.current && barcodeInputRef.current.value.trim()) {
+                    e.preventDefault();
+                    const fakeEvent = { preventDefault: () => {} } as React.FormEvent;
+                    handleBarcodeSubmitRef.current(fakeEvent);
+                }
+                return;
+            }
+
+            // Printable single character (numbers 0-9, letters, barcode scanner digits, Arabic chars)
+            if (e.key.length === 1) {
+                if (barcodeInputRef.current) {
+                    e.preventDefault();
+                    barcodeInputRef.current.focus();
+
+                    const input = barcodeInputRef.current;
+                    const start = input.selectionStart ?? input.value.length;
+                    const end = input.selectionEnd ?? input.value.length;
+                    const val = input.value || '';
+                    const updatedVal = val.slice(0, start) + e.key + val.slice(end);
+                    input.value = updatedVal;
+                    const nextPos = start + 1;
+                    input.setSelectionRange(nextPos, nextPos);
+                    setSearchTerm(updatedVal);
+                }
+                return;
+            }
+
+            // Backspace key
+            if (e.key === 'Backspace' && barcodeInputRef.current && barcodeInputRef.current.value.length > 0) {
+                e.preventDefault();
+                barcodeInputRef.current.focus();
+                const val = barcodeInputRef.current.value;
+                const updatedVal = val.slice(0, -1);
+                barcodeInputRef.current.value = updatedVal;
+                setSearchTerm(updatedVal);
+                return;
+            }
+
+            // Escape key
+            if (e.key === 'Escape' && barcodeInputRef.current) {
+                e.preventDefault();
+                barcodeInputRef.current.value = '';
+                setSearchTerm('');
+                barcodeInputRef.current.focus();
+                return;
+            }
+        };
+
+        window.addEventListener('keydown', handleGlobalPosKeyDown, true);
+        return () => {
+            window.removeEventListener('keydown', handleGlobalPosKeyDown, true);
+        };
+    }, []);
     
     const handleShortClick = (item: any) => {
         if (longPressTimerRef.current) {

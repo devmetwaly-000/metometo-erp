@@ -91,7 +91,7 @@ const reportCategories = [
         value: "inventory",
         reports: [
             { title: "تقرير تكاليف الصرف والتحويلات والهوالك", description: "الرقابة المالية على تكاليف أذون الصرف، البضاعة المحولة بين الفروع، وخسائر التوالف والإعدام.", href: "/reports/inventory-movements-cost", icon: <Layers />, module: "inventory_adjustment" },
-            { title: "تقرير أرصدة المخازن", description: "عرض الأرصدة الحالية لجميع الأصناف في كل الفروع.", href: "/reports/stock-status", icon: <Warehouse />, module: "reports_stockStatus" },
+            { title: "تقرير أرصدة الأصناف بكافة المستويات (هرمي وتفصيلي)", description: "عرض الأرصدة وإجماليات القيمة لكافة مستويات التقسيم (قسم، فئة، مجموعة، UDF 1، UDF 2، صنف).", href: "/reports/stock-status", icon: <Warehouse />, module: "reports_stockStatus" },
             { title: "تقييم المخزون وحد إعادة الطلب", description: "تقييم البضاعة بسعر التكلفة والبيع وتنبيهات النواقص.", href: "/reports/inventory-valuation", icon: <Boxes />, module: "reports_stockStatus" },
             { title: "كارت الصنف التفصيلي", description: "تتبع كل الحركات (وارد وصادر) لصنف معين عبر المخازن.", href: "/reports/item-ledger", icon: <PackageSearch />, module: "reports_itemLedger" },
             { title: "تقرير أرباح الأصناف", description: "تحليل ربحية كل صنف بناءً على المبيعات والتكلفة.", href: "/reports/item-profit-loss", icon: <TrendingUp />, module: "reports_itemProfitLoss" },
