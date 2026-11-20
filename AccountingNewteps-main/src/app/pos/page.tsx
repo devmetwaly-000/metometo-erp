@@ -6,7 +6,8 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Trash2, ShoppingCart, XCircle, Printer, Grip, Dot, Search, Ban, PanelLeft, Boxes, SquareCheck, ListRestart, FileClock, Eye, Loader2, Undo2, PlusCircle, UserPlus, LogOut, Percent, Truck, ArrowLeft, Banknote, Landmark, Wallet, Phone, CircleDollarSign, FileText, CreditCard, UserRound, User as UserIcon, PlayCircle, History, Coins, Building2, LayoutDashboard, Monitor, Gift, MessageCircle, Settings2, PowerOff } from "lucide-react";
+import { Trash2, ShoppingCart, XCircle, Printer, Grip, Dot, Search, Ban, PanelLeft, Boxes, SquareCheck, ListRestart, FileClock, Eye, Loader2, Undo2, PlusCircle, UserPlus, LogOut, Percent, Truck, ArrowLeft, Banknote, Landmark, Wallet, Phone, CircleDollarSign, FileText, CreditCard, UserRound, User as UserIcon, PlayCircle, History, Coins, Building2, LayoutDashboard, Monitor, Gift, MessageCircle, Settings2, PowerOff, Camera } from "lucide-react";
+import CameraBarcodeScanner from '@/components/camera-barcode-scanner';
 import {
     getCustomerExperienceConfig,
     calculateEarnedPoints,
@@ -339,6 +340,7 @@ const StockQueryDialog = ({
     const { items: allItems, warehouses, inventorySections } = allDataContext;
     const [searchTerm, setSearchTerm] = useState('');
     const [selectedItemId, setSelectedItemId] = useState<string | null>(null);
+    const [isCameraOpen, setIsCameraOpen] = useState(false);
 
     const allWarehouses = useMemo(() => {
         return [...(warehouses || []), ...(inventorySections || []).map((s: any) => ({ ...s, isSection: true }))];
@@ -415,6 +417,16 @@ const StockQueryDialog = ({
                         className="pl-9 text-base"
                     />
                 </div>
+                <Button 
+                    type="button" 
+                    variant="outline" 
+                    size="icon" 
+                    className="h-10 w-10 shrink-0 bg-primary/10 text-primary border-primary/30 rounded-lg"
+                    title="مسح الباركود بكاميرا الموبايل"
+                    onClick={() => setIsCameraOpen(true)}
+                >
+                    <Camera className="h-4 w-4" />
+                </Button>
                 {searchTerm && (
                     <Button variant="ghost" size="sm" onClick={() => setSearchTerm('')}>
                         مسح
@@ -542,6 +554,12 @@ const StockQueryDialog = ({
                     </div>
                 )}
             </div>
+            <CameraBarcodeScanner 
+                isOpen={isCameraOpen} 
+                onOpenChange={setIsCameraOpen} 
+                onScan={(code) => setSearchTerm(code)} 
+                defaultContinuous={false} 
+            />
         </UIDialogContent>
     );
 };
@@ -1175,6 +1193,7 @@ export default function PosPage() {
     const [activeGroupType, setActiveGroupType] = useState<'category' | 'group' | 'all'>('all');
     const [searchTerm, setSearchTerm] = useState('');
     const [itemForManualEntry, setItemForManualEntry] = useState<any | null>(null);
+    const [isCameraScannerOpen, setIsCameraScannerOpen] = useState(false);
     const [isQueryModalOpen, setIsQueryModalOpen] = useState(false);
     const [isHeldInvoicesOpen, setIsHeldInvoicesOpen] = useState(false);
     const [isPaymentDialogOpen, setIsPaymentDialogOpen] = useState(false);
@@ -3151,7 +3170,17 @@ export default function PosPage() {
                                 )}
                             </div>
                         </form>
-                        <Button variant="outline" size="icon" className="h-12 w-12 shrink-0" onClick={() => setIsQueryModalOpen(true)} title="استعلام المخزون">
+                        <Button 
+                            type="button"
+                            variant="outline" 
+                            className="h-12 px-3 gap-2 shrink-0 bg-primary/10 hover:bg-primary/20 text-primary border-primary/30 rounded-xl"
+                            onClick={() => setIsCameraScannerOpen(true)} 
+                            title="مسح الباركود بكاميرا الموبايل"
+                        >
+                            <Camera className="h-5 w-5" />
+                            <span className="text-xs font-bold hidden sm:inline">كاميرا الموبايل</span>
+                        </Button>
+                        <Button variant="outline" size="icon" className="h-12 w-12 shrink-0 rounded-xl" onClick={() => setIsQueryModalOpen(true)} title="استعلام المخزون">
                             <Boxes className="h-6 w-6" />
                         </Button>
                     </div>
@@ -3388,6 +3417,19 @@ export default function PosPage() {
             </div>
         </div>
         <iframe ref={printFrameRef} style={{ display: 'none' }} title="Print Frame"></iframe>
+
+        <CameraBarcodeScanner
+            isOpen={isCameraScannerOpen}
+            onOpenChange={setIsCameraScannerOpen}
+            onScan={(scannedBarcode) => {
+                if (barcodeInputRef.current) {
+                    barcodeInputRef.current.value = scannedBarcode;
+                }
+                setSearchTerm(scannedBarcode);
+                const fakeEvent = { preventDefault: () => {} } as React.FormEvent;
+                handleBarcodeSubmitRef.current(fakeEvent);
+            }}
+        />
         </>
     );
 }
