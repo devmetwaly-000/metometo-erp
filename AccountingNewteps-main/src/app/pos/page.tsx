@@ -1025,7 +1025,7 @@ const SelfShiftOpeningDialog = ({ onConfirm, onClose, warehouses, terminals, act
 }
 
 
-export default function PosPage() {
+function PosPageContent() {
     const allDataContext = useData();
     const { 
       items: allItems, customers, dbAction, itemCategories, itemGroups, itemSubCategories1, itemSubCategories2, posSessions, settings, warehouses: allWarehousesData,
@@ -1235,29 +1235,33 @@ export default function PosPage() {
         setIsExitDialogOpen(true);
     }, []);
 
-    // حماية الخروج من شاشة البيع: منع إغلاق المتصفح أو إعادة التحميل أثناء وجود أصناف في الفاتورة
+    // حماية الخروج من شاشة البيع: إظهار رسالة تأكيد عند محاولة إعادة التحميل (Refresh) أو إغلاق المتصفح
     useEffect(() => {
         const handleBeforeUnload = (e: BeforeUnloadEvent) => {
-            if (!allowExitRef.current && cart.length > 0) {
+            if (!allowExitRef.current) {
                 e.preventDefault();
-                e.returnValue = '';
-                return '';
+                e.returnValue = 'هل أنت متأكد أنك تريد الخروج من شاشة البيع؟';
+                return e.returnValue;
             }
         };
         window.addEventListener('beforeunload', handleBeforeUnload);
         return () => window.removeEventListener('beforeunload', handleBeforeUnload);
-    }, [cart.length]);
+    }, []);
 
     // اعتراض زر الرجوع للخلف بالمتصفح (Browser Back / PopState) في مرحلة Capture لمنع Next.js Router من الخروج
     useEffect(() => {
-        const currentState = window.history.state;
-        window.history.pushState(currentState, '', window.location.href);
+        try {
+            const currentState = window.history.state;
+            window.history.pushState(currentState, '', window.location.href);
+        } catch {}
 
         const handlePopState = (e: PopStateEvent) => {
             if (allowExitRef.current) return;
             e.preventDefault();
             e.stopImmediatePropagation();
-            window.history.pushState(currentState, '', window.location.href);
+            try {
+                window.history.pushState(window.history.state, '', window.location.href);
+            } catch {}
             setIsExitDialogOpen(true);
         };
 
@@ -2937,7 +2941,7 @@ export default function PosPage() {
             )}
         </Dialog>
          <div 
-            className="h-screen bg-background flex flex-col p-2 sm:p-4 gap-4 overflow-y-auto"
+            className="h-screen bg-background flex flex-col p-2 sm:p-4 gap-4 overflow-y-auto overscroll-y-contain"
             onClick={handleScreenClick}
         >
             <div className={cn("flex flex-1 flex-col gap-3 overflow-y-auto md:overflow-hidden",
@@ -3551,5 +3555,19 @@ export default function PosPage() {
             </AlertDialogContent>
         </AlertDialog>
         </>
+    );
+}
+
+export default function PosPage() {
+    return (
+        <React.Suspense
+            fallback={
+                <div className="flex h-screen w-full items-center justify-center bg-background">
+                    <Loader2 className="h-8 w-8 animate-spin text-primary" />
+                </div>
+            }
+        >
+            <PosPageContent />
+        </React.Suspense>
     );
 }
