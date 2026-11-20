@@ -10,6 +10,7 @@ import {
 } from "@/lib/customer-experience";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { QRCodeSVG } from "qrcode.react";
 import {
     ShoppingCart,
     Sparkles,
@@ -396,48 +397,59 @@ export default function CustomerDualDisplayPage() {
                             )}
                         </div>
 
-                        <div className="lg:col-span-7 grid grid-cols-1 sm:grid-cols-2 gap-6">
-                            {config.dualScreen.paymentStep.showInstaPayQr && config.dualScreen.paymentStep.instaPayAddress && (
-                                <div className="bg-slate-900 border border-purple-500/40 rounded-2xl p-6 flex flex-col items-center text-center space-y-4">
-                                    <Badge className="bg-purple-600 text-white px-3 py-1 text-xs">الدفع السريع عبر InstaPay</Badge>
-                                    <div className="bg-white p-4 rounded-2xl shadow-lg">
-                                        <img
-                                            src={`https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=${encodeURIComponent(
-                                                `instapay:${config.dualScreen.paymentStep.instaPayAddress}?amount=${state.total}`
-                                            )}`}
-                                            alt="InstaPay QR"
-                                            className="w-40 h-40 object-contain"
-                                        />
-                                    </div>
-                                    <div className="space-y-1">
-                                        <div className="text-xs text-slate-400">عنوان الدفع (IPA):</div>
-                                        <div className="font-mono font-bold text-purple-300 text-base">{config.dualScreen.paymentStep.instaPayAddress}</div>
-                                    </div>
-                                </div>
-                            )}
+                        {(() => {
+                            const hasInstaPay = Boolean(config.dualScreen.paymentStep.showInstaPayQr && config.dualScreen.paymentStep.instaPayAddress?.trim());
+                            const hasVodafone = Boolean(config.dualScreen.paymentStep.showVodafoneCashQr && config.dualScreen.paymentStep.vodafoneCashNumber?.trim());
+                            const rawInsta = (config.dualScreen.paymentStep.instaPayAddress || "").trim();
+                            const instaPayQrValue = /^https?:\/\//i.test(rawInsta) ? rawInsta : rawInsta;
+                            const cleanVodafoneNum = (config.dualScreen.paymentStep.vodafoneCashNumber || "").replace(/[^\d+]/g, "");
+                            const vodafoneQrValue = `tel:*9*7*${cleanVodafoneNum}*${Math.max(1, Math.round(Number(state.total) || 0))}#`;
 
-                            {config.dualScreen.paymentStep.showVodafoneCashQr && config.dualScreen.paymentStep.vodafoneCashNumber && (
-                                <div className="bg-slate-900 border border-red-500/40 rounded-2xl p-6 flex flex-col items-center text-center space-y-4">
-                                    <Badge className="bg-red-600 text-white px-3 py-1 text-xs">محفظة فودافون كاش / المحافظ الذكية</Badge>
-                                    <div className="bg-white p-4 rounded-2xl shadow-lg">
-                                        <img
-                                            src={`https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=${encodeURIComponent(
-                                                `tel:*9*7*${config.dualScreen.paymentStep.vodafoneCashNumber}*${Math.round(state.total)}#`
-                                            )}`}
-                                            alt="Vodafone Cash QR"
-                                            className="w-40 h-40 object-contain"
-                                        />
-                                    </div>
-                                    <div className="space-y-1">
-                                        <div className="text-xs text-slate-400 flex items-center justify-center gap-1">
-                                            <Smartphone className="h-3.5 w-3.5" />
-                                            رقم المحفظة للتحويل:
+                            return (
+                                <div className={`lg:col-span-7 grid gap-6 ${hasInstaPay && hasVodafone ? "grid-cols-1 sm:grid-cols-2" : "grid-cols-1 max-w-md mx-auto w-full"}`}>
+                                    {hasInstaPay && (
+                                        <div className="bg-slate-900 border border-purple-500/40 rounded-2xl p-6 flex flex-col items-center text-center space-y-4">
+                                            <Badge className="bg-purple-600 text-white px-3 py-1 text-xs">الدفع السريع عبر InstaPay</Badge>
+                                            <div className="bg-white p-4 rounded-2xl shadow-lg flex items-center justify-center">
+                                                <QRCodeSVG
+                                                    value={instaPayQrValue}
+                                                    size={176}
+                                                    level="M"
+                                                    bgColor="#ffffff"
+                                                    fgColor="#000000"
+                                                />
+                                            </div>
+                                            <div className="space-y-1 w-full">
+                                                <div className="text-xs text-slate-400">عنوان الدفع (IPA) / رابط التحويل:</div>
+                                                <div className="font-mono font-bold text-purple-300 text-sm break-all" dir="ltr">{rawInsta}</div>
+                                            </div>
                                         </div>
-                                        <div className="font-mono font-bold text-red-400 text-lg tracking-wider">{config.dualScreen.paymentStep.vodafoneCashNumber}</div>
-                                    </div>
+                                    )}
+
+                                    {hasVodafone && (
+                                        <div className="bg-slate-900 border border-red-500/40 rounded-2xl p-6 flex flex-col items-center text-center space-y-4">
+                                            <Badge className="bg-red-600 text-white px-3 py-1 text-xs">محفظة فودافون كاش / المحافظ الذكية</Badge>
+                                            <div className="bg-white p-4 rounded-2xl shadow-lg flex items-center justify-center">
+                                                <QRCodeSVG
+                                                    value={vodafoneQrValue}
+                                                    size={176}
+                                                    level="M"
+                                                    bgColor="#ffffff"
+                                                    fgColor="#000000"
+                                                />
+                                            </div>
+                                            <div className="space-y-1 w-full">
+                                                <div className="text-xs text-slate-400 flex items-center justify-center gap-1">
+                                                    <Smartphone className="h-3.5 w-3.5" />
+                                                    رقم المحفظة للتحويل:
+                                                </div>
+                                                <div className="font-mono font-bold text-red-400 text-lg tracking-wider" dir="ltr">{config.dualScreen.paymentStep.vodafoneCashNumber}</div>
+                                            </div>
+                                        </div>
+                                    )}
                                 </div>
-                            )}
-                        </div>
+                            );
+                        })()}
                     </div>
                 )}
 
