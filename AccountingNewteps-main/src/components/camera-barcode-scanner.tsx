@@ -24,6 +24,7 @@ import {
   AlertCircle,
   X,
   Scan,
+  ImagePlus,
 } from "lucide-react";
 
 interface CameraBarcodeScannerProps {
@@ -54,7 +55,9 @@ export default function CameraBarcodeScanner({
   const [retryNonce, setRetryNonce] = useState(0);
 
   const videoRef = useRef<HTMLVideoElement | null>(null);
-  const controlsRef = useRef<any>(null);
+  const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const streamRef = useRef<MediaStream | null>(null);
+  const photoInputRef = useRef<HTMLInputElement | null>(null);
   const lastScanTimestampRef = useRef<number>(0);
   const lastScannedCodeRef = useRef<string>("");
 
@@ -71,7 +74,6 @@ export default function CameraBarcodeScanner({
     return checkDigit === expected;
   };
 
-  // Crisp retail scanner beep via Web Audio API
   const playBeep = useCallback(() => {
     if (!isSoundEnabled) return;
     try {
@@ -103,19 +105,20 @@ export default function CameraBarcodeScanner({
   }, []);
 
   const handleDecodedResult = useCallback(
-    (decodedText: string, formatId?: number) => {
+    (decodedText: string, formatName?: string) => {
       if (!decodedText) return;
       const cleanCode = decodedText.trim();
       const now = Date.now();
+      const fmt = String(formatName || "").toUpperCase();
 
-      // Validate GS1 check digit for 8/12/13-digit numeric barcodes (EAN-8=6, EAN-13=7, UPC-A=14 in ZXing)
+      // Validate GS1 check digit for EAN-13, EAN-8, UPC-A
       if (
-        (formatId === 7 || (cleanCode.length === 13 && /^\d{13}$/.test(cleanCode))) &&
+        (fmt === "EAN-13" || (cleanCode.length === 13 && /^\d{13}$/.test(cleanCode))) &&
         !isValidGs1CheckDigit(cleanCode)
       ) {
         return;
       }
-      if ((formatId === 6 || formatId === 14) && !isValidGs1CheckDigit(cleanCode)) {
+      if ((fmt === "EAN-8" || fmt === "UPC-A") && !isValidGs1CheckDigit(cleanCode)) {
         return;
       }
 
@@ -149,13 +152,7 @@ export default function CameraBarcodeScanner({
   const toggleTorch = async () => {
     const newTorchState = !isTorchOn;
     try {
-      if (controlsRef.current?.switchTorch) {
-        await controlsRef.current.switchTorch(newTorchState);
-        setIsTorchOn(newTorchState);
-        return;
-      }
-      const stream = videoRef.current?.srcObject as MediaStream | null;
-      const track = stream?.getVideoTracks?.()[0];
+      const track = streamRef.current?.getVideoTracks?.()[0];
       if (track) {
         await track.applyConstraints({
           advanced: [{ torch: newTorchState } as any],
@@ -174,6 +171,37 @@ export default function CameraBarcodeScanner({
     setSelectedCameraId(cameras[nextIndex].id);
   };
 
+  // Native camera photo capture fallback (uses phone's full autofocus camera, works even over HTTP)
+  const handlePhotoCapture = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    try {
+      const { prepareZXingModule, readBarcodes } = await import("zxing-wasm/reader");
+      prepareZXingModule({
+        overrides: {
+          locateFile: (path: string, prefix: string) =>
+            path.endsWith(".wasm") ? "/wasm/zxing_reader.wasm" : prefix + path,
+        },
+      });
+      const results = await readBarcodes(file, {
+        formats: ["EAN-13", "EAN-8", "UPC-A", "UPC-E", "Code128", "Code39", "QRCode"],
+        tryRotate: true,
+        tryHarder: true,
+        tryInvert: true,
+        maxNumberOfSymbols: 1,
+      });
+      if (results && results.length > 0 && results[0].isValid && results[0].text) {
+        handleDecodedResultRef.current(results[0].text, results[0].format);
+      } else {
+        setErrorMessage("لم يتم العثور على باركود واضح في الصورة. يرجى التقريب والمحاولة مرة أخرى.");
+      }
+    } catch {
+      setErrorMessage("تعذر قراءة الباركود من الصورة.");
+    } finally {
+      e.target.value = "";
+    }
+  };
+
   useEffect(() => {
     if (!isOpen) {
       setLastScannedCode(null);
@@ -182,32 +210,36 @@ export default function CameraBarcodeScanner({
     }
 
     let isMounted = true;
+    let timerId: ReturnType<typeof setTimeout> | null = null;
+    let rafActive = false;
+
     setIsInitializing(true);
     setErrorMessage(null);
     setHasTorchCapability(false);
     setIsTorchOn(false);
 
-    const stopCurrentControls = () => {
-      if (controlsRef.current) {
-        try {
-          controlsRef.current.stop();
-        } catch {}
-        controlsRef.current = null;
+    const stopStream = () => {
+      rafActive = false;
+      if (timerId) {
+        clearTimeout(timerId);
+        timerId = null;
       }
-      if (videoRef.current?.srcObject) {
-        const stream = videoRef.current.srcObject as MediaStream;
-        stream.getTracks().forEach((t) => {
+      if (streamRef.current) {
+        streamRef.current.getTracks().forEach((t) => {
           try {
             t.stop();
           } catch {}
         });
+        streamRef.current = null;
+      }
+      if (videoRef.current) {
         videoRef.current.srcObject = null;
       }
     };
 
-    const startZxingScanner = async () => {
+    const startWasmScanner = async () => {
       try {
-        stopCurrentControls();
+        stopStream();
 
         if (
           typeof navigator === "undefined" ||
@@ -215,102 +247,132 @@ export default function CameraBarcodeScanner({
           !navigator.mediaDevices.getUserMedia
         ) {
           throw new Error(
-            "المتصفح يمنع تشغيل الكاميرا على اتصال غير آمن (HTTP). يرجى فتح النظام عبر HTTPS أو localhost."
+            "المتصفح يمنع تشغيل البث المباشر على اتصال HTTP غير آمن. يمكنك استخدام زر (تصوير الباركود) بالأسفل أو فتح الرابط عبر HTTPS."
           );
         }
 
-        const [{ BrowserMultiFormatReader }, { BarcodeFormat, DecodeHintType }] =
-          await Promise.all([
-            import("@zxing/browser"),
-            import("@zxing/library"),
-          ]);
-
-        if (!isMounted || !videoRef.current) return;
-
-        const hints = new Map();
-        hints.set(DecodeHintType.POSSIBLE_FORMATS, [
-          BarcodeFormat.EAN_13,
-          BarcodeFormat.EAN_8,
-          BarcodeFormat.UPC_A,
-          BarcodeFormat.UPC_E,
-          BarcodeFormat.CODE_128,
-          BarcodeFormat.CODE_39,
-          BarcodeFormat.QR_CODE,
-        ]);
-        hints.set(DecodeHintType.TRY_HARDER, true);
-
-        const codeReader = new BrowserMultiFormatReader(hints, {
-          delayBetweenScanAttempts: 100,
-          delayBetweenScanSuccess: 500,
+        // Load ZXing-C++ WASM locally from /wasm/zxing_reader.wasm
+        const { prepareZXingModule, readBarcodes } = await import("zxing-wasm/reader");
+        await prepareZXingModule({
+          overrides: {
+            locateFile: (path: string, prefix: string) =>
+              path.endsWith(".wasm") ? "/wasm/zxing_reader.wasm" : prefix + path,
+          },
+          fireImmediately: true,
         });
 
-        const constraints: MediaStreamConstraints = {
-          audio: false,
-          video: selectedCameraId
-            ? {
-                deviceId: { exact: selectedCameraId },
-                width: { ideal: 1920 },
-                height: { ideal: 1080 },
-              }
-            : {
-                facingMode: { ideal: "environment" },
-                width: { ideal: 1920 },
-                height: { ideal: 1080 },
-              },
-        };
+        if (!isMounted) return;
 
-        const controls = await codeReader.decodeFromConstraints(
-          constraints,
-          videoRef.current,
-          (result) => {
-            if (!isMounted || !result) return;
-            handleDecodedResultRef.current(
-              result.getText(),
-              result.getBarcodeFormat()
-            );
-          }
-        );
+        const videoConstraints: MediaTrackConstraints = selectedCameraId
+          ? {
+              deviceId: { exact: selectedCameraId },
+              width: { ideal: 1920 },
+              height: { ideal: 1080 },
+            }
+          : {
+              facingMode: { ideal: "environment" },
+              width: { ideal: 1920 },
+              height: { ideal: 1080 },
+            };
+
+        const stream = await navigator.mediaDevices.getUserMedia({
+          video: videoConstraints,
+          audio: false,
+        });
 
         if (!isMounted) {
-          controls.stop();
+          stream.getTracks().forEach((t) => t.stop());
           return;
         }
 
-        controlsRef.current = controls;
-        setIsInitializing(false);
+        streamRef.current = stream;
 
-        // Apply continuous autofocus & detect torch capability
-        try {
-          const stream = videoRef.current?.srcObject as MediaStream | null;
-          const track = stream?.getVideoTracks?.()[0];
-          if (track) {
-            try {
-              await track.applyConstraints({
-                advanced: [{ focusMode: "continuous" } as any],
-              });
-            } catch {}
+        const videoEl = videoRef.current;
+        if (videoEl) {
+          videoEl.srcObject = stream;
+          await videoEl.play().catch(() => {});
+        }
+
+        const track = stream.getVideoTracks()[0];
+        if (track) {
+          try {
+            await track.applyConstraints({
+              advanced: [{ focusMode: "continuous" } as any],
+            });
+          } catch {}
+          try {
             const caps = track.getCapabilities?.() as any;
             if (caps && caps.torch) {
               setHasTorchCapability(true);
             }
-          }
-        } catch {}
+          } catch {}
+        }
 
-        // Populate camera list for Switch Camera button
+        // Enumerate cameras for Switch button
         try {
-          const devices = await BrowserMultiFormatReader.listVideoInputDevices();
-          if (isMounted && devices.length > 0) {
+          const devices = await navigator.mediaDevices.enumerateDevices();
+          const videoDevices = devices.filter((d) => d.kind === "videoinput");
+          if (isMounted && videoDevices.length > 0) {
             setCameras(
-              devices.map((d) => ({
+              videoDevices.map((d, idx) => ({
                 id: d.deviceId,
-                label: d.label || "كاميرا",
+                label: d.label || `كاميرا ${idx + 1}`,
               }))
             );
           }
         } catch {}
+
+        setIsInitializing(false);
+        rafActive = true;
+
+        if (!canvasRef.current) {
+          canvasRef.current = document.createElement("canvas");
+        }
+        const canvas = canvasRef.current;
+        const ctx = canvas.getContext("2d", { willReadFrequently: true });
+
+        const scanLoop = async () => {
+          if (!isMounted || !rafActive) return;
+
+          try {
+            const video = videoRef.current;
+            if (video && ctx && video.readyState >= 2 && video.videoWidth > 0 && video.videoHeight > 0) {
+              // Scale down slightly only if > 1280px wide to keep WASM < 20ms per frame while preserving crisp 1D bars
+              const targetW = Math.min(video.videoWidth, 1280);
+              const scale = targetW / video.videoWidth;
+              const targetH = Math.round(video.videoHeight * scale);
+
+              if (canvas.width !== targetW || canvas.height !== targetH) {
+                canvas.width = targetW;
+                canvas.height = targetH;
+              }
+
+              ctx.drawImage(video, 0, 0, targetW, targetH);
+              const imageData = ctx.getImageData(0, 0, targetW, targetH);
+
+              const results = await readBarcodes(imageData, {
+                formats: ["EAN-13", "EAN-8", "UPC-A", "UPC-E", "Code128", "Code39", "QRCode"],
+                tryRotate: true,
+                tryHarder: true,
+                tryInvert: true,
+                maxNumberOfSymbols: 1,
+              });
+
+              if (isMounted && results && results.length > 0 && results[0].isValid && results[0].text) {
+                handleDecodedResultRef.current(results[0].text, results[0].format);
+              }
+            }
+          } catch {}
+
+          if (isMounted && rafActive) {
+            timerId = setTimeout(scanLoop, 100);
+          }
+        };
+
+        timerId = setTimeout(scanLoop, 150);
       } catch (err: any) {
         if (!isMounted) return;
-        stopCurrentControls();
+        stopStream();
         setIsInitializing(false);
         const msg = String(err?.message || err || "");
         if (
@@ -319,7 +381,7 @@ export default function CameraBarcodeScanner({
           msg.includes("NotAllowedError")
         ) {
           setErrorMessage(
-            "تم رفض إذن استخدام الكاميرا من المتصفح. يرجى السماح بالوصول للكاميرا من إعدادات المتصفح."
+            "تم رفض إذن استخدام الكاميرا من المتصفح. يرجى السماح بالوصول للكاميرا من إعدادات المتصفح أو استخدام زر تصوير الباركود بالأسفل."
           );
         } else {
           setErrorMessage(`تعذر تشغيل الكاميرا: ${msg}`);
@@ -327,14 +389,12 @@ export default function CameraBarcodeScanner({
       }
     };
 
-    const timer = setTimeout(() => {
-      startZxingScanner();
-    }, 150);
+    const bootTimer = setTimeout(startWasmScanner, 120);
 
     return () => {
       isMounted = false;
-      clearTimeout(timer);
-      stopCurrentControls();
+      clearTimeout(bootTimer);
+      stopStream();
     };
   }, [isOpen, selectedCameraId, retryNonce]);
 
@@ -480,6 +540,16 @@ export default function CameraBarcodeScanner({
           )}
         </div>
 
+        {/* Hidden Native Camera Photo Input */}
+        <input
+          ref={photoInputRef}
+          type="file"
+          accept="image/*"
+          capture="environment"
+          className="hidden"
+          onChange={handlePhotoCapture}
+        />
+
         {/* Footer Controls */}
         <DialogFooter className="p-3 bg-muted/40 border-t flex-row items-center justify-between gap-2 sm:justify-between">
           <div className="flex items-center gap-2">
@@ -489,17 +559,29 @@ export default function CameraBarcodeScanner({
               onCheckedChange={setIsContinuous}
             />
             <Label htmlFor="continuous-scan-mode" className="text-xs font-medium cursor-pointer">
-              مسح مستمر للأصناف
+              مسح مستمر
             </Label>
           </div>
 
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => onOpenChange(false)}
-          >
-            إغلاق
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button
+              type="button"
+              variant="secondary"
+              size="sm"
+              onClick={() => photoInputRef.current?.click()}
+              title="التقاط صورة بكاميرا الموبايل الأصلية"
+            >
+              <ImagePlus className="h-4 w-4 ml-1.5" />
+              تصوير
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => onOpenChange(false)}
+            >
+              إغلاق
+            </Button>
+          </div>
         </DialogFooter>
       </DialogContent>
     </Dialog>
