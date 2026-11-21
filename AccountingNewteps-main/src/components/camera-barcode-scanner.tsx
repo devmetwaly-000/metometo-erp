@@ -54,8 +54,10 @@ export default function CameraBarcodeScanner({
   const [hasTorchCapability, setHasTorchCapability] = useState(false);
   const [lastScannedCode, setLastScannedCode] = useState<string | null>(null);
   const [recentScansCount, setRecentScansCount] = useState(0);
+  const [retryNonce, setRetryNonce] = useState(0);
 
   const html5QrCodeRef = useRef<any>(null);
+  const stopPromiseRef = useRef<Promise<void>>(Promise.resolve());
   const lastScanTimestampRef = useRef<number>(0);
   const lastScannedCodeRef = useRef<string>("");
 
@@ -127,6 +129,9 @@ export default function CameraBarcodeScanner({
     [isContinuous, onScan, onOpenChange, playBeep, triggerHaptic]
   );
 
+  const handleDecodedTextRef = useRef(handleDecodedText);
+  handleDecodedTextRef.current = handleDecodedText;
+
   // Toggle flashlight / torch if supported by hardware
   const toggleTorch = async () => {
     if (!html5QrCodeRef.current) return;
@@ -162,45 +167,32 @@ export default function CameraBarcodeScanner({
     let isMounted = true;
     setIsInitializing(true);
     setErrorMessage(null);
+    setHasTorchCapability(false);
+    setIsTorchOn(false);
 
     const initScanner = async () => {
       try {
+        // Ensure any previous camera stop has completed before acquiring hardware again
+        await stopPromiseRef.current;
+        if (!isMounted) return;
+
+        if (typeof navigator === "undefined" || !navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+          throw new Error(
+            "المتصفح يمنع تشغيل الكاميرا على اتصال غير آمن (HTTP). يرجى فتح النظام عبر HTTPS أو localhost."
+          );
+        }
+
         const { Html5Qrcode, Html5QrcodeSupportedFormats } = await import(
           "html5-qrcode"
         );
 
         if (!isMounted) return;
 
-        // Ensure container exists
         const container = document.getElementById(scannerContainerId);
         if (!container) {
           throw new Error("عنصر عرض الكاميرا غير جاهز");
         }
 
-        // List video cameras
-        const devices = await Html5Qrcode.getCameras();
-        if (!devices || devices.length === 0) {
-          throw new Error("لم يتم العثور على كاميرا في هذا الجهاز.");
-        }
-
-        if (isMounted) {
-          setCameras(devices.map((d) => ({ id: d.id, label: d.label || "كاميرا" })));
-        }
-
-        // Prefer back camera on phones (environment)
-        let activeCamId = selectedCameraId;
-        if (!activeCamId) {
-          const backCam = devices.find(
-            (d) =>
-              d.label.toLowerCase().includes("back") ||
-              d.label.toLowerCase().includes("rear") ||
-              d.label.toLowerCase().includes("خلف")
-          );
-          activeCamId = backCam ? backCam.id : devices[devices.length - 1].id;
-          if (isMounted) setSelectedCameraId(activeCamId);
-        }
-
-        // Initialize instance
         const qrCodeInstance = new Html5Qrcode(scannerContainerId, {
           formatsToSupport: [
             Html5QrcodeSupportedFormats.EAN_13,
@@ -218,42 +210,90 @@ export default function CameraBarcodeScanner({
 
         html5QrCodeRef.current = qrCodeInstance;
 
-        // Camera scan configuration
         const config = {
           fps: 15,
           qrbox: (viewfinderWidth: number, viewfinderHeight: number) => {
             const minEdge = Math.min(viewfinderWidth, viewfinderHeight);
             return {
               width: Math.floor(minEdge * 0.85),
-              height: Math.floor(minEdge * 0.55), // Wide aspect ratio ideal for retail 1D/2D barcodes
+              height: Math.floor(minEdge * 0.55),
             };
           },
           aspectRatio: 1.333334,
         };
 
-        await qrCodeInstance.start(
-          activeCamId
-            ? { deviceId: { exact: activeCamId } }
-            : { facingMode: "environment" },
-          config,
-          (decodedText: string) => {
-            handleDecodedText(decodedText);
-          },
-          () => {
-            // Frame scanned with no barcode - ignore
-          }
-        );
+        const onDecode = (decodedText: string) => {
+          handleDecodedTextRef.current(decodedText);
+        };
+        const onDecodeFailure = () => {};
 
-        if (isMounted) {
-          setIsInitializing(false);
-          // Check torch capability
+        // Prefer facingMode ("environment") on mobile so OS chooses the primary rear autofocus lens
+        if (selectedCameraId) {
+          await qrCodeInstance.start(
+            { deviceId: { exact: selectedCameraId } },
+            config,
+            onDecode,
+            onDecodeFailure
+          );
+        } else {
           try {
-            const capabilities = qrCodeInstance.getRunningTrackCapabilities();
-            if (capabilities && (capabilities as any).torch) {
-              setHasTorchCapability(true);
+            await qrCodeInstance.start(
+              { facingMode: "environment" },
+              config,
+              onDecode,
+              onDecodeFailure
+            );
+          } catch {
+            // Fallback for devices without a rear camera (e.g., laptops / front-only tablets)
+            try {
+              await qrCodeInstance.start(
+                { facingMode: "user" },
+                config,
+                onDecode,
+                onDecodeFailure
+              );
+            } catch {
+              const devices = await Html5Qrcode.getCameras();
+              if (!devices || devices.length === 0) {
+                throw new Error("لم يتم العثور على كاميرا في هذا الجهاز.");
+              }
+              await qrCodeInstance.start(
+                devices[0].id,
+                config,
+                onDecode,
+                onDecodeFailure
+              );
             }
-          } catch {}
+          }
         }
+
+        if (!isMounted) {
+          try {
+            if (qrCodeInstance.isScanning) {
+              await qrCodeInstance.stop();
+            }
+            qrCodeInstance.clear();
+          } catch {}
+          return;
+        }
+
+        setIsInitializing(false);
+
+        // Populate camera list in background for Switch Camera button (without triggering re-init)
+        try {
+          const devices = await Html5Qrcode.getCameras();
+          if (isMounted && devices && devices.length > 0) {
+            setCameras(devices.map((d) => ({ id: d.id, label: d.label || "كاميرا" })));
+          }
+        } catch {}
+
+        // Check torch capability
+        try {
+          const capabilities = qrCodeInstance.getRunningTrackCapabilities();
+          if (capabilities && (capabilities as any).torch) {
+            setHasTorchCapability(true);
+          }
+        } catch {}
       } catch (err: any) {
         if (!isMounted) return;
         setIsInitializing(false);
@@ -270,27 +310,25 @@ export default function CameraBarcodeScanner({
 
     const timer = setTimeout(() => {
       initScanner();
-    }, 150);
+    }, 200);
 
     return () => {
       isMounted = false;
       clearTimeout(timer);
-      if (html5QrCodeRef.current) {
-        try {
-          if (html5QrCodeRef.current.isScanning) {
-            html5QrCodeRef.current
-              .stop()
-              .then(() => {
-                html5QrCodeRef.current?.clear();
-              })
-              .catch(() => {});
-          } else {
-            html5QrCodeRef.current.clear();
-          }
-        } catch {}
+      const instance = html5QrCodeRef.current;
+      html5QrCodeRef.current = null;
+      if (instance) {
+        stopPromiseRef.current = (async () => {
+          try {
+            if (instance.isScanning) {
+              await instance.stop();
+            }
+            instance.clear();
+          } catch {}
+        })();
       }
     };
-  }, [isOpen, selectedCameraId, handleDecodedText]);
+  }, [isOpen, selectedCameraId, retryNonce]);
 
   return (
     <Dialog open={isOpen} onOpenChange={onOpenChange}>
@@ -384,6 +422,7 @@ export default function CameraBarcodeScanner({
                   setErrorMessage(null);
                   setIsInitializing(true);
                   setSelectedCameraId(null);
+                  setRetryNonce((prev) => prev + 1);
                 }}
               >
                 إعادة المحاولة
