@@ -53,6 +53,8 @@ export default function CameraBarcodeScanner({
   const [lastScannedCode, setLastScannedCode] = useState<string | null>(null);
   const [recentScansCount, setRecentScansCount] = useState(0);
   const [retryNonce, setRetryNonce] = useState(0);
+  const [zoomRange, setZoomRange] = useState<{ min: number; max: number; step: number } | null>(null);
+  const [zoomValue, setZoomValue] = useState<number>(1);
 
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -113,12 +115,12 @@ export default function CameraBarcodeScanner({
 
       // Validate GS1 check digit for EAN-13, EAN-8, UPC-A
       if (
-        (fmt === "EAN-13" || (cleanCode.length === 13 && /^\d{13}$/.test(cleanCode))) &&
+        (fmt === "EAN13" || fmt === "EAN-13" || (cleanCode.length === 13 && /^\d{13}$/.test(cleanCode))) &&
         !isValidGs1CheckDigit(cleanCode)
       ) {
         return;
       }
-      if ((fmt === "EAN-8" || fmt === "UPC-A") && !isValidGs1CheckDigit(cleanCode)) {
+      if ((fmt === "EAN8" || fmt === "EAN-8" || fmt === "UPCA" || fmt === "UPC-A") && !isValidGs1CheckDigit(cleanCode)) {
         return;
       }
 
@@ -184,7 +186,7 @@ export default function CameraBarcodeScanner({
         },
       });
       const results = await readBarcodes(file, {
-        formats: ["EAN-13", "EAN-8", "UPC-A", "UPC-E", "Code128", "Code39", "QRCode"],
+        formats: ["EAN13", "EAN8", "UPCA", "UPCE", "Code128", "Code39", "QRCode"],
         tryRotate: true,
         tryHarder: true,
         tryInvert: true,
@@ -305,6 +307,19 @@ export default function CameraBarcodeScanner({
             if (caps && caps.torch) {
               setHasTorchCapability(true);
             }
+            if (caps && caps.zoom && typeof caps.zoom.min === "number" && typeof caps.zoom.max === "number" && caps.zoom.max > caps.zoom.min) {
+              const minZ = caps.zoom.min;
+              const maxZ = Math.min(caps.zoom.max, 4);
+              const stepZ = caps.zoom.step || 0.1;
+              setZoomRange({ min: minZ, max: maxZ, step: stepZ });
+              const initialZoom = Math.min(Math.max(1.5, minZ), maxZ);
+              setZoomValue(initialZoom);
+              try {
+                await track.applyConstraints({ advanced: [{ zoom: initialZoom } as any] });
+              } catch {}
+            } else {
+              setZoomRange(null);
+            }
           } catch {}
         }
 
@@ -351,7 +366,7 @@ export default function CameraBarcodeScanner({
               const imageData = ctx.getImageData(0, 0, targetW, targetH);
 
               const results = await readBarcodes(imageData, {
-                formats: ["EAN-13", "EAN-8", "UPC-A", "UPC-E", "Code128", "Code39", "QRCode"],
+                formats: ["EAN13", "EAN8", "UPCA", "UPCE", "Code128", "Code39", "QRCode"],
                 tryRotate: true,
                 tryHarder: true,
                 tryInvert: true,
@@ -438,19 +453,44 @@ export default function CameraBarcodeScanner({
           {/* Scanner Overlay HUD */}
           {!isInitializing && !errorMessage && (
             <div className="absolute inset-0 pointer-events-none flex flex-col items-center justify-center p-6">
-              <div className="relative w-full max-w-[280px] h-[170px] border-2 border-primary/70 rounded-2xl shadow-[0_0_0_9999px_rgba(0,0,0,0.5)] flex items-center justify-center">
+              <div className="mb-3 text-center text-[11px] font-medium text-white/90 bg-black/60 px-3 py-1 rounded-full backdrop-blur-sm">
+                ضع الباركود داخل الإطار
+              </div>
+              <div className="relative w-full max-w-[290px] h-[175px] border-2 border-primary/80 rounded-2xl shadow-[0_0_0_9999px_rgba(0,0,0,0.45)] flex items-center justify-center">
                 <div className="absolute left-2 right-2 h-0.5 bg-gradient-to-r from-transparent via-red-500 to-transparent animate-bounce shadow-[0_0_8px_#ef4444]" />
                 <div className="absolute -top-1 -left-1 w-5 h-5 border-t-4 border-l-4 border-primary rounded-tl-lg" />
                 <div className="absolute -top-1 -right-1 w-5 h-5 border-t-4 border-r-4 border-primary rounded-tr-lg" />
                 <div className="absolute -bottom-1 -left-1 w-5 h-5 border-b-4 border-l-4 border-primary rounded-bl-lg" />
                 <div className="absolute -bottom-1 -right-1 w-5 h-5 border-b-4 border-r-4 border-primary rounded-br-lg" />
-                <div className="text-center text-[11px] font-medium text-white/80 bg-black/40 px-2.5 py-1 rounded-full backdrop-blur-sm">
-                  ضع الباركود هنا
-                </div>
               </div>
 
+              {zoomRange && (
+                <div className="mt-4 pointer-events-auto flex items-center gap-2 bg-black/65 backdrop-blur-md px-3 py-1.5 rounded-full">
+                  <span className="text-[11px] text-white/80 font-mono">1x</span>
+                  <input
+                    type="range"
+                    min={zoomRange.min}
+                    max={zoomRange.max}
+                    step={zoomRange.step}
+                    value={zoomValue}
+                    onChange={async (e) => {
+                      const z = Number(e.target.value);
+                      setZoomValue(z);
+                      try {
+                        const track = streamRef.current?.getVideoTracks?.()[0];
+                        if (track) {
+                          await track.applyConstraints({ advanced: [{ zoom: z } as any] });
+                        }
+                      } catch {}
+                    }}
+                    className="w-32 accent-primary cursor-pointer"
+                  />
+                  <span className="text-[11px] text-white/90 font-mono">{zoomValue.toFixed(1)}x</span>
+                </div>
+              )}
+
               {lastScannedCode && (
-                <div className="mt-4 pointer-events-auto bg-emerald-600 text-white text-xs font-bold px-4 py-1.5 rounded-full shadow-lg flex items-center gap-2 animate-in fade-in zoom-in duration-200">
+                <div className="mt-3 pointer-events-auto bg-emerald-600 text-white text-xs font-bold px-4 py-1.5 rounded-full shadow-lg flex items-center gap-2 animate-in fade-in zoom-in duration-200">
                   <CheckCircle2 className="h-4 w-4" />
                   <span>تم المسح بنجاح: {lastScannedCode}</span>
                 </div>
