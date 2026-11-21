@@ -3220,12 +3220,12 @@ function PosPageContent() {
                         <Button 
                             type="button"
                             variant="outline" 
-                            className="h-12 px-3 gap-2 shrink-0 bg-primary/10 hover:bg-primary/20 text-primary border-primary/30 rounded-xl"
+                            className="h-12 px-3 gap-2 shrink-0 md:hidden bg-yellow-400/15 hover:bg-yellow-400/25 text-yellow-500 dark:text-yellow-400 border-yellow-400/50 rounded-xl"
                             onClick={() => setIsCameraScannerOpen(true)} 
                             title="مسح الباركود بكاميرا الموبايل"
                         >
-                            <Camera className="h-5 w-5" />
-                            <span className="text-xs font-bold hidden sm:inline">كاميرا الموبايل</span>
+                            <Camera className="h-5 w-5 text-yellow-500 dark:text-yellow-400" />
+                            <span className="text-xs font-bold hidden sm:inline">كاميرا</span>
                         </Button>
                         <Button variant="outline" size="icon" className="h-12 w-12 shrink-0 rounded-xl" onClick={() => setIsQueryModalOpen(true)} title="استعلام المخزون">
                             <Boxes className="h-6 w-6" />
