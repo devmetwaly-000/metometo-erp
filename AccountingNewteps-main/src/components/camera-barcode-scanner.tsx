@@ -57,14 +57,11 @@ export default function CameraBarcodeScanner({
   const [retryNonce, setRetryNonce] = useState(0);
 
   const html5QrCodeRef = useRef<any>(null);
+  const videoRef = useRef<HTMLVideoElement | null>(null);
+  const mediaStreamRef = useRef<MediaStream | null>(null);
   const stopPromiseRef = useRef<Promise<void>>(Promise.resolve());
   const lastScanTimestampRef = useRef<number>(0);
   const lastScannedCodeRef = useRef<string>("");
-  const pendingCandidateRef = useRef<{ code: string; count: number; ts: number }>({
-    code: "",
-    count: 0,
-    ts: 0,
-  });
 
   // Validate GS1 check digit for EAN-13, EAN-8, and UPC-A
   const isValidGs1CheckDigit = (code: string): boolean => {
@@ -113,17 +110,17 @@ export default function CameraBarcodeScanner({
     } catch {}
   }, []);
 
-  // Handle successful scan with check-digit validation and multi-frame consensus
+  // Handle successful scan with GS1 check-digit validation
   const handleDecodedText = useCallback(
     (decodedText: string, decodedResult?: any) => {
       if (!decodedText) return;
       const cleanCode = decodedText.trim();
       const now = Date.now();
       const formatName = String(
-        decodedResult?.result?.format?.formatName || ""
+        decodedResult?.format || decodedResult?.result?.format?.formatName || ""
       ).toUpperCase();
 
-      // 1. Validate GS1 check digit for numeric retail barcodes (EAN-13, EAN-8, UPC-A)
+      // Validate GS1 check digit for numeric retail barcodes (EAN-13, EAN-8, UPC-A)
       if (
         (formatName === "EAN_13" || (cleanCode.length === 13 && /^\d{13}$/.test(cleanCode))) &&
         !isValidGs1CheckDigit(cleanCode)
@@ -137,24 +134,7 @@ export default function CameraBarcodeScanner({
         return;
       }
 
-      // 2. Require 2 matching reads within 900ms for 1D barcodes to eliminate blurry single-frame misreads
-      const isQr = formatName === "QR_CODE";
-      if (!isQr) {
-        const pending = pendingCandidateRef.current;
-        if (pending.code === cleanCode && now - pending.ts <= 900) {
-          pending.count += 1;
-          pending.ts = now;
-        } else {
-          pendingCandidateRef.current = { code: cleanCode, count: 1, ts: now };
-          return;
-        }
-        if (pendingCandidateRef.current.count < 2) {
-          return;
-        }
-        pendingCandidateRef.current = { code: "", count: 0, ts: 0 };
-      }
-
-      // 3. Debounce: prevent duplicate scan of the identical code within 1.5 seconds
+      // Debounce: prevent duplicate scan of the identical code within 1.5 seconds
       if (
         cleanCode === lastScannedCodeRef.current &&
         now - lastScanTimestampRef.current < 1500
@@ -186,13 +166,24 @@ export default function CameraBarcodeScanner({
 
   // Toggle flashlight / torch if supported by hardware
   const toggleTorch = async () => {
-    if (!html5QrCodeRef.current) return;
+    const newTorchState = !isTorchOn;
     try {
-      const newTorchState = !isTorchOn;
-      await html5QrCodeRef.current.applyVideoConstraints({
-        advanced: [{ torch: newTorchState }],
-      });
-      setIsTorchOn(newTorchState);
+      if (mediaStreamRef.current) {
+        const track = mediaStreamRef.current.getVideoTracks()[0];
+        if (track) {
+          await track.applyConstraints({
+            advanced: [{ torch: newTorchState } as any],
+          });
+          setIsTorchOn(newTorchState);
+          return;
+        }
+      }
+      if (html5QrCodeRef.current) {
+        await html5QrCodeRef.current.applyVideoConstraints({
+          advanced: [{ torch: newTorchState }],
+        });
+        setIsTorchOn(newTorchState);
+      }
     } catch (e) {
       console.warn("Torch not supported on this device/camera:", e);
       setHasTorchCapability(false);
@@ -217,14 +208,32 @@ export default function CameraBarcodeScanner({
     }
 
     let isMounted = true;
+    let detectInterval: ReturnType<typeof setInterval> | null = null;
     setIsInitializing(true);
     setErrorMessage(null);
     setHasTorchCapability(false);
     setIsTorchOn(false);
 
+    const stopNativeStream = () => {
+      if (detectInterval) {
+        clearInterval(detectInterval);
+        detectInterval = null;
+      }
+      if (mediaStreamRef.current) {
+        mediaStreamRef.current.getTracks().forEach((t) => {
+          try {
+            t.stop();
+          } catch {}
+        });
+        mediaStreamRef.current = null;
+      }
+      if (videoRef.current) {
+        videoRef.current.srcObject = null;
+      }
+    };
+
     const initScanner = async () => {
       try {
-        // Ensure any previous camera stop has completed before acquiring hardware again
         await stopPromiseRef.current;
         if (!isMounted) return;
 
@@ -234,10 +243,101 @@ export default function CameraBarcodeScanner({
           );
         }
 
-        const { Html5Qrcode, Html5QrcodeSupportedFormats } = await import(
-          "html5-qrcode"
-        );
+        // 1. Fast & Accurate Native BarcodeDetector path (Android Chrome / Edge / Samsung Internet)
+        const NativeBarcodeDetector = (window as any).BarcodeDetector;
+        if (NativeBarcodeDetector) {
+          const videoConstraints: MediaTrackConstraints = selectedCameraId
+            ? {
+                deviceId: { exact: selectedCameraId },
+                width: { ideal: 1920 },
+                height: { ideal: 1080 },
+              }
+            : {
+                facingMode: { ideal: "environment" },
+                width: { ideal: 1920 },
+                height: { ideal: 1080 },
+              };
 
+          const stream = await navigator.mediaDevices.getUserMedia({
+            video: videoConstraints,
+            audio: false,
+          });
+
+          if (!isMounted) {
+            stream.getTracks().forEach((t) => t.stop());
+            return;
+          }
+
+          mediaStreamRef.current = stream;
+
+          const videoEl = videoRef.current;
+          if (videoEl) {
+            videoEl.srcObject = stream;
+            await videoEl.play().catch(() => {});
+          }
+
+          const track = stream.getVideoTracks()[0];
+          if (track) {
+            try {
+              await track.applyConstraints({
+                advanced: [{ focusMode: "continuous" } as any],
+              });
+            } catch {}
+            try {
+              const caps = track.getCapabilities?.() as any;
+              if (caps && caps.torch) {
+                setHasTorchCapability(true);
+              }
+            } catch {}
+          }
+
+          let detector: any;
+          try {
+            const desiredFormats = ["ean_13", "ean_8", "upc_a", "upc_e", "code_128", "code_39", "qr_code"];
+            const supported = typeof NativeBarcodeDetector.getSupportedFormats === "function"
+              ? await NativeBarcodeDetector.getSupportedFormats()
+              : desiredFormats;
+            const validFormats = desiredFormats.filter((f) => supported.includes(f));
+            detector = validFormats.length > 0
+              ? new NativeBarcodeDetector({ formats: validFormats })
+              : new NativeBarcodeDetector();
+          } catch {
+            detector = new NativeBarcodeDetector();
+          }
+
+          setIsInitializing(false);
+
+          // Populate camera list silently for Switch Camera button
+          try {
+            const allDevices = await navigator.mediaDevices.enumerateDevices();
+            const videoDevices = allDevices.filter((d) => d.kind === "videoinput");
+            if (isMounted && videoDevices.length > 0) {
+              setCameras(videoDevices.map((d) => ({ id: d.deviceId, label: d.label || "كاميرا" })));
+            }
+          } catch {}
+
+          let isDetecting = false;
+          detectInterval = setInterval(async () => {
+            if (!isMounted || isDetecting || !videoRef.current || videoRef.current.readyState < 2) {
+              return;
+            }
+            isDetecting = true;
+            try {
+              const barcodes = await detector.detect(videoRef.current);
+              if (barcodes && barcodes.length > 0 && barcodes[0].rawValue) {
+                handleDecodedTextRef.current(barcodes[0].rawValue, {
+                  format: barcodes[0].format,
+                });
+              }
+            } catch {}
+            isDetecting = false;
+          }, 120);
+
+          return;
+        }
+
+        // 2. Fallback path (iOS Safari / Desktop Firefox) via html5-qrcode without restrictive qrbox cropping
+        const { Html5Qrcode, Html5QrcodeSupportedFormats } = await import("html5-qrcode");
         if (!isMounted) return;
 
         const container = document.getElementById(scannerContainerId);
@@ -255,74 +355,32 @@ export default function CameraBarcodeScanner({
             Html5QrcodeSupportedFormats.CODE_39,
             Html5QrcodeSupportedFormats.QR_CODE,
           ],
-          useBarCodeDetectorIfSupported: true,
           verbose: false,
         });
 
         html5QrCodeRef.current = qrCodeInstance;
 
-        const config = {
-          fps: 20,
-          qrbox: (viewfinderWidth: number, viewfinderHeight: number) => {
-            const minEdge = Math.min(viewfinderWidth, viewfinderHeight);
-            return {
-              width: Math.floor(viewfinderWidth * 0.9),
-              height: Math.floor(minEdge * 0.48),
-            };
-          },
-          aspectRatio: 1.333334,
+        const config: any = {
+          fps: 15,
+          videoConstraints: selectedCameraId
+            ? { deviceId: { exact: selectedCameraId }, width: { ideal: 1280 }, height: { ideal: 720 } }
+            : { facingMode: { ideal: "environment" }, width: { ideal: 1280 }, height: { ideal: 720 } },
         };
 
         const onDecode = (decodedText: string, decodedResult: any) => {
           handleDecodedTextRef.current(decodedText, decodedResult);
         };
-        const onDecodeFailure = () => {};
 
-        // Prefer facingMode ("environment") on mobile so OS chooses the primary rear autofocus lens
-        if (selectedCameraId) {
-          await qrCodeInstance.start(
-            { deviceId: { exact: selectedCameraId } },
-            config,
-            onDecode,
-            onDecodeFailure
-          );
-        } else {
-          try {
-            await qrCodeInstance.start(
-              { facingMode: "environment" },
-              config,
-              onDecode,
-              onDecodeFailure
-            );
-          } catch {
-            // Fallback for devices without a rear camera (e.g., laptops / front-only tablets)
-            try {
-              await qrCodeInstance.start(
-                { facingMode: "user" },
-                config,
-                onDecode,
-                onDecodeFailure
-              );
-            } catch {
-              const devices = await Html5Qrcode.getCameras();
-              if (!devices || devices.length === 0) {
-                throw new Error("لم يتم العثور على كاميرا في هذا الجهاز.");
-              }
-              await qrCodeInstance.start(
-                devices[0].id,
-                config,
-                onDecode,
-                onDecodeFailure
-              );
-            }
-          }
-        }
+        await qrCodeInstance.start(
+          selectedCameraId ? { deviceId: { exact: selectedCameraId } } : { facingMode: "environment" },
+          config,
+          onDecode,
+          () => {}
+        );
 
         if (!isMounted) {
           try {
-            if (qrCodeInstance.isScanning) {
-              await qrCodeInstance.stop();
-            }
+            if (qrCodeInstance.isScanning) await qrCodeInstance.stop();
             qrCodeInstance.clear();
           } catch {}
           return;
@@ -330,16 +388,6 @@ export default function CameraBarcodeScanner({
 
         setIsInitializing(false);
 
-        // Request HD resolution and continuous autofocus for crisp 1D barcode reading
-        try {
-          await qrCodeInstance.applyVideoConstraints({
-            width: { ideal: 1280 },
-            height: { ideal: 720 },
-            advanced: [{ focusMode: "continuous" } as any],
-          });
-        } catch {}
-
-        // Populate camera list in background for Switch Camera button (without triggering re-init)
         try {
           const devices = await Html5Qrcode.getCameras();
           if (isMounted && devices && devices.length > 0) {
@@ -347,7 +395,6 @@ export default function CameraBarcodeScanner({
           }
         } catch {}
 
-        // Check torch capability
         try {
           const capabilities = qrCodeInstance.getRunningTrackCapabilities();
           if (capabilities && (capabilities as any).torch) {
@@ -356,6 +403,7 @@ export default function CameraBarcodeScanner({
         } catch {}
       } catch (err: any) {
         if (!isMounted) return;
+        stopNativeStream();
         setIsInitializing(false);
         const msg = String(err?.message || err || "");
         if (msg.includes("Permission") || msg.includes("denied") || msg.includes("NotAllowedError")) {
@@ -370,11 +418,12 @@ export default function CameraBarcodeScanner({
 
     const timer = setTimeout(() => {
       initScanner();
-    }, 200);
+    }, 150);
 
     return () => {
       isMounted = false;
       clearTimeout(timer);
+      stopNativeStream();
       const instance = html5QrCodeRef.current;
       html5QrCodeRef.current = null;
       if (instance) {
@@ -421,10 +470,19 @@ export default function CameraBarcodeScanner({
         {/* Viewfinder Viewport */}
         <div className="relative flex-1 min-h-[300px] sm:min-h-[360px] bg-black flex items-center justify-center overflow-hidden">
           
-          {/* HTML5 QR Container */}
+          {/* Native Video Stream (used when BarcodeDetector is available) */}
+          <video
+            ref={videoRef}
+            autoPlay
+            playsInline
+            muted
+            className="absolute inset-0 w-full h-full object-cover"
+          />
+
+          {/* HTML5 QR Fallback Container */}
           <div
             id={scannerContainerId}
-            className="w-full h-full min-h-[300px] [&>video]:w-full [&>video]:h-full [&>video]:object-cover"
+            className="relative w-full h-full min-h-[300px] empty:hidden [&>video]:w-full [&>video]:h-full [&>video]:object-cover"
           />
 
           {/* Scanner Overlay HUD */}
