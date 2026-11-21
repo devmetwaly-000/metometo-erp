@@ -3468,6 +3468,16 @@ function PosPageContent() {
         <CameraBarcodeScanner
             isOpen={isCameraScannerOpen}
             onOpenChange={setIsCameraScannerOpen}
+            scannedItems={[...cart].reverse().map((item) => ({
+                id: item.uniqueId,
+                name: item.name,
+                qty: item.qty,
+                price: item.price,
+                total: item.total,
+                barcode: item.code,
+            }))}
+            totalAmount={total}
+            onUpdateQty={(uniqueId, newQty) => updateQty(uniqueId, newQty)}
             onScan={(scannedBarcode) => {
                 if (barcodeInputRef.current) {
                     barcodeInputRef.current.value = scannedBarcode;

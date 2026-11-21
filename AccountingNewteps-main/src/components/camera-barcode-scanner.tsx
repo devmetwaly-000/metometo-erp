@@ -25,7 +25,20 @@ import {
   X,
   Scan,
   ImagePlus,
+  ShoppingCart,
+  Plus,
+  Minus,
+  Trash2,
 } from "lucide-react";
+
+export interface ScannedCartPreviewItem {
+  id: string;
+  name: string;
+  qty: number;
+  price: number;
+  total: number;
+  barcode?: string;
+}
 
 interface CameraBarcodeScannerProps {
   isOpen: boolean;
@@ -33,6 +46,9 @@ interface CameraBarcodeScannerProps {
   onScan: (barcode: string) => void;
   title?: string;
   defaultContinuous?: boolean;
+  scannedItems?: ScannedCartPreviewItem[];
+  totalAmount?: number;
+  onUpdateQty?: (id: string, newQty: number) => void;
 }
 
 export default function CameraBarcodeScanner({
@@ -41,6 +57,9 @@ export default function CameraBarcodeScanner({
   onScan,
   title = "مسح الباركود بكاميرا الموبايل",
   defaultContinuous = true,
+  scannedItems,
+  totalAmount,
+  onUpdateQty,
 }: CameraBarcodeScannerProps) {
   const [isInitializing, setIsInitializing] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -496,13 +515,13 @@ export default function CameraBarcodeScanner({
         </DialogHeader>
 
         {/* Viewfinder Viewport */}
-        <div className="relative flex-1 min-h-[320px] sm:min-h-[380px] bg-black flex items-center justify-center overflow-hidden">
+        <div className="relative min-h-[250px] sm:min-h-[300px] max-h-[42vh] bg-black flex items-center justify-center overflow-hidden">
           <video
             ref={videoRef}
             autoPlay
             playsInline
             muted
-            className="w-full h-full min-h-[320px] object-cover"
+            className="w-full h-full min-h-[250px] object-cover"
           />
 
           {/* Scanner Overlay HUD */}
@@ -634,6 +653,82 @@ export default function CameraBarcodeScanner({
             </div>
           )}
         </div>
+
+        {/* Scanned Items List inside Camera Modal */}
+        {scannedItems !== undefined && (
+          <div className="border-t bg-card flex flex-col max-h-[200px] shrink-0" dir="rtl">
+            <div className="px-3 py-2 bg-muted/40 border-b flex items-center justify-between text-xs">
+              <div className="flex items-center gap-1.5 font-bold text-foreground">
+                <ShoppingCart className="h-3.5 w-3.5 text-primary" />
+                <span>الأصناف الممسوحة ({scannedItems.length})</span>
+              </div>
+              {typeof totalAmount === "number" && (
+                <span className="font-mono font-bold text-primary">
+                  الإجمالي: {totalAmount.toFixed(2)} ج.م
+                </span>
+              )}
+            </div>
+            <div className="overflow-y-auto divide-y divide-border/50 px-2 py-1">
+              {scannedItems.length === 0 ? (
+                <p className="text-center text-xs text-muted-foreground py-4">
+                  لم يتم مسح أي صنف بعد — وجّه الكاميرا نحو الباركود للإضافة
+                </p>
+              ) : (
+                scannedItems.map((item) => (
+                  <div
+                    key={item.id}
+                    className="flex items-center justify-between gap-2 py-1.5 px-1 text-xs"
+                  >
+                    <div className="min-w-0 flex-1">
+                      <p className="font-semibold text-foreground truncate">{item.name}</p>
+                      <p className="text-[10px] text-muted-foreground font-mono">
+                        {item.price.toFixed(2)} ج.م {item.barcode ? `• ${item.barcode}` : ""}
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-1 shrink-0">
+                      {onUpdateQty ? (
+                        <>
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="icon"
+                            className="h-6 w-6 rounded-md"
+                            onClick={() => onUpdateQty(item.id, item.qty - 1)}
+                          >
+                            {item.qty <= 1 ? (
+                              <Trash2 className="h-3 w-3 text-destructive" />
+                            ) : (
+                              <Minus className="h-3 w-3" />
+                            )}
+                          </Button>
+                          <span className="w-6 text-center font-mono font-bold text-xs">
+                            {item.qty}
+                          </span>
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="icon"
+                            className="h-6 w-6 rounded-md"
+                            onClick={() => onUpdateQty(item.id, item.qty + 1)}
+                          >
+                            <Plus className="h-3 w-3" />
+                          </Button>
+                        </>
+                      ) : (
+                        <Badge variant="secondary" className="font-mono text-[11px]">
+                          ×{item.qty}
+                        </Badge>
+                      )}
+                      <span className="w-16 text-left font-mono font-bold text-primary">
+                        {item.total.toFixed(2)}
+                      </span>
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
+        )}
 
         {/* Hidden Native Camera Photo Input */}
         <input
