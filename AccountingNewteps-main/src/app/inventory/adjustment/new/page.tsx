@@ -64,7 +64,6 @@ import { useIsMobile } from "@/hooks/use-mobile";
 import { cn } from "@/lib/utils";
 import { Switch } from "@/components/ui/switch";
 import { Alert, AlertTitle, AlertDescription } from "@/components/ui/alert";
-import { Html5Qrcode, Html5QrcodeSupportedFormats } from "html5-qrcode";
 
 interface AdjustmentItem {
   itemId: string;
@@ -186,7 +185,8 @@ export default function NewStockAdjustmentPage() {
   } | null>(null);
 
   const newItemQtyInputRef = useRef<HTMLInputElement>(null);
-  const html5QrCodeRef = useRef<Html5Qrcode | null>(null);
+  const zxingControlsRef = useRef<any>(null);
+  const scannerVideoRef = useRef<HTMLVideoElement | null>(null);
   const lastScanRef = useRef<{ code: string; time: number }>({ code: "", time: 0 });
   const cameraFileInputRef = useRef<HTMLInputElement>(null);
 
@@ -607,56 +607,92 @@ export default function NewStockAdjustmentPage() {
     );
   }, []);
 
-  // تشغيل وإدارة الكاميرا الحية
+  // تشغيل وإدارة الكاميرا الحية عبر @zxing/browser
   useEffect(() => {
     let isMounted = true;
 
+    const stopScanner = () => {
+      if (zxingControlsRef.current) {
+        try {
+          zxingControlsRef.current.stop();
+        } catch {}
+        zxingControlsRef.current = null;
+      }
+      if (scannerVideoRef.current?.srcObject) {
+        const stream = scannerVideoRef.current.srcObject as MediaStream;
+        stream.getTracks().forEach((t) => {
+          try {
+            t.stop();
+          } catch {}
+        });
+        scannerVideoRef.current.srcObject = null;
+      }
+    };
+
     const startScanner = async () => {
-      if (!isScannerOpen) return;
+      if (!isScannerOpen || !scannerVideoRef.current) return;
 
       try {
-        // جلب الكاميرات المتاحة إن أمكن
-        try {
-          const devices = await Html5Qrcode.getCameras();
-          if (isMounted && devices && devices.length > 0) {
-            setAvailableCameras(devices.map((d) => ({ id: d.id, label: d.label || `كاميرا ${d.id.slice(0, 4)}` })));
-          }
-        } catch {}
+        const [{ BrowserMultiFormatReader }, { BarcodeFormat, DecodeHintType }] =
+          await Promise.all([
+            import("@zxing/browser"),
+            import("@zxing/library"),
+          ]);
 
-        const html5QrCode = new Html5Qrcode("reader", {
-          formatsToSupport: [
-            Html5QrcodeSupportedFormats.EAN_13,
-            Html5QrcodeSupportedFormats.EAN_8,
-            Html5QrcodeSupportedFormats.CODE_128,
-            Html5QrcodeSupportedFormats.CODE_39,
-            Html5QrcodeSupportedFormats.UPC_A,
-            Html5QrcodeSupportedFormats.UPC_E,
-            Html5QrcodeSupportedFormats.ITF,
-            Html5QrcodeSupportedFormats.QR_CODE
-          ],
-          verbose: false
+        if (!isMounted || !scannerVideoRef.current) return;
+
+        const hints = new Map();
+        hints.set(DecodeHintType.POSSIBLE_FORMATS, [
+          BarcodeFormat.EAN_13,
+          BarcodeFormat.EAN_8,
+          BarcodeFormat.UPC_A,
+          BarcodeFormat.UPC_E,
+          BarcodeFormat.CODE_128,
+          BarcodeFormat.CODE_39,
+          BarcodeFormat.QR_CODE,
+        ]);
+        hints.set(DecodeHintType.TRY_HARDER, true);
+
+        const codeReader = new BrowserMultiFormatReader(hints, {
+          delayBetweenScanAttempts: 100,
+          delayBetweenScanSuccess: 500,
         });
-        html5QrCodeRef.current = html5QrCode;
 
-        const qrConfig = {
-          fps: 15,
-          qrbox: { width: 260, height: 150 },
-          aspectRatio: 1.0
+        const constraints: MediaStreamConstraints = {
+          audio: false,
+          video: selectedCameraId
+            ? { deviceId: { exact: selectedCameraId }, width: { ideal: 1920 }, height: { ideal: 1080 } }
+            : { facingMode: { ideal: "environment" }, width: { ideal: 1920 }, height: { ideal: 1080 } },
         };
 
-        const cameraConstraint = selectedCameraId
-          ? { deviceId: { exact: selectedCameraId } }
-          : { facingMode: "environment" };
-
-        await html5QrCode.start(
-          cameraConstraint,
-          qrConfig,
-          (decodedText) => {
-            handleScanSuccess(decodedText);
-          },
-          undefined
+        const controls = await codeReader.decodeFromConstraints(
+          constraints,
+          scannerVideoRef.current,
+          (result) => {
+            if (!isMounted || !result) return;
+            handleScanSuccess(result.getText());
+          }
         );
-        if (isMounted) setHasCameraPermission(true);
+
+        if (!isMounted) {
+          controls.stop();
+          return;
+        }
+
+        zxingControlsRef.current = controls;
+        setHasCameraPermission(true);
+
+        try {
+          const devices = await BrowserMultiFormatReader.listVideoInputDevices();
+          if (isMounted && devices.length > 0) {
+            setAvailableCameras(
+              devices.map((d) => ({
+                id: d.deviceId,
+                label: d.label || `كاميرا ${d.deviceId.slice(0, 4)}`,
+              }))
+            );
+          }
+        } catch {}
       } catch (err: any) {
         console.warn("Live camera stream not available:", err);
         if (isMounted) setHasCameraPermission(false);
@@ -669,27 +705,28 @@ export default function NewStockAdjustmentPage() {
         isMounted = false;
         clearTimeout(timer);
         setTorchOn(false);
-        if (html5QrCodeRef.current) {
-          html5QrCodeRef.current
-            .stop()
-            .catch(() => {})
-            .finally(() => {
-              html5QrCodeRef.current = null;
-            });
-        }
+        stopScanner();
       };
     }
   }, [isScannerOpen, selectedCameraId, handleScanSuccess]);
 
   // تشغيل/إيقاف كشاف الكاميرا (Torch)
   const toggleTorch = async () => {
-    if (!html5QrCodeRef.current) return;
     try {
       const nextState = !torchOn;
-      await (html5QrCodeRef.current as any).applyVideoConstraints({
-        advanced: [{ torch: nextState }]
-      });
-      setTorchOn(nextState);
+      if (zxingControlsRef.current?.switchTorch) {
+        await zxingControlsRef.current.switchTorch(nextState);
+        setTorchOn(nextState);
+        return;
+      }
+      const stream = scannerVideoRef.current?.srcObject as MediaStream | null;
+      const track = stream?.getVideoTracks?.()[0];
+      if (track) {
+        await track.applyConstraints({
+          advanced: [{ torch: nextState } as any]
+        });
+        setTorchOn(nextState);
+      }
     } catch {
       toast({
         variant: "destructive",
@@ -704,10 +741,12 @@ export default function NewStockAdjustmentPage() {
     const file = e.target.files?.[0];
     if (!file) return;
 
+    const imageUrl = URL.createObjectURL(file);
     try {
-      const tempScanner = new Html5Qrcode("reader-file-fallback");
-      const decodedText = await tempScanner.scanFile(file, false);
-      tempScanner.clear();
+      const { BrowserMultiFormatReader } = await import("@zxing/browser");
+      const reader = new BrowserMultiFormatReader();
+      const result = await reader.decodeFromImageUrl(imageUrl);
+      const decodedText = result?.getText();
       if (decodedText) {
         handleScanSuccess(decodedText, true);
       }
@@ -718,6 +757,7 @@ export default function NewStockAdjustmentPage() {
         description: "يرجى تقريب الكاميرا من الباركود والتأكد من وضوح الإضاءة ثم المحاولة مرة أخرى."
       });
     } finally {
+      URL.revokeObjectURL(imageUrl);
       e.target.value = "";
     }
   };
@@ -1102,7 +1142,7 @@ export default function NewStockAdjustmentPage() {
           </div>
 
           <div className="relative w-full aspect-[4/3] bg-black overflow-hidden flex items-center justify-center">
-            <div id="reader" className="w-full h-full" />
+            <video ref={scannerVideoRef} autoPlay playsInline muted className="w-full h-full object-cover" />
             {hasCameraPermission === false && (
               <div className="absolute inset-0 flex flex-col items-center justify-center bg-slate-950/95 p-5 text-center gap-3">
                 <Camera className="h-10 w-10 text-foreground" />
