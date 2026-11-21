@@ -60,6 +60,7 @@ export default function CameraBarcodeScanner({
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const photoInputRef = useRef<HTMLInputElement | null>(null);
+  const activeCameraIdRef = useRef<string | null>(null);
   const lastScanTimestampRef = useRef<number>(0);
   const lastScannedCodeRef = useRef<string>("");
 
@@ -168,9 +169,42 @@ export default function CameraBarcodeScanner({
 
   const switchCamera = () => {
     if (cameras.length <= 1) return;
-    const currentIndex = cameras.findIndex((c) => c.id === selectedCameraId);
-    const nextIndex = (currentIndex + 1) % cameras.length;
+    const currentId = selectedCameraId || activeCameraIdRef.current;
+    const currentIndex = cameras.findIndex((c) => c.id === currentId);
+    const nextIndex = currentIndex >= 0 ? (currentIndex + 1) % cameras.length : 0;
     setSelectedCameraId(cameras[nextIndex].id);
+  };
+
+  const pickPrimaryBackCamera = (videoDevices: MediaDeviceInfo[]): MediaDeviceInfo | undefined => {
+    if (!videoDevices.length) return undefined;
+    const backCameras = videoDevices.filter((d) => {
+      const l = (d.label || "").toLowerCase();
+      return l.includes("back") || l.includes("rear") || l.includes("environment") || l.includes("خلف");
+    });
+    const pool = backCameras.length > 0
+      ? backCameras
+      : videoDevices.filter((d) => {
+          const l = (d.label || "").toLowerCase();
+          return !l.includes("front") && !l.includes("user") && !l.includes("أمام");
+        });
+    if (pool.length === 0) return videoDevices[0];
+
+    // Exclude ultra-wide / macro / telephoto / depth lenses so we pick the main 1x autofocus camera
+    const primaryCandidates = pool.filter((d) => {
+      const l = (d.label || "").toLowerCase();
+      return (
+        !l.includes("wide") &&
+        !l.includes("ultra") &&
+        !l.includes("macro") &&
+        !l.includes("tele") &&
+        !l.includes("depth") &&
+        !l.includes("0.5") &&
+        !l.includes("0.6")
+      );
+    });
+    const list = primaryCandidates.length > 0 ? primaryCandidates : pool;
+    const cam0 = list.find((d) => /\b0\b/.test(d.label || ""));
+    return cam0 || list[0];
   };
 
   // Native camera photo capture fallback (uses phone's full autofocus camera, works even over HTTP)
@@ -277,7 +311,7 @@ export default function CameraBarcodeScanner({
               height: { ideal: 1080 },
             };
 
-        const stream = await navigator.mediaDevices.getUserMedia({
+        let stream = await navigator.mediaDevices.getUserMedia({
           video: videoConstraints,
           audio: false,
         });
@@ -287,7 +321,42 @@ export default function CameraBarcodeScanner({
           return;
         }
 
+        // Enumerate cameras and ensure we are using the primary 1x rear camera when in auto mode
+        try {
+          const devices = await navigator.mediaDevices.enumerateDevices();
+          const videoDevices = devices.filter((d) => d.kind === "videoinput");
+          if (isMounted && videoDevices.length > 0) {
+            setCameras(
+              videoDevices.map((d, idx) => ({
+                id: d.deviceId,
+                label: d.label || `كاميرا ${idx + 1}`,
+              }))
+            );
+
+            const currentTrackDeviceId = stream.getVideoTracks()[0]?.getSettings?.()?.deviceId;
+            if (!selectedCameraId) {
+              const primaryCam = pickPrimaryBackCamera(videoDevices);
+              if (primaryCam && primaryCam.deviceId && primaryCam.deviceId !== currentTrackDeviceId) {
+                stream.getTracks().forEach((t) => t.stop());
+                stream = await navigator.mediaDevices.getUserMedia({
+                  video: {
+                    deviceId: { exact: primaryCam.deviceId },
+                    width: { ideal: 1920 },
+                    height: { ideal: 1080 },
+                  },
+                  audio: false,
+                });
+                if (!isMounted) {
+                  stream.getTracks().forEach((t) => t.stop());
+                  return;
+                }
+              }
+            }
+          }
+        } catch {}
+
         streamRef.current = stream;
+        activeCameraIdRef.current = stream.getVideoTracks()[0]?.getSettings?.()?.deviceId || selectedCameraId;
 
         const videoEl = videoRef.current;
         if (videoEl) {
@@ -322,20 +391,6 @@ export default function CameraBarcodeScanner({
             }
           } catch {}
         }
-
-        // Enumerate cameras for Switch button
-        try {
-          const devices = await navigator.mediaDevices.enumerateDevices();
-          const videoDevices = devices.filter((d) => d.kind === "videoinput");
-          if (isMounted && videoDevices.length > 0) {
-            setCameras(
-              videoDevices.map((d, idx) => ({
-                id: d.deviceId,
-                label: d.label || `كاميرا ${idx + 1}`,
-              }))
-            );
-          }
-        } catch {}
 
         setIsInitializing(false);
         rafActive = true;
