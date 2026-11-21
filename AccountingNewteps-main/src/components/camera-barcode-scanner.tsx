@@ -60,6 +60,24 @@ export default function CameraBarcodeScanner({
   const stopPromiseRef = useRef<Promise<void>>(Promise.resolve());
   const lastScanTimestampRef = useRef<number>(0);
   const lastScannedCodeRef = useRef<string>("");
+  const pendingCandidateRef = useRef<{ code: string; count: number; ts: number }>({
+    code: "",
+    count: 0,
+    ts: 0,
+  });
+
+  // Validate GS1 check digit for EAN-13, EAN-8, and UPC-A
+  const isValidGs1CheckDigit = (code: string): boolean => {
+    if (!/^\d+$/.test(code)) return false;
+    const digits = code.split("").map(Number);
+    const checkDigit = digits[digits.length - 1];
+    let sum = 0;
+    for (let i = digits.length - 2, pos = 1; i >= 0; i--, pos++) {
+      sum += digits[i] * (pos % 2 === 1 ? 3 : 1);
+    }
+    const expected = (10 - (sum % 10)) % 10;
+    return checkDigit === expected;
+  };
 
   // Synthesize a crisp retail scanner beep sound via Web Audio API
   const playBeep = useCallback(() => {
@@ -95,14 +113,48 @@ export default function CameraBarcodeScanner({
     } catch {}
   }, []);
 
-  // Handle successful scan
+  // Handle successful scan with check-digit validation and multi-frame consensus
   const handleDecodedText = useCallback(
-    (decodedText: string) => {
+    (decodedText: string, decodedResult?: any) => {
       if (!decodedText) return;
       const cleanCode = decodedText.trim();
       const now = Date.now();
+      const formatName = String(
+        decodedResult?.result?.format?.formatName || ""
+      ).toUpperCase();
 
-      // Debounce: prevent duplicate scan of the identical code within 1.5 seconds
+      // 1. Validate GS1 check digit for numeric retail barcodes (EAN-13, EAN-8, UPC-A)
+      if (
+        (formatName === "EAN_13" || (cleanCode.length === 13 && /^\d{13}$/.test(cleanCode))) &&
+        !isValidGs1CheckDigit(cleanCode)
+      ) {
+        return;
+      }
+      if (
+        (formatName === "EAN_8" || formatName === "UPC_A") &&
+        !isValidGs1CheckDigit(cleanCode)
+      ) {
+        return;
+      }
+
+      // 2. Require 2 matching reads within 900ms for 1D barcodes to eliminate blurry single-frame misreads
+      const isQr = formatName === "QR_CODE";
+      if (!isQr) {
+        const pending = pendingCandidateRef.current;
+        if (pending.code === cleanCode && now - pending.ts <= 900) {
+          pending.count += 1;
+          pending.ts = now;
+        } else {
+          pendingCandidateRef.current = { code: cleanCode, count: 1, ts: now };
+          return;
+        }
+        if (pendingCandidateRef.current.count < 2) {
+          return;
+        }
+        pendingCandidateRef.current = { code: "", count: 0, ts: 0 };
+      }
+
+      // 3. Debounce: prevent duplicate scan of the identical code within 1.5 seconds
       if (
         cleanCode === lastScannedCodeRef.current &&
         now - lastScanTimestampRef.current < 1500
@@ -197,33 +249,32 @@ export default function CameraBarcodeScanner({
           formatsToSupport: [
             Html5QrcodeSupportedFormats.EAN_13,
             Html5QrcodeSupportedFormats.EAN_8,
-            Html5QrcodeSupportedFormats.CODE_128,
-            Html5QrcodeSupportedFormats.CODE_39,
             Html5QrcodeSupportedFormats.UPC_A,
             Html5QrcodeSupportedFormats.UPC_E,
+            Html5QrcodeSupportedFormats.CODE_128,
+            Html5QrcodeSupportedFormats.CODE_39,
             Html5QrcodeSupportedFormats.QR_CODE,
-            Html5QrcodeSupportedFormats.ITF,
-            Html5QrcodeSupportedFormats.CODABAR,
           ],
+          useBarCodeDetectorIfSupported: true,
           verbose: false,
         });
 
         html5QrCodeRef.current = qrCodeInstance;
 
         const config = {
-          fps: 15,
+          fps: 20,
           qrbox: (viewfinderWidth: number, viewfinderHeight: number) => {
             const minEdge = Math.min(viewfinderWidth, viewfinderHeight);
             return {
-              width: Math.floor(minEdge * 0.85),
-              height: Math.floor(minEdge * 0.55),
+              width: Math.floor(viewfinderWidth * 0.9),
+              height: Math.floor(minEdge * 0.48),
             };
           },
           aspectRatio: 1.333334,
         };
 
-        const onDecode = (decodedText: string) => {
-          handleDecodedTextRef.current(decodedText);
+        const onDecode = (decodedText: string, decodedResult: any) => {
+          handleDecodedTextRef.current(decodedText, decodedResult);
         };
         const onDecodeFailure = () => {};
 
@@ -278,6 +329,15 @@ export default function CameraBarcodeScanner({
         }
 
         setIsInitializing(false);
+
+        // Request HD resolution and continuous autofocus for crisp 1D barcode reading
+        try {
+          await qrCodeInstance.applyVideoConstraints({
+            width: { ideal: 1280 },
+            height: { ideal: 720 },
+            advanced: [{ focusMode: "continuous" } as any],
+          });
+        } catch {}
 
         // Populate camera list in background for Switch Camera button (without triggering re-init)
         try {
