@@ -1,6 +1,7 @@
 "use client";
 
-import React, { useMemo, useState } from "react";
+import React, { useMemo, useState, useEffect } from "react";
+import RecipeHistoryDialog, { type RecipeHistorySnapshot } from "@/components/recipe-history-dialog";
 import PageHeader from "@/components/page-header";
 import {
   Card,
@@ -22,7 +23,7 @@ import { useData } from "@/contexts/data-provider";
 import { 
   Loader2, Filter, Printer, Factory, TrendingUp, TrendingDown,
   AlertTriangle, CheckCircle2, XCircle, Package, ArrowUpRight, ArrowDownLeft,
-  Trash2, ShoppingCart, ShoppingBag, Layers, Search, Eye, Scale, HelpCircle
+  Trash2, ShoppingCart, ShoppingBag, Layers, Search, Eye, Scale, HelpCircle, History
 } from "lucide-react";
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -80,6 +81,19 @@ export default function ManufacturingFeasibilityReportPage() {
   });
 
   const [selectedProductForModal, setSelectedProductForModal] = useState<any | null>(null);
+  const [isRecipeHistoryOpen, setIsRecipeHistoryOpen] = useState(false);
+  const [recipeHistoryList, setRecipeHistoryList] = useState<RecipeHistorySnapshot[]>([]);
+
+  useEffect(() => {
+    fetch('/api/recipes/history', { cache: 'no-store' })
+      .then((r) => r.json())
+      .then((data) => {
+        if (data?.success && Array.isArray(data.history)) {
+          setRecipeHistoryList(data.history);
+        }
+      })
+      .catch(() => {});
+  }, []);
 
   const handleFilterChange = (key: string, value: string) => {
     setFilters(prev => ({ ...prev, [key]: value }));
@@ -370,13 +384,26 @@ export default function ManufacturingFeasibilityReportPage() {
       const actualProduction = actualProductionCostMap.get(prod.id);
       const actualUnitProductionCost = actualProduction && actualProduction.qty > 0 ? actualProduction.cost / actualProduction.qty : 0;
 
+      // تحديد المكونات التاريخية المعتمدة حتى نهاية الفترة المفلترة (لمنع تأثر التقارير السابقة بتعديل الريسبي لاحقاً)
+      const asOfEnd = filters.toDate ? new Date(`${filters.toDate}T23:59:59.999`) : new Date();
+      const matchedSnapshot = recipeHistoryList.find((snap) => {
+        if (snap.itemId !== prod.id) return false;
+        const from = new Date(snap.effectiveFrom);
+        const to = snap.effectiveTo ? new Date(snap.effectiveTo) : null;
+        return from <= asOfEnd && (!to || to > asOfEnd);
+      });
+      const activeComponents =
+        matchedSnapshot && matchedSnapshot.components?.length > 0
+          ? matchedSnapshot.components
+          : prod.components || [];
+
       // تحليل المكونات المستهلكة لإنتاج الكمية المباعة
       let totalMaterialCostForSold = actualUnitProductionCost > 0 ? sales.soldQty * actualUnitProductionCost : 0;
-      const componentsBreakdown = (prod.components || []).map(comp => {
+      const componentsBreakdown = activeComponents.map((comp: any) => {
         const rawItem = itemsMap.get(comp.itemId);
         const unitRequired = Number(comp.quantity || 0);
         const totalRawQtyUsed = sales.soldQty * unitRequired;
-        const rawUnitCost = Number(rawItem?.cost || 0);
+        const rawUnitCost = Number(comp.unitCostAtSnapshot || rawItem?.cost || 0);
         const totalRawCost = totalRawQtyUsed * rawUnitCost;
 
         if (!actualUnitProductionCost) totalMaterialCostForSold += totalRawCost;
@@ -546,7 +573,7 @@ export default function ManufacturingFeasibilityReportPage() {
         lossCount: productsAnalysis.filter(p => p.status === 'loss').length,
       }
     };
-  }, [allItems, itemsMap, salesInvoices, posSales, salesReturns, posReturns, stockInRecords, stockOutRecords, rawMaterialPurchasesMap, wasteMap]);
+  }, [allItems, itemsMap, salesInvoices, posSales, salesReturns, posReturns, stockInRecords, stockOutRecords, rawMaterialPurchasesMap, wasteMap, recipeHistoryList, filters.toDate]);
 
   // تطبيق فلاتر البحث والجدوى على قائمة المنتجات المصنعة
   const filteredProducts = useMemo(() => {
@@ -587,6 +614,15 @@ export default function ManufacturingFeasibilityReportPage() {
         description="تحليل تكلفة الإنتاج الفعلية والتشغيلات والهدر وسعر البيع وهامش الربح لكل منتج مصنع."
       >
         <div className="flex items-center gap-2 flex-wrap no-print">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setIsRecipeHistoryOpen(true)}
+            className="gap-1.5 text-xs font-semibold h-8 border-primary/40 text-primary hover:bg-primary/10"
+          >
+            <History className="h-3.5 w-3.5" />
+            السجل التاريخي لتعديلات الريسبي
+          </Button>
           <Button 
             variant="outline" 
             size="sm" 
@@ -598,6 +634,10 @@ export default function ManufacturingFeasibilityReportPage() {
           </Button>
         </div>
       </PageHeader>
+      <RecipeHistoryDialog
+        isOpen={isRecipeHistoryOpen}
+        onOpenChange={setIsRecipeHistoryOpen}
+      />
 
       <main className="flex flex-1 flex-col gap-4 p-3 md:p-5 w-full">
         {/* 2. Filter Bar */}

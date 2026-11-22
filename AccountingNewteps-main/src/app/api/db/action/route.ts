@@ -4,6 +4,7 @@ import { logAuditEvent } from '@/lib/audit-logger';
 import { calculateInvoiceReturnTotals } from '@/lib/invoice-return-totals';
 import { logSystemError } from '@/lib/error-logger';
 import { getCentralConfig, connectToCentral } from '@/lib/central-sync';
+import { recordRecipeSnapshot } from '@/lib/recipe-history';
 
 async function getBranchInfo(pool: sql.ConnectionPool, explicitBranchCode?: string | null, explicitBranchName?: string | null) {
     if (explicitBranchCode && explicitBranchName) {
@@ -1205,6 +1206,22 @@ export async function POST(req: Request) {
                         INSERT INTO dbo.Items (Id, Code, Name, Cost, Price, BaseUnit, ItemType, ReorderPoint, SectionId, CategoryId, ItemGroupId, SubCategoryId1, SubCategoryId2, Barcode, BarcodeType, Color, Size, DefaultBinId, SecondaryUnitsJson, ComponentsJson, IsDisabled)
                         VALUES (@Id, @Code, @Name, @Cost, @Price, @BaseUnit, @ItemType, @ReorderPoint, @SectionId, @CategoryId, @ItemGroupId, @SubCategoryId1, @SubCategoryId2, @Barcode, @BarcodeType, @Color, @Size, @DefaultBinId, @SecondaryUnitsJson, @ComponentsJson, @IsDisabled);
                     `);
+                if (Array.isArray(payload.components) && payload.components.length > 0) {
+                    try {
+                        await recordRecipeSnapshot(pool, {
+                            itemId: id,
+                            itemCode: payload.code ? String(payload.code) : null,
+                            itemName: payload.name || 'Unnamed Item',
+                            components: payload.components,
+                            previousComponents: null,
+                            changeNotes: payload.recipeChangeNotes || 'اعتماد المستند الأساسي للريسبي (الإصدار الأول)',
+                            changedById: body?.userId || payload.createdById || null,
+                            changedByName: body?.userName || payload.createdByName || 'المستخدم',
+                        });
+                    } catch (rhErr) {
+                        console.warn('RecipeHistory snapshot on add failed:', rhErr);
+                    }
+                }
                 return NextResponse.json({ success: true, id });
             }
 
@@ -1757,6 +1774,15 @@ export async function POST(req: Request) {
             }
 
             if (path === 'items' && updateId) {
+                let prevItemRow: any = null;
+                if (Array.isArray(data.components)) {
+                    try {
+                        const prevRes = await pool.request()
+                            .input('Id', sql.NVarChar(64), updateId)
+                            .query(`SELECT TOP 1 Code, Name, ItemType, ComponentsJson FROM dbo.Items WHERE Id = @Id`);
+                        prevItemRow = prevRes.recordset[0] || null;
+                    } catch {}
+                }
                 const clearItemGroupId = (data.itemGroupId === '' || data.itemGroupId === null) ? 1 : 0;
                 await pool.request()
                     .input('Id', sql.NVarChar(64), updateId)
@@ -1802,6 +1828,23 @@ export async function POST(req: Request) {
                             IsDisabled = COALESCE(@IsDisabled, IsDisabled)
                         WHERE Id = @Id;
                     `);
+                if (Array.isArray(data.components)) {
+                    try {
+                        const prevComps = prevItemRow?.ComponentsJson ? JSON.parse(prevItemRow.ComponentsJson) : null;
+                        await recordRecipeSnapshot(pool, {
+                            itemId: updateId,
+                            itemCode: data.code ? String(data.code) : (prevItemRow?.Code || null),
+                            itemName: data.name || prevItemRow?.Name || 'صنف مصنع',
+                            components: data.components,
+                            previousComponents: prevComps,
+                            changeNotes: data.recipeChangeNotes || undefined,
+                            changedById: body?.userId || data.updatedById || null,
+                            changedByName: body?.userName || data.updatedByName || 'المستخدم',
+                        });
+                    } catch (rhErr) {
+                        console.warn('RecipeHistory snapshot on update failed:', rhErr);
+                    }
+                }
                 return NextResponse.json({ success: true });
             }
 

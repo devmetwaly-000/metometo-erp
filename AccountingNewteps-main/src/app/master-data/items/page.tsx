@@ -38,6 +38,7 @@ import { useToast } from "@/hooks/use-toast";
 import { usePermissions } from "@/contexts/permissions-context";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog';
 import { BarcodePrintDialog } from "@/components/barcode-print-dialog";
+import RecipeHistoryDialog from "@/components/recipe-history-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { PlusCircle, Trash2, Loader2, QrCode, TrendingUp, Search, Component, Save, History, Edit, MoreHorizontal, X, Clock, Calculator, Layers, CheckCheck, FolderTree, Check, AlertTriangle } from "lucide-react";
@@ -1259,6 +1260,7 @@ function ItemForm({ item, onSave, onClose, itemSections, itemCategories, itemGro
   const [formData, setFormData] = useState<Item>(item || { name: "", price: 0, cost: 0, reorderPoint: 0, baseUnit: 'piece', itemType: 'standard' });
   const [isSecondaryUnitOpen, setIsSecondaryUnitOpen] = useState(false);
   const [editingUnit, setEditingUnit] = useState<Partial<SecondaryUnit> | null>(null);
+  const [isRecipeHistoryOpen, setIsRecipeHistoryOpen] = useState(false);
 
   // Quick inline add states
   const [isAddingSectionInline, setIsAddingSectionInline] = useState(false);
@@ -1864,11 +1866,36 @@ function ItemForm({ item, onSave, onClose, itemSections, itemCategories, itemGro
       </div>
       <div className="space-y-6 p-4 border rounded-lg bg-muted/50">
         {formData.itemType === 'manufactured' && (
-            <ComponentManagement 
-                components={formData.components || []} 
-                onComponentsChange={(newComponents) => setFormData(prev => ({ ...prev, components: newComponents }))} 
-                allItems={allItems} 
-            />
+            <div className="space-y-3">
+                {item?.id && (
+                    <div className="flex items-center justify-between gap-2 pb-1">
+                        <span className="text-xs font-bold text-muted-foreground">مكونات الريسبي والتصنيع</span>
+                        <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            className="h-8 text-xs font-bold border-primary/40 text-primary hover:bg-primary/10"
+                            onClick={() => setIsRecipeHistoryOpen(true)}
+                        >
+                            <History className="h-3.5 w-3.5 ml-1.5" />
+                            المستند التاريخي للريسبي
+                        </Button>
+                    </div>
+                )}
+                <ComponentManagement 
+                    components={formData.components || []} 
+                    onComponentsChange={(newComponents) => setFormData(prev => ({ ...prev, components: newComponents }))} 
+                    allItems={allItems} 
+                />
+                {item?.id && (
+                    <RecipeHistoryDialog
+                        isOpen={isRecipeHistoryOpen}
+                        onOpenChange={setIsRecipeHistoryOpen}
+                        itemId={item.id}
+                        itemName={formData.name || item.name}
+                    />
+                )}
+            </div>
         )}
         <div className="space-y-2">
               <Label>الوحدات الثانوية</Label>

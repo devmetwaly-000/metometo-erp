@@ -1,7 +1,10 @@
 
 "use client"
 
-import React, { useMemo, useState, useCallback } from 'react';
+import React, { useMemo, useState, useCallback, useEffect } from 'react';
+import Link from 'next/link';
+import { calculateAccountBalance, getPurchaseInvoiceTotal } from '@/lib/accounting-utils';
+import { Button } from '@/components/ui/button';
 import { 
   Bar, 
   CartesianGrid, 
@@ -70,10 +73,20 @@ export default function AnalyticsPage() {
     const { 
         items, salesInvoices, purchaseInvoices, warehouses, 
         expenses, posSales, salesReturns, posReturns, 
-        exceptionalIncomes, users, loading 
+        exceptionalIncomes, users, cashAccounts, loading 
     } = allDataContext;
     
     const isMobile = useIsMobile();
+
+    const [recipeHistoryList, setRecipeHistoryList] = useState<any[]>([]);
+    useEffect(() => {
+      fetch('/api/recipes/history', { cache: 'no-store' })
+        .then(r => r.json())
+        .then(d => {
+          if (d?.success && Array.isArray(d.history)) setRecipeHistoryList(d.history);
+        })
+        .catch(() => {});
+    }, []);
 
     // Default to last 5 months
     const [dateRange, setDateRange] = useState({
@@ -82,17 +95,32 @@ export default function AnalyticsPage() {
     });
     const [selectedWarehouse, setSelectedWarehouse] = useState('all');
 
-    const calculateItemCost = useCallback((itemMaster: any, saleItem?: any) => {
+    const calculateItemCost = useCallback((itemMaster: any, saleItem?: any, txDateStr?: string) => {
         if (saleItem?.cost) return saleItem.cost;
         if (!itemMaster) return 0;
-        if (itemMaster.itemType === 'manufactured' && itemMaster.components) {
-            return itemMaster.components.reduce((total: number, comp: any) => {
-                const compMaster = items.find(i => i.id === comp.itemId);
-                return total + (comp.quantity * (compMaster?.cost || 0));
-            }, 0);
+        if (itemMaster.itemType === 'manufactured') {
+            // Check historical recipe snapshot active at transaction date first
+            if (txDateStr && recipeHistoryList.length > 0) {
+                const txTime = new Date(txDateStr).getTime();
+                const snap = recipeHistoryList.find((s: any) => {
+                    if (s.itemId !== itemMaster.id) return false;
+                    const from = new Date(s.effectiveFrom).getTime();
+                    const to = s.effectiveTo ? new Date(s.effectiveTo).getTime() : null;
+                    return from <= txTime && (!to || to > txTime);
+                });
+                if (snap) {
+                    return Number(snap.totalRecipeCost || 0);
+                }
+            }
+            if (itemMaster.components) {
+                return itemMaster.components.reduce((total: number, comp: any) => {
+                    const compMaster = items.find(i => i.id === comp.itemId);
+                    return total + (comp.quantity * (compMaster?.cost || 0));
+                }, 0);
+            }
         }
         return itemMaster.cost || 0;
-    }, [items]);
+    }, [items, recipeHistoryList]);
 
     const analytics = useMemo(() => {
         if (loading) return null;
@@ -135,7 +163,7 @@ export default function AnalyticsPage() {
             const saleRevenue = sale.total;
             const saleCOGS = sale.items?.reduce((sum: number, si: any) => {
                 const master = items.find(i => i.id === si.id);
-                const cost = calculateItemCost(master, si);
+                const cost = calculateItemCost(master, si, sale.date);
                 
                 // Track per-item stats
                 if (master) {
@@ -173,7 +201,7 @@ export default function AnalyticsPage() {
             const retValue = ret.total;
             const retCOGS = ret.items?.reduce((sum: number, ri: any) => {
                 const master = items.find(i => i.id === ri.id);
-                const cost = calculateItemCost(master, ri);
+                const cost = calculateItemCost(master, ri, ret.date);
 
                 // Track per-item stats (reduce from stats)
                 if (master) {
@@ -230,7 +258,54 @@ export default function AnalyticsPage() {
             };
         }).sort((a,b) => b.amount - a.amount);
 
+        // Live Liquidity & Due-Date Forecast Summary
+        const currentCashBalance = (cashAccounts || []).reduce(
+            (sum: number, acc: any) => sum + calculateAccountBalance(acc, allDataContext),
+            0
+        );
+        const nowDay = new Date();
+        nowDay.setHours(0, 0, 0, 0);
+        const in30Days = new Date(nowDay);
+        in30Days.setDate(in30Days.getDate() + 30);
+
+        let dueReceivablesTotal = 0;
+        let overdueReceivablesTotal = 0;
+        let due30ReceivablesTotal = 0;
+        (salesInvoices || []).forEach((inv: any) => {
+            if (inv.status && inv.status !== 'approved' && inv.status !== 'completed') return;
+            const rem = Math.max(0, Number(inv.total || 0) - Number(inv.paidAmount || 0));
+            if (rem <= 0.01) return;
+            const d = new Date(inv.dueDate || inv.date);
+            d.setHours(0, 0, 0, 0);
+            dueReceivablesTotal += rem;
+            if (d < nowDay) overdueReceivablesTotal += rem;
+            else if (d <= in30Days) due30ReceivablesTotal += rem;
+        });
+
+        let duePayablesTotal = 0;
+        let overduePayablesTotal = 0;
+        let due30PayablesTotal = 0;
+        (purchaseInvoices || []).forEach((inv: any) => {
+            const rem = Math.max(0, getPurchaseInvoiceTotal(inv) - Number(inv.paidAmount || 0));
+            if (rem <= 0.01) return;
+            const d = new Date(inv.dueDate || inv.date);
+            d.setHours(0, 0, 0, 0);
+            duePayablesTotal += rem;
+            if (d < nowDay) overduePayablesTotal += rem;
+            else if (d <= in30Days) due30PayablesTotal += rem;
+        });
+
         return {
+            liquiditySummary: {
+                currentCashBalance,
+                dueReceivablesTotal,
+                overdueReceivablesTotal,
+                due30ReceivablesTotal,
+                duePayablesTotal,
+                overduePayablesTotal,
+                due30PayablesTotal,
+                projectedNetLiquidity: currentCashBalance + dueReceivablesTotal - duePayablesTotal,
+            },
             kpis: {
                 totalRevenue,
                 netProfit,
@@ -343,6 +418,60 @@ export default function AnalyticsPage() {
                         </CardContent>
                     </Card>
                 </div>
+
+                {/* Liquidity & Due Dates Forecast Strip */}
+                <Card className="border-2 border-primary/20 bg-primary/5 shadow-sm">
+                    <CardHeader className="pb-3 flex flex-row flex-wrap items-center justify-between gap-2">
+                        <div>
+                            <CardTitle className="text-base font-bold flex items-center gap-2">
+                                <Wallet className="h-5 w-5 text-primary" />
+                                موقف السيولة وتوقعات الاستحقاق (حسب تواريخ استحقاق الفواتير)
+                            </CardTitle>
+                            <CardDescription className="text-xs">
+                                مقارنة السيولة النقدية المتاحة مع التحصيلات المستحقة من العملاء وسدادات الموردين.
+                            </CardDescription>
+                        </div>
+                        <Button asChild size="sm" className="font-bold">
+                            <Link href="/reports/liquidity">
+                                فتح تقرير السيولة ومواعيد السداد التفصيلي
+                            </Link>
+                        </Button>
+                    </CardHeader>
+                    <CardContent>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 text-xs">
+                            <div className="p-3 rounded-lg bg-background border">
+                                <span className="text-muted-foreground block">السيولة المتاحة (خزائن وبنوك)</span>
+                                <span className="text-lg font-black font-mono text-primary">
+                                    {analytics.liquiditySummary.currentCashBalance.toLocaleString()} ج.م
+                                </span>
+                            </div>
+                            <div className="p-3 rounded-lg bg-background border">
+                                <span className="text-muted-foreground block">تحصيلات عملاء مستحقة</span>
+                                <span className="text-lg font-black font-mono text-emerald-600">
+                                    +{analytics.liquiditySummary.dueReceivablesTotal.toLocaleString()} ج.م
+                                </span>
+                                <span className="block text-[10px] text-muted-foreground mt-0.5">
+                                    متأخر: {analytics.liquiditySummary.overdueReceivablesTotal.toLocaleString()} | خلال 30 يوم: {analytics.liquiditySummary.due30ReceivablesTotal.toLocaleString()}
+                                </span>
+                            </div>
+                            <div className="p-3 rounded-lg bg-background border">
+                                <span className="text-muted-foreground block">سدادات موردين مستحقة</span>
+                                <span className="text-lg font-black font-mono text-destructive">
+                                    -{analytics.liquiditySummary.duePayablesTotal.toLocaleString()} ج.م
+                                </span>
+                                <span className="block text-[10px] text-muted-foreground mt-0.5">
+                                    متأخر: {analytics.liquiditySummary.overduePayablesTotal.toLocaleString()} | خلال 30 يوم: {analytics.liquiditySummary.due30PayablesTotal.toLocaleString()}
+                                </span>
+                            </div>
+                            <div className="p-3 rounded-lg bg-background border">
+                                <span className="text-muted-foreground block">صافي السيولة المتوقعة</span>
+                                <span className={cn("text-lg font-black font-mono", analytics.liquiditySummary.projectedNetLiquidity >= 0 ? "text-emerald-600" : "text-destructive")}>
+                                    {analytics.liquiditySummary.projectedNetLiquidity.toLocaleString()} ج.م
+                                </span>
+                            </div>
+                        </div>
+                    </CardContent>
+                </Card>
 
                 <Card className="shadow-md">
                     <CardHeader>

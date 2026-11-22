@@ -501,6 +501,7 @@ export const navStructure = [
             { type: 'link', href: '/reports/price-change-logs', module: 'reports_priceChangeLogs', title: dictionary.nav.priceChangeLog },
         ]},
         { type: 'collapsible', title: dictionary.nav.financialAndAccountsReports, modules: ['reports_customerReceivables', 'reports_supplierPayables', 'reports_supplierStatement', 'reports_cashAccountStatement', 'reports_partnerShares', 'reports_financialStatements', 'accounting_expenses', 'accounting_vat'], children: [
+            { type: 'link', href: '/reports/liquidity', module: 'reports_financialStatements', title: "تحليلات السيولة ومواعيد الاستحقاق" },
             { type: 'link', href: '/reports/financial-statements', module: 'reports_financialStatements', title: dictionary.nav.financialStatements },
             { type: 'link', href: '/reports/expenses-report', module: 'accounting_expenses', title: "تقرير المصروفات والتحليل المالي" },
             { type: 'link', href: '/reports/customer-statement', module: 'reports_customerReceivables', title: "كشف حساب عميل تفصيلي" },
