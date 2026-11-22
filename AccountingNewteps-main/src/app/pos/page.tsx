@@ -220,7 +220,7 @@ const PaymentDialog = ({ onAddPayment, totalDue, paymentMethods }: { onAddPaymen
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="flex flex-col gap-2">
                     <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3 md:gap-4 py-4">
-                         {paymentMethods.map(pm => {
+                         {(paymentMethods || []).map(pm => {
                             const isSelected = method === pm.name;
                             const customStyle = pm.color ? {
                                 backgroundColor: isSelected ? pm.color : 'transparent',
@@ -283,7 +283,7 @@ const SellerSelectionDialog = ({ onSelectSeller, warehouseId }: { onSelectSeller
                 <DialogDescription>الرجاء تحديد البائع المسؤول عن هذه الفاتورة.</DialogDescription>
             </UIDialogHeader>
             <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4 py-4">
-                {sellersForWarehouse.map((seller: any) => (
+                {(sellersForWarehouse || []).map((seller: any) => (
                      <Button 
                         key={seller.id} 
                         variant="outline" 
@@ -581,7 +581,7 @@ const DeliveryPersonDialog = ({ onSelect, onOpenChange }: { onSelect: (id: strin
                 <DialogDescription className="sr-only">تحديد مسؤول توصيل الطلب</DialogDescription>
             </UIDialogHeader>
             <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4 py-4">
-                {deliveryStaff.map((staff: any) => (
+                {(deliveryStaff || []).map((staff: any) => (
                     <Button
                         key={staff.id}
                         variant="outline"
@@ -592,7 +592,7 @@ const DeliveryPersonDialog = ({ onSelect, onOpenChange }: { onSelect: (id: strin
                         <span>{staff.name}</span>
                     </Button>
                 ))}
-                {deliveryStaff.length === 0 && (
+                {(!deliveryStaff || deliveryStaff.length === 0) && (
                     <p className="col-span-full text-center text-muted-foreground">لا يوجد موظفو توصيل معرفون في النظام.</p>
                 )}
             </div>
@@ -659,12 +659,17 @@ const HeldInvoicesDialog = ({ onRetrieve, onClose }: { onRetrieve: (invoice: Hel
     const { heldInvoices, dbAction, loading } = useData();
 
     const nonTableInvoices = useMemo(() => {
-        return heldInvoices.filter((inv: HeldInvoice) => !inv.tableId);
+        return (heldInvoices || []).filter((inv: HeldInvoice) => inv && !inv.tableId);
     }, [heldInvoices]);
 
 
     const handleRetrieve = (invoice: HeldInvoice) => {
-        onRetrieve(invoice);
+        const safeCart = Array.isArray(invoice.cart)
+            ? invoice.cart
+            : Array.isArray((invoice as any).items)
+            ? (invoice as any).items
+            : [];
+        onRetrieve({ ...invoice, cart: safeCart });
         dbAction('heldInvoices', 'remove', {id: invoice.id});
         onClose();
     }
@@ -710,8 +715,8 @@ const HeldInvoicesDialog = ({ onRetrieve, onClose }: { onRetrieve: (invoice: Hel
                                     <Table>
                                         <TableHeader><TableRow><TableHead>الصنف</TableHead><TableHead>الكمية</TableHead><TableHead>السعر</TableHead><TableHead>الإجمالي</TableHead></TableRow></TableHeader>
                                         <TableBody>
-                                            {inv.cart.map(item => (
-                                                <TableRow key={item.uniqueId}>
+                                            {(Array.isArray(inv.cart) ? inv.cart : (Array.isArray((inv as any).items) ? (inv as any).items : [])).map((item: any, idx: number) => (
+                                                <TableRow key={item.uniqueId || item.id || idx}>
                                                     <TableCell>{item.name}</TableCell>
                                                     <TableCell>{item.qty}</TableCell>
                                                     <TableCell>{item.price}</TableCell>
@@ -963,30 +968,30 @@ const QuantityEditDialog = ({ item, onConfirm, onClose }: { item: PosItem, onCon
 const SelfShiftOpeningDialog = ({ onConfirm, onClose, warehouses, terminals, activeSessions }: { onConfirm: (data: { posTerminalId: string, sessionWarehouseId: string }) => void, onClose: () => void, warehouses: any[], terminals: any[], activeSessions: any[] }) => {
     const [posTerminalId, setPosTerminalId] = useState('');
     
-    const selectedTerminal = terminals.find(t => (t.id || t.Id) === posTerminalId);
+    const selectedTerminal = (terminals || []).find(t => t && (t.id || t.Id) === posTerminalId);
     const sessionWarehouseId = selectedTerminal?.warehouseId || selectedTerminal?.WarehouseId;
     const sessionWarehouseName = useMemo(() => {
         if (!sessionWarehouseId) return "اختر نقطة بيع أولاً";
-        const foundWh = warehouses.find(w => (w.id || w.Id) === sessionWarehouseId);
+        const foundWh = (warehouses || []).find(w => w && (w.id || w.Id) === sessionWarehouseId);
         return foundWh?.name || (foundWh as any)?.Name || "مخزن غير معروف";
     }, [sessionWarehouseId, warehouses]);
 
     const availableTerminals = useMemo(() => {
-        const activeTerminalIds = new Set(activeSessions.map(s => s.posTerminalId || s.PosTerminalId));
-        return terminals.filter(t => !activeTerminalIds.has(t.id || t.Id));
+        const activeTerminalIds = new Set((activeSessions || []).map(s => s?.posTerminalId || s?.PosTerminalId));
+        return (terminals || []).filter(t => t && !activeTerminalIds.has(t.id || t.Id));
     }, [terminals, activeSessions]);
     
     const terminalOptions = useMemo(() => {
-        return availableTerminals.map(t => {
+        return (availableTerminals || []).map(t => {
             const wId = t.warehouseId || t.WarehouseId;
-            const foundWh = warehouses.find(w => (w.id || w.Id) === wId);
+            const foundWh = (warehouses || []).find(w => w && (w.id || w.Id) === wId);
             const warehouseName = foundWh?.name || (foundWh as any)?.Name || 'غير محدد';
             return { value: t.id || t.Id, label: `${t.name || t.Name} (${warehouseName})` };
         });
     }, [availableTerminals, warehouses]);
 
     const handleSubmit = () => {
-        const term = terminals.find(t => (t.id || t.Id) === posTerminalId);
+        const term = (terminals || []).find(t => t && (t.id || t.Id) === posTerminalId);
         const wId = sessionWarehouseId || term?.warehouseId || term?.WarehouseId;
         if (posTerminalId && wId) {
             onConfirm({ posTerminalId, sessionWarehouseId: wId });
@@ -1388,10 +1393,15 @@ function PosPageContent() {
     useEffect(() => {
         if (tableId) {
             setShowBackButton(true);
-            const tableInvoice = heldInvoices.find((inv: HeldInvoice) => inv.tableId === tableId);
+            const tableInvoice = (heldInvoices || []).find((inv: HeldInvoice) => inv && inv.tableId === tableId);
             if (tableInvoice) {
                 setCurrentHeldInvoiceId(tableInvoice.id);
-                setCart(tableInvoice.cart || []);
+                const safeCart = Array.isArray(tableInvoice.cart)
+                    ? tableInvoice.cart
+                    : Array.isArray((tableInvoice as any).items)
+                    ? (tableInvoice as any).items
+                    : [];
+                setCart(safeCart);
                 setDiscount(tableInvoice.discount || 0);
                 setTips(tableInvoice.tips || 0); // Restore tips
                 setOrderReference(tableInvoice.orderReference || '');
@@ -2626,8 +2636,13 @@ function PosPageContent() {
     };
 
     const handleRetrieveInvoice = (invoice: HeldInvoice) => {
-        setCart(invoice.cart);
-        setDiscount(invoice.discount);
+        const safeCart = Array.isArray(invoice.cart)
+            ? invoice.cart
+            : Array.isArray((invoice as any).items)
+            ? (invoice as any).items
+            : [];
+        setCart(safeCart);
+        setDiscount(invoice.discount || 0);
         setTips(invoice.tips || 0); // Restore tips
         setOrderReference(invoice.orderReference || '');
         toast({ title: 'تم استرجاع الفاتورة', description: 'الفاتورة جاهزة للاستكمال.' });
@@ -3077,7 +3092,7 @@ function PosPageContent() {
                                     </TableRow>
                                 </TableHeader>
                                  <TableBody>
-                                    {cart.map(item => {
+                                    {(cart || []).map(item => {
                                         const lastPrice = getItemLastPrice(item.id);
                                         const itemPtsPromo = getItemPointsPromotion(item, cxConfig);
                                         return (
@@ -3182,7 +3197,7 @@ function PosPageContent() {
                                             <span className="font-semibold text-foreground">الأصناف المطابقة ({matchingQuickItems.length}):</span>
                                             <span>اضغط على أي صنف لإضافته للسلة فوراً</span>
                                         </div>
-                                        {matchingQuickItems.map((item: any) => (
+                                        {(matchingQuickItems || []).map((item: any) => (
                                             <div
                                                 key={item.id}
                                                 className="flex items-center justify-between p-2 rounded-lg hover:bg-accent cursor-pointer transition-colors"
@@ -3239,7 +3254,7 @@ function PosPageContent() {
                                      <Button size="lg" variant={activeGroupId === 'all' ? 'secondary' : 'ghost'} onClick={() => { setActiveGroupId('all'); setActiveGroupType('all'); setSearchTerm(''); setExplicitShowAll(true); }} className="h-14 shrink-0">
                                         <Grip className="ml-2 h-5 w-5" /> كل الأصناف
                                     </Button>
-                                    {groupsToShow.map((group: any) => {
+                                    {(groupsToShow || []).map((group: any) => {
                                         const isHex = group.color && (group.color.startsWith('#') || group.color.startsWith('rgb') || group.color.startsWith('hsl'));
                                         const borderClass = !group.color ? 'border-primary/50' : (!isHex ? (group.color.startsWith('bg-') ? group.color.replace(/^bg-/, 'border-') : group.color) : '');
                                         return (
@@ -3293,7 +3308,7 @@ function PosPageContent() {
                                              <Grip className="h-5 w-5 shrink-0" />
                                              <span className="leading-tight line-clamp-2">كل الأصناف</span>
                                          </Button>
-                                         {groupsToShow.map((group: any) => {
+                                         {(groupsToShow || []).map((group: any) => {
                                              const isHex = group.color && (group.color.startsWith('#') || group.color.startsWith('rgb') || group.color.startsWith('hsl'));
                                              const borderClass = !group.color ? 'border-primary/50' : (!isHex ? (group.color.startsWith('bg-') ? group.color.replace(/^bg-/, 'border-') : group.color) : '');
                                              return (
@@ -3339,7 +3354,7 @@ function PosPageContent() {
                                     </div>
                                 ) : (
                                     <div className="p-1 grid grid-cols-3 sm:grid-cols-4 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-2">
-                                        {itemsToShow.map((item: any) => (
+                                        {(itemsToShow || []).map((item: any) => (
                                             <button
                                                 key={item.id}
                                                 onClick={() => handleShortClick(item)}
@@ -3412,7 +3427,7 @@ function PosPageContent() {
 
                              <div className="lg:col-span-2 space-y-2 border-r rtl:border-r-0 rtl:border-l pr-2 rtl:pl-2 rtl:pr-0">
                                 <div className="grid grid-cols-2 gap-x-4 gap-y-1 min-h-[60px]">
-                                    {payments.map(p => (
+                                    {(payments || []).map(p => (
                                         <div key={p.id} className="flex items-center justify-between text-sm bg-muted p-1 rounded-md">
                                              <div className="flex items-center gap-2">
                                                 <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => handleRemovePayment(p.id)}><Trash2 className="h-4 w-4 text-destructive"/></Button>
@@ -3468,7 +3483,7 @@ function PosPageContent() {
         <CameraBarcodeScanner
             isOpen={isCameraScannerOpen}
             onOpenChange={setIsCameraScannerOpen}
-            scannedItems={[...cart].reverse().map((item) => ({
+            scannedItems={[...(cart || [])].reverse().map((item) => ({
                 id: item.uniqueId,
                 name: item.name,
                 qty: item.qty,

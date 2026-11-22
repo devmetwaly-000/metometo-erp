@@ -339,18 +339,23 @@ export async function GET() {
         }));
 
         // POS & Restaurant
-        const heldInvoices = heldInvoicesRes.recordset.map(h => ({
-            ...h,
-            id: h.Id || h.id,
-            heldAt: h.HeldAt || h.heldAt,
-            cashierId: h.CashierId || h.cashierId,
-            cashierName: h.CashierName || h.cashierName,
-            terminalId: h.TerminalId || h.terminalId,
-            tableId: h.TableId || h.tableId,
-            customerName: h.CustomerName || h.customerName,
-            total: Number(h.Total ?? h.total ?? 0),
-            items: parseJson(h.CartData || h.cartData || h.items, [])
-        }));
+        const heldInvoices = heldInvoicesRes.recordset.map(h => {
+            const parsedCart = parseJson(h.CartData || h.cartData || h.items || h.cart, []);
+            const validCart = Array.isArray(parsedCart) ? parsedCart : (parsedCart?.cart || []);
+            return {
+                ...h,
+                id: h.Id || h.id,
+                heldAt: h.HeldAt || h.heldAt,
+                cashierId: h.CashierId || h.cashierId,
+                cashierName: h.CashierName || h.cashierName,
+                terminalId: h.TerminalId || h.terminalId,
+                tableId: h.TableId || h.tableId,
+                customerName: h.CustomerName || h.customerName,
+                total: Number(h.Total ?? h.total ?? 0),
+                cart: validCart,
+                items: validCart
+            };
+        });
 
         return NextResponse.json({
             success: true,
