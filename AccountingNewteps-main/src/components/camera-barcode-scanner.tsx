@@ -29,6 +29,7 @@ import {
   Plus,
   Minus,
   Trash2,
+  Focus,
 } from "lucide-react";
 
 export interface ScannedCartPreviewItem {
@@ -65,6 +66,8 @@ export default function CameraBarcodeScanner({
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [cameras, setCameras] = useState<{ id: string; label: string }[]>([]);
   const [selectedCameraId, setSelectedCameraId] = useState<string | null>(null);
+  const [activeCameraLabel, setActiveCameraLabel] = useState<string>("");
+  const [cameraFeedbackMsg, setCameraFeedbackMsg] = useState<string | null>(null);
   const [isContinuous, setIsContinuous] = useState(defaultContinuous);
   const [isSoundEnabled, setIsSoundEnabled] = useState(true);
   const [isTorchOn, setIsTorchOn] = useState(false);
@@ -74,27 +77,16 @@ export default function CameraBarcodeScanner({
   const [retryNonce, setRetryNonce] = useState(0);
   const [zoomRange, setZoomRange] = useState<{ min: number; max: number; step: number } | null>(null);
   const [zoomValue, setZoomValue] = useState<number>(1);
+  const [tapFocusCoord, setTapFocusCoord] = useState<{ x: number; y: number } | null>(null);
 
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const cropCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const photoInputRef = useRef<HTMLInputElement | null>(null);
   const activeCameraIdRef = useRef<string | null>(null);
   const lastScanTimestampRef = useRef<number>(0);
   const lastScannedCodeRef = useRef<string>("");
-
-  // Validate GS1 check digit for EAN-13, EAN-8, and UPC-A
-  const isValidGs1CheckDigit = (code: string): boolean => {
-    if (!/^\d+$/.test(code)) return false;
-    const digits = code.split("").map(Number);
-    const checkDigit = digits[digits.length - 1];
-    let sum = 0;
-    for (let i = digits.length - 2, pos = 1; i >= 0; i--, pos++) {
-      sum += digits[i] * (pos % 2 === 1 ? 3 : 1);
-    }
-    const expected = (10 - (sum % 10)) % 10;
-    return checkDigit === expected;
-  };
 
   const playBeep = useCallback(() => {
     if (!isSoundEnabled) return;
@@ -130,19 +122,9 @@ export default function CameraBarcodeScanner({
     (decodedText: string, formatName?: string) => {
       if (!decodedText) return;
       const cleanCode = decodedText.trim();
-      const now = Date.now();
-      const fmt = String(formatName || "").toUpperCase();
+      if (!cleanCode) return;
 
-      // Validate GS1 check digit for EAN-13, EAN-8, UPC-A
-      if (
-        (fmt === "EAN13" || fmt === "EAN-13" || (cleanCode.length === 13 && /^\d{13}$/.test(cleanCode))) &&
-        !isValidGs1CheckDigit(cleanCode)
-      ) {
-        return;
-      }
-      if ((fmt === "EAN8" || fmt === "EAN-8" || fmt === "UPCA" || fmt === "UPC-A") && !isValidGs1CheckDigit(cleanCode)) {
-        return;
-      }
+      const now = Date.now();
 
       // Debounce duplicate scans within 1.5s
       if (
@@ -186,53 +168,123 @@ export default function CameraBarcodeScanner({
     }
   };
 
+  const applyZoom = async (newZoom: number) => {
+    setZoomValue(newZoom);
+    try {
+      const track = streamRef.current?.getVideoTracks?.()[0];
+      if (track) {
+        await track.applyConstraints({
+          advanced: [{ zoom: newZoom } as any],
+        });
+      }
+    } catch {}
+  };
+
+  // Switch between available cameras
   const switchCamera = () => {
     if (cameras.length <= 1) return;
     const currentId = selectedCameraId || activeCameraIdRef.current;
     const currentIndex = cameras.findIndex((c) => c.id === currentId);
     const nextIndex = currentIndex >= 0 ? (currentIndex + 1) % cameras.length : 0;
-    setSelectedCameraId(cameras[nextIndex].id);
+    const nextCamera = cameras[nextIndex];
+    setSelectedCameraId(nextCamera.id);
+    setActiveCameraLabel(nextCamera.label);
+    setCameraFeedbackMsg(`تم التبديل إلى: ${nextCamera.label}`);
+    setTimeout(() => setCameraFeedbackMsg(null), 2500);
   };
 
+  // Helper: Identify the primary 1x rear camera
+  // CRITICAL: Modern smartphones label the main rear camera "Wide" or "Main". We must NEVER exclude "wide"!
+  // Only exclude ultra-wide (0.5x), macro (fixed close-up), telephoto (zoom), and depth/tof sensors.
   const pickPrimaryBackCamera = (videoDevices: MediaDeviceInfo[]): MediaDeviceInfo | undefined => {
     if (!videoDevices.length) return undefined;
+
     const backCameras = videoDevices.filter((d) => {
       const l = (d.label || "").toLowerCase();
-      return l.includes("back") || l.includes("rear") || l.includes("environment") || l.includes("خلف");
+      const isFront = l.includes("front") || l.includes("user") || l.includes("أمام") || l.includes("selfie");
+      if (isFront) return false;
+      return l.includes("back") || l.includes("rear") || l.includes("environment") || l.includes("خلف") || !isFront;
     });
-    const pool = backCameras.length > 0
-      ? backCameras
-      : videoDevices.filter((d) => {
-          const l = (d.label || "").toLowerCase();
-          return !l.includes("front") && !l.includes("user") && !l.includes("أمام");
-        });
-    if (pool.length === 0) return videoDevices[0];
 
-    // Exclude ultra-wide / macro / telephoto / depth lenses so we pick the main 1x autofocus camera
-    const primaryCandidates = pool.filter((d) => {
+    const pool = backCameras.length > 0 ? backCameras : videoDevices;
+
+    // Filter out auxiliary lenses that shouldn't be default:
+    // ultra-wide, macro, telephoto, depth/tof
+    const nonAuxiliaryBack = pool.filter((d) => {
+      const l = (d.label || "").toLowerCase();
+      const isUltraWide = l.includes("ultra") || l.includes("0.5") || l.includes("0.6");
+      const isMacro = l.includes("macro") || l.includes("micro");
+      const isTele = l.includes("tele") || l.includes("periscope") || l.includes("zoom");
+      const isDepth = l.includes("depth") || l.includes("tof") || l.includes("ir");
+      return !isUltraWide && !isMacro && !isTele && !isDepth;
+    });
+
+    const candidates = nonAuxiliaryBack.length > 0 ? nonAuxiliaryBack : pool;
+
+    // Primary candidates: labeled "0", "main", "primary", or "wide" (without ultra)
+    const mainCam = candidates.find((d) => {
       const l = (d.label || "").toLowerCase();
       return (
-        !l.includes("wide") &&
-        !l.includes("ultra") &&
-        !l.includes("macro") &&
-        !l.includes("tele") &&
-        !l.includes("depth") &&
-        !l.includes("0.5") &&
-        !l.includes("0.6")
+        l.includes("main") ||
+        l.includes("primary") ||
+        /\b0\b/.test(l) ||
+        l.includes("camera 0") ||
+        l.includes("camera2 0") ||
+        l.includes("back 0") ||
+        (l.includes("wide") && !l.includes("ultra"))
       );
     });
-    const list = primaryCandidates.length > 0 ? primaryCandidates : pool;
-    const cam0 = list.find((d) => /\b0\b/.test(d.label || ""));
-    return cam0 || list[0];
+
+    return mainCam || candidates[0];
   };
 
-  // Native camera photo capture fallback (uses phone's full autofocus camera, works even over HTTP)
+  // Tap-to-focus on viewfinder
+  const handleTapToFocus = async (e: React.MouseEvent<HTMLDivElement>) => {
+    const rect = e.currentTarget.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const y = e.clientY - rect.top;
+    setTapFocusCoord({ x, y });
+    setTimeout(() => setTapFocusCoord(null), 1200);
+
+    const track = streamRef.current?.getVideoTracks?.()[0];
+    if (track) {
+      try {
+        const caps = track.getCapabilities?.() as any;
+        if (caps && caps.focusMode && Array.isArray(caps.focusMode)) {
+          if (caps.focusMode.includes("continuous")) {
+            await track.applyConstraints({
+              advanced: [{ focusMode: "continuous" } as any],
+            });
+          }
+        }
+      } catch {}
+    }
+  };
+
+  // Native camera photo capture fallback
   const handlePhotoCapture = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
+
     try {
+      // 1. Try Native BarcodeDetector if available
+      if (typeof window !== "undefined" && "BarcodeDetector" in window) {
+        try {
+          const detector = new (window as any).BarcodeDetector({
+            formats: ["ean_13", "ean_8", "upc_a", "upc_e", "code_128", "code_39", "qr_code"],
+          });
+          const bitmap = await createImageBitmap(file);
+          const results = await detector.detect(bitmap);
+          if (results && results.length > 0 && results[0].rawValue) {
+            handleDecodedResultRef.current(results[0].rawValue, results[0].format);
+            return;
+          }
+        } catch {}
+      }
+
+      // 2. ZXing-WASM Fallback
       const { prepareZXingModule, readBarcodes } = await import("zxing-wasm/reader");
-      prepareZXingModule({
+      await prepareZXingModule({
         overrides: {
           locateFile: (path: string, prefix: string) =>
             path.endsWith(".wasm") ? "/wasm/zxing_reader.wasm" : prefix + path,
@@ -292,7 +344,7 @@ export default function CameraBarcodeScanner({
       }
     };
 
-    const startWasmScanner = async () => {
+    const startScanner = async () => {
       try {
         stopStream();
 
@@ -302,32 +354,68 @@ export default function CameraBarcodeScanner({
           !navigator.mediaDevices.getUserMedia
         ) {
           throw new Error(
-            "المتصفح يمنع تشغيل البث المباشر على اتصال HTTP غير آمن. يمكنك استخدام زر (تصوير الباركود) بالأسفل أو فتح الرابط عبر HTTPS."
+            "المتصفح يمنع تشغيل البث المباشر على اتصال HTTP غير آمن. يمكنك استخدام زر (تصوير) بالأسفل أو فتح الرابط عبر HTTPS."
           );
         }
 
-        // Load ZXing-C++ WASM locally from /wasm/zxing_reader.wasm
-        const { prepareZXingModule, readBarcodes } = await import("zxing-wasm/reader");
-        await prepareZXingModule({
-          overrides: {
-            locateFile: (path: string, prefix: string) =>
-              path.endsWith(".wasm") ? "/wasm/zxing_reader.wasm" : prefix + path,
-          },
-          fireImmediately: true,
-        });
+        // Initialize Native BarcodeDetector (Chrome on Android / Edge)
+        let nativeDetector: any = null;
+        if (typeof window !== "undefined" && "BarcodeDetector" in window) {
+          try {
+            const supportedFormats: string[] =
+              (await (window as any).BarcodeDetector.getSupportedFormats?.().catch(() => [])) || [];
+            const desiredFormats = [
+              "ean_13",
+              "ean_8",
+              "upc_a",
+              "upc_e",
+              "code_128",
+              "code_39",
+              "code_93",
+              "codabar",
+              "itf",
+              "qr_code",
+              "data_matrix",
+            ];
+            const activeFormats = supportedFormats.length > 0
+              ? desiredFormats.filter((f) => supportedFormats.includes(f))
+              : desiredFormats;
+
+            nativeDetector = new (window as any).BarcodeDetector({
+              formats: activeFormats.length > 0 ? activeFormats : undefined,
+            });
+          } catch {
+            nativeDetector = null;
+          }
+        }
+
+        // Also prepare ZXing-WASM as robust fallback (e.g. iOS Safari)
+        let zxingReadBarcodes: any = null;
+        try {
+          const { prepareZXingModule, readBarcodes } = await import("zxing-wasm/reader");
+          await prepareZXingModule({
+            overrides: {
+              locateFile: (path: string, prefix: string) =>
+                path.endsWith(".wasm") ? "/wasm/zxing_reader.wasm" : prefix + path,
+            },
+            fireImmediately: true,
+          });
+          zxingReadBarcodes = readBarcodes;
+        } catch {}
 
         if (!isMounted) return;
 
+        // Camera stream request
         const videoConstraints: MediaTrackConstraints = selectedCameraId
           ? {
               deviceId: { exact: selectedCameraId },
-              width: { ideal: 1920 },
-              height: { ideal: 1080 },
+              width: { ideal: 1920, min: 1280 },
+              height: { ideal: 1080, min: 720 },
             }
           : {
               facingMode: { ideal: "environment" },
-              width: { ideal: 1920 },
-              height: { ideal: 1080 },
+              width: { ideal: 1920, min: 1280 },
+              height: { ideal: 1080, min: 720 },
             };
 
         let stream = await navigator.mediaDevices.getUserMedia({
@@ -340,7 +428,7 @@ export default function CameraBarcodeScanner({
           return;
         }
 
-        // Enumerate cameras and ensure we are using the primary 1x rear camera when in auto mode
+        // Enumerate devices to list cameras and ensure primary 1x back camera is selected
         try {
           const devices = await navigator.mediaDevices.enumerateDevices();
           const videoDevices = devices.filter((d) => d.kind === "videoinput");
@@ -352,22 +440,39 @@ export default function CameraBarcodeScanner({
               }))
             );
 
-            const currentTrackDeviceId = stream.getVideoTracks()[0]?.getSettings?.()?.deviceId;
+            const currentTrack = stream.getVideoTracks()[0];
+            const currentTrackDeviceId = currentTrack?.getSettings?.()?.deviceId;
+            const currentTrackLabel = currentTrack?.label || "";
+            setActiveCameraLabel(currentTrackLabel || "الكاميرا الأساسية");
+
+            // Only switch automatically if user hasn't selected a camera AND current stream is front-facing or aux macro/ultra
             if (!selectedCameraId) {
-              const primaryCam = pickPrimaryBackCamera(videoDevices);
-              if (primaryCam && primaryCam.deviceId && primaryCam.deviceId !== currentTrackDeviceId) {
-                stream.getTracks().forEach((t) => t.stop());
-                stream = await navigator.mediaDevices.getUserMedia({
-                  video: {
-                    deviceId: { exact: primaryCam.deviceId },
-                    width: { ideal: 1920 },
-                    height: { ideal: 1080 },
-                  },
-                  audio: false,
-                });
-                if (!isMounted) {
+              const curLabelLower = currentTrackLabel.toLowerCase();
+              const isFrontOrAux =
+                curLabelLower.includes("front") ||
+                curLabelLower.includes("user") ||
+                curLabelLower.includes("ultra") ||
+                curLabelLower.includes("macro") ||
+                curLabelLower.includes("0.5") ||
+                curLabelLower.includes("0.6");
+
+              if (isFrontOrAux) {
+                const primaryCam = pickPrimaryBackCamera(videoDevices);
+                if (primaryCam && primaryCam.deviceId && primaryCam.deviceId !== currentTrackDeviceId) {
                   stream.getTracks().forEach((t) => t.stop());
-                  return;
+                  stream = await navigator.mediaDevices.getUserMedia({
+                    video: {
+                      deviceId: { exact: primaryCam.deviceId },
+                      width: { ideal: 1920, min: 1280 },
+                      height: { ideal: 1080, min: 720 },
+                    },
+                    audio: false,
+                  });
+                  if (!isMounted) {
+                    stream.getTracks().forEach((t) => t.stop());
+                    return;
+                  }
+                  setActiveCameraLabel(primaryCam.label || "الكاميرا الأساسية 1x");
                 }
               }
             }
@@ -383,6 +488,7 @@ export default function CameraBarcodeScanner({
           await videoEl.play().catch(() => {});
         }
 
+        // Apply autofocus & check capabilities (torch, zoom)
         const track = stream.getVideoTracks()[0];
         if (track) {
           try {
@@ -390,21 +496,24 @@ export default function CameraBarcodeScanner({
               advanced: [{ focusMode: "continuous" } as any],
             });
           } catch {}
+
           try {
             const caps = track.getCapabilities?.() as any;
             if (caps && caps.torch) {
               setHasTorchCapability(true);
             }
-            if (caps && caps.zoom && typeof caps.zoom.min === "number" && typeof caps.zoom.max === "number" && caps.zoom.max > caps.zoom.min) {
+            if (
+              caps &&
+              caps.zoom &&
+              typeof caps.zoom.min === "number" &&
+              typeof caps.zoom.max === "number" &&
+              caps.zoom.max > caps.zoom.min
+            ) {
               const minZ = caps.zoom.min;
-              const maxZ = Math.min(caps.zoom.max, 4);
+              const maxZ = Math.min(caps.zoom.max, 5);
               const stepZ = caps.zoom.step || 0.1;
               setZoomRange({ min: minZ, max: maxZ, step: stepZ });
-              const initialZoom = Math.min(Math.max(1.5, minZ), maxZ);
-              setZoomValue(initialZoom);
-              try {
-                await track.applyConstraints({ advanced: [{ zoom: initialZoom } as any] });
-              } catch {}
+              setZoomValue(minZ); // Default to 1x native optical sensor
             } else {
               setZoomRange(null);
             }
@@ -417,48 +526,109 @@ export default function CameraBarcodeScanner({
         if (!canvasRef.current) {
           canvasRef.current = document.createElement("canvas");
         }
-        const canvas = canvasRef.current;
-        const ctx = canvas.getContext("2d", { willReadFrequently: true });
+        if (!cropCanvasRef.current) {
+          cropCanvasRef.current = document.createElement("canvas");
+        }
+        const fullCanvas = canvasRef.current;
+        const fullCtx = fullCanvas.getContext("2d", { willReadFrequently: true });
+        const cropCanvas = cropCanvasRef.current;
+        const cropCtx = cropCanvas.getContext("2d", { willReadFrequently: true });
+
+        let frameCounter = 0;
 
         const scanLoop = async () => {
           if (!isMounted || !rafActive) return;
 
           try {
             const video = videoRef.current;
-            if (video && ctx && video.readyState >= 2 && video.videoWidth > 0 && video.videoHeight > 0) {
-              // Scale down slightly only if > 1280px wide to keep WASM < 20ms per frame while preserving crisp 1D bars
-              const targetW = Math.min(video.videoWidth, 1280);
-              const scale = targetW / video.videoWidth;
-              const targetH = Math.round(video.videoHeight * scale);
+            if (video && video.readyState >= 2 && video.videoWidth > 0 && video.videoHeight > 0) {
+              let detected = false;
 
-              if (canvas.width !== targetW || canvas.height !== targetH) {
-                canvas.width = targetW;
-                canvas.height = targetH;
+              // 1. ENGINE 1: Native Hardware BarcodeDetector (Android Chrome ML Kit / GPU)
+              if (nativeDetector) {
+                try {
+                  const barcodes = await nativeDetector.detect(video);
+                  if (barcodes && barcodes.length > 0) {
+                    for (const bc of barcodes) {
+                      if (bc.rawValue) {
+                        handleDecodedResultRef.current(bc.rawValue, bc.format);
+                        detected = true;
+                        break;
+                      }
+                    }
+                  }
+                } catch {}
               }
 
-              ctx.drawImage(video, 0, 0, targetW, targetH);
-              const imageData = ctx.getImageData(0, 0, targetW, targetH);
+              // 2. ENGINE 2: ZXing-WASM (Ultra-fast center crop & full-frame fallback)
+              if (!detected && zxingReadBarcodes) {
+                const vw = video.videoWidth;
+                const vh = video.videoHeight;
+                frameCounter++;
 
-              const results = await readBarcodes(imageData, {
-                formats: ["EAN13", "EAN8", "UPCA", "UPCE", "Code128", "Code39", "QRCode"],
-                tryRotate: true,
-                tryHarder: true,
-                tryInvert: true,
-                maxNumberOfSymbols: 1,
-              });
+                // A) Center-crop at 1:1 sensor resolution (sharp unscaled barcode stripes)
+                const cropW = Math.round(vw * 0.65);
+                const cropH = Math.round(vh * 0.45);
+                const cropX = Math.round((vw - cropW) / 2);
+                const cropY = Math.round((vh - cropH) / 2);
 
-              if (isMounted && results && results.length > 0 && results[0].isValid && results[0].text) {
-                handleDecodedResultRef.current(results[0].text, results[0].format);
+                if (cropCtx) {
+                  if (cropCanvas.width !== cropW || cropCanvas.height !== cropH) {
+                    cropCanvas.width = cropW;
+                    cropCanvas.height = cropH;
+                  }
+                  cropCtx.drawImage(video, cropX, cropY, cropW, cropH, 0, 0, cropW, cropH);
+                  const cropData = cropCtx.getImageData(0, 0, cropW, cropH);
+
+                  const cropResults = await zxingReadBarcodes(cropData, {
+                    formats: ["EAN13", "EAN8", "UPCA", "UPCE", "Code128", "Code39", "QRCode"],
+                    tryRotate: true,
+                    tryHarder: false,
+                    maxNumberOfSymbols: 1,
+                  });
+
+                  if (isMounted && cropResults && cropResults.length > 0 && cropResults[0].isValid && cropResults[0].text) {
+                    handleDecodedResultRef.current(cropResults[0].text, cropResults[0].format);
+                    detected = true;
+                  }
+                }
+
+                // B) If still not detected, scan full frame every 3rd cycle
+                if (!detected && frameCounter % 3 === 0 && fullCtx) {
+                  const targetW = Math.min(vw, 1280);
+                  const scale = targetW / vw;
+                  const targetH = Math.round(vh * scale);
+
+                  if (fullCanvas.width !== targetW || fullCanvas.height !== targetH) {
+                    fullCanvas.width = targetW;
+                    fullCanvas.height = targetH;
+                  }
+
+                  fullCtx.drawImage(video, 0, 0, targetW, targetH);
+                  const fullData = fullCtx.getImageData(0, 0, targetW, targetH);
+
+                  const fullResults = await zxingReadBarcodes(fullData, {
+                    formats: ["EAN13", "EAN8", "UPCA", "UPCE", "Code128", "Code39", "QRCode"],
+                    tryRotate: true,
+                    tryHarder: true,
+                    tryInvert: true,
+                    maxNumberOfSymbols: 1,
+                  });
+
+                  if (isMounted && fullResults && fullResults.length > 0 && fullResults[0].isValid && fullResults[0].text) {
+                    handleDecodedResultRef.current(fullResults[0].text, fullResults[0].format);
+                  }
+                }
               }
             }
           } catch {}
 
           if (isMounted && rafActive) {
-            timerId = setTimeout(scanLoop, 100);
+            timerId = setTimeout(scanLoop, 90);
           }
         };
 
-        timerId = setTimeout(scanLoop, 150);
+        timerId = setTimeout(scanLoop, 100);
       } catch (err: any) {
         if (!isMounted) return;
         stopStream();
@@ -470,7 +640,7 @@ export default function CameraBarcodeScanner({
           msg.includes("NotAllowedError")
         ) {
           setErrorMessage(
-            "تم رفض إذن استخدام الكاميرا من المتصفح. يرجى السماح بالوصول للكاميرا من إعدادات المتصفح أو استخدام زر تصوير الباركود بالأسفل."
+            "تم رفض إذن استخدام الكاميرا من المتصفح. يرجى السماح بالوصول للكاميرا من إعدادات المتصفح أو استخدام زر تصوير بالأسفل."
           );
         } else {
           setErrorMessage(`تعذر تشغيل الكاميرا: ${msg}`);
@@ -478,7 +648,7 @@ export default function CameraBarcodeScanner({
       }
     };
 
-    const bootTimer = setTimeout(startWasmScanner, 120);
+    const bootTimer = setTimeout(startScanner, 100);
 
     return () => {
       isMounted = false;
@@ -499,7 +669,7 @@ export default function CameraBarcodeScanner({
             <div>
               <DialogTitle className="text-base font-bold">{title}</DialogTitle>
               <DialogDescription className="text-xs text-muted-foreground mt-0.5">
-                وجّه كاميرا الموبايل نحو باركود الصنف
+                {activeCameraLabel ? `وجّه الكاميرا نحو الباركود (${activeCameraLabel.slice(0, 25)})` : "وجّه كاميرا الموبايل نحو باركود الصنف"}
               </DialogDescription>
             </div>
           </div>
@@ -515,60 +685,112 @@ export default function CameraBarcodeScanner({
         </DialogHeader>
 
         {/* Viewfinder Viewport */}
-        <div className="relative min-h-[250px] sm:min-h-[300px] max-h-[42vh] bg-black flex items-center justify-center overflow-hidden">
+        <div
+          className="relative min-h-[260px] sm:min-h-[320px] max-h-[45vh] bg-black flex items-center justify-center overflow-hidden cursor-crosshair select-none"
+          onClick={handleTapToFocus}
+        >
           <video
             ref={videoRef}
             autoPlay
             playsInline
             muted
-            className="w-full h-full min-h-[250px] object-cover"
+            className="w-full h-full min-h-[260px] object-cover"
           />
+
+          {/* Tap-to-focus animation ring */}
+          {tapFocusCoord && (
+            <div
+              className="absolute pointer-events-none w-12 h-12 border-2 border-amber-400 rounded-full animate-ping z-30"
+              style={{
+                left: tapFocusCoord.x - 24,
+                top: tapFocusCoord.y - 24,
+              }}
+            />
+          )}
 
           {/* Scanner Overlay HUD */}
           {!isInitializing && !errorMessage && (
             <div className="absolute inset-0 pointer-events-none flex flex-col items-center justify-center p-6">
-              <div className="mb-3 text-center text-[11px] font-medium text-white/90 bg-black/60 px-3 py-1 rounded-full backdrop-blur-sm">
-                ضع الباركود داخل الإطار
-              </div>
-              <div className="relative w-full max-w-[290px] h-[175px] border-2 border-primary/80 rounded-2xl shadow-[0_0_0_9999px_rgba(0,0,0,0.45)] flex items-center justify-center">
-                <div className="absolute left-2 right-2 h-0.5 bg-gradient-to-r from-transparent via-red-500 to-transparent animate-bounce shadow-[0_0_8px_#ef4444]" />
-                <div className="absolute -top-1 -left-1 w-5 h-5 border-t-4 border-l-4 border-primary rounded-tl-lg" />
-                <div className="absolute -top-1 -right-1 w-5 h-5 border-t-4 border-r-4 border-primary rounded-tr-lg" />
-                <div className="absolute -bottom-1 -left-1 w-5 h-5 border-b-4 border-l-4 border-primary rounded-bl-lg" />
-                <div className="absolute -bottom-1 -right-1 w-5 h-5 border-b-4 border-r-4 border-primary rounded-br-lg" />
+              <div className="mb-3 text-center text-[11px] font-medium text-white/95 bg-black/65 px-3 py-1 rounded-full backdrop-blur-sm border border-white/10 flex items-center gap-1.5 shadow-md">
+                <Focus className="h-3 w-3 text-emerald-400" />
+                <span>ضع الباركود داخل الإطار (انقر للشاشة للتركيز الفوري)</span>
               </div>
 
+              {/* Viewfinder Bounding Box */}
+              <div className="relative w-full max-w-[290px] h-[175px] border-2 border-primary/90 rounded-2xl shadow-[0_0_0_9999px_rgba(0,0,0,0.5)] flex items-center justify-center">
+                {/* Red Laser Scanning Beam */}
+                <div className="absolute left-2 right-2 h-0.5 bg-gradient-to-r from-transparent via-red-500 to-transparent animate-bounce shadow-[0_0_10px_#ef4444]" />
+
+                {/* Corner Accents */}
+                <div className="absolute -top-1 -left-1 w-6 h-6 border-t-4 border-l-4 border-primary rounded-tl-xl" />
+                <div className="absolute -top-1 -right-1 w-6 h-6 border-t-4 border-r-4 border-primary rounded-tr-xl" />
+                <div className="absolute -bottom-1 -left-1 w-6 h-6 border-b-4 border-l-4 border-primary rounded-bl-xl" />
+                <div className="absolute -bottom-1 -right-1 w-6 h-6 border-b-4 border-r-4 border-primary rounded-br-xl" />
+
+                <div className="text-[10px] text-white/80 bg-black/60 px-2 py-0.5 rounded-full pointer-events-none">
+                  ضع الباركود هنا
+                </div>
+              </div>
+
+              {/* Zoom Controls */}
               {zoomRange && (
-                <div className="mt-4 pointer-events-auto flex items-center gap-2 bg-black/65 backdrop-blur-md px-3 py-1.5 rounded-full">
-                  <span className="text-[11px] text-white/80 font-mono">1x</span>
+                <div className="mt-3 pointer-events-auto flex items-center gap-2 bg-black/70 backdrop-blur-md px-3 py-1.5 rounded-full border border-white/10">
+                  <button
+                    type="button"
+                    onClick={() => applyZoom(1)}
+                    className={`text-[10px] px-2 py-0.5 rounded-full font-mono transition-colors ${
+                      zoomValue <= 1.1 ? "bg-primary text-primary-foreground font-bold" : "text-white/80 hover:bg-white/20"
+                    }`}
+                  >
+                    1x
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => applyZoom(Math.min(zoomRange.max, 1.5))}
+                    className={`text-[10px] px-2 py-0.5 rounded-full font-mono transition-colors ${
+                      zoomValue > 1.1 && zoomValue <= 1.7 ? "bg-primary text-primary-foreground font-bold" : "text-white/80 hover:bg-white/20"
+                    }`}
+                  >
+                    1.5x
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => applyZoom(Math.min(zoomRange.max, 2.0))}
+                    className={`text-[10px] px-2 py-0.5 rounded-full font-mono transition-colors ${
+                      zoomValue > 1.7 ? "bg-primary text-primary-foreground font-bold" : "text-white/80 hover:bg-white/20"
+                    }`}
+                  >
+                    2x
+                  </button>
                   <input
                     type="range"
                     min={zoomRange.min}
                     max={zoomRange.max}
                     step={zoomRange.step}
                     value={zoomValue}
-                    onChange={async (e) => {
-                      const z = Number(e.target.value);
-                      setZoomValue(z);
-                      try {
-                        const track = streamRef.current?.getVideoTracks?.()[0];
-                        if (track) {
-                          await track.applyConstraints({ advanced: [{ zoom: z } as any] });
-                        }
-                      } catch {}
-                    }}
-                    className="w-32 accent-primary cursor-pointer"
+                    onChange={(e) => applyZoom(Number(e.target.value))}
+                    className="w-24 accent-primary cursor-pointer"
                   />
-                  <span className="text-[11px] text-white/90 font-mono">{zoomValue.toFixed(1)}x</span>
+                  <span className="text-[11px] text-white/90 font-mono min-w-[28px]">{zoomValue.toFixed(1)}x</span>
                 </div>
               )}
 
+              {/* Scanned Feedback Toast */}
               {lastScannedCode && (
                 <div className="mt-3 pointer-events-auto bg-emerald-600 text-white text-xs font-bold px-4 py-1.5 rounded-full shadow-lg flex items-center gap-2 animate-in fade-in zoom-in duration-200">
                   <CheckCircle2 className="h-4 w-4" />
                   <span>تم المسح بنجاح: {lastScannedCode}</span>
                 </div>
               )}
+            </div>
+          )}
+
+          {/* Camera switched feedback message */}
+          {cameraFeedbackMsg && (
+            <div className="absolute top-14 inset-x-4 z-20 pointer-events-none flex justify-center">
+              <span className="bg-black/80 text-white text-xs px-3 py-1 rounded-full backdrop-blur-md border border-white/20 animate-in fade-in">
+                {cameraFeedbackMsg}
+              </span>
             </div>
           )}
 
@@ -605,7 +827,7 @@ export default function CameraBarcodeScanner({
           )}
 
           {/* Floating Controls Toolbar */}
-          <div className="absolute top-3 right-3 flex items-center gap-1.5 z-10 bg-black/60 backdrop-blur-md p-1 rounded-xl">
+          <div className="absolute top-3 right-3 flex items-center gap-1.5 z-10 bg-black/60 backdrop-blur-md p-1 rounded-xl border border-white/10">
             {cameras.length > 1 && (
               <Button
                 type="button"
@@ -613,7 +835,7 @@ export default function CameraBarcodeScanner({
                 size="icon"
                 className="h-8 w-8 text-white hover:bg-white/20"
                 onClick={switchCamera}
-                title="تبديل الكاميرا (أمامية / خلفية)"
+                title="تبديل الكاميرا (الأساسية / أخرى)"
               >
                 <RefreshCw className="h-4 w-4" />
               </Button>
