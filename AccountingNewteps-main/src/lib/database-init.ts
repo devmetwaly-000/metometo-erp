@@ -1765,6 +1765,24 @@ export async function createAndInitializeDatabase(options: DbInitOptions): Promi
                 [CreatedAt] DATETIME2 NOT NULL DEFAULT (sysutcdatetime()),
                 [RowVersion] ROWVERSION,
                 CONSTRAINT [PK_ManufacturingOrders] PRIMARY KEY CLUSTERED ([Id])
+            );`,
+
+            `IF NOT EXISTS (SELECT * FROM sys.tables WHERE name = 'RecipeHistory')
+            CREATE TABLE dbo.[RecipeHistory] (
+                [Id] NVARCHAR(64) NOT NULL PRIMARY KEY,
+                [ItemId] NVARCHAR(64) NOT NULL,
+                [ItemCode] NVARCHAR(100) NULL,
+                [ItemName] NVARCHAR(255) NOT NULL,
+                [VersionNumber] INT NOT NULL DEFAULT (1),
+                [EffectiveFrom] DATETIME2 NOT NULL DEFAULT (sysutcdatetime()),
+                [EffectiveTo] DATETIME2 NULL,
+                [ComponentsJson] NVARCHAR(MAX) NOT NULL,
+                [TotalRecipeCost] DECIMAL(18,4) NOT NULL DEFAULT ((0)),
+                [PreviousComponentsJson] NVARCHAR(MAX) NULL,
+                [ChangeNotes] NVARCHAR(500) NULL,
+                [ChangedById] NVARCHAR(64) NULL,
+                [ChangedByName] NVARCHAR(255) NULL,
+                [CreatedAt] DATETIME2 NOT NULL DEFAULT (sysutcdatetime())
             );`
         ];
 
@@ -1783,6 +1801,27 @@ export async function createAndInitializeDatabase(options: DbInitOptions): Promi
 
         // 3b. Schema Upgrades & Column Migrations for Existing Databases (Local & Central)
         const schemaUpgrades = [
+            `IF OBJECT_ID('dbo.RecipeHistory', 'U') IS NULL
+            BEGIN
+              CREATE TABLE dbo.[RecipeHistory] (
+                [Id] NVARCHAR(64) NOT NULL PRIMARY KEY,
+                [ItemId] NVARCHAR(64) NOT NULL,
+                [ItemCode] NVARCHAR(100) NULL,
+                [ItemName] NVARCHAR(255) NOT NULL,
+                [VersionNumber] INT NOT NULL DEFAULT (1),
+                [EffectiveFrom] DATETIME2 NOT NULL DEFAULT (sysutcdatetime()),
+                [EffectiveTo] DATETIME2 NULL,
+                [ComponentsJson] NVARCHAR(MAX) NOT NULL,
+                [TotalRecipeCost] DECIMAL(18,4) NOT NULL DEFAULT ((0)),
+                [PreviousComponentsJson] NVARCHAR(MAX) NULL,
+                [ChangeNotes] NVARCHAR(500) NULL,
+                [ChangedById] NVARCHAR(64) NULL,
+                [ChangedByName] NVARCHAR(255) NULL,
+                [CreatedAt] DATETIME2 NOT NULL DEFAULT (sysutcdatetime())
+              );
+              CREATE INDEX IX_RecipeHistory_ItemId_Version ON dbo.RecipeHistory (ItemId, VersionNumber DESC);
+              CREATE INDEX IX_RecipeHistory_ItemId_Effective ON dbo.RecipeHistory (ItemId, EffectiveFrom, EffectiveTo);
+            END;`,
             // Preserve the amount settled at invoice creation separately from later receipts.
             `IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('dbo.SalesInvoices') AND name = 'InitialPaidAmount')
                 ALTER TABLE dbo.SalesInvoices ADD [InitialPaidAmount] DECIMAL(18,4) NULL;`,

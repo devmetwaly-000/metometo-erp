@@ -52,6 +52,52 @@ interface CameraBarcodeScannerProps {
   onUpdateQty?: (id: string, newQty: number) => void;
 }
 
+// Enterprise retail scanner beep sound (1950Hz, crisp 120ms duration)
+const BEEP_WAV_DATA_URI =
+  "data:audio/wav;base64,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";
+
+// Camera scoring algorithm to determine the TRUE 1x Primary camera
+function scoreCamera(device: MediaDeviceInfo): number {
+  const label = (device.label || "").toLowerCase();
+  let score = 0;
+
+  // Front camera disqualification
+  if (
+    label.includes("front") ||
+    label.includes("user") ||
+    label.includes("selfie") ||
+    label.includes("أمام")
+  ) {
+    return -1000;
+  }
+
+  // Auxiliary lenses disqualification (not primary)
+  if (label.includes("ultra") || label.includes("0.5") || label.includes("0.6")) return -500;
+  if (label.includes("macro") || label.includes("micro")) return -500;
+  if (
+    label.includes("tele") ||
+    label.includes("periscope") ||
+    label.includes("zoom") ||
+    label.includes("3x") ||
+    label.includes("5x") ||
+    label.includes("10x")
+  )
+    return -500;
+  if (label.includes("depth") || label.includes("tof") || label.includes("ir")) return -500;
+
+  // Primary camera indicators
+  // Standalone '0' e.g. "camera2 0", "camera 0", "back 0"
+  if (/\b0\b/.test(label)) score += 150;
+  if (label.includes("main") || label.includes("primary") || label.includes("رئيس") || label.includes("أساس"))
+    score += 120;
+  // Modern phones label the 1x main camera as "Wide" (24mm standard)
+  if (label.includes("wide") && !label.includes("ultra")) score += 90;
+  if (label.includes("back") || label.includes("rear") || label.includes("environment") || label.includes("خلف"))
+    score += 50;
+
+  return score;
+}
+
 export default function CameraBarcodeScanner({
   isOpen,
   onOpenChange,
@@ -87,26 +133,69 @@ export default function CameraBarcodeScanner({
   const activeCameraIdRef = useRef<string | null>(null);
   const lastScanTimestampRef = useRef<number>(0);
   const lastScannedCodeRef = useRef<string>("");
+  const sharedAudioCtxRef = useRef<AudioContext | null>(null);
+  const audioElemRef = useRef<HTMLAudioElement | null>(null);
 
+  // Initialize and unlock audio on component mount or interaction
+  const unlockAudio = useCallback(() => {
+    try {
+      if (!audioElemRef.current && typeof Audio !== "undefined") {
+        const audio = new Audio(BEEP_WAV_DATA_URI);
+        audio.preload = "auto";
+        audio.volume = 1.0;
+        audioElemRef.current = audio;
+      }
+      const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
+      if (AudioCtx && !sharedAudioCtxRef.current) {
+        sharedAudioCtxRef.current = new AudioCtx();
+      }
+      if (sharedAudioCtxRef.current && sharedAudioCtxRef.current.state === "suspended") {
+        sharedAudioCtxRef.current.resume().catch(() => {});
+      }
+    } catch {}
+  }, []);
+
+  // Play crisp, loud retail scanner beep
   const playBeep = useCallback(() => {
     if (!isSoundEnabled) return;
+
+    // 1. Direct HTML5 Audio playback (guaranteed on Android Chrome & Safari)
+    try {
+      if (!audioElemRef.current && typeof Audio !== "undefined") {
+        audioElemRef.current = new Audio(BEEP_WAV_DATA_URI);
+      }
+      if (audioElemRef.current) {
+        audioElemRef.current.currentTime = 0;
+        audioElemRef.current.volume = 1.0;
+        audioElemRef.current.play().catch(() => {});
+      }
+    } catch {}
+
+    // 2. Parallel Web Audio oscillator (synthetic sharp beep)
     try {
       const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
-      if (!AudioCtx) return;
-      const ctx = new AudioCtx();
-      const osc = ctx.createOscillator();
-      const gain = ctx.createGain();
+      if (AudioCtx) {
+        if (!sharedAudioCtxRef.current) {
+          sharedAudioCtxRef.current = new AudioCtx();
+        }
+        const ctx = sharedAudioCtxRef.current;
+        if (ctx.state === "suspended") {
+          ctx.resume().catch(() => {});
+        }
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
 
-      osc.connect(gain);
-      gain.connect(ctx.destination);
+        osc.connect(gain);
+        gain.connect(ctx.destination);
 
-      osc.type = "sine";
-      osc.frequency.setValueAtTime(1450, ctx.currentTime);
-      gain.gain.setValueAtTime(0.3, ctx.currentTime);
-      gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + 0.12);
+        osc.type = "sine";
+        osc.frequency.setValueAtTime(1950, ctx.currentTime);
+        gain.gain.setValueAtTime(0.85, ctx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.12);
 
-      osc.start(ctx.currentTime);
-      osc.stop(ctx.currentTime + 0.12);
+        osc.start(ctx.currentTime);
+        osc.stop(ctx.currentTime + 0.12);
+      }
     } catch {}
   }, [isSoundEnabled]);
 
@@ -180,66 +269,39 @@ export default function CameraBarcodeScanner({
     } catch {}
   };
 
-  // Switch between available cameras
+  // Switch between available cameras & persist user choice
   const switchCamera = () => {
     if (cameras.length <= 1) return;
     const currentId = selectedCameraId || activeCameraIdRef.current;
     const currentIndex = cameras.findIndex((c) => c.id === currentId);
     const nextIndex = currentIndex >= 0 ? (currentIndex + 1) % cameras.length : 0;
     const nextCamera = cameras[nextIndex];
+
     setSelectedCameraId(nextCamera.id);
+    activeCameraIdRef.current = nextCamera.id;
     setActiveCameraLabel(nextCamera.label);
+
+    try {
+      localStorage.setItem("preferred_scanner_camera_id", nextCamera.id);
+    } catch {}
+
     setCameraFeedbackMsg(`تم التبديل إلى: ${nextCamera.label}`);
     setTimeout(() => setCameraFeedbackMsg(null), 2500);
   };
 
-  // Helper: Identify the primary 1x rear camera
-  // CRITICAL: Modern smartphones label the main rear camera "Wide" or "Main". We must NEVER exclude "wide"!
-  // Only exclude ultra-wide (0.5x), macro (fixed close-up), telephoto (zoom), and depth/tof sensors.
+  // Helper: Identify the primary 1x rear camera using the scoring algorithm
   const pickPrimaryBackCamera = (videoDevices: MediaDeviceInfo[]): MediaDeviceInfo | undefined => {
     if (!videoDevices.length) return undefined;
+    const scored = [...videoDevices]
+      .map((d) => ({ device: d, score: scoreCamera(d) }))
+      .sort((a, b) => b.score - a.score);
 
-    const backCameras = videoDevices.filter((d) => {
-      const l = (d.label || "").toLowerCase();
-      const isFront = l.includes("front") || l.includes("user") || l.includes("أمام") || l.includes("selfie");
-      if (isFront) return false;
-      return l.includes("back") || l.includes("rear") || l.includes("environment") || l.includes("خلف") || !isFront;
-    });
-
-    const pool = backCameras.length > 0 ? backCameras : videoDevices;
-
-    // Filter out auxiliary lenses that shouldn't be default:
-    // ultra-wide, macro, telephoto, depth/tof
-    const nonAuxiliaryBack = pool.filter((d) => {
-      const l = (d.label || "").toLowerCase();
-      const isUltraWide = l.includes("ultra") || l.includes("0.5") || l.includes("0.6");
-      const isMacro = l.includes("macro") || l.includes("micro");
-      const isTele = l.includes("tele") || l.includes("periscope") || l.includes("zoom");
-      const isDepth = l.includes("depth") || l.includes("tof") || l.includes("ir");
-      return !isUltraWide && !isMacro && !isTele && !isDepth;
-    });
-
-    const candidates = nonAuxiliaryBack.length > 0 ? nonAuxiliaryBack : pool;
-
-    // Primary candidates: labeled "0", "main", "primary", or "wide" (without ultra)
-    const mainCam = candidates.find((d) => {
-      const l = (d.label || "").toLowerCase();
-      return (
-        l.includes("main") ||
-        l.includes("primary") ||
-        /\b0\b/.test(l) ||
-        l.includes("camera 0") ||
-        l.includes("camera2 0") ||
-        l.includes("back 0") ||
-        (l.includes("wide") && !l.includes("ultra"))
-      );
-    });
-
-    return mainCam || candidates[0];
+    return scored[0]?.device || videoDevices[0];
   };
 
   // Tap-to-focus on viewfinder
   const handleTapToFocus = async (e: React.MouseEvent<HTMLDivElement>) => {
+    unlockAudio();
     const rect = e.currentTarget.getBoundingClientRect();
     const x = e.clientX - rect.left;
     const y = e.clientY - rect.top;
@@ -263,6 +325,7 @@ export default function CameraBarcodeScanner({
 
   // Native camera photo capture fallback
   const handlePhotoCapture = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    unlockAudio();
     const file = e.target.files?.[0];
     if (!file) return;
 
@@ -316,6 +379,8 @@ export default function CameraBarcodeScanner({
       return;
     }
 
+    unlockAudio();
+
     let isMounted = true;
     let timerId: ReturnType<typeof setTimeout> | null = null;
     let rafActive = false;
@@ -324,6 +389,14 @@ export default function CameraBarcodeScanner({
     setErrorMessage(null);
     setHasTorchCapability(false);
     setIsTorchOn(false);
+
+    // Retrieve saved preferred camera ID from previous sessions
+    let preferredId = selectedCameraId;
+    if (!preferredId && typeof window !== "undefined") {
+      try {
+        preferredId = localStorage.getItem("preferred_scanner_camera_id");
+      } catch {}
+    }
 
     const stopStream = () => {
       rafActive = false;
@@ -358,7 +431,7 @@ export default function CameraBarcodeScanner({
           );
         }
 
-        // Initialize Native BarcodeDetector (Chrome on Android / Edge)
+        // Initialize Native BarcodeDetector (Chrome on Android / Edge hardware ML)
         let nativeDetector: any = null;
         if (typeof window !== "undefined" && "BarcodeDetector" in window) {
           try {
@@ -405,10 +478,10 @@ export default function CameraBarcodeScanner({
 
         if (!isMounted) return;
 
-        // Camera stream request
-        const videoConstraints: MediaTrackConstraints = selectedCameraId
+        // Camera stream request: Use saved/selected camera ID if known, otherwise request environment 1080p
+        const videoConstraints: MediaTrackConstraints = preferredId
           ? {
-              deviceId: { exact: selectedCameraId },
+              deviceId: { exact: preferredId },
               width: { ideal: 1920, min: 1280 },
               height: { ideal: 1080, min: 720 },
             }
@@ -428,7 +501,7 @@ export default function CameraBarcodeScanner({
           return;
         }
 
-        // Enumerate devices to list cameras and ensure primary 1x back camera is selected
+        // Enumerate devices to list cameras and ENSURE PRIMARY 1X BACK CAMERA IS ALWAYS CHOSEN
         try {
           const devices = await navigator.mediaDevices.enumerateDevices();
           const videoDevices = devices.filter((d) => d.kind === "videoinput");
@@ -443,44 +516,37 @@ export default function CameraBarcodeScanner({
             const currentTrack = stream.getVideoTracks()[0];
             const currentTrackDeviceId = currentTrack?.getSettings?.()?.deviceId;
             const currentTrackLabel = currentTrack?.label || "";
-            setActiveCameraLabel(currentTrackLabel || "الكاميرا الأساسية");
 
-            // Only switch automatically if user hasn't selected a camera AND current stream is front-facing or aux macro/ultra
-            if (!selectedCameraId) {
-              const curLabelLower = currentTrackLabel.toLowerCase();
-              const isFrontOrAux =
-                curLabelLower.includes("front") ||
-                curLabelLower.includes("user") ||
-                curLabelLower.includes("ultra") ||
-                curLabelLower.includes("macro") ||
-                curLabelLower.includes("0.5") ||
-                curLabelLower.includes("0.6");
+            // Find the best primary 1x back camera
+            const primaryCam = pickPrimaryBackCamera(videoDevices);
 
-              if (isFrontOrAux) {
-                const primaryCam = pickPrimaryBackCamera(videoDevices);
-                if (primaryCam && primaryCam.deviceId && primaryCam.deviceId !== currentTrackDeviceId) {
-                  stream.getTracks().forEach((t) => t.stop());
-                  stream = await navigator.mediaDevices.getUserMedia({
-                    video: {
-                      deviceId: { exact: primaryCam.deviceId },
-                      width: { ideal: 1920, min: 1280 },
-                      height: { ideal: 1080, min: 720 },
-                    },
-                    audio: false,
-                  });
-                  if (!isMounted) {
-                    stream.getTracks().forEach((t) => t.stop());
-                    return;
-                  }
-                  setActiveCameraLabel(primaryCam.label || "الكاميرا الأساسية 1x");
-                }
+            // If user didn't explicitly pick a camera, ALWAYS switch to the primary camera if current camera is not the best
+            if (!selectedCameraId && primaryCam && primaryCam.deviceId !== currentTrackDeviceId) {
+              stream.getTracks().forEach((t) => t.stop());
+              stream = await navigator.mediaDevices.getUserMedia({
+                video: {
+                  deviceId: { exact: primaryCam.deviceId },
+                  width: { ideal: 1920, min: 1280 },
+                  height: { ideal: 1080, min: 720 },
+                },
+                audio: false,
+              });
+              if (!isMounted) {
+                stream.getTracks().forEach((t) => t.stop());
+                return;
               }
+              setActiveCameraLabel(primaryCam.label || "الكاميرا الأساسية 1x");
+              try {
+                localStorage.setItem("preferred_scanner_camera_id", primaryCam.deviceId);
+              } catch {}
+            } else {
+              setActiveCameraLabel(currentTrackLabel || "الكاميرا الأساسية");
             }
           }
         } catch {}
 
         streamRef.current = stream;
-        activeCameraIdRef.current = stream.getVideoTracks()[0]?.getSettings?.()?.deviceId || selectedCameraId;
+        activeCameraIdRef.current = stream.getVideoTracks()[0]?.getSettings?.()?.deviceId || preferredId;
 
         const videoEl = videoRef.current;
         if (videoEl) {
@@ -488,7 +554,7 @@ export default function CameraBarcodeScanner({
           await videoEl.play().catch(() => {});
         }
 
-        // Apply autofocus & check capabilities (torch, zoom)
+        // Apply continuous autofocus & inspect capabilities
         const track = stream.getVideoTracks()[0];
         if (track) {
           try {
@@ -513,7 +579,7 @@ export default function CameraBarcodeScanner({
               const maxZ = Math.min(caps.zoom.max, 5);
               const stepZ = caps.zoom.step || 0.1;
               setZoomRange({ min: minZ, max: maxZ, step: stepZ });
-              setZoomValue(minZ); // Default to 1x native optical sensor
+              setZoomValue(minZ); // Default to native 1x optical sensor
             } else {
               setZoomRange(null);
             }
@@ -544,7 +610,7 @@ export default function CameraBarcodeScanner({
             if (video && video.readyState >= 2 && video.videoWidth > 0 && video.videoHeight > 0) {
               let detected = false;
 
-              // 1. ENGINE 1: Native Hardware BarcodeDetector (Android Chrome ML Kit / GPU)
+              // 1. ENGINE 1: Native Hardware BarcodeDetector (Chrome ML Kit / GPU)
               if (nativeDetector) {
                 try {
                   const barcodes = await nativeDetector.detect(video);
@@ -560,7 +626,7 @@ export default function CameraBarcodeScanner({
                 } catch {}
               }
 
-              // 2. ENGINE 2: ZXing-WASM (Ultra-fast center crop & full-frame fallback)
+              // 2. ENGINE 2: ZXing-WASM (Center crop & full frame fallback)
               if (!detected && zxingReadBarcodes) {
                 const vw = video.videoWidth;
                 const vh = video.videoHeight;
@@ -655,11 +721,14 @@ export default function CameraBarcodeScanner({
       clearTimeout(bootTimer);
       stopStream();
     };
-  }, [isOpen, selectedCameraId, retryNonce]);
+  }, [isOpen, selectedCameraId, retryNonce, unlockAudio]);
 
   return (
     <Dialog open={isOpen} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-md w-full p-0 overflow-hidden bg-background border shadow-2xl rounded-2xl max-h-[95vh] flex flex-col">
+      <DialogContent
+        className="sm:max-w-md w-full p-0 overflow-hidden bg-background border shadow-2xl rounded-2xl max-h-[95vh] flex flex-col"
+        onPointerDown={unlockAudio}
+      >
         {/* Header */}
         <DialogHeader className="p-4 pb-2 border-b flex flex-row items-center justify-between space-y-0">
           <div className="flex items-center gap-2">
@@ -669,7 +738,9 @@ export default function CameraBarcodeScanner({
             <div>
               <DialogTitle className="text-base font-bold">{title}</DialogTitle>
               <DialogDescription className="text-xs text-muted-foreground mt-0.5">
-                {activeCameraLabel ? `وجّه الكاميرا نحو الباركود (${activeCameraLabel.slice(0, 25)})` : "وجّه كاميرا الموبايل نحو باركود الصنف"}
+                {activeCameraLabel
+                  ? `وجّه الكاميرا نحو الباركود (${activeCameraLabel.slice(0, 25)})`
+                  : "وجّه كاميرا الموبايل نحو باركود الصنف"}
               </DialogDescription>
             </div>
           </div>
@@ -739,7 +810,9 @@ export default function CameraBarcodeScanner({
                     type="button"
                     onClick={() => applyZoom(1)}
                     className={`text-[10px] px-2 py-0.5 rounded-full font-mono transition-colors ${
-                      zoomValue <= 1.1 ? "bg-primary text-primary-foreground font-bold" : "text-white/80 hover:bg-white/20"
+                      zoomValue <= 1.1
+                        ? "bg-primary text-primary-foreground font-bold"
+                        : "text-white/80 hover:bg-white/20"
                     }`}
                   >
                     1x
@@ -748,7 +821,9 @@ export default function CameraBarcodeScanner({
                     type="button"
                     onClick={() => applyZoom(Math.min(zoomRange.max, 1.5))}
                     className={`text-[10px] px-2 py-0.5 rounded-full font-mono transition-colors ${
-                      zoomValue > 1.1 && zoomValue <= 1.7 ? "bg-primary text-primary-foreground font-bold" : "text-white/80 hover:bg-white/20"
+                      zoomValue > 1.1 && zoomValue <= 1.7
+                        ? "bg-primary text-primary-foreground font-bold"
+                        : "text-white/80 hover:bg-white/20"
                     }`}
                   >
                     1.5x
@@ -757,7 +832,9 @@ export default function CameraBarcodeScanner({
                     type="button"
                     onClick={() => applyZoom(Math.min(zoomRange.max, 2.0))}
                     className={`text-[10px] px-2 py-0.5 rounded-full font-mono transition-colors ${
-                      zoomValue > 1.7 ? "bg-primary text-primary-foreground font-bold" : "text-white/80 hover:bg-white/20"
+                      zoomValue > 1.7
+                        ? "bg-primary text-primary-foreground font-bold"
+                        : "text-white/80 hover:bg-white/20"
                     }`}
                   >
                     2x
@@ -771,7 +848,9 @@ export default function CameraBarcodeScanner({
                     onChange={(e) => applyZoom(Number(e.target.value))}
                     className="w-24 accent-primary cursor-pointer"
                   />
-                  <span className="text-[11px] text-white/90 font-mono min-w-[28px]">{zoomValue.toFixed(1)}x</span>
+                  <span className="text-[11px] text-white/90 font-mono min-w-[28px]">
+                    {zoomValue.toFixed(1)}x
+                  </span>
                 </div>
               )}
 
