@@ -1236,6 +1236,17 @@ function PosPageContent() {
     const [isExitDialogOpen, setIsExitDialogOpen] = useState(false);
     const allowExitRef = useRef(false);
 
+    const [customGroupsWidth, setCustomGroupsWidth] = useState<number | null>(() => {
+        if (typeof window === 'undefined') return null;
+        try {
+            const saved = localStorage.getItem('pos_groups_width');
+            const parsed = saved ? Number(saved) : NaN;
+            return !isNaN(parsed) && parsed >= 150 && parsed <= 500 ? parsed : null;
+        } catch {
+            return null;
+        }
+    });
+
     const handleAttemptExit = useCallback(() => {
         setIsExitDialogOpen(true);
     }, []);
@@ -2892,16 +2903,6 @@ function PosPageContent() {
 
     const { widthName = 35, widthBarcode = 20, widthPrice = 15, widthQty = 15, widthTotal = 15 } = posSettings.cartColumns || {};
     const { layout = 'cart-left', cartWidth = 40, itemsWidth = 60, groupsPosition = 'left', groupsWidth = 240, paymentPosition = 'bottom' } = posSettings.layout || {};
-    const [customGroupsWidth, setCustomGroupsWidth] = useState<number | null>(() => {
-        if (typeof window === 'undefined') return null;
-        try {
-            const saved = localStorage.getItem('pos_groups_width');
-            const parsed = saved ? Number(saved) : NaN;
-            return !isNaN(parsed) && parsed >= 150 && parsed <= 500 ? parsed : null;
-        } catch {
-            return null;
-        }
-    });
     const effectiveGroupsWidth = customGroupsWidth ?? (Number(groupsWidth) || 240);
     const updateGroupsWidth = (nextWidth: number) => {
         const clamped = Math.max(150, Math.min(500, nextWidth));

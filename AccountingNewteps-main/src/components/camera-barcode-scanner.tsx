@@ -98,6 +98,30 @@ function scoreCamera(device: MediaDeviceInfo): number {
   return score;
 }
 
+// Contrast auto-enhancer for shiny/reflective labels and uneven lighting
+function autoEnhanceContrast(imageData: ImageData): ImageData {
+  const data = imageData.data;
+  let min = 255;
+  let max = 0;
+  for (let i = 0; i < data.length; i += 4) {
+    const gray = (data[i] * 77 + data[i + 1] * 150 + data[i + 2] * 29) >> 8;
+    if (gray < min) min = gray;
+    if (gray > max) max = gray;
+  }
+  const range = max - min;
+  if (range > 20 && range < 230) {
+    const scale = 255 / range;
+    for (let i = 0; i < data.length; i += 4) {
+      const gray = (data[i] * 77 + data[i + 1] * 150 + data[i + 2] * 29) >> 8;
+      const enhanced = Math.min(255, Math.max(0, Math.round((gray - min) * scale)));
+      data[i] = enhanced;
+      data[i + 1] = enhanced;
+      data[i + 2] = enhanced;
+    }
+  }
+  return imageData;
+}
+
 export default function CameraBarcodeScanner({
   isOpen,
   onOpenChange,
@@ -121,9 +145,10 @@ export default function CameraBarcodeScanner({
   const [lastScannedCode, setLastScannedCode] = useState<string | null>(null);
   const [recentScansCount, setRecentScansCount] = useState(0);
   const [retryNonce, setRetryNonce] = useState(0);
-  const [zoomRange, setZoomRange] = useState<{ min: number; max: number; step: number } | null>(null);
-  const [zoomValue, setZoomValue] = useState<number>(1);
+  const [zoomRange, setZoomRange] = useState<{ min: number; max: number; step: number } | null>({ min: 1, max: 4, step: 0.1 });
+  const [zoomValue, setZoomValue] = useState<number>(1.5);
   const [tapFocusCoord, setTapFocusCoord] = useState<{ x: number; y: number } | null>(null);
+  const [isScanSuccessFlash, setIsScanSuccessFlash] = useState(false);
 
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -227,6 +252,8 @@ export default function CameraBarcodeScanner({
       lastScannedCodeRef.current = cleanCode;
       setLastScannedCode(cleanCode);
       setRecentScansCount((prev) => prev + 1);
+      setIsScanSuccessFlash(true);
+      setTimeout(() => setIsScanSuccessFlash(false), 500);
 
       playBeep();
       triggerHaptic();
@@ -258,12 +285,13 @@ export default function CameraBarcodeScanner({
   };
 
   const applyZoom = async (newZoom: number) => {
-    setZoomValue(newZoom);
+    const clamped = Math.max(1, Math.min(4, Number(newZoom.toFixed(1))));
+    setZoomValue(clamped);
     try {
       const track = streamRef.current?.getVideoTracks?.()[0];
       if (track) {
         await track.applyConstraints({
-          advanced: [{ zoom: newZoom } as any],
+          advanced: [{ zoom: clamped } as any],
         });
       }
     } catch {}
@@ -579,11 +607,16 @@ export default function CameraBarcodeScanner({
               const maxZ = Math.min(caps.zoom.max, 5);
               const stepZ = caps.zoom.step || 0.1;
               setZoomRange({ min: minZ, max: maxZ, step: stepZ });
-              setZoomValue(minZ); // Default to native 1x optical sensor
+              // Apply initial zoom
+              track.applyConstraints({
+                advanced: [{ zoom: Math.min(maxZ, Math.max(minZ, 1.5)) } as any],
+              }).catch(() => {});
             } else {
-              setZoomRange(null);
+              setZoomRange({ min: 1, max: 4, step: 0.1 });
             }
-          } catch {}
+          } catch {
+            setZoomRange({ min: 1, max: 4, step: 0.1 });
+          }
         }
 
         setIsInitializing(false);
@@ -609,9 +642,99 @@ export default function CameraBarcodeScanner({
             const video = videoRef.current;
             if (video && video.readyState >= 2 && video.videoWidth > 0 && video.videoHeight > 0) {
               let detected = false;
+              const vw = video.videoWidth;
+              const vh = video.videoHeight;
+              frameCounter++;
 
-              // 1. ENGINE 1: Native Hardware BarcodeDetector (Chrome ML Kit / GPU)
-              if (nativeDetector) {
+              // Calculate crop dimensions taking current digital/optical zoom into account
+              const currentZoom = Math.max(1, zoomValue);
+              // Tight center crop corresponding to the central target box where user aims
+              const cropW = Math.max(260, Math.round((vw * 0.55) / currentZoom));
+              const cropH = Math.max(160, Math.round((vh * 0.38) / currentZoom));
+              const cropX = Math.max(0, Math.round((vw - cropW) / 2));
+              const cropY = Math.max(0, Math.round((vh - cropH) / 2));
+
+              if (cropCtx) {
+                if (cropCanvas.width !== cropW || cropCanvas.height !== cropH) {
+                  cropCanvas.width = cropW;
+                  cropCanvas.height = cropH;
+                }
+                cropCtx.drawImage(video, cropX, cropY, cropW, cropH, 0, 0, cropW, cropH);
+
+                // 1. ENGINE 1A: Native Hardware BarcodeDetector on high-res cropCanvas
+                if (nativeDetector) {
+                  try {
+                    const barcodes = await nativeDetector.detect(cropCanvas);
+                    if (barcodes && barcodes.length > 0) {
+                      for (const bc of barcodes) {
+                        if (bc.rawValue) {
+                          handleDecodedResultRef.current(bc.rawValue, bc.format);
+                          detected = true;
+                          break;
+                        }
+                      }
+                    }
+                  } catch {}
+                }
+
+                // 2. ENGINE 2A: ZXing-WASM on cropData with tryHarder: true
+                if (!detected && zxingReadBarcodes) {
+                  try {
+                    const cropData = cropCtx.getImageData(0, 0, cropW, cropH);
+                    const cropResults = await zxingReadBarcodes(cropData, {
+                      formats: [
+                        "EAN13",
+                        "EAN8",
+                        "UPCA",
+                        "UPCE",
+                        "Code128",
+                        "Code39",
+                        "Code93",
+                        "Codabar",
+                        "ITF",
+                        "QRCode",
+                        "DataMatrix",
+                      ],
+                      tryRotate: true,
+                      tryHarder: true,
+                      tryInvert: true,
+                      maxNumberOfSymbols: 1,
+                    });
+
+                    if (
+                      isMounted &&
+                      cropResults &&
+                      cropResults.length > 0 &&
+                      cropResults[0].isValid &&
+                      cropResults[0].text
+                    ) {
+                      handleDecodedResultRef.current(cropResults[0].text, cropResults[0].format);
+                      detected = true;
+                    } else if (frameCounter % 2 === 0) {
+                      // Contrast auto-enhancement pass for shiny / glare-affected labels
+                      const enhanced = autoEnhanceContrast(cropData);
+                      const enhResults = await zxingReadBarcodes(enhanced, {
+                        tryRotate: true,
+                        tryHarder: true,
+                        maxNumberOfSymbols: 1,
+                      });
+                      if (
+                        isMounted &&
+                        enhResults &&
+                        enhResults.length > 0 &&
+                        enhResults[0].isValid &&
+                        enhResults[0].text
+                      ) {
+                        handleDecodedResultRef.current(enhResults[0].text, enhResults[0].format);
+                        detected = true;
+                      }
+                    }
+                  } catch {}
+                }
+              }
+
+              // 3. Fallback: Native Hardware BarcodeDetector on full video stream
+              if (!detected && nativeDetector) {
                 try {
                   const barcodes = await nativeDetector.detect(video);
                   if (barcodes && barcodes.length > 0) {
@@ -626,41 +749,9 @@ export default function CameraBarcodeScanner({
                 } catch {}
               }
 
-              // 2. ENGINE 2: ZXing-WASM (Center crop & full frame fallback)
-              if (!detected && zxingReadBarcodes) {
-                const vw = video.videoWidth;
-                const vh = video.videoHeight;
-                frameCounter++;
-
-                // A) Center-crop at 1:1 sensor resolution (sharp unscaled barcode stripes)
-                const cropW = Math.round(vw * 0.65);
-                const cropH = Math.round(vh * 0.45);
-                const cropX = Math.round((vw - cropW) / 2);
-                const cropY = Math.round((vh - cropH) / 2);
-
-                if (cropCtx) {
-                  if (cropCanvas.width !== cropW || cropCanvas.height !== cropH) {
-                    cropCanvas.width = cropW;
-                    cropCanvas.height = cropH;
-                  }
-                  cropCtx.drawImage(video, cropX, cropY, cropW, cropH, 0, 0, cropW, cropH);
-                  const cropData = cropCtx.getImageData(0, 0, cropW, cropH);
-
-                  const cropResults = await zxingReadBarcodes(cropData, {
-                    formats: ["EAN13", "EAN8", "UPCA", "UPCE", "Code128", "Code39", "QRCode"],
-                    tryRotate: true,
-                    tryHarder: false,
-                    maxNumberOfSymbols: 1,
-                  });
-
-                  if (isMounted && cropResults && cropResults.length > 0 && cropResults[0].isValid && cropResults[0].text) {
-                    handleDecodedResultRef.current(cropResults[0].text, cropResults[0].format);
-                    detected = true;
-                  }
-                }
-
-                // B) If still not detected, scan full frame every 3rd cycle
-                if (!detected && frameCounter % 3 === 0 && fullCtx) {
+              // 4. Fallback: Full frame ZXing-WASM every 3rd cycle
+              if (!detected && zxingReadBarcodes && frameCounter % 3 === 0 && fullCtx) {
+                try {
                   const targetW = Math.min(vw, 1280);
                   const scale = targetW / vw;
                   const targetH = Math.round(vh * scale);
@@ -681,16 +772,22 @@ export default function CameraBarcodeScanner({
                     maxNumberOfSymbols: 1,
                   });
 
-                  if (isMounted && fullResults && fullResults.length > 0 && fullResults[0].isValid && fullResults[0].text) {
+                  if (
+                    isMounted &&
+                    fullResults &&
+                    fullResults.length > 0 &&
+                    fullResults[0].isValid &&
+                    fullResults[0].text
+                  ) {
                     handleDecodedResultRef.current(fullResults[0].text, fullResults[0].format);
                   }
-                }
+                } catch {}
               }
             }
           } catch {}
 
           if (isMounted && rafActive) {
-            timerId = setTimeout(scanLoop, 90);
+            timerId = setTimeout(scanLoop, 80);
           }
         };
 
@@ -757,7 +854,7 @@ export default function CameraBarcodeScanner({
 
         {/* Viewfinder Viewport */}
         <div
-          className="relative min-h-[260px] sm:min-h-[320px] max-h-[45vh] bg-black flex items-center justify-center overflow-hidden cursor-crosshair select-none"
+          className="relative min-h-[280px] sm:min-h-[340px] max-h-[48vh] bg-black flex items-center justify-center overflow-hidden cursor-crosshair select-none"
           onClick={handleTapToFocus}
         >
           <video
@@ -765,7 +862,11 @@ export default function CameraBarcodeScanner({
             autoPlay
             playsInline
             muted
-            className="w-full h-full min-h-[260px] object-cover"
+            className="w-full h-full min-h-[280px] object-cover transition-transform duration-150 ease-out"
+            style={{
+              transform: `scale(${zoomValue})`,
+              transformOrigin: "center center",
+            }}
           />
 
           {/* Tap-to-focus animation ring */}
@@ -781,86 +882,112 @@ export default function CameraBarcodeScanner({
 
           {/* Scanner Overlay HUD */}
           {!isInitializing && !errorMessage && (
-            <div className="absolute inset-0 pointer-events-none flex flex-col items-center justify-center p-6">
-              <div className="mb-3 text-center text-[11px] font-medium text-white/95 bg-black/65 px-3 py-1 rounded-full backdrop-blur-sm border border-white/10 flex items-center gap-1.5 shadow-md">
+            <div className="absolute inset-0 pointer-events-none flex flex-col items-center justify-between p-4 pb-3">
+              {/* Top Hint */}
+              <div className="text-center text-[11px] font-medium text-white/95 bg-black/65 px-3 py-1 rounded-full backdrop-blur-sm border border-white/10 flex items-center gap-1.5 shadow-md">
                 <Focus className="h-3 w-3 text-emerald-400" />
                 <span>ضع الباركود داخل الإطار (انقر للشاشة للتركيز الفوري)</span>
               </div>
 
               {/* Viewfinder Bounding Box */}
-              <div className="relative w-full max-w-[290px] h-[175px] border-2 border-primary/90 rounded-2xl shadow-[0_0_0_9999px_rgba(0,0,0,0.5)] flex items-center justify-center">
+              <div
+                className={`relative w-full max-w-[290px] h-[175px] border-2 transition-all duration-200 rounded-2xl shadow-[0_0_0_9999px_rgba(0,0,0,0.5)] flex items-center justify-center ${
+                  isScanSuccessFlash
+                    ? "border-emerald-400 shadow-[0_0_35px_#10b981]"
+                    : "border-primary/90"
+                }`}
+              >
                 {/* Red Laser Scanning Beam */}
                 <div className="absolute left-2 right-2 h-0.5 bg-gradient-to-r from-transparent via-red-500 to-transparent animate-bounce shadow-[0_0_10px_#ef4444]" />
 
                 {/* Corner Accents */}
-                <div className="absolute -top-1 -left-1 w-6 h-6 border-t-4 border-l-4 border-primary rounded-tl-xl" />
-                <div className="absolute -top-1 -right-1 w-6 h-6 border-t-4 border-r-4 border-primary rounded-tr-xl" />
-                <div className="absolute -bottom-1 -left-1 w-6 h-6 border-b-4 border-l-4 border-primary rounded-bl-xl" />
-                <div className="absolute -bottom-1 -right-1 w-6 h-6 border-b-4 border-r-4 border-primary rounded-br-xl" />
+                <div
+                  className={`absolute -top-1 -left-1 w-6 h-6 border-t-4 border-l-4 rounded-tl-xl transition-colors ${
+                    isScanSuccessFlash ? "border-emerald-400" : "border-primary"
+                  }`}
+                />
+                <div
+                  className={`absolute -top-1 -right-1 w-6 h-6 border-t-4 border-r-4 rounded-tr-xl transition-colors ${
+                    isScanSuccessFlash ? "border-emerald-400" : "border-primary"
+                  }`}
+                />
+                <div
+                  className={`absolute -bottom-1 -left-1 w-6 h-6 border-b-4 border-l-4 rounded-bl-xl transition-colors ${
+                    isScanSuccessFlash ? "border-emerald-400" : "border-primary"
+                  }`}
+                />
+                <div
+                  className={`absolute -bottom-1 -right-1 w-6 h-6 border-b-4 border-r-4 rounded-br-xl transition-colors ${
+                    isScanSuccessFlash ? "border-emerald-400" : "border-primary"
+                  }`}
+                />
 
                 <div className="text-[10px] text-white/80 bg-black/60 px-2 py-0.5 rounded-full pointer-events-none">
                   ضع الباركود هنا
                 </div>
               </div>
 
-              {/* Zoom Controls */}
-              {zoomRange && (
-                <div className="mt-3 pointer-events-auto flex items-center gap-2 bg-black/70 backdrop-blur-md px-3 py-1.5 rounded-full border border-white/10">
-                  <button
-                    type="button"
-                    onClick={() => applyZoom(1)}
-                    className={`text-[10px] px-2 py-0.5 rounded-full font-mono transition-colors ${
-                      zoomValue <= 1.1
-                        ? "bg-primary text-primary-foreground font-bold"
-                        : "text-white/80 hover:bg-white/20"
-                    }`}
-                  >
-                    1x
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => applyZoom(Math.min(zoomRange.max, 1.5))}
-                    className={`text-[10px] px-2 py-0.5 rounded-full font-mono transition-colors ${
-                      zoomValue > 1.1 && zoomValue <= 1.7
-                        ? "bg-primary text-primary-foreground font-bold"
-                        : "text-white/80 hover:bg-white/20"
-                    }`}
-                  >
-                    1.5x
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => applyZoom(Math.min(zoomRange.max, 2.0))}
-                    className={`text-[10px] px-2 py-0.5 rounded-full font-mono transition-colors ${
-                      zoomValue > 1.7
-                        ? "bg-primary text-primary-foreground font-bold"
-                        : "text-white/80 hover:bg-white/20"
-                    }`}
-                  >
-                    2x
-                  </button>
-                  <input
-                    type="range"
-                    min={zoomRange.min}
-                    max={zoomRange.max}
-                    step={zoomRange.step}
-                    value={zoomValue}
-                    onChange={(e) => applyZoom(Number(e.target.value))}
-                    className="w-24 accent-primary cursor-pointer"
-                  />
-                  <span className="text-[11px] text-white/90 font-mono min-w-[28px]">
-                    {zoomValue.toFixed(1)}x
-                  </span>
-                </div>
-              )}
+              {/* Bottom Zoom & Feedback Bar */}
+              <div className="w-full flex flex-col items-center gap-2 pointer-events-auto">
+                {/* Scanned Feedback Toast */}
+                {lastScannedCode && (
+                  <div className="bg-emerald-600 text-white text-xs font-bold px-4 py-1.5 rounded-full shadow-lg flex items-center gap-2 animate-in fade-in zoom-in duration-200">
+                    <CheckCircle2 className="h-4 w-4" />
+                    <span>تم المسح بنجاح: {lastScannedCode}</span>
+                  </div>
+                )}
 
-              {/* Scanned Feedback Toast */}
-              {lastScannedCode && (
-                <div className="mt-3 pointer-events-auto bg-emerald-600 text-white text-xs font-bold px-4 py-1.5 rounded-full shadow-lg flex items-center gap-2 animate-in fade-in zoom-in duration-200">
-                  <CheckCircle2 className="h-4 w-4" />
-                  <span>تم المسح بنجاح: {lastScannedCode}</span>
+                {/* Always-Visible Zoom Bar */}
+                <div className="w-full max-w-[340px] flex items-center justify-between gap-1 sm:gap-2 bg-black/80 backdrop-blur-md px-3 py-1.5 rounded-full border border-white/15 shadow-xl">
+                  <div className="flex items-center gap-1">
+                    <button
+                      type="button"
+                      className="h-6 w-6 flex items-center justify-center text-white/80 hover:text-white hover:bg-white/20 rounded-full"
+                      onClick={() => applyZoom(Math.max(1, zoomValue - 0.5))}
+                      title="تصغير"
+                    >
+                      <Minus className="h-3 w-3" />
+                    </button>
+                    <input
+                      type="range"
+                      min="1"
+                      max="4"
+                      step="0.1"
+                      value={zoomValue}
+                      onChange={(e) => applyZoom(Number(e.target.value))}
+                      className="w-16 sm:w-24 h-1.5 accent-primary bg-white/20 rounded-lg appearance-none cursor-pointer"
+                    />
+                    <button
+                      type="button"
+                      className="h-6 w-6 flex items-center justify-center text-white/80 hover:text-white hover:bg-white/20 rounded-full"
+                      onClick={() => applyZoom(Math.min(4, zoomValue + 0.5))}
+                      title="تكبير"
+                    >
+                      <Plus className="h-3 w-3" />
+                    </button>
+                  </div>
+
+                  <div className="flex items-center gap-1">
+                    {[1, 1.5, 2, 3].map((z) => (
+                      <button
+                        key={z}
+                        type="button"
+                        onClick={() => applyZoom(z)}
+                        className={`text-[10px] px-2 py-0.5 rounded-full font-mono font-bold transition-all ${
+                          Math.abs(zoomValue - z) < 0.2
+                            ? "bg-primary text-primary-foreground shadow"
+                            : "text-white/70 hover:text-white hover:bg-white/20"
+                        }`}
+                      >
+                        {z}x
+                      </button>
+                    ))}
+                    <span className="text-[11px] text-amber-300 font-mono font-bold ml-1 min-w-[28px] text-right">
+                      {zoomValue.toFixed(1)}x
+                    </span>
+                  </div>
                 </div>
-              )}
+              </div>
             </div>
           )}
 
