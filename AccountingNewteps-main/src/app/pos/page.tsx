@@ -3504,46 +3504,65 @@ function PosPageContent() {
             }}
         />
 
-        {/* نافذة حماية وتأكيد الخروج من شاشة البيع */}
+        {/* نافذة حماية وتأكيد الخروج من شاشة البيع - متوافقة تماماً مع الموبايل والشاشات اللمسية */}
         <AlertDialog open={isExitDialogOpen} onOpenChange={setIsExitDialogOpen}>
-            <AlertDialogContent className="max-w-md text-right" dir="rtl">
-                <AlertDialogHeader>
+            <AlertDialogContent className="w-[94vw] max-w-md p-4 sm:p-6 rounded-2xl text-right overflow-hidden shadow-2xl border bg-card" dir="rtl">
+                <AlertDialogHeader className="space-y-2 text-right">
                     <AlertDialogTitle className="flex items-center gap-2 text-base font-bold">
                         {cart.length > 0 ? (
                             <>
-                                <AlertTriangle className="h-5 w-5 text-destructive shrink-0" />
-                                <span className="text-destructive">تنبيه: لا يمكن الخروج - توجد أصناف في الفاتورة</span>
+                                <div className="p-2 bg-destructive/10 text-destructive rounded-xl shrink-0">
+                                    <AlertTriangle className="h-5 w-5" />
+                                </div>
+                                <span className="text-destructive font-bold text-base sm:text-lg">تنبيه: توجد أصناف في الفاتورة</span>
                             </>
                         ) : (
                             <>
-                                <LogOut className="h-5 w-5 text-primary shrink-0" />
-                                <span>تأكيد الخروج من شاشة البيع</span>
+                                <div className="p-2 bg-primary/10 text-primary rounded-xl shrink-0">
+                                    <LogOut className="h-5 w-5" />
+                                </div>
+                                <span className="font-bold text-base sm:text-lg">تأكيد الخروج من شاشة البيع</span>
                             </>
                         )}
                     </AlertDialogTitle>
-                    <AlertDialogDescription className="text-sm pt-2 text-foreground/80 leading-relaxed">
-                        {cart.length > 0 ? (
-                            <>
-                                توجد حالياً <strong className="text-destructive font-bold">{cart.length} أصناف</strong> في سلة الفاتورة الحالية بقيمة إجمالية <strong className="text-destructive font-mono font-bold">{total.toFixed(roundingPrecision)} ج.م</strong>.
-                                <br /><br />
-                                لحماية المبيعات ومنع ضياع البيانات، يرجى إتمام عملية البيع أو تعليق الفاتورة أو إلغاؤها أولاً قبل الخروج.
-                            </>
-                        ) : (
-                            'هل أنت متأكد من الخروج من شاشة البيع والعودة إلى لوحة التحكم الرئيسية؟'
-                        )}
+                    <AlertDialogDescription asChild>
+                        <div className="text-xs sm:text-sm text-muted-foreground leading-relaxed pt-1">
+                            {cart.length > 0 ? (
+                                <>
+                                    <p className="text-foreground/90 font-medium">
+                                        توجد حالياً عملية بيع قيد التنفيذ. لحماية المبيعات وتفادي ضياع البيانات، يمكنك اختيار أحد الإجراءات التالية:
+                                    </p>
+                                    <div className="bg-muted/50 rounded-xl p-3 border border-border/60 my-3 space-y-1.5">
+                                        <div className="flex items-center justify-between text-xs">
+                                            <span className="text-muted-foreground">عدد الأصناف في السلة:</span>
+                                            <span className="font-bold text-foreground font-mono">{cart.length} أصناف</span>
+                                        </div>
+                                        <div className="flex items-center justify-between text-xs">
+                                            <span className="text-muted-foreground">إجمالي الفاتورة:</span>
+                                            <span className="font-bold text-primary font-mono text-sm">{total.toFixed(roundingPrecision)} ج.م</span>
+                                        </div>
+                                    </div>
+                                </>
+                            ) : (
+                                <p className="text-foreground/90 pt-1">
+                                    هل أنت متأكد من الخروج من شاشة نقاط البيع والعودة إلى لوحة التحكم الرئيسية؟
+                                </p>
+                            )}
+                        </div>
                     </AlertDialogDescription>
                 </AlertDialogHeader>
-                <AlertDialogFooter className="flex-row-reverse justify-start gap-2 pt-4">
+                <AlertDialogFooter className="flex flex-col gap-2 w-full pt-4">
                     {cart.length > 0 ? (
                         <>
                             <AlertDialogCancel asChild>
-                                <Button variant="default" className="font-bold flex-1">
+                                <Button variant="default" className="w-full h-11 font-bold justify-center rounded-xl text-sm">
+                                    <ShoppingCart className="h-4 w-4 ml-1.5" />
                                     متابعة البيع (البقاء في الفاتورة)
                                 </Button>
                             </AlertDialogCancel>
                             <Button 
                                 variant="outline" 
-                                className="font-bold border-amber-500/40 text-amber-700 dark:text-amber-300 hover:bg-amber-500/10"
+                                className="w-full h-10 font-bold border-amber-500/40 text-amber-700 dark:text-amber-300 hover:bg-amber-500/10 justify-center rounded-xl text-xs sm:text-sm"
                                 onClick={async () => {
                                     setIsExitDialogOpen(false);
                                     await handleHoldInvoice();
@@ -3552,7 +3571,20 @@ function PosPageContent() {
                                 }}
                             >
                                 <PauseCircle className="h-4 w-4 ml-1.5 text-amber-500" />
-                                تعليق الفاتورة والخروج
+                                تعليق الفاتورة والعودة للرئيسية
+                            </Button>
+                            <Button 
+                                variant="ghost" 
+                                className="w-full h-9 font-semibold text-destructive hover:bg-destructive/10 hover:text-destructive justify-center rounded-xl text-xs"
+                                onClick={() => {
+                                    setIsExitDialogOpen(false);
+                                    setCart([]);
+                                    allowExitRef.current = true;
+                                    router.push('/');
+                                }}
+                            >
+                                <Trash2 className="h-3.5 w-3.5 ml-1.5" />
+                                إلغاء الفاتورة والخروج بدون حفظ
                             </Button>
                         </>
                     ) : (
@@ -3560,18 +3592,19 @@ function PosPageContent() {
                             <AlertDialogAction asChild>
                                 <Button 
                                     variant="destructive" 
-                                    className="font-bold"
+                                    className="w-full h-11 font-bold justify-center rounded-xl text-sm"
                                     onClick={() => {
                                         setIsExitDialogOpen(false);
                                         allowExitRef.current = true;
                                         router.push('/');
                                     }}
                                 >
+                                    <LogOut className="h-4 w-4 ml-1.5" />
                                     نعم، الخروج للرئيسية
                                 </Button>
                             </AlertDialogAction>
                             <AlertDialogCancel asChild>
-                                <Button variant="outline" className="font-bold">
+                                <Button variant="outline" className="w-full h-10 font-bold justify-center rounded-xl text-sm">
                                     البقاء في شاشة البيع
                                 </Button>
                             </AlertDialogCancel>
