@@ -713,29 +713,29 @@ export default function DatabaseReEngineeringPage() {
     }
 
     return (
-        <div className="space-y-6 p-4 md:p-6 max-w-7xl mx-auto">
+        <div className="space-y-4 sm:space-y-6 p-3 sm:p-4 md:p-6 max-w-7xl mx-auto w-full">
             <PageHeader
                 title="مركز إدارة السيرفرات وقواعد البيانات (الفرع والإدارة المركزية)"
                 description="إدارة اتصال قاعدة بيانات الفرع وقاعدة بيانات الإدارة المركزية"
             >
-                <div className="flex items-center gap-2">
-                    <Button asChild variant="outline" size="sm" className="gap-1.5 text-xs font-bold">
+                <div className="w-full sm:w-auto grid grid-cols-2 sm:flex sm:flex-wrap gap-1.5 sm:gap-2">
+                    <Button asChild variant="outline" size="sm" className="col-span-1 w-full sm:w-auto justify-center gap-1.5 text-xs font-bold h-8.5 sm:h-8">
                         <Link href="/settings/backup">
                             <HardDriveDownload className="h-3.5 w-3.5 text-primary" />
-                            النسخ الاحتياطي وإعادة الضبط
+                            النسخ والضبط
                         </Link>
                     </Button>
-                    <Button asChild variant="outline" size="sm" className="gap-1.5 text-xs font-bold">
+                    <Button asChild variant="outline" size="sm" className="col-span-1 w-full sm:w-auto justify-center gap-1.5 text-xs font-bold h-8.5 sm:h-8">
                         <Link href="/settings/central-sync">
                             <ArrowLeftRight className="h-3.5 w-3.5 text-primary" />
-                            المزامنة المركزية اللحظية
+                            المزامنة المركزية
                         </Link>
                     </Button>
-                    <Button variant="outline" size="sm" onClick={handleLockScreen} className="gap-1.5 text-xs font-bold text-rose-500 hover:text-rose-600">
+                    <Button variant="outline" size="sm" onClick={handleLockScreen} className="col-span-1 w-full sm:w-auto justify-center gap-1.5 text-xs font-bold text-rose-500 hover:text-rose-600 h-8.5 sm:h-8">
                         <Lock className="h-3.5 w-3.5" />
                         قفل الشاشة
                     </Button>
-                    <Button variant="outline" size="sm" onClick={loadAllConfigs} className="gap-1.5 text-xs font-bold">
+                    <Button variant="outline" size="sm" onClick={loadAllConfigs} className="col-span-1 w-full sm:w-auto justify-center gap-1.5 text-xs font-bold h-8.5 sm:h-8">
                         <RefreshCw className="h-3.5 w-3.5" />
                         تحديث الحالة
                     </Button>
@@ -743,18 +743,18 @@ export default function DatabaseReEngineeringPage() {
             </PageHeader>
 
             {/* شريط الملخص العلوي للفرع والإدارة */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3 sm:gap-4">
                 {/* بطاقة ملخص الفرع */}
                 <Card className={cn(
                     "border-2 transition-all",
                     branchConnectedStatus?.connected ? "border-emerald-500/40 bg-emerald-500/5" : "border-amber-500/40 bg-amber-500/5"
                 )}>
-                    <CardContent className="p-4 flex items-center justify-between gap-3">
+                    <CardContent className="p-3.5 sm:p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                         <div className="flex items-center gap-3">
                             <div className="h-10 w-10 rounded-xl bg-primary/10 text-primary flex items-center justify-center shrink-0">
                                 <Database className="h-5 w-5" />
                             </div>
-                            <div>
+                            <div className="min-w-0">
                                 <div className="flex items-center gap-2 flex-wrap">
                                     <span className="font-bold text-sm text-foreground">قاعدة بيانات الفرع</span>
                                     <Badge variant="outline" className={cn(
@@ -771,7 +771,7 @@ export default function DatabaseReEngineeringPage() {
                                         <Badge variant="destructive" className="text-[9px] px-1.5 py-0">غير متصلة</Badge>
                                     )}
                                 </div>
-                                <div className="text-[11px] text-muted-foreground mt-0.5 font-mono" dir="ltr">
+                                <div className="text-[11px] text-muted-foreground mt-0.5 font-mono break-all" dir="ltr">
                                     {branchConfig.server}:{branchConfig.port} [{branchConfig.database}]
                                 </div>
                             </div>
@@ -779,7 +779,7 @@ export default function DatabaseReEngineeringPage() {
                         <Button
                             size="sm"
                             variant={activeTab === 'branch' ? 'default' : 'outline'}
-                            className="h-8 text-xs font-bold shrink-0"
+                            className="h-8 text-xs font-bold w-full sm:w-auto shrink-0 justify-center"
                             onClick={() => setActiveTab('branch')}
                         >
                             تعديل إعدادات الفرع
@@ -792,12 +792,12 @@ export default function DatabaseReEngineeringPage() {
                     "border-2 transition-all",
                     centralConnectedStatus?.connected ? "border-emerald-500/40 bg-emerald-500/5" : "border-indigo-500/40 bg-indigo-500/5"
                 )}>
-                    <CardContent className="p-4 flex items-center justify-between gap-3">
+                    <CardContent className="p-3.5 sm:p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                         <div className="flex items-center gap-3">
                             <div className="h-10 w-10 rounded-xl bg-indigo-500/10 text-indigo-600 flex items-center justify-center shrink-0">
                                 <Globe className="h-5 w-5" />
                             </div>
-                            <div>
+                            <div className="min-w-0">
                                 <div className="flex items-center gap-2 flex-wrap">
                                     <span className="font-bold text-sm text-foreground">قاعدة الإدارة المركزية</span>
                                     <Badge variant="outline" className={cn(
@@ -814,7 +814,7 @@ export default function DatabaseReEngineeringPage() {
                                         <Badge variant="outline" className="text-[9px] px-1.5 py-0 border-indigo-400">جاهزة للربط</Badge>
                                     )}
                                 </div>
-                                <div className="text-[11px] text-muted-foreground mt-0.5 font-mono" dir="ltr">
+                                <div className="text-[11px] text-muted-foreground mt-0.5 font-mono break-all" dir="ltr">
                                     {centralConfig.centralServerIp}:{centralConfig.centralSqlPort} [{centralConfig.centralDatabase}]
                                 </div>
                             </div>
@@ -822,7 +822,7 @@ export default function DatabaseReEngineeringPage() {
                         <Button
                             size="sm"
                             variant={activeTab === 'central' ? 'default' : 'outline'}
-                            className="h-8 text-xs font-bold shrink-0"
+                            className="h-8 text-xs font-bold w-full sm:w-auto shrink-0 justify-center"
                             onClick={() => setActiveTab('central')}
                         >
                             تعديل إعدادات الإدارة
@@ -833,28 +833,28 @@ export default function DatabaseReEngineeringPage() {
 
             {/* التبويبات الرئيسية الموحدة */}
             <Tabs value={activeTab} onValueChange={(v: any) => setActiveTab(v)}>
-                <TabsList className="grid w-full grid-cols-3 h-11 p-1 bg-muted/60">
-                    <TabsTrigger value="branch" className="text-xs font-bold gap-2">
-                        <Store className="h-4 w-4" />
-                        1. قاعدة بيانات الفرع
+                <TabsList className="grid w-full grid-cols-3 h-auto sm:h-11 p-1 bg-muted/60 gap-1">
+                    <TabsTrigger value="branch" className="text-[11px] sm:text-xs font-bold gap-1 sm:gap-2 py-2 px-1 text-center justify-center">
+                        <Store className="h-3.5 w-3.5 sm:h-4 sm:w-4 shrink-0" />
+                        <span className="truncate">1. قاعدة الفرع</span>
                     </TabsTrigger>
-                    <TabsTrigger value="central" className="text-xs font-bold gap-2">
-                        <Building2 className="h-4 w-4" />
-                        2. قاعدة الإدارة المركزية
+                    <TabsTrigger value="central" className="text-[11px] sm:text-xs font-bold gap-1 sm:gap-2 py-2 px-1 text-center justify-center">
+                        <Building2 className="h-3.5 w-3.5 sm:h-4 sm:w-4 shrink-0" />
+                        <span className="truncate">2. قاعدة الإدارة</span>
                     </TabsTrigger>
-                    <TabsTrigger value="topology" className="text-xs font-bold gap-2">
-                        <ArrowLeftRight className="h-4 w-4" />
-                        3. تخطيط الربط
+                    <TabsTrigger value="topology" className="text-[11px] sm:text-xs font-bold gap-1 sm:gap-2 py-2 px-1 text-center justify-center">
+                        <ArrowLeftRight className="h-3.5 w-3.5 sm:h-4 sm:w-4 shrink-0" />
+                        <span className="truncate">3. تخطيط الربط</span>
                     </TabsTrigger>
                 </TabsList>
 
                 {/* ========================================================= */}
                 {/* تبويب 1: إعدادات اتصال الفرع */}
                 {/* ========================================================= */}
-                <TabsContent value="branch" className="space-y-5 mt-4">
+                <TabsContent value="branch" className="space-y-4 sm:space-y-5 mt-4">
                     <Card className="border shadow-sm">
                         <CardHeader className="border-b pb-4">
-                            <div className="flex flex-wrap items-center justify-between gap-3">
+                            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2.5">
                                 <div>
                                     <CardTitle className="text-base font-bold flex items-center gap-2">
                                         <Store className="h-5 w-5 text-primary" />
@@ -864,14 +864,14 @@ export default function DatabaseReEngineeringPage() {
                                         قاعدة البيانات المحلية المخصصة للفرع ونقطة البيع.
                                     </CardDescription>
                                 </div>
-                                <div className="flex flex-wrap items-center gap-1.5">
-                                    <Button type="button" variant="outline" size="sm" className="h-7 text-[11px] font-bold" onClick={() => applyBranchPreset('local')}>
+                                <div className="grid grid-cols-3 sm:flex sm:flex-wrap gap-1.5 w-full sm:w-auto">
+                                    <Button type="button" variant="outline" size="sm" className="h-8 sm:h-7 text-[11px] font-bold w-full sm:w-auto justify-center" onClick={() => applyBranchPreset('local')}>
                                         💻 محلي
                                     </Button>
-                                    <Button type="button" variant="outline" size="sm" className="h-7 text-[11px] font-bold" onClick={() => applyBranchPreset('external_ip')}>
-                                        🌐 سيرفر شبكة / IP
+                                    <Button type="button" variant="outline" size="sm" className="h-8 sm:h-7 text-[11px] font-bold w-full sm:w-auto justify-center" onClick={() => applyBranchPreset('external_ip')}>
+                                        🌐 شبكة / IP
                                     </Button>
-                                    <Button type="button" variant="outline" size="sm" className="h-7 text-[11px] font-bold" onClick={() => applyBranchPreset('aws_rds')}>
+                                    <Button type="button" variant="outline" size="sm" className="h-8 sm:h-7 text-[11px] font-bold w-full sm:w-auto justify-center" onClick={() => applyBranchPreset('aws_rds')}>
                                         <Cloud className="h-3 w-3 ml-1 text-amber-500" />
                                         ☁️ سحابي
                                     </Button>
@@ -879,19 +879,19 @@ export default function DatabaseReEngineeringPage() {
                             </div>
                         </CardHeader>
 
-                        <CardContent className="p-4 sm:p-6 space-y-5">
+                        <CardContent className="p-3.5 sm:p-6 space-y-4 sm:space-y-5">
                             <Tabs
                                 value={branchConfig.connectionMode || 'fields'}
                                 onValueChange={(v) => handleBranchFieldChange('connectionMode', v as 'fields' | 'connectionString')}
                             >
-                                <TabsList className="grid w-full grid-cols-2 mb-4">
-                                    <TabsTrigger value="connectionString" className="text-xs font-bold gap-1.5">
+                                <TabsList className="grid w-full grid-cols-1 sm:grid-cols-2 mb-4 h-auto gap-1 p-1 bg-muted/60">
+                                    <TabsTrigger value="connectionString" className="text-[11px] sm:text-xs font-bold gap-1.5 py-2">
                                         <Terminal className="h-3.5 w-3.5" />
-                                        نص الاتصال الكامل (Connection String)
+                                        نص الاتصال (Connection String)
                                     </TabsTrigger>
-                                    <TabsTrigger value="fields" className="text-xs font-bold gap-1.5">
+                                    <TabsTrigger value="fields" className="text-[11px] sm:text-xs font-bold gap-1.5 py-2">
                                         <Server className="h-3.5 w-3.5" />
-                                        الحقول التفصيلية (Host / Port / Database / User)
+                                        الحقول التفصيلية (Host / Database / User)
                                     </TabsTrigger>
                                 </TabsList>
 
@@ -924,8 +924,8 @@ export default function DatabaseReEngineeringPage() {
                                 </TabsContent>
 
                                 <TabsContent value="fields" className="space-y-4">
-                                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                                        <div className="md:col-span-2 space-y-1.5">
+                                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4">
+                                        <div className="sm:col-span-2 space-y-1.5">
                                             <Label className="text-xs font-bold">عنوان السيرفر:</Label>
                                             <Input
                                                 dir="ltr"
@@ -948,7 +948,7 @@ export default function DatabaseReEngineeringPage() {
                                         </div>
                                     </div>
 
-                                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                                    <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3 sm:gap-4">
                                         <div className="space-y-1.5">
                                             <Label className="text-xs font-bold">اسم قاعدة البيانات:</Label>
                                             <Input
@@ -969,7 +969,7 @@ export default function DatabaseReEngineeringPage() {
                                                 className="h-9 font-mono text-xs"
                                             />
                                         </div>
-                                        <div className="space-y-1.5">
+                                        <div className="space-y-1.5 sm:col-span-2 md:col-span-1">
                                             <Label className="text-xs font-bold">كلمة المرور (Password):</Label>
                                             <div className="relative">
                                                 <Input
@@ -994,7 +994,7 @@ export default function DatabaseReEngineeringPage() {
                                         </div>
                                     </div>
 
-                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-2">
+                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2">
                                         <div className="flex items-center justify-between p-3 rounded-lg border bg-muted/20">
                                             <div className="space-y-0.5">
                                                 <Label className="text-xs font-bold">تشفير الاتصال (Encrypt SSL):</Label>
@@ -1041,24 +1041,24 @@ export default function DatabaseReEngineeringPage() {
                             )}
 
                             {/* أزرار الإجراءات للفرع */}
-                            <div className="flex flex-wrap items-center justify-between gap-3 pt-3 border-t">
+                            <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2.5 pt-3 border-t">
                                 <Button
                                     type="button"
                                     variant="outline"
                                     onClick={handleTestBranchConnection}
                                     disabled={isTestingBranch}
-                                    className="gap-2 text-xs font-bold"
+                                    className="gap-2 text-xs font-bold h-8.5 sm:h-8 w-full sm:w-auto justify-center"
                                 >
                                     {isTestingBranch ? <Loader2 className="h-4 w-4 animate-spin" /> : <Zap className="h-4 w-4 text-amber-500" />}
                                     {isTestingBranch ? 'جارٍ الاختبار...' : 'اختبار الاتصال بالسيرفر'}
                                 </Button>
 
-                                <div className="flex flex-wrap items-center gap-2">
+                                <div className="grid grid-cols-1 sm:flex sm:flex-wrap items-center gap-2 w-full sm:w-auto">
                                     <Button
                                         type="button"
                                         onClick={handleSaveBranchConfig}
                                         disabled={isSavingBranch}
-                                        className="gap-2 text-xs font-bold bg-primary hover:bg-primary/90 text-primary-foreground"
+                                        className="gap-2 text-xs font-bold bg-primary hover:bg-primary/90 text-primary-foreground h-8.5 sm:h-8 w-full sm:w-auto justify-center"
                                     >
                                         {isSavingBranch ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
                                         {isSavingBranch ? 'جارٍ الحفظ...' : 'حفظ وتفعيل الاتصال فوراً'}
@@ -1069,7 +1069,7 @@ export default function DatabaseReEngineeringPage() {
                                         variant="secondary"
                                         onClick={handleInitializeBranchDatabase}
                                         disabled={isInitializingBranch}
-                                        className="gap-2 text-xs font-bold border"
+                                        className="gap-2 text-xs font-bold border h-8.5 sm:h-8 w-full sm:w-auto justify-center"
                                     >
                                         {isInitializingBranch ? <Loader2 className="h-4 w-4 animate-spin" /> : <Database className="h-4 w-4 text-primary" />}
                                         {isInitializingBranch ? 'جارٍ التأسيس...' : 'تأسيس وإنشاء الجداول'}
@@ -1083,10 +1083,10 @@ export default function DatabaseReEngineeringPage() {
                 {/* ========================================================= */}
                 {/* تبويب 2: إعدادات اتصال الإدارة المركزية */}
                 {/* ========================================================= */}
-                <TabsContent value="central" className="space-y-5 mt-4">
+                <TabsContent value="central" className="space-y-4 sm:space-y-5 mt-4">
                     <Card className="border shadow-sm">
                         <CardHeader className="border-b pb-4">
-                            <div className="flex flex-wrap items-center justify-between gap-3">
+                            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2.5">
                                 <div>
                                     <CardTitle className="text-base font-bold flex items-center gap-2">
                                         <Building2 className="h-5 w-5 text-indigo-600" />
@@ -1096,14 +1096,14 @@ export default function DatabaseReEngineeringPage() {
                                         قاعدة البيانات الرئيسية التي تتجمع فيها حركات ومبيعات الفروع.
                                     </CardDescription>
                                 </div>
-                                <div className="flex flex-wrap items-center gap-1.5">
-                                    <Button type="button" variant="outline" size="sm" className="h-7 text-[11px] font-bold" onClick={() => applyCentralPreset('local')}>
+                                <div className="grid grid-cols-3 sm:flex sm:flex-wrap gap-1.5 w-full sm:w-auto">
+                                    <Button type="button" variant="outline" size="sm" className="h-8 sm:h-7 text-[11px] font-bold w-full sm:w-auto justify-center" onClick={() => applyCentralPreset('local')}>
                                         💻 محلي
                                     </Button>
-                                    <Button type="button" variant="outline" size="sm" className="h-7 text-[11px] font-bold" onClick={() => applyCentralPreset('external_ip')}>
-                                        🌐 سيرفر شبكة / IP
+                                    <Button type="button" variant="outline" size="sm" className="h-8 sm:h-7 text-[11px] font-bold w-full sm:w-auto justify-center" onClick={() => applyCentralPreset('external_ip')}>
+                                        🌐 شبكة / IP
                                     </Button>
-                                    <Button type="button" variant="outline" size="sm" className="h-7 text-[11px] font-bold" onClick={() => applyCentralPreset('aws_rds')}>
+                                    <Button type="button" variant="outline" size="sm" className="h-8 sm:h-7 text-[11px] font-bold w-full sm:w-auto justify-center" onClick={() => applyCentralPreset('aws_rds')}>
                                         <Cloud className="h-3 w-3 ml-1 text-amber-500" />
                                         ☁️ سحابي
                                     </Button>
@@ -1111,21 +1111,21 @@ export default function DatabaseReEngineeringPage() {
                             </div>
                         </CardHeader>
 
-                        <CardContent className="p-4 sm:p-6 space-y-5">
+                        <CardContent className="p-3.5 sm:p-6 space-y-4 sm:space-y-5">
                             {/* خيار دور النظام المحمي */}
-                            <div className="p-3.5 rounded-xl border-2 border-indigo-500/20 bg-indigo-500/5 flex flex-wrap items-center justify-between gap-3">
+                            <div className="p-3.5 rounded-xl border-2 border-indigo-500/20 bg-indigo-500/5 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2.5">
                                 <div>
                                     <span className="font-bold text-xs text-foreground block">دور النظام:</span>
                                     <span className="text-[11px] text-muted-foreground">
                                         الوضع الحالي: <strong>{centralConfig.systemRole === 'central' ? 'إدارة مركزية' : 'فرع محلي'}</strong>
                                     </span>
                                 </div>
-                                <div className="flex items-center gap-2">
+                                <div className="grid grid-cols-2 sm:flex items-center gap-1.5 w-full sm:w-auto">
                                     <Button
                                         type="button"
                                         size="sm"
                                         variant={centralConfig.systemRole === 'branch' ? 'default' : 'outline'}
-                                        className="h-8 text-xs font-bold"
+                                        className="h-8 text-xs font-bold w-full sm:w-auto justify-center"
                                         onClick={() => {
                                             setRoleTarget('branch');
                                             setIsRoleDialogOpen(true);
@@ -1138,7 +1138,7 @@ export default function DatabaseReEngineeringPage() {
                                         type="button"
                                         size="sm"
                                         variant={centralConfig.systemRole === 'central' ? 'default' : 'outline'}
-                                        className="h-8 text-xs font-bold"
+                                        className="h-8 text-xs font-bold w-full sm:w-auto justify-center"
                                         onClick={() => {
                                             setRoleTarget('central');
                                             setIsRoleDialogOpen(true);
@@ -1151,8 +1151,8 @@ export default function DatabaseReEngineeringPage() {
                             </div>
 
                             {/* الحقول التفصيلية للسيرفر المركزي */}
-                            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                                <div className="md:col-span-2 space-y-1.5">
+                            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4">
+                                <div className="sm:col-span-2 space-y-1.5">
                                     <Label className="text-xs font-bold">عنوان السيرفر المركزي (IP أو النطاق أو Localhost):</Label>
                                     <Input
                                         dir="ltr"
@@ -1175,7 +1175,7 @@ export default function DatabaseReEngineeringPage() {
                                 </div>
                             </div>
 
-                            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3 sm:gap-4">
                                 <div className="space-y-1.5">
                                     <Label className="text-xs font-bold">اسم قاعدة بيانات الإدارة المركزية:</Label>
                                     <Input
@@ -1196,7 +1196,7 @@ export default function DatabaseReEngineeringPage() {
                                         className="h-9 font-mono text-xs"
                                     />
                                 </div>
-                                <div className="space-y-1.5">
+                                <div className="space-y-1.5 sm:col-span-2 md:col-span-1">
                                     <Label className="text-xs font-bold">كلمة المرور (Password):</Label>
                                     <div className="relative">
                                         <Input
@@ -1221,7 +1221,7 @@ export default function DatabaseReEngineeringPage() {
                                 </div>
                             </div>
 
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-2">
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2">
                                 <div className="flex items-center justify-between p-3 rounded-lg border bg-muted/20">
                                     <div className="space-y-0.5">
                                         <Label className="text-xs font-bold">تشفير الاتصال للسيرفر المركزي (Encrypt SSL):</Label>
@@ -1266,24 +1266,24 @@ export default function DatabaseReEngineeringPage() {
                             )}
 
                             {/* أزرار الإجراءات للسيرفر المركزي */}
-                            <div className="flex flex-wrap items-center justify-between gap-3 pt-3 border-t">
+                            <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2.5 pt-3 border-t">
                                 <Button
                                     type="button"
                                     variant="outline"
                                     onClick={handleTestCentralConnection}
                                     disabled={isTestingCentral}
-                                    className="gap-2 text-xs font-bold"
+                                    className="gap-2 text-xs font-bold h-8.5 sm:h-8 w-full sm:w-auto justify-center"
                                 >
                                     {isTestingCentral ? <Loader2 className="h-4 w-4 animate-spin" /> : <Zap className="h-4 w-4 text-indigo-600" />}
                                     {isTestingCentral ? 'جارٍ الاختبار...' : 'اختبار الاتصال بالسيرفر المركزي'}
                                 </Button>
 
-                                <div className="flex flex-wrap items-center gap-2">
+                                <div className="grid grid-cols-1 sm:flex sm:flex-wrap items-center gap-2 w-full sm:w-auto">
                                     <Button
                                         type="button"
                                         onClick={handleSaveCentralConfig}
                                         disabled={isSavingCentral}
-                                        className="gap-2 text-xs font-bold bg-indigo-600 hover:bg-indigo-700 text-white"
+                                        className="gap-2 text-xs font-bold bg-indigo-600 hover:bg-indigo-700 text-white h-8.5 sm:h-8 w-full sm:w-auto justify-center"
                                     >
                                         {isSavingCentral ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
                                         {isSavingCentral ? 'جارٍ الحفظ...' : 'حفظ إعدادات السيرفر المركزي'}
@@ -1294,7 +1294,7 @@ export default function DatabaseReEngineeringPage() {
                                         variant="secondary"
                                         onClick={handleInitializeCentralDatabase}
                                         disabled={isInitializingCentral}
-                                        className="gap-2 text-xs font-bold border"
+                                        className="gap-2 text-xs font-bold border h-8.5 sm:h-8 w-full sm:w-auto justify-center"
                                     >
                                         {isInitializingCentral ? <Loader2 className="h-4 w-4 animate-spin" /> : <Database className="h-4 w-4 text-indigo-600" />}
                                         {isInitializingCentral ? 'جارٍ التأسيس...' : 'تأسيس قاعدة الإدارة المركزية'}
@@ -1435,9 +1435,9 @@ export default function DatabaseReEngineeringPage() {
 
             {/* نافذة تأكيد تبديل دور النظام */}
             <Dialog open={isRoleDialogOpen} onOpenChange={setIsRoleDialogOpen}>
-                <DialogContent className="text-right" dir="rtl">
+                <DialogContent className="text-right w-[94vw] sm:max-w-md" dir="rtl">
                     <DialogHeader>
-                        <DialogTitle className="flex items-center gap-2">
+                        <DialogTitle className="flex items-center gap-2 text-base">
                             <ShieldCheck className="h-5 w-5 text-primary" />
                             تأكيد تغيير دور النظام إلى [{roleTarget === 'central' ? 'إدارة مركزية' : 'فرع محلي'}]
                         </DialogTitle>
@@ -1456,13 +1456,13 @@ export default function DatabaseReEngineeringPage() {
                             autoFocus
                         />
                     </div>
-                    <DialogFooter className="flex-row-reverse gap-2">
-                        <Button variant="outline" size="sm" onClick={() => setIsRoleDialogOpen(false)}>إلغاء</Button>
+                    <DialogFooter className="flex flex-col-reverse sm:flex-row gap-2 pt-2 border-t">
+                        <Button variant="outline" size="sm" onClick={() => setIsRoleDialogOpen(false)} className="w-full sm:w-auto">إلغاء</Button>
                         <Button
                             size="sm"
                             disabled={!rolePassword.trim() || isSwitchingRole}
                             onClick={handleExecuteRoleSwitch}
-                            className="bg-primary text-primary-foreground font-bold"
+                            className="bg-primary text-primary-foreground font-bold w-full sm:w-auto"
                         >
                             {isSwitchingRole ? <Loader2 className="h-3.5 w-3.5 animate-spin ml-1" /> : null}
                             تأكيد التبديل

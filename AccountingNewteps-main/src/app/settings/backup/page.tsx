@@ -451,16 +451,16 @@ export default function BackupPage() {
     return (
         <>
             <PageHeader title="النسخ الاحتياطي وحذف وإعادة ضبط البيانات (الإدارة المركزية والفرع)">
-                <div className="flex items-center gap-2">
+                <div className="w-full sm:w-auto grid grid-cols-2 sm:flex sm:flex-wrap gap-1.5 sm:gap-2">
                     <Button 
                         asChild
                         variant="outline" 
                         size="sm" 
-                        className="gap-1.5 text-xs font-bold"
+                        className="col-span-1 w-full sm:w-auto justify-center gap-1.5 text-xs font-bold h-8.5 sm:h-8"
                     >
                         <a href="/settings/re-engineer">
                             <Server className="h-3.5 w-3.5 text-primary" />
-                            مركز إدارة السيرفرات وقواعد البيانات
+                            مركز إدارة السيرفرات
                         </a>
                     </Button>
                     <Button 
@@ -468,7 +468,7 @@ export default function BackupPage() {
                         size="sm" 
                         onClick={fetchBackupInfo} 
                         disabled={isLoadingInfo}
-                        className="gap-1.5 text-xs font-bold"
+                        className="col-span-1 w-full sm:w-auto justify-center gap-1.5 text-xs font-bold h-8.5 sm:h-8"
                     >
                         <RefreshCw className={`h-3.5 w-3.5 ${isLoadingInfo ? 'animate-spin' : ''}`} />
                         تحديث الإحصائيات
@@ -476,18 +476,18 @@ export default function BackupPage() {
                 </div>
             </PageHeader>
 
-            <main className="flex flex-1 flex-col gap-6 p-4 md:gap-6 md:p-6 max-w-7xl mx-auto w-full">
+            <main className="flex flex-1 flex-col gap-4 sm:gap-6 p-3 sm:p-4 md:gap-6 md:p-6 max-w-7xl mx-auto w-full">
                 {/* شريط معلومات قاعدة بيانات الفرع والإدارة المركزية */}
-                <div className="grid gap-4 lg:grid-cols-2">
+                <div className="grid gap-3 sm:gap-4 lg:grid-cols-2">
                     {/* بطاقة قاعدة بيانات الفرع */}
                     <Card className="border bg-card/60 backdrop-blur-xs shadow-xs">
-                        <CardContent className="p-4 space-y-3">
+                        <CardContent className="p-3.5 sm:p-4 space-y-3">
                             <div className="flex items-center justify-between gap-2">
                                 <div className="flex items-center gap-2.5">
                                     <div className="h-10 w-10 rounded-xl bg-primary/10 text-primary flex items-center justify-center shrink-0">
                                         <Database className="h-5 w-5" />
                                     </div>
-                                    <div>
+                                    <div className="min-w-0">
                                         <div className="flex items-center gap-2 flex-wrap">
                                             <h2 className="text-sm font-bold text-foreground">
                                                 قاعدة بيانات الفرع: {backupInfo?.database || 'MultiBranchPOS_DB'}
@@ -509,7 +509,7 @@ export default function BackupPage() {
                                         <p className="text-[11px] text-muted-foreground">
                                             الفرع النشط: <strong className="text-foreground">{backupInfo?.branchName || 'الفرع الرئيسي'} ({backupInfo?.branchCode || '900'})</strong>
                                             {backupInfo?.localServer && (
-                                                <span className="block font-mono text-[10px] text-muted-foreground/90 mt-0.5" dir="ltr">
+                                                <span className="block font-mono text-[10px] text-muted-foreground/90 mt-0.5 break-all" dir="ltr">
                                                     السيرفر: {backupInfo.localServer}
                                                 </span>
                                             )}
@@ -523,13 +523,13 @@ export default function BackupPage() {
 
                     {/* بطاقة قاعدة بيانات الإدارة المركزية */}
                     <Card className="border bg-card/60 backdrop-blur-xs shadow-xs">
-                        <CardContent className="p-4 space-y-3">
+                        <CardContent className="p-3.5 sm:p-4 space-y-3">
                             <div className="flex items-center justify-between gap-2">
                                 <div className="flex items-center gap-2.5">
                                     <div className="h-10 w-10 rounded-xl bg-indigo-500/10 text-indigo-600 flex items-center justify-center shrink-0">
                                         <Globe className="h-5 w-5" />
                                     </div>
-                                    <div>
+                                    <div className="min-w-0">
                                         <div className="flex items-center gap-2 flex-wrap">
                                             <h2 className="text-sm font-bold text-foreground">
                                                 قاعدة الإدارة المركزية: {backupInfo?.centralDatabase || 'MultiBranchPOS_Central_DB'}
@@ -555,7 +555,7 @@ export default function BackupPage() {
                                             )}
                                         </div>
                                         <p className="text-[11px] text-muted-foreground">
-                                            السيرفر المركزي: <strong className="text-foreground font-mono">{backupInfo?.centralServer || '10.110.16.16:1433'}</strong>
+                                            السيرفر المركزي: <strong className="text-foreground font-mono break-all">{backupInfo?.centralServer || '10.110.16.16:1433'}</strong>
                                         </p>
                                     </div>
                                 </div>
@@ -1147,7 +1147,7 @@ export default function BackupPage() {
                                         {isLoadingRestore ? 'جارٍ استعادة البيانات إلى SQL...' : `استعادة النسخة إلى [${restoreTarget === 'central' ? 'الإدارة المركزية' : 'قاعدة الفرع'}]`}
                                     </Button>
                                 </AlertDialogTrigger>
-                                <AlertDialogContent className="text-right" dir="rtl">
+                                <AlertDialogContent className="text-right w-[94vw] sm:max-w-lg" dir="rtl">
                                     <AlertDialogHeader>
                                         <AlertDialogTitle className="flex items-center gap-2 text-foreground">
                                             <AlertTriangle className="h-5 w-5" />
@@ -1163,11 +1163,11 @@ export default function BackupPage() {
                                             </span>
                                         </AlertDialogDescription>
                                     </AlertDialogHeader>
-                                    <AlertDialogFooter className="flex-row-reverse gap-2">
-                                        <AlertDialogCancel className="h-8 text-xs font-bold">إلغاء</AlertDialogCancel>
+                                    <AlertDialogFooter className="flex flex-col-reverse sm:flex-row gap-2 pt-2 border-t">
+                                        <AlertDialogCancel className="h-8.5 sm:h-8 text-xs font-bold w-full sm:w-auto">إلغاء</AlertDialogCancel>
                                         <AlertDialogAction 
                                             onClick={handleRestoreConfirm}
-                                            className="h-8 text-xs font-bold bg-amber-600 hover:bg-amber-700 text-white"
+                                            className="h-8.5 sm:h-8 text-xs font-bold bg-amber-600 hover:bg-amber-700 text-white w-full sm:w-auto"
                                         >
                                             نعم، تابع الاستعادة الآن
                                         </AlertDialogAction>
