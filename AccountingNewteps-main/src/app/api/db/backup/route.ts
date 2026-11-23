@@ -2,6 +2,12 @@ import { NextResponse } from 'next/server';
 import { getDbPool, getLocalDbConfig } from '@/lib/db';
 import sql from 'mssql';
 import { getCentralConfig, connectToCentral } from '@/lib/central-sync';
+import { 
+    fetchAllFirebaseData, 
+    normalizeFirebaseDataToTables, 
+    formatTablesForFirebase, 
+    pushAllTablesToFirebase 
+} from '@/lib/firebase-rtdb';
 
 export const dynamic = 'force-dynamic';
 
@@ -658,29 +664,10 @@ export async function POST(req: Request) {
         }
 
         // =========================================================
-        // 2. استعادة نسخة احتياطية (Restore JSON) إلى قاعدة بيانات الفرع أو الإدارة المركزية
+        // مساعد عام لاستعادة الجداول والسجلات في مجمع اتصالات SQL
         // =========================================================
-        if (action === 'restore-json') {
-            const { backupData, target = 'branch' } = body;
-            if (!backupData || !backupData.tables || typeof backupData.tables !== 'object') {
-                return NextResponse.json({
-                    success: false,
-                    error: 'ملف النسخة الاحتياطية غير صالح أو لا يحتوي على بنية الجداول المطلوبة.'
-                }, { status: 400 });
-            }
-
-            const targetIsCentral = target === 'central';
-            let activePool: sql.ConnectionPool = pool;
-            let centralPoolToClose: sql.ConnectionPool | null = null;
-
-            if (targetIsCentral) {
-                centralPoolToClose = await connectToCentral(config);
-                activePool = centralPoolToClose;
-            }
-
-            const tablesObj = backupData.tables as Record<string, any[]>;
+        async function restoreTablesIntoPool(activePool: sql.ConnectionPool, tablesObj: Record<string, any[]>) {
             const tableNames = Object.keys(tablesObj);
-
             await setForeignKeysCheck(activePool, false);
 
             let restoredCount = 0;
@@ -763,23 +750,256 @@ export async function POST(req: Request) {
 
             } finally {
                 await setForeignKeysCheck(activePool, true);
+            }
+
+            return { restoredCount, totalRowsRestored, errors };
+        }
+
+        // =========================================================
+        // 2. استعادة نسخة احتياطية (Restore JSON / Firebase File) إلى قاعدة بيانات الفرع أو الإدارة
+        // =========================================================
+        if (action === 'restore-json') {
+            const { backupData, target = 'branch' } = body;
+            if (!backupData || typeof backupData !== 'object') {
+                return NextResponse.json({
+                    success: false,
+                    error: 'ملف النسخة الاحتياطية غير صالح أو فارغ.'
+                }, { status: 400 });
+            }
+
+            // دعم تلقائي ذكي لملفات JSON القياسية وملفات تصدير Firebase Console Realtime DB
+            const tablesObj = normalizeFirebaseDataToTables(backupData);
+            const tableNames = Object.keys(tablesObj);
+
+            if (tableNames.length === 0) {
+                return NextResponse.json({
+                    success: false,
+                    error: 'لم يتم العثور على أي جداول صالحة للاستعادة في الملف المقدم.'
+                }, { status: 400 });
+            }
+
+            const targetIsCentral = target === 'central';
+            let activePool: sql.ConnectionPool = pool;
+            let centralPoolToClose: sql.ConnectionPool | null = null;
+
+            if (targetIsCentral) {
+                centralPoolToClose = await connectToCentral(config);
+                activePool = centralPoolToClose;
+            }
+
+            try {
+                const result = await restoreTablesIntoPool(activePool, tablesObj);
+                const targetName = targetIsCentral
+                    ? `قاعدة الإدارة المركزية [${config.centralDatabase} على ${centralH.label}]`
+                    : `قاعدة بيانات الفرع [${localCfg.database} على ${branchH.label}]`;
+
+                return NextResponse.json({
+                    success: true,
+                    message: `تم استعادة ${result.restoredCount} جدولاً و ${result.totalRowsRestored} حركة وسجل بنجاح إلى ${targetName}.`,
+                    target,
+                    restoredTablesCount: result.restoredCount,
+                    totalRowsRestored: result.totalRowsRestored,
+                    errors: result.errors.slice(0, 10)
+                });
+            } finally {
                 if (centralPoolToClose) {
                     try { await centralPoolToClose.close(); } catch {}
                 }
             }
+        }
 
-            const targetName = targetIsCentral
-                ? `قاعدة الإدارة المركزية [${config.centralDatabase} على ${centralH.label}]`
-                : `قاعدة بيانات الفرع [${localCfg.database} على ${branchH.label}]`;
+        // =========================================================
+        // 3. تصدير ملف نسخ احتياطي بصيغة Firebase Realtime Database
+        // =========================================================
+        if (action === 'export-firebase-file') {
+            const target = body.target === 'central' ? 'central' : 'branch';
+            let activePool: sql.ConnectionPool = pool;
+            let centralPoolToClose: sql.ConnectionPool | null = null;
 
-            return NextResponse.json({
-                success: true,
-                message: `تم استعادة ${restoredCount} جدولاً و ${totalRowsRestored} حركة وسجل بنجاح إلى ${targetName}.`,
-                target,
-                restoredTablesCount: restoredCount,
-                totalRowsRestored,
-                errors: errors.slice(0, 10)
-            });
+            if (target === 'central') {
+                centralPoolToClose = await connectToCentral(config);
+                activePool = centralPoolToClose;
+            }
+
+            try {
+                const tablesRes = await activePool.request().query(`
+                    SELECT TABLE_NAME 
+                    FROM INFORMATION_SCHEMA.TABLES 
+                    WHERE TABLE_TYPE = 'BASE TABLE'
+                    ORDER BY TABLE_NAME;
+                `);
+                const allTableNames = tablesRes.recordset.map(r => r.TABLE_NAME);
+
+                const tablesData: Record<string, any[]> = {};
+                let totalRecords = 0;
+
+                for (const tName of allTableNames) {
+                    try {
+                        const rowRes = await activePool.request().query(`SELECT * FROM dbo.[${tName}]`);
+                        tablesData[tName] = rowRes.recordset;
+                        totalRecords += rowRes.recordset.length;
+                    } catch (e: any) {
+                        tablesData[tName] = [];
+                    }
+                }
+
+                const nowIso = new Date().toISOString();
+                const firebaseTree = formatTablesForFirebase(tablesData);
+
+                return NextResponse.json({
+                    success: true,
+                    target,
+                    format: 'firebase-realtime',
+                    metadata: {
+                        version: '2.0',
+                        appName: 'MultiBranch POS ERP - Firebase Export',
+                        createdAt: nowIso,
+                        targetScope: target,
+                        database: target === 'central' ? (config.centralDatabase || 'MultiBranchPOS_Central_DB') : (localCfg.database || 'MultiBranchPOS_DB'),
+                        tablesCount: Object.keys(tablesData).length,
+                        totalRecords
+                    },
+                    // يوفر الشجرة بتنسيق استيراد Firebase Console وتنسيق الجداول
+                    tables: tablesData,
+                    ...firebaseTree
+                });
+            } finally {
+                if (centralPoolToClose) {
+                    try { await centralPoolToClose.close(); } catch {}
+                }
+            }
+        }
+
+        // =========================================================
+        // 4. ترحيل واستعادة حية مباشرة من سحابة Firebase إلى SQL Server
+        // =========================================================
+        if (action === 'migrate-firebase-to-sql') {
+            const target = body.target === 'central' ? 'central' : 'branch';
+            const fbConfig = {
+                databaseUrl: body.firebaseConfig?.databaseUrl || config.firebaseDatabaseUrl || '',
+                authToken: body.firebaseConfig?.authToken || config.firebaseAuthToken || '',
+                projectId: body.firebaseConfig?.projectId || config.firebaseProjectId || ''
+            };
+
+            if (!fbConfig.databaseUrl) {
+                return NextResponse.json({
+                    success: false,
+                    error: 'لم يتم العثور على إعدادات اتصال Firebase (Database URL). يرجى ضبطها أولاً.'
+                }, { status: 400 });
+            }
+
+            const rawData = await fetchAllFirebaseData(fbConfig);
+            if (!rawData) {
+                return NextResponse.json({
+                    success: false,
+                    error: 'تعذر الاتصال بسحابة Firebase أو قراءة البيانات. يرجى التحقق من صحة الرابط ومفتاح السر والاتصال بالإنترنت.'
+                }, { status: 400 });
+            }
+
+            const tablesObj = normalizeFirebaseDataToTables(rawData);
+            const tableNames = Object.keys(tablesObj);
+            if (tableNames.length === 0) {
+                return NextResponse.json({
+                    success: false,
+                    error: 'سحابة Firebase فارغة حالياً أو لا تحتوي على جداول وسجلات صالحة للنقل.'
+                }, { status: 400 });
+            }
+
+            const targetIsCentral = target === 'central';
+            let activePool: sql.ConnectionPool = pool;
+            let centralPoolToClose: sql.ConnectionPool | null = null;
+
+            if (targetIsCentral) {
+                centralPoolToClose = await connectToCentral(config);
+                activePool = centralPoolToClose;
+            }
+
+            try {
+                const result = await restoreTablesIntoPool(activePool, tablesObj);
+                const targetName = targetIsCentral
+                    ? `قاعدة الإدارة المركزية [${config.centralDatabase}]`
+                    : `قاعدة بيانات الفرع [${localCfg.database}]`;
+
+                return NextResponse.json({
+                    success: true,
+                    message: `تم ترحيل واستعادة ${result.restoredCount} جدولاً و ${result.totalRowsRestored} حركة وسجل من سحابة Firebase بنجاح إلى ${targetName}.`,
+                    target,
+                    restoredTablesCount: result.restoredCount,
+                    totalRowsRestored: result.totalRowsRestored,
+                    errors: result.errors.slice(0, 10)
+                });
+            } finally {
+                if (centralPoolToClose) {
+                    try { await centralPoolToClose.close(); } catch {}
+                }
+            }
+        }
+
+        // =========================================================
+        // 5. ترحيل واستعادة حية مباشرة من SQL Server إلى سحابة Firebase Realtime
+        // =========================================================
+        if (action === 'migrate-sql-to-firebase') {
+            const target = body.target === 'central' ? 'central' : 'branch';
+            const fbConfig = {
+                databaseUrl: body.firebaseConfig?.databaseUrl || config.firebaseDatabaseUrl || '',
+                authToken: body.firebaseConfig?.authToken || config.firebaseAuthToken || '',
+                projectId: body.firebaseConfig?.projectId || config.firebaseProjectId || ''
+            };
+
+            if (!fbConfig.databaseUrl) {
+                return NextResponse.json({
+                    success: false,
+                    error: 'لم يتم العثور على إعدادات اتصال Firebase (Database URL). يرجى ضبطها أولاً.'
+                }, { status: 400 });
+            }
+
+            const targetIsCentral = target === 'central';
+            let activePool: sql.ConnectionPool = pool;
+            let centralPoolToClose: sql.ConnectionPool | null = null;
+
+            if (targetIsCentral) {
+                centralPoolToClose = await connectToCentral(config);
+                activePool = centralPoolToClose;
+            }
+
+            try {
+                const tablesRes = await activePool.request().query(`
+                    SELECT TABLE_NAME 
+                    FROM INFORMATION_SCHEMA.TABLES 
+                    WHERE TABLE_TYPE = 'BASE TABLE'
+                    ORDER BY TABLE_NAME;
+                `);
+                const allTableNames = tablesRes.recordset.map(r => r.TABLE_NAME);
+
+                const tablesData: Record<string, any[]> = {};
+                for (const tName of allTableNames) {
+                    try {
+                        const rowRes = await activePool.request().query(`SELECT * FROM dbo.[${tName}]`);
+                        tablesData[tName] = rowRes.recordset;
+                    } catch (e: any) {
+                        tablesData[tName] = [];
+                    }
+                }
+
+                const pushRes = await pushAllTablesToFirebase(fbConfig, tablesData);
+                if (!pushRes.success) {
+                    return NextResponse.json({
+                        success: false,
+                        error: pushRes.error || 'فشل رفع وترحيل البيانات إلى سحابة Firebase.'
+                    }, { status: 500 });
+                }
+
+                return NextResponse.json({
+                    success: true,
+                    message: `تم ترحيل ورفع ${pushRes.tablesCount} جدولاً و ${pushRes.totalRecords} حركة وسجل بنجاح إلى سحابة Firebase Realtime! 🔥`,
+                    tablesCount: pushRes.tablesCount,
+                    totalRecords: pushRes.totalRecords
+                });
+            } finally {
+                if (centralPoolToClose) {
+                    try { await centralPoolToClose.close(); } catch {}
+                }
+            }
         }
 
         // =========================================================
