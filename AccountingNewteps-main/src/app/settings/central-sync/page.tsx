@@ -1011,41 +1011,22 @@ export default function CentralSyncSettingsPage() {
         <div className="flex flex-col w-full min-h-full pb-10">
             {/* 1. Header with Title and Global Action Buttons */}
             <PageHeader title="المزامنة المركزية وإدارة الربط السحابي">
-                <div className="flex items-center gap-2 flex-wrap">
-                    <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => window.location.href = '/settings/re-engineer'}
-                        className="gap-1.5 text-xs font-bold h-8 border-primary/40 text-primary hover:bg-primary/10"
-                    >
-                        <Database className="h-3.5 w-3.5" />
-                        اتصال سيرفر الفرع
-                    </Button>
-                    <Button
-                        variant="destructive"
-                        size="sm"
-                        onClick={() => setIsPurgeDialogOpen(true)}
-                        className="gap-1.5 text-xs font-bold h-8 shadow-sm"
-                    >
-                        <Trash2 className="h-3.5 w-3.5" />
-                        حذف وتصفير البيانات (المركزية والفرع)
-                    </Button>
+                <div className="w-full sm:w-auto grid grid-cols-2 sm:flex sm:flex-wrap gap-1.5 sm:gap-2">
                     <Button 
-                        variant="outline" 
                         size="sm" 
-                        onClick={handleLockScreen} 
-                        className="gap-1.5 text-xs font-semibold h-8 text-rose-600 hover:text-rose-700 hover:bg-rose-50 dark:hover:bg-rose-950/20 border-rose-200 dark:border-rose-800"
-                        title="قفل شاشة إعدادات المزامنة"
+                        className="col-span-2 sm:col-span-1 w-full sm:w-auto bg-emerald-600 hover:bg-emerald-700 text-white font-bold gap-1.5 text-xs shadow-md h-8.5 sm:h-8 order-1 sm:order-6"
+                        onClick={() => handleSyncNow('all')}
+                        disabled={isSyncing}
                     >
-                        <Lock className="h-3.5 w-3.5" />
-                        قفل الشاشة
+                        {isSyncing && syncingMode === 'all' ? <Loader2 className="h-3.5 w-3.5 animate-spin ml-1" /> : <RefreshCw className="h-3.5 w-3.5 ml-1" />}
+                        مزامنة شاملة الآن
                     </Button>
                     <Button 
                         variant="outline" 
                         size="sm" 
                         onClick={handleTestConnection} 
                         disabled={isTesting}
-                        className="gap-1.5 text-xs font-semibold h-8"
+                        className="col-span-1 w-full sm:w-auto gap-1.5 text-xs font-semibold h-8.5 sm:h-8 order-2 sm:order-4"
                     >
                         {isTesting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Zap className="h-3.5 w-3.5 text-foreground" />}
                         فحص الاتصال
@@ -1055,19 +1036,39 @@ export default function CentralSyncSettingsPage() {
                         size="sm" 
                         onClick={handleRefreshMatrix} 
                         disabled={isRefreshingMatrix}
-                        className="gap-1.5 text-xs font-semibold h-8"
+                        className="col-span-1 w-full sm:w-auto gap-1.5 text-xs font-semibold h-8.5 sm:h-8 order-3 sm:order-5"
                     >
                         {isRefreshingMatrix ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5 text-foreground" />}
                         تحديث الفحص
                     </Button>
-                    <Button 
-                        size="sm" 
-                        className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold gap-1.5 text-xs shadow-md h-8"
-                        onClick={() => handleSyncNow('all')}
-                        disabled={isSyncing}
+                    <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => window.location.href = '/settings/re-engineer'}
+                        className="col-span-1 w-full sm:w-auto gap-1.5 text-xs font-bold h-8.5 sm:h-8 border-primary/40 text-primary hover:bg-primary/10 order-4 sm:order-1"
                     >
-                        {isSyncing && syncingMode === 'all' ? <Loader2 className="h-3.5 w-3.5 animate-spin ml-1" /> : <RefreshCw className="h-3.5 w-3.5 ml-1" />}
-                        مزامنة شاملة الآن
+                        <Database className="h-3.5 w-3.5" />
+                        اتصال الفرع
+                    </Button>
+                    <Button 
+                        variant="outline" 
+                        size="sm" 
+                        onClick={handleLockScreen} 
+                        className="col-span-1 w-full sm:w-auto gap-1.5 text-xs font-semibold h-8.5 sm:h-8 text-rose-600 hover:text-rose-700 hover:bg-rose-50 dark:hover:bg-rose-950/20 border-rose-200 dark:border-rose-800 order-5 sm:order-3"
+                        title="قفل شاشة إعدادات المزامنة"
+                    >
+                        <Lock className="h-3.5 w-3.5" />
+                        قفل الشاشة
+                    </Button>
+                    <Button
+                        variant="destructive"
+                        size="sm"
+                        onClick={() => setIsPurgeDialogOpen(true)}
+                        className="col-span-2 sm:col-span-1 w-full sm:w-auto gap-1.5 text-xs font-bold h-8.5 sm:h-8 shadow-sm order-6 sm:order-2"
+                        title="حذف وتصفير البيانات من الإدارة والفرع"
+                    >
+                        <Trash2 className="h-3.5 w-3.5" />
+                        حذف وتصفير البيانات
                     </Button>
                 </div>
             </PageHeader>
@@ -1075,8 +1076,8 @@ export default function CentralSyncSettingsPage() {
             <main className="flex flex-1 flex-col gap-4 p-3 md:p-4 w-full">
                 
                 {/* 2. Top Unified Executive Dashboard Banner with System Role Indicator */}
-                <div className="rounded-xl border bg-card p-4 shadow-sm relative overflow-hidden">
-                    <div className="grid grid-cols-1 md:grid-cols-12 gap-4 items-center">
+                <div className="rounded-xl border bg-card p-3.5 sm:p-4 shadow-sm relative overflow-hidden">
+                    <div className="grid grid-cols-1 md:grid-cols-12 gap-3.5 sm:gap-4 items-center">
                         {/* System Role & Identity */}
                         <div className="md:col-span-4 space-y-1 md:border-l md:pl-4">
                             <div className="flex items-center gap-2 flex-wrap">
@@ -1102,7 +1103,7 @@ export default function CentralSyncSettingsPage() {
                                     تبديل الدور 🔒
                                 </Button>
                             </div>
-                            <h2 className="text-lg font-black text-foreground tracking-tight">
+                            <h2 className="text-base sm:text-lg font-black text-foreground tracking-tight">
                                 {config.systemRole === 'central' ? 'المركز الرئيسي للإدارة' : config.currentBranchName}
                             </h2>
                             <p className="text-[11px] text-muted-foreground">
@@ -1113,7 +1114,7 @@ export default function CentralSyncSettingsPage() {
                         </div>
 
                         {/* Central Server Live Status */}
-                        <div className="md:col-span-4 space-y-1 md:border-l md:pl-4">
+                        <div className="md:col-span-4 space-y-1.5 border-t pt-3 md:border-t-0 md:pt-0 md:border-l md:pl-4">
                             <div className="flex items-center justify-between">
                                 <span className="text-xs text-muted-foreground flex items-center gap-1.5 font-semibold">
                                     <Server className="h-3.5 w-3.5 text-foreground" />
@@ -1137,17 +1138,19 @@ export default function CentralSyncSettingsPage() {
                                     </Badge>
                                 )}
                             </div>
-                            <div className="font-mono font-bold text-sm text-foreground truncate">
-                                {config.centralServerIp}:{config.centralSqlPort}
+                            <div className="font-mono font-bold text-xs sm:text-sm text-foreground break-all">
+                                {config.centralHostingType === 'firebase'
+                                    ? (config.firebaseDatabaseUrl ? config.firebaseDatabaseUrl.replace(/^https?:\/\//, '') : 'Firebase Realtime')
+                                    : `${config.centralServerIp}:${config.centralSqlPort}`}
                             </div>
-                            <div className="text-xs text-muted-foreground font-mono flex items-center gap-1.5">
+                            <div className="text-xs text-muted-foreground font-mono flex items-center gap-1.5 flex-wrap">
                                 <span>قاعدة البيانات:</span>
-                                <span className="font-bold text-foreground">{config.centralDatabase}</span>
+                                <span className="font-bold text-foreground break-all">{config.centralHostingType === 'firebase' ? (config.firebaseProjectId || 'RTDB') : config.centralDatabase}</span>
                             </div>
                         </div>
 
                         {/* Sync Activity & Pending Counter */}
-                        <div className="md:col-span-4 space-y-1.5">
+                        <div className="md:col-span-4 space-y-1.5 border-t pt-3 md:border-t-0 md:pt-0">
                             <div className="flex items-center justify-between">
                                 <span className="text-xs text-muted-foreground flex items-center gap-1 font-semibold">
                                     <Clock className="h-3.5 w-3.5 text-foreground" />
@@ -1170,7 +1173,7 @@ export default function CentralSyncSettingsPage() {
                                 </span>
                             </div>
 
-                            <div className="flex items-center justify-between text-[11px] text-muted-foreground font-mono">
+                            <div className="flex items-center justify-between text-[11px] text-muted-foreground font-mono flex-wrap gap-1.5">
                                 <span className="flex items-center gap-1 text-emerald-600 font-bold">
                                     <ArrowUpRight className="h-3 w-3" /> مرفوع: {config.lastPushedCount || 0}
                                 </span>
@@ -1187,37 +1190,37 @@ export default function CentralSyncSettingsPage() {
 
                 {/* 3. Re-engineered Navigation Tabs */}
                 <Tabs value={activeTab} onValueChange={(val) => setActiveTab(val as any)} className="w-full">
-                    <TabsList className="grid w-full grid-cols-2 md:grid-cols-4 h-auto md:h-11 bg-muted/60 p-1 rounded-xl shadow-inner border gap-1">
-                        <TabsTrigger value="matrix" className="gap-2 font-bold text-xs rounded-lg data-[state=active]:shadow-sm py-2 md:py-1.5">
-                            <Database className="h-4 w-4 text-emerald-600" /> 
-                            مصفوفة الجداول ({syncMatrix?.tables.length || 69})
+                    <TabsList className="grid w-full grid-cols-2 md:grid-cols-4 h-auto bg-muted/60 p-1 rounded-xl shadow-inner border gap-1">
+                        <TabsTrigger value="matrix" className="gap-1.5 sm:gap-2 font-bold text-[11px] sm:text-xs rounded-lg data-[state=active]:shadow-sm py-2 px-1">
+                            <Database className="h-3.5 w-3.5 sm:h-4 sm:w-4 text-emerald-600 shrink-0" /> 
+                            <span className="truncate">مصفوفة الجداول ({syncMatrix?.tables.length || 69})</span>
                         </TabsTrigger>
-                        <TabsTrigger value="directions" className="gap-2 font-bold text-xs rounded-lg data-[state=active]:shadow-sm py-2 md:py-1.5">
-                            <SlidersHorizontal className="h-4 w-4 text-teal-600" />
-                            اتجاهات المزامنة 🎛️
+                        <TabsTrigger value="directions" className="gap-1.5 sm:gap-2 font-bold text-[11px] sm:text-xs rounded-lg data-[state=active]:shadow-sm py-2 px-1">
+                            <SlidersHorizontal className="h-3.5 w-3.5 sm:h-4 sm:w-4 text-teal-600 shrink-0" />
+                            <span className="truncate">اتجاهات المزامنة</span>
                             {!isDirectionsUnlocked && (
                                 <span title="محمية بكلمة مرور" className="inline-flex items-center">
                                     <Lock className="h-3 w-3 text-amber-500 mr-0.5" />
                                 </span>
                             )}
                             {dirStats.disabled > 0 && (
-                                <span className="mr-1 px-1.5 py-0.2 rounded-full text-[10px] bg-rose-600 text-white font-bold">
-                                    {dirStats.disabled} معطل
+                                <span className="mr-0.5 sm:mr-1 px-1.5 py-0.2 rounded-full text-[10px] bg-rose-600 text-white font-bold">
+                                    {dirStats.disabled}
                                 </span>
                             )}
                         </TabsTrigger>
-                        <TabsTrigger value="queue" className="gap-2 font-bold text-xs rounded-lg data-[state=active]:shadow-sm py-2 md:py-1.5">
-                            <Activity className="h-4 w-4 text-foreground" /> 
-                            طابور الحركات
+                        <TabsTrigger value="queue" className="gap-1.5 sm:gap-2 font-bold text-[11px] sm:text-xs rounded-lg data-[state=active]:shadow-sm py-2 px-1">
+                            <Activity className="h-3.5 w-3.5 sm:h-4 sm:w-4 text-foreground shrink-0" /> 
+                            <span>طابور الحركات</span>
                             {pendingBreakdown.total > 0 && (
-                                <span className="mr-1 px-1.5 py-0.2 rounded-full text-[10px] bg-amber-600 text-white font-bold">
+                                <span className="mr-0.5 sm:mr-1 px-1.5 py-0.2 rounded-full text-[10px] bg-amber-600 text-white font-bold">
                                     {pendingBreakdown.total}
                                 </span>
                             )}
                         </TabsTrigger>
-                        <TabsTrigger value="config" className="gap-2 font-bold text-xs rounded-lg data-[state=active]:shadow-sm py-2 md:py-1.5">
-                            <Server className="h-4 w-4 text-foreground" /> 
-                            إعدادات الربط والنظام
+                        <TabsTrigger value="config" className="gap-1.5 sm:gap-2 font-bold text-[11px] sm:text-xs rounded-lg data-[state=active]:shadow-sm py-2 px-1">
+                            <Server className="h-3.5 w-3.5 sm:h-4 sm:w-4 text-foreground shrink-0" /> 
+                            <span className="truncate">إعدادات الربط والنظام</span>
                         </TabsTrigger>
                     </TabsList>
 
@@ -1227,8 +1230,8 @@ export default function CentralSyncSettingsPage() {
                     <TabsContent value="matrix" className="space-y-4 mt-4">
                         
                         {/* Matrix Control Bar */}
-                        <div className="p-3 rounded-xl border bg-card shadow-sm flex flex-col md:flex-row items-center justify-between gap-3">
-                            <div className="flex items-center gap-2 flex-wrap">
+                        <div className="p-3 rounded-xl border bg-card shadow-sm flex flex-col md:flex-row items-stretch md:items-center justify-between gap-3">
+                            <div className="flex items-center gap-2 flex-wrap w-full md:w-auto justify-between sm:justify-start">
                                 <Badge variant="outline" className="text-xs gap-1.5 font-medium px-2.5 py-1">
                                     <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600" />
                                     المتطابق: <strong className="text-foreground">{syncMatrix?.syncedTablesCount || 0} من {syncMatrix?.totalTablesCount || 69} جدولاً</strong>
@@ -1242,13 +1245,13 @@ export default function CentralSyncSettingsPage() {
                             </div>
 
                             {/* Direct Action Buttons */}
-                            <div className="flex items-center gap-2 flex-wrap">
+                            <div className="w-full md:w-auto grid grid-cols-2 sm:flex sm:flex-wrap gap-2">
                                 <Button 
                                     size="sm" 
                                     variant="outline"
                                     onClick={() => handleSyncNow('push')}
                                     disabled={isSyncing}
-                                    className="gap-1.5 font-bold text-foreground dark:text-foreground text-xs h-8 border-amber-500/30 hover:bg-amber-500/10"
+                                    className="col-span-1 w-full sm:w-auto justify-center gap-1.5 font-bold text-foreground dark:text-foreground text-xs h-8 border-amber-500/30 hover:bg-amber-500/10"
                                 >
                                     {isSyncing && syncingMode === 'push' ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <ArrowUpRight className="h-3.5 w-3.5" />}
                                     رفع حركات الفرع ⬆️
@@ -1258,14 +1261,14 @@ export default function CentralSyncSettingsPage() {
                                     variant="outline"
                                     onClick={() => handleSyncNow('pull')}
                                     disabled={isSyncing}
-                                    className="gap-1.5 font-bold text-foreground dark:text-foreground text-xs h-8 border-sky-500/30 hover:bg-sky-500/10"
+                                    className="col-span-1 w-full sm:w-auto justify-center gap-1.5 font-bold text-foreground dark:text-foreground text-xs h-8 border-sky-500/30 hover:bg-sky-500/10"
                                 >
                                     {isSyncing && syncingMode === 'pull' ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <ArrowDownLeft className="h-3.5 w-3.5" />}
                                     سحب من الإدارة ⬇️
                                 </Button>
                                 <Button 
                                     size="sm" 
-                                    className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold gap-1.5 text-xs shadow-sm h-8"
+                                    className="col-span-2 sm:col-span-1 w-full sm:w-auto justify-center bg-emerald-600 hover:bg-emerald-700 text-white font-bold gap-1.5 text-xs shadow-sm h-8"
                                     onClick={() => handleSyncNow('all')}
                                     disabled={isSyncing}
                                 >
@@ -1635,12 +1638,12 @@ export default function CentralSyncSettingsPage() {
                                         حدد وجهة تدفق البيانات لكل جدول بين الفرع المحلي والإدارة المركزية. كافة دورات المزامنة المجدولة واليدوية تلتزم بالاتجاهات المحددة هنا والمخزنة في قاعدة البيانات.
                                     </p>
                                 </div>
-                                <div className="flex items-center gap-2 flex-wrap">
+                                <div className="flex items-center gap-2 flex-wrap w-full md:w-auto">
                                     <Button
                                         variant="outline"
                                         size="sm"
                                         onClick={handleLockDirections}
-                                        className="h-8 text-xs font-semibold gap-1.5 border-border hover:bg-rose-500/10 hover:text-rose-600 hover:border-rose-500/30"
+                                        className="h-8 text-xs font-semibold gap-1.5 border-border hover:bg-rose-500/10 hover:text-rose-600 hover:border-rose-500/30 flex-1 sm:flex-initial justify-center"
                                         title="قفل لوحة الاتجاهات بكلمة مرور"
                                     >
                                         <Lock className="h-3.5 w-3.5 text-amber-500" />
@@ -1651,17 +1654,17 @@ export default function CentralSyncSettingsPage() {
                                         size="sm"
                                         onClick={handleResetDirections}
                                         disabled={isResettingDirs}
-                                        className="h-8 text-xs font-semibold gap-1.5 border-border hover:bg-muted"
+                                        className="h-8 text-xs font-semibold gap-1.5 border-border hover:bg-muted flex-1 sm:flex-initial justify-center"
                                         title="إرجاع جميع الجداول للوضع القياسي المعتمد"
                                     >
                                         {isResettingDirs ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RotateCcw className="h-3.5 w-3.5 text-muted-foreground" />}
-                                        استعادة التوزيع القياسي الموصى به
+                                        استعادة الوضع القياسي
                                     </Button>
                                     <Button
                                         size="sm"
                                         onClick={handleRefreshMatrix}
                                         disabled={isRefreshingMatrix}
-                                        className="h-8 text-xs font-semibold gap-1.5 bg-teal-600 hover:bg-teal-700 text-white"
+                                        className="h-8 text-xs font-semibold gap-1.5 bg-teal-600 hover:bg-teal-700 text-white w-full sm:w-auto justify-center"
                                     >
                                         {isRefreshingMatrix ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />}
                                         تحديث الفحص
@@ -1670,7 +1673,7 @@ export default function CentralSyncSettingsPage() {
                             </div>
 
                             {/* 2. 5 Direction Metric Summary Cards */}
-                            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-3 pt-2 border-t">
+                            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-2.5 sm:gap-3 pt-2 border-t">
                                 <div className="rounded-lg border bg-muted/30 p-2.5 text-center">
                                     <span className="text-[11px] font-semibold text-muted-foreground block">إجمالي الجداول</span>
                                     <span className="text-xl font-black text-foreground font-mono">{dirStats.total}</span>
@@ -1701,7 +1704,7 @@ export default function CentralSyncSettingsPage() {
                                     <span className="text-[10px] text-teal-700/80 dark:text-teal-400/80 block mt-0.5">أصناف، عملاء، أسعار</span>
                                 </div>
 
-                                <div className="rounded-lg border border-rose-500/25 bg-rose-500/5 p-2.5 text-center">
+                                <div className="col-span-2 sm:col-span-1 rounded-lg border border-rose-500/25 bg-rose-500/5 p-2.5 text-center">
                                     <span className="text-[11px] font-semibold text-rose-700 dark:text-rose-400 flex items-center justify-center gap-1">
                                         <PauseCircle className="h-3 w-3" /> موقوفة ومعطلة
                                     </span>
@@ -1723,9 +1726,9 @@ export default function CentralSyncSettingsPage() {
                                         اختر قسماً وقم بتطبيق اتجاه مزامنة موحد لكافة الجداول التابعة له بضغطة زر واحدة وحفظها في قاعدة البيانات.
                                     </p>
                                 </div>
-                                <div className="flex items-center gap-2 flex-wrap">
+                                <div className="flex items-center gap-2 flex-wrap w-full md:w-auto">
                                     <Select value={dirCategoryFilter} onValueChange={setDirCategoryFilter}>
-                                        <SelectTrigger className="w-[180px] h-8 text-xs font-semibold">
+                                        <SelectTrigger className="w-full sm:w-[180px] h-8 text-xs font-semibold">
                                             <SelectValue placeholder="اختر القسم" />
                                         </SelectTrigger>
                                         <SelectContent>
@@ -1744,7 +1747,7 @@ export default function CentralSyncSettingsPage() {
                                     </Select>
 
                                     <Select value={bulkCategoryDir} onValueChange={setBulkCategoryDir}>
-                                        <SelectTrigger className="w-[160px] h-8 text-xs font-semibold">
+                                        <SelectTrigger className="w-full sm:w-[160px] h-8 text-xs font-semibold">
                                             <SelectValue placeholder="الاتجاه المطلوب" />
                                         </SelectTrigger>
                                         <SelectContent>
@@ -1759,7 +1762,7 @@ export default function CentralSyncSettingsPage() {
                                         size="sm"
                                         onClick={handleApplyBulkCategoryDir}
                                         disabled={isApplyingBulkDir || dirCategoryFilter === 'all'}
-                                        className="h-8 text-xs font-bold bg-foreground text-background hover:bg-foreground/90 gap-1.5"
+                                        className="h-8 text-xs font-bold bg-foreground text-background hover:bg-foreground/90 gap-1.5 w-full sm:w-auto justify-center"
                                     >
                                         {isApplyingBulkDir ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <CheckCircle2 className="h-3.5 w-3.5 text-emerald-500" />}
                                         تطبيق على القسم
@@ -1771,8 +1774,8 @@ export default function CentralSyncSettingsPage() {
                         {/* 4. Table Controls: Search & Direction Filter */}
                         <div className="rounded-xl border bg-card shadow-sm overflow-hidden">
                             <div className="p-3 bg-muted/20 border-b flex flex-col md:flex-row items-center justify-between gap-3">
-                                <div className="flex items-center gap-2 w-full md:w-auto flex-1">
-                                    <div className="relative flex-1 max-w-md">
+                                <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 w-full md:w-auto flex-1">
+                                    <div className="relative flex-1 w-full max-w-md">
                                         <Search className="h-4 w-4 absolute right-3 top-2.5 text-muted-foreground" />
                                         <Input
                                             placeholder="ابحث باسم الجدول العربي أو التقني dbo.* أو نوع البيانات..."
@@ -1790,7 +1793,7 @@ export default function CentralSyncSettingsPage() {
                                         )}
                                     </div>
                                     <Select value={dirTypeFilter} onValueChange={(val: any) => setDirTypeFilter(val)}>
-                                        <SelectTrigger className="w-[150px] h-9 text-xs font-semibold">
+                                        <SelectTrigger className="w-full sm:w-[150px] h-9 text-xs font-semibold">
                                             <SelectValue placeholder="تصفية بالاتجاه" />
                                         </SelectTrigger>
                                         <SelectContent>
@@ -2020,18 +2023,18 @@ export default function CentralSyncSettingsPage() {
                                 </div>
                             </div>
                             
-                            <div className="flex items-center gap-2">
+                            <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 w-full md:w-auto">
                                 <Button 
                                     size="sm" 
                                     variant="outline" 
                                     onClick={() => loadSettings(false)} 
-                                    className="gap-1.5 text-xs h-8"
+                                    className="gap-1.5 text-xs h-8 w-full sm:w-auto justify-center"
                                 >
                                     <RefreshCw className="h-3.5 w-3.5" /> تحديث العدادات
                                 </Button>
                                 <Button 
                                     size="sm" 
-                                    className="bg-amber-600 hover:bg-amber-700 text-white font-bold gap-1.5 text-xs h-8 shadow-sm"
+                                    className="bg-amber-600 hover:bg-amber-700 text-white font-bold gap-1.5 text-xs h-8 shadow-sm w-full sm:w-auto justify-center"
                                     onClick={() => handleSyncNow('push')}
                                     disabled={isSyncing || pendingBreakdown.total === 0}
                                 >
@@ -2519,18 +2522,18 @@ export default function CentralSyncSettingsPage() {
                                 </div>
 
                                 {/* Section 2: Central SQL Server Credentials */}
-                                <div className="p-4 rounded-xl border bg-muted/20 space-y-4">
-                                    <div className="flex flex-wrap items-center justify-between gap-2 border-b pb-2.5">
+                                <div className="p-3.5 sm:p-4 rounded-xl border bg-muted/20 space-y-4">
+                                    <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2.5 border-b pb-2.5">
                                         <div className="flex items-center gap-2">
-                                            <Server className="h-4 w-4 text-foreground" />
-                                            <span className="font-bold text-sm">2. خادم قاعدة بيانات الإدارة (Central SQL Server — محلي / VPS / Cloud)</span>
+                                            <Server className="h-4 w-4 text-foreground shrink-0" />
+                                            <span className="font-bold text-xs sm:text-sm">2. خادم قاعدة بيانات الإدارة (محلي / VPS / Cloud / Firebase)</span>
                                         </div>
-                                        <div className="flex flex-wrap items-center gap-1.5">
+                                        <div className="grid grid-cols-2 sm:flex sm:flex-wrap gap-1.5 w-full sm:w-auto">
                                             <Button
                                                 type="button"
                                                 size="sm"
                                                 variant={(!config.centralHostingType || config.centralHostingType === 'local') ? 'default' : 'outline'}
-                                                className="h-7 text-[11px] font-bold"
+                                                className="h-8 sm:h-7 text-[11px] font-bold w-full sm:w-auto justify-center"
                                                 onClick={() => setConfig(prev => ({
                                                     ...prev,
                                                     centralHostingType: 'local',
@@ -2539,13 +2542,13 @@ export default function CentralSyncSettingsPage() {
                                                 }))}
                                             >
                                                 <Server className="h-3 w-3 ml-1" />
-                                                محلي / شبكة داخلية
+                                                محلي / شبكة
                                             </Button>
                                             <Button
                                                 type="button"
                                                 size="sm"
                                                 variant={config.centralHostingType === 'vps' ? 'default' : 'outline'}
-                                                className="h-7 text-[11px] font-bold"
+                                                className="h-8 sm:h-7 text-[11px] font-bold w-full sm:w-auto justify-center"
                                                 onClick={() => setConfig(prev => ({
                                                     ...prev,
                                                     centralHostingType: 'vps',
@@ -2554,13 +2557,13 @@ export default function CentralSyncSettingsPage() {
                                                 }))}
                                             >
                                                 <Globe className="h-3 w-3 ml-1" />
-                                                سيرفر خارجي / VPS
+                                                VPS خارجي
                                             </Button>
                                             <Button
                                                 type="button"
                                                 size="sm"
                                                 variant={config.centralHostingType === 'cloud' ? 'default' : 'outline'}
-                                                className="h-7 text-[11px] font-bold"
+                                                className="h-8 sm:h-7 text-[11px] font-bold w-full sm:w-auto justify-center"
                                                 onClick={() => setConfig(prev => ({
                                                     ...prev,
                                                     centralHostingType: 'cloud',
@@ -2569,48 +2572,48 @@ export default function CentralSyncSettingsPage() {
                                                 }))}
                                             >
                                                 <Cloud className="h-3 w-3 ml-1" />
-                                                سحابي
+                                                سحابي Cloud
                                             </Button>
                                             <Button
                                                 type="button"
                                                 size="sm"
                                                 variant={config.centralHostingType === 'firebase' ? 'default' : 'outline'}
-                                                className={`h-7 text-[11px] font-bold ${config.centralHostingType === 'firebase' ? 'bg-amber-600 hover:bg-amber-700 text-white' : 'border-amber-500/40 text-amber-700 dark:text-amber-400'}`}
+                                                className={`h-8 sm:h-7 text-[11px] font-bold w-full sm:w-auto justify-center ${config.centralHostingType === 'firebase' ? 'bg-amber-600 hover:bg-amber-700 text-white' : 'border-amber-500/40 text-amber-700 dark:text-amber-400'}`}
                                                 onClick={() => setConfig(prev => ({
                                                     ...prev,
                                                     centralHostingType: 'firebase'
                                                 }))}
                                             >
                                                 <Zap className="h-3 w-3 ml-1 text-amber-400" />
-                                                سحابة Firebase Realtime 🔥
+                                                Firebase 🔥
                                             </Button>
                                         </div>
                                     </div>
 
                                     {config.centralHostingType === 'firebase' ? (
                                         <div className="space-y-4 pt-1">
-                                            <div className="p-3.5 rounded-xl border border-amber-500/30 bg-amber-500/5 flex items-start gap-3">
+                                            <div className="p-3 sm:p-3.5 rounded-xl border border-amber-500/30 bg-amber-500/5 flex items-start gap-3">
                                                 <div className="p-2 rounded-lg bg-amber-500/10 text-amber-500 shrink-0 mt-0.5">
                                                     <Zap className="h-5 w-5" />
                                                 </div>
                                                 <div className="space-y-1 text-xs">
-                                                    <p className="font-bold text-foreground text-sm flex items-center gap-2">
-                                                        <span>سحابة Firebase Realtime (بدون الحاجة لـ IP ثابت أو بورتات)</span>
+                                                    <p className="font-bold text-foreground text-xs sm:text-sm flex items-center gap-2 flex-wrap">
+                                                        <span>سحابة Firebase Realtime (بدون IP ثابت)</span>
                                                         <Badge variant="secondary" className="bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/20 text-[10px]">
                                                             مزامنة لحظية
                                                         </Badge>
                                                     </p>
-                                                    <p className="text-muted-foreground leading-relaxed">
+                                                    <p className="text-muted-foreground leading-relaxed text-[11px]">
                                                         تتيح لك ربط ومزامنة مبيعات الفروع وحركات الكاشير والموبايل فورياً ثانية بثانية عبر سحابة Google Firebase. تعمل مباشرة من أي مكان بدون راوتر ثابت أو تكاليف استضافة معقدة.
                                                     </p>
                                                 </div>
                                             </div>
 
-                                            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                                                <div className="space-y-1.5 md:col-span-2">
+                                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                                <div className="space-y-1.5 sm:col-span-2">
                                                     <Label className="text-xs font-bold flex items-center justify-between">
                                                         <span>رابط قاعدة بيانات Firebase (Database URL) *</span>
-                                                        <span className="text-[10px] text-muted-foreground font-normal">من Firebase Console &gt; Realtime Database</span>
+                                                        <span className="text-[10px] text-muted-foreground font-normal">من Firebase Console</span>
                                                     </Label>
                                                     <Input 
                                                         dir="ltr"
@@ -2624,7 +2627,7 @@ export default function CentralSyncSettingsPage() {
                                                 <div className="space-y-1.5">
                                                     <Label className="text-xs font-bold flex items-center justify-between">
                                                         <span>رمز المصادقة أو المفتاح السري (Auth Token / Secret)</span>
-                                                        <span className="text-[10px] text-muted-foreground font-normal">Database Secrets أو Auth Token</span>
+                                                        <span className="text-[10px] text-muted-foreground font-normal">Secrets</span>
                                                     </Label>
                                                     <Input 
                                                         dir="ltr"
@@ -2647,7 +2650,7 @@ export default function CentralSyncSettingsPage() {
                                                     />
                                                 </div>
 
-                                                <div className="space-y-1.5 md:col-span-2">
+                                                <div className="space-y-1.5 sm:col-span-2">
                                                     <Label className="text-xs font-bold">المزامنة التلقائية اللحظية</Label>
                                                     <div className="flex items-center justify-between p-2 rounded-lg border bg-background h-9">
                                                         <span className="text-xs text-muted-foreground font-medium">بث ونقل الحركات تلقائياً في الخلفية</span>
@@ -2720,7 +2723,7 @@ export default function CentralSyncSettingsPage() {
                                                 />
                                             </div>
 
-                                            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                                            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
                                                 <div className="space-y-1.5">
                                                     <Label className="text-xs font-bold">
                                                         {config.centralHostingType === 'cloud'
@@ -2796,7 +2799,7 @@ export default function CentralSyncSettingsPage() {
                                                 </div>
                                             </div>
 
-                                            <div className="flex flex-wrap items-center gap-6 pt-1 text-xs">
+                                            <div className="flex flex-col sm:flex-row flex-wrap items-start sm:items-center gap-3 sm:gap-6 pt-1 text-xs">
                                                 <div className="flex items-center gap-2">
                                                     <Switch
                                                         checked={Boolean(config.centralEncrypt)}
@@ -2820,13 +2823,13 @@ export default function CentralSyncSettingsPage() {
                                     )}
                                 </div>
                             </CardContent>
-                            <CardFooter className="bg-muted/20 border-t flex justify-between items-center py-3">
+                            <CardFooter className="bg-muted/20 border-t flex flex-col-reverse sm:flex-row justify-between items-stretch sm:items-center gap-2.5 py-3">
                                 <Button 
                                     variant="outline" 
                                     size="sm" 
                                     onClick={handleTestConnection}
                                     disabled={isTesting}
-                                    className="gap-1.5 text-xs font-semibold h-8"
+                                    className="gap-1.5 text-xs font-semibold h-8.5 sm:h-8 w-full sm:w-auto justify-center"
                                 >
                                     {isTesting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Zap className="h-3.5 w-3.5 text-foreground" />}
                                     فحص صحة الاتصال
@@ -2835,7 +2838,7 @@ export default function CentralSyncSettingsPage() {
                                     size="sm" 
                                     onClick={handleSave} 
                                     disabled={isSaving}
-                                    className="bg-primary hover:bg-primary/90 text-primary-foreground font-bold gap-1.5 text-xs h-8 shadow-sm"
+                                    className="bg-primary hover:bg-primary/90 text-primary-foreground font-bold gap-1.5 text-xs h-8.5 sm:h-8 shadow-sm w-full sm:w-auto justify-center"
                                 >
                                     {isSaving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5" />}
                                     حفظ الإعدادات
@@ -2873,10 +2876,10 @@ export default function CentralSyncSettingsPage() {
                                     </div>
                                 )}
                             </CardContent>
-                            <CardFooter className="border-t pt-3 flex justify-end">
+                            <CardFooter className="border-t pt-3 flex justify-stretch sm:justify-end">
                                 <Button 
                                     size="sm" 
-                                    className="bg-sky-600 hover:bg-sky-700 text-white font-bold gap-1.5 text-xs shadow-sm h-8"
+                                    className="bg-sky-600 hover:bg-sky-700 text-white font-bold gap-1.5 text-xs shadow-sm h-8.5 sm:h-8 w-full sm:w-auto justify-center"
                                     onClick={handleInitializeDatabase}
                                     disabled={isInitializingDb || !config.centralDatabase.trim()}
                                 >
@@ -2944,20 +2947,21 @@ export default function CentralSyncSettingsPage() {
                             </div>
                         )}
 
-                        <DialogFooter className="gap-2 sm:gap-0 pt-2 border-t">
+                        <DialogFooter className="flex flex-col-reverse sm:flex-row gap-2 pt-2 border-t">
                             <Button 
                                 type="button" 
                                 variant="ghost" 
                                 size="sm" 
                                 onClick={() => setIsRoleDialogOpen(false)}
                                 disabled={isSwitchingRole}
+                                className="w-full sm:w-auto"
                             >
                                 إلغاء
                             </Button>
                             <Button 
                                 type="submit" 
                                 size="sm" 
-                                className="bg-primary hover:bg-primary/90 text-primary-foreground font-bold gap-1.5 text-xs shadow-sm"
+                                className="bg-primary hover:bg-primary/90 text-primary-foreground font-bold gap-1.5 text-xs shadow-sm w-full sm:w-auto"
                                 disabled={isSwitchingRole || !rolePassword.trim()}
                             >
                                 {isSwitchingRole ? (
@@ -2979,7 +2983,7 @@ export default function CentralSyncSettingsPage() {
 
             {/* Dialog: تأكيد إعادة المزامنة الشاملة للجدول بالكامل */}
             <Dialog open={!!tableToForceSync} onOpenChange={(open) => { if (!open) setTableToForceSync(null); }}>
-                <DialogContent className="max-w-md">
+                <DialogContent className="max-w-md w-[94vw] sm:w-full">
                     <DialogHeader>
                         <DialogTitle className="flex items-center gap-2 text-base font-bold text-foreground">
                             <RotateCcw className="h-5 w-5 text-teal-600" />
@@ -3019,13 +3023,13 @@ export default function CentralSyncSettingsPage() {
                         </div>
                     )}
 
-                    <DialogFooter className="gap-2 sm:gap-0">
+                    <DialogFooter className="flex flex-col-reverse sm:flex-row gap-2 pt-2 border-t">
                         <Button
                             variant="outline"
                             size="sm"
                             onClick={() => setTableToForceSync(null)}
                             disabled={isForceSyncing}
-                            className="text-xs"
+                            className="text-xs w-full sm:w-auto"
                         >
                             إلغاء
                         </Button>
@@ -3033,7 +3037,7 @@ export default function CentralSyncSettingsPage() {
                             size="sm"
                             onClick={() => tableToForceSync && handleForceFullTableSync(tableToForceSync)}
                             disabled={isForceSyncing}
-                            className="text-xs font-bold bg-teal-600 hover:bg-teal-700 text-white gap-1.5 shadow-sm"
+                            className="text-xs font-bold bg-teal-600 hover:bg-teal-700 text-white gap-1.5 shadow-sm w-full sm:w-auto"
                         >
                             {isForceSyncing ? (
                                 <>
@@ -3053,7 +3057,7 @@ export default function CentralSyncSettingsPage() {
 
             {/* نافذة الحذف والتصفير الشامل من الإدارة المركزية والفرع */}
             <Dialog open={isPurgeDialogOpen} onOpenChange={setIsPurgeDialogOpen}>
-                <DialogContent className="sm:max-w-lg text-right" dir="rtl">
+                <DialogContent className="sm:max-w-lg w-[94vw] sm:w-full text-right" dir="rtl">
                     <DialogHeader>
                         <DialogTitle className="flex items-center gap-2 text-destructive text-base">
                             <Trash2 className="h-5 w-5" />
@@ -3115,13 +3119,13 @@ export default function CentralSyncSettingsPage() {
                         </div>
                     </div>
 
-                    <DialogFooter className="gap-2 sm:gap-0">
+                    <DialogFooter className="flex flex-col-reverse sm:flex-row gap-2 pt-2 border-t">
                         <Button
                             variant="outline"
                             size="sm"
                             onClick={() => setIsPurgeDialogOpen(false)}
                             disabled={isExecutingPurge}
-                            className="text-xs"
+                            className="text-xs w-full sm:w-auto"
                         >
                             إلغاء
                         </Button>
@@ -3130,7 +3134,7 @@ export default function CentralSyncSettingsPage() {
                             size="sm"
                             onClick={handleExecuteGlobalPurge}
                             disabled={!purgePassword.trim() || isExecutingPurge}
-                            className="text-xs font-bold gap-1.5"
+                            className="text-xs font-bold gap-1.5 w-full sm:w-auto"
                         >
                             {isExecutingPurge ? (
                                 <>
