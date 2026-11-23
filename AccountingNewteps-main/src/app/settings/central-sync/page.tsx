@@ -6,6 +6,7 @@ import PageHeader from "@/components/page-header";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
@@ -157,6 +158,69 @@ export default function CentralSyncSettingsPage() {
     // Full Table Re-Sync Modal State
     const [tableToForceSync, setTableToForceSync] = useState<TableSyncMatrixItem | null>(null);
     const [isForceSyncing, setIsForceSyncing] = useState(false);
+
+    // Firebase Raw Multi-line Snippet / JSON paste state
+    const [firebaseRawSnippet, setFirebaseRawSnippet] = useState('');
+
+    const handleFirebaseSnippetChange = (val: string) => {
+        setFirebaseRawSnippet(val);
+        if (!val.trim()) return;
+
+        const updates: Partial<CentralSyncConfig> = {};
+
+        // 1. Check if user pasted JSON / Service Account / Config Object
+        try {
+            let clean = val.trim();
+            clean = clean.replace(/^[^{]*\{/, '{').replace(/\};?[^}]*$/, '}');
+            const fixedJson = clean
+                .replace(/([{,]\s*)([a-zA-Z0-9_]+)\s*:/g, '$1"$2":')
+                .replace(/,\s*([}\]])/g, '$1');
+            
+            const parsed = JSON.parse(fixedJson);
+            if (parsed.databaseURL || parsed.database_url) updates.firebaseDatabaseUrl = parsed.databaseURL || parsed.database_url;
+            if (parsed.projectId || parsed.project_id) updates.firebaseProjectId = parsed.projectId || parsed.project_id;
+            if (parsed.apiKey || parsed.api_key || parsed.secret || parsed.authToken || parsed.private_key) {
+                updates.firebaseAuthToken = parsed.secret || parsed.authToken || parsed.apiKey || parsed.api_key || parsed.private_key;
+            }
+        } catch {
+            // Regex fallback
+        }
+
+        // 2. Regex fallback for databaseURL (e.g. https://xxx-default-rtdb.firebaseio.com)
+        if (!updates.firebaseDatabaseUrl) {
+            const urlMatch = val.match(/https?:\/\/[a-zA-Z0-9_\-\.]+\.firebaseio\.com[^\s"',;]*/i);
+            if (urlMatch) updates.firebaseDatabaseUrl = urlMatch[0];
+        }
+
+        // 3. Regex fallback for projectId
+        if (!updates.firebaseProjectId) {
+            const projMatch = val.match(/(?:projectId|project_id|project)["']?\s*[:=]\s*["']?([a-zA-Z0-9_\-]+)["']?/i);
+            if (projMatch) updates.firebaseProjectId = projMatch[1];
+        }
+
+        // 4. Regex fallback for secret / token / apiKey
+        if (!updates.firebaseAuthToken) {
+            const tokenMatch = val.match(/(?:apiKey|api_key|secret|authToken|auth_token|token)["']?\s*[:=]\s*["']?([^\r\n"',;]+)["']?/i);
+            if (tokenMatch) updates.firebaseAuthToken = tokenMatch[1].trim();
+        }
+
+        // 5. If databaseURL is still missing but we have projectId, construct the default Realtime DB URL
+        if (!updates.firebaseDatabaseUrl && updates.firebaseProjectId) {
+            updates.firebaseDatabaseUrl = `https://${updates.firebaseProjectId}-default-rtdb.firebaseio.com`;
+        }
+
+        if (Object.keys(updates).length > 0) {
+            setConfig(prev => ({ ...prev, ...updates }));
+            toast({
+                title: "تم التعرف على بيانات Firebase وتعبئتها تلقائياً ✅",
+                description: `تم استخراج: ${[
+                    updates.firebaseDatabaseUrl ? 'رابط القاعدة (URL)' : '',
+                    updates.firebaseProjectId ? 'معرف المشروع (Project ID)' : '',
+                    updates.firebaseAuthToken ? 'رمز السر / المصادقة' : ''
+                ].filter(Boolean).join(' | ')}`
+            });
+        }
+    };
     const [targetRoleToSwitch, setTargetRoleToSwitch] = useState<'branch' | 'central'>('central');
     const [rolePassword, setRolePassword] = useState('');
     const [isSwitchingRole, setIsSwitchingRole] = useState(false);
@@ -2607,6 +2671,38 @@ export default function CentralSyncSettingsPage() {
                                                         تتيح لك ربط ومزامنة مبيعات الفروع وحركات الكاشير والموبايل فورياً ثانية بثانية عبر سحابة Google Firebase. تعمل مباشرة من أي مكان بدون راوتر ثابت أو تكاليف استضافة معقدة.
                                                     </p>
                                                 </div>
+                                            </div>
+
+                                            {/* صندوق لصق كود أو ملف إعدادات Firebase كاملاً (متعدد الأسطر) */}
+                                            <div className="space-y-1.5 p-3 rounded-lg border bg-background/80 shadow-xs">
+                                                <div className="flex items-center justify-between">
+                                                    <Label className="text-xs font-bold flex items-center gap-1.5">
+                                                        <Terminal className="h-3.5 w-3.5 text-amber-500" />
+                                                        <span>لصق كود أو ملف إعدادات Firebase كاملاً (متعدد الأسطر / JSON / Config) — اختياري:</span>
+                                                    </Label>
+                                                    {firebaseRawSnippet && (
+                                                        <Button
+                                                            type="button"
+                                                            variant="ghost"
+                                                            size="sm"
+                                                            onClick={() => setFirebaseRawSnippet('')}
+                                                            className="h-6 text-[10px] text-muted-foreground hover:text-foreground"
+                                                        >
+                                                            مسح
+                                                        </Button>
+                                                    )}
+                                                </div>
+                                                <Textarea
+                                                    dir="ltr"
+                                                    rows={3}
+                                                    value={firebaseRawSnippet}
+                                                    onChange={(e) => handleFirebaseSnippetChange(e.target.value)}
+                                                    placeholder={`الصق هنا النص كاملاً بأي عدد من الأسطر، مثلاً:\nconst firebaseConfig = {\n  apiKey: "AIzaSy...",\n  databaseURL: "https://your-project-default-rtdb.firebaseio.com",\n  projectId: "your-project-id"\n};`}
+                                                    className="font-mono text-xs leading-relaxed"
+                                                />
+                                                <p className="text-[11px] text-muted-foreground">
+                                                    💡 إذا كانت بياناتك أكثر من سطر (كود JSON أو كود إعدادات المشروع)، الصقها هنا كاملة وسيقوم النظام فوراً بتوزيع الرابط ومعرف المشروع ومفتاح الأمان في الحقول بالأسفل تلقائياً!
+                                                </p>
                                             </div>
 
                                             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
