@@ -55,7 +55,8 @@ const TRANSACTION_TABLES = [
     'ManufacturingOrders',
     'AuditTrailLogs',
     'SystemErrorLogs',
-    'ArchiveLogs'
+    'ArchiveLogs',
+    'SnoozedRecommendations'
 ];
 
 // الجداول الأساسية والهيكلية الشاملة (تُحذف بالكامل في إعادة ضبط المصنع الشاملة)
@@ -94,6 +95,10 @@ const PROTECTED_SYSTEM_TABLES = new Set([
     'Roles',
     'Licenses',
     'SyncTrackingMatrix',
+    'SyncWatermarks',
+    'RecipeHistory',
+    'ActiveUserSessions',
+    'Counters',
     'Users',
     'sysdiagrams'
 ]);
@@ -105,7 +110,13 @@ const IDENTITY_TABLES = new Set([
     'StockInRecordItems',
     'StockAdjustmentItems',
     'SalesInvoiceItems',
-    'SalesReturnItems'
+    'SalesReturnItems',
+    'ArchivedPurchaseInvoiceItems',
+    'ArchivedPurchaseReturnItems',
+    'ArchivedStockInRecordItems',
+    'ArchivedStockAdjustmentItems',
+    'ArchivedSalesInvoiceItems',
+    'ArchivedSalesReturnItems'
 ]);
 
 async function queryPoolStats(pool: sql.ConnectionPool) {

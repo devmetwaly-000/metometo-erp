@@ -38,7 +38,7 @@ export async function GET() {
             server: `${localConfig.server}:${localConfig.port}`,
             tablesCount,
             usersCount,
-            status: tablesCount >= 70 ? 'healthy' : 'needs_initialization',
+            status: tablesCount >= 90 ? 'healthy' : (tablesCount >= 70 ? 'healthy' : 'needs_initialization'),
             message: `قاعدة البيانات [${currentDb}] على السيرفر (${localConfig.server}:${localConfig.port}) متصلة وتضم ${tablesCount} جدولاً و ${usersCount} مستخدماً.`
         });
     } catch (error: any) {

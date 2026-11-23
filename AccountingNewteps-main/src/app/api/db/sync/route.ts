@@ -29,7 +29,8 @@ export async function GET() {
             restaurantTablesRes, promotionsRes, targetsRes, deliveryStaffRes, sellersRes,
             itemGroupsRes, itemColorsRes, itemSizesRes, priceChangeLogsRes, customerVisitsRes, loginHistoryRes,
             // 6. Upgrades
-            gratuityLogsRes, gratuityDistributionsRes, itemSubCategories1Res, itemSubCategories2Res, inventoryZonesRes
+            gratuityLogsRes, gratuityDistributionsRes, itemSubCategories1Res, itemSubCategories2Res, inventoryZonesRes,
+            snoozedRecsRes
         ] = await Promise.all([
             pool.request().query('SELECT * FROM dbo.Warehouses ORDER BY Name'),
             pool.request().query('SELECT * FROM dbo.InventorySections'),
@@ -97,7 +98,8 @@ export async function GET() {
             pool.request().query('SELECT * FROM dbo.GratuityDistributions ORDER BY Date DESC'),
             pool.request().query('SELECT * FROM dbo.ItemSubCategories1 ORDER BY Name'),
             pool.request().query('SELECT * FROM dbo.ItemSubCategories2 ORDER BY Name'),
-            pool.request().query('SELECT * FROM dbo.InventoryZones ORDER BY Name')
+            pool.request().query('SELECT * FROM dbo.InventoryZones ORDER BY Name'),
+            pool.request().query("IF OBJECT_ID('dbo.SnoozedRecommendations', 'U') IS NOT NULL SELECT * FROM dbo.SnoozedRecommendations WHERE SnoozedUntil > SYSUTCDATETIME() ELSE SELECT 1 WHERE 1=0")
         ]);
 
         // Helpers
@@ -849,7 +851,13 @@ export async function GET() {
                     } : null
                 })),
                 syncHistory: [],
-                snoozedRecommendations: [],
+                snoozedRecommendations: (snoozedRecsRes?.recordset || []).map((s: any) => ({
+                    id: s.Id,
+                    itemId: s.ItemId,
+                    warehouseId: s.WarehouseId,
+                    snoozedUntil: s.SnoozedUntil ? new Date(s.SnoozedUntil).toISOString() : null,
+                    reason: s.Reason
+                })),
                 posCounters: {},
                 posSales: salesInvoices.filter(s => s.cashierId || !s.invoiceNumber || s.invoiceNumber.startsWith('POS')),
                 posReturns: salesReturns.filter(r => !r.receiptNumber || r.receiptNumber.startsWith('POS-RET'))

@@ -740,6 +740,27 @@ export async function POST(req: Request) {
                 return NextResponse.json({ success: true, id });
             }
 
+            if (path === 'snoozedRecommendations') {
+                const sId = payload.id || id || `snooze_${Date.now()}`;
+                await pool.request()
+                    .input('Id', sql.NVarChar(64), sId)
+                    .input('ItemId', sql.NVarChar(64), String(payload.itemId))
+                    .input('WarehouseId', sql.NVarChar(64), payload.warehouseId || null)
+                    .input('SnoozedUntil', sql.DateTime2, parseDate(payload.snoozedUntil))
+                    .input('Reason', sql.NVarChar(255), payload.reason || 'Snoozed by user')
+                    .query(`
+                        MERGE dbo.SnoozedRecommendations AS target
+                        USING (SELECT @Id AS Id) AS source
+                        ON (target.Id = source.Id OR (target.ItemId = @ItemId AND (target.WarehouseId = @WarehouseId OR (target.WarehouseId IS NULL AND @WarehouseId IS NULL))))
+                        WHEN MATCHED THEN
+                            UPDATE SET SnoozedUntil = @SnoozedUntil, Reason = @Reason, UpdatedAt = SYSUTCDATETIME()
+                        WHEN NOT MATCHED THEN
+                            INSERT (Id, ItemId, WarehouseId, SnoozedUntil, Reason)
+                            VALUES (@Id, @ItemId, @WarehouseId, @SnoozedUntil, @Reason);
+                    `);
+                return NextResponse.json({ success: true, id: sId });
+            }
+
             // Financial Documents
             if (path === 'customerPayments') {
                 const tx = new sql.Transaction(pool);
@@ -2459,7 +2480,8 @@ export async function POST(req: Request) {
                     posSessions: 'dbo.PosSessions',
                     manufacturingOrders: 'dbo.ManufacturingOrders',
                     generalLedgerEntries: 'dbo.GeneralLedgerEntries',
-                    licenses: 'dbo.Licenses'
+                    licenses: 'dbo.Licenses',
+                    snoozedRecommendations: 'dbo.SnoozedRecommendations'
                 };
 
                 const executeCascadeDeleteOnPool = async (targetPool: sql.ConnectionPool, tableName: string) => {

@@ -177,7 +177,10 @@ export const TABLE_METADATA_MAP: Record<string, TableSyncMeta> = {
     LoginHistory: { name: 'سجل الدخول والأمان', category: 'إعدادات النظام', direction: 'push', idColumn: 'Id', description: 'سجل أمان وتتبع تسجيل دخول وخروج المستخدمين وعناوين IP', dataScope: 'سجل أمان' },
     AuditTrailLogs: { name: 'سجل التدقيق الرقابي غير القابل للتعديل', category: 'إعدادات النظام', direction: 'push', idColumn: 'Id', description: 'سجل الرقابة الصارم غير القابل للحذف أو التعديل مع البصمة الرقمية (SHA-256) وحالة السجلات قبل وبعد التعديل', dataScope: 'رقابة وتدقيق' },
     SystemErrorLogs: { name: 'سجل تتبع أخطاء النظام والـ SQL', category: 'إعدادات النظام', direction: 'push', idColumn: 'Id', description: 'سجل مركزي لتتبع كافة أخطاء النظام والاستعلامات والطباعة والمزامنة', dataScope: 'رقابة وتدقيق' },
-    ArchiveLogs: { name: 'سجل أرشفة الفترات والسنوات المغلقة', category: 'إعدادات النظام', direction: 'push', idColumn: 'Id', description: 'سجل عمليات ترحيل وأرشفة الفواتير والحركات التاريخية للفترات المغلقة', dataScope: 'أرشفة تاريخية' }
+    ArchiveLogs: { name: 'سجل أرشفة الفترات والسنوات المغلقة', category: 'إعدادات النظام', direction: 'push', idColumn: 'Id', description: 'سجل عمليات ترحيل وأرشفة الفواتير والحركات التاريخية للفترات المغلقة', dataScope: 'أرشفة تاريخية' },
+    RecipeHistory: { name: 'سجل وأرشيف وصفات التصنيع (BOM)', category: 'مخازن وأصناف', direction: 'bidirectional', idColumn: 'Id', description: 'أرشيف وتاريخ إصدارات ومكونات وصفات وتكاليف التصنيع', dataScope: 'تصنيع وتكاليف' },
+    ActiveUserSessions: { name: 'جلسات المستخدمين النشطة والأجهزة', category: 'إعدادات النظام', direction: 'push', idColumn: 'UserId', description: 'سجل جلسات الدخول الفعالة والنبضات اللحظية للأجهزة لمنع تكرار الحسابات', dataScope: 'أمان وجلسات' },
+    SnoozedRecommendations: { name: 'تأجيلات توصيات الشراء والطلبات', category: 'مخازن وأصناف', direction: 'bidirectional', idColumn: 'Id', description: 'سجل تأجيل طلبات ونواقص البضاعة المؤقتة لكل فرع ومستودع', dataScope: 'طلبات وتوريد' }
 };
 
 /**
