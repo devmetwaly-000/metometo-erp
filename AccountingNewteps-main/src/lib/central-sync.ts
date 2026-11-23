@@ -9,13 +9,24 @@
 
 import sql from 'mssql';
 import { getDbPool } from '@/lib/db';
+import { 
+    testFirebaseRealtimeConnection, 
+    putFirebaseRecord, 
+    patchFirebaseMultiRecords, 
+    getFirebaseRecords 
+} from '@/lib/firebase-rtdb';
 
 export interface CentralSyncConfig {
     systemRole?: 'branch' | 'central';
-    centralHostingType?: 'local' | 'vps' | 'cloud';
+    centralHostingType?: 'local' | 'vps' | 'cloud' | 'firebase';
     centralConnectionString?: string;
     centralEncrypt?: boolean;
     centralTrustServerCertificate?: boolean;
+    // إعدادات الربط بسحابة Firebase Realtime
+    firebaseDatabaseUrl?: string;
+    firebaseApiKey?: string;
+    firebaseProjectId?: string;
+    firebaseAuthToken?: string;
     currentBranchId: string;
     currentBranchCode: string;
     currentBranchName: string;
@@ -39,6 +50,10 @@ const DEFAULT_CONFIG: CentralSyncConfig = {
     centralConnectionString: '',
     centralEncrypt: false,
     centralTrustServerCertificate: true,
+    firebaseDatabaseUrl: '',
+    firebaseApiKey: '',
+    firebaseProjectId: '',
+    firebaseAuthToken: '',
     currentBranchId: '-OmnkFba_GsEb0rfdzyA',
     currentBranchCode: '900',
     currentBranchName: 'الفرع الرأيسي',
@@ -409,6 +424,26 @@ export async function testCentralConnection(configOverride?: Partial<CentralSync
     }
 
     const config: CentralSyncConfig = { ...current, ...cleanOverride };
+
+    // فحص الاتصال بسحابة Firebase Realtime
+    if (config.centralHostingType === 'firebase') {
+        const fbRes = await testFirebaseRealtimeConnection({
+            databaseUrl: config.firebaseDatabaseUrl || '',
+            apiKey: config.firebaseApiKey || '',
+            projectId: config.firebaseProjectId || '',
+            authToken: config.firebaseAuthToken || '',
+        });
+        return {
+            success: fbRes.success,
+            latencyMs: fbRes.latencyMs,
+            serverVersion: 'Firebase Realtime Database (Google Cloud NoSQL)',
+            database: config.firebaseProjectId || 'Firebase Realtime',
+            databaseExists: fbRes.success,
+            message: fbRes.message || 'تم الاتصال بسحابة Firebase بنجاح!',
+            error: fbRes.error,
+        };
+    }
+
     const startTime = Date.now();
     let centralPool: sql.ConnectionPool | null = null;
 
@@ -1124,6 +1159,177 @@ export async function getTablesSyncMatrix(options?: { skipCentral?: boolean; cen
 }
 
 /**
+ * مزامنة البيانات بين السيرفر المحلي وسحابة Firebase Realtime
+ */
+export async function runFirebaseSync(
+    localPool: sql.ConnectionPool,
+    config: CentralSyncConfig,
+    options?: {
+        mode?: 'all' | 'push' | 'pull';
+        targetTable?: string;
+        forceFull?: boolean;
+    }
+): Promise<{
+    success: boolean;
+    pushedCount: number;
+    pulledCount: number;
+    error?: string;
+    details?: string;
+}> {
+    const fbConfig = {
+        databaseUrl: config.firebaseDatabaseUrl || '',
+        apiKey: config.firebaseApiKey || '',
+        projectId: config.firebaseProjectId || '',
+        authToken: config.firebaseAuthToken || '',
+    };
+
+    if (!fbConfig.databaseUrl) {
+        throw new Error('يرجى تحديد رابط قاعدة بيانات Firebase Realtime (Database URL) في الإعدادات.');
+    }
+
+    const branchCode = config.currentBranchCode || '900';
+    let pushedCount = 0;
+    let pulledCount = 0;
+
+    // 1. مزامنة فواتير المبيعات وبنودها
+    if (!options?.targetTable || options.targetTable === 'SalesInvoices') {
+        const pendingInvoicesRes = await localPool.request().query(`
+            SELECT TOP 50 * FROM dbo.SalesInvoices 
+            WHERE SyncStatus = 'pending' OR LastSyncedAt IS NULL
+            ORDER BY Date DESC
+        `);
+
+        for (const inv of pendingInvoicesRes.recordset) {
+            const itemsRes = await localPool.request()
+                .input('invoiceId', inv.Id)
+                .query(`SELECT * FROM dbo.SalesInvoiceItems WHERE InvoiceId = @invoiceId`);
+            
+            const invoicePayload = {
+                ...inv,
+                items: itemsRes.recordset || [],
+                syncedAt: new Date().toISOString(),
+                branchCode,
+                branchName: config.currentBranchName
+            };
+
+            const ok = await putFirebaseRecord(
+                fbConfig,
+                `branches/${branchCode}/salesInvoices`,
+                inv.Id,
+                invoicePayload
+            );
+
+            if (ok) {
+                // بث إشعار فوري في شريط المبيعات الحية (Live Feed) للإدارة والموبايل
+                await putFirebaseRecord(
+                    fbConfig,
+                    `realtime/liveSalesFeed`,
+                    inv.Id,
+                    {
+                        invoiceId: inv.Id,
+                        invoiceNumber: inv.InvoiceNumber,
+                        total: inv.Total,
+                        customerName: inv.CustomerName || 'عميل نقدي',
+                        cashierName: inv.CashierName || 'كاشير',
+                        branchCode,
+                        branchName: config.currentBranchName,
+                        date: inv.Date,
+                        timestamp: Date.now()
+                    }
+                );
+
+                await localPool.request()
+                    .input('invId', inv.Id)
+                    .query(`UPDATE dbo.SalesInvoices SET SyncStatus = 'synced', LastSyncedAt = GETDATE() WHERE Id = @invId`);
+                pushedCount++;
+            }
+        }
+    }
+
+    // 2. مزامنة سندات قبض العملاء
+    if (!options?.targetTable || options.targetTable === 'CustomerPayments') {
+        const pendingPaymentsRes = await localPool.request().query(`
+            SELECT TOP 50 * FROM dbo.CustomerPayments 
+            WHERE SyncStatus = 'pending' OR LastSyncedAt IS NULL
+        `);
+        for (const p of pendingPaymentsRes.recordset) {
+            const ok = await putFirebaseRecord(fbConfig, `branches/${branchCode}/customerPayments`, p.Id, p);
+            if (ok) {
+                await localPool.request().input('pId', p.Id).query(`UPDATE dbo.CustomerPayments SET SyncStatus = 'synced', LastSyncedAt = GETDATE() WHERE Id = @pId`);
+                pushedCount++;
+            }
+        }
+    }
+
+    // 3. مزامنة الفواتير المعلقة بالكاشير
+    if (!options?.targetTable || options.targetTable === 'HeldInvoices') {
+        const heldRes = await localPool.request().query(`SELECT * FROM dbo.HeldInvoices`);
+        const heldMap: Record<string, any> = {};
+        for (const h of heldRes.recordset) {
+            heldMap[h.Id] = h;
+        }
+        await putFirebaseRecord(fbConfig, `branches/${branchCode}`, 'heldInvoices', heldMap);
+        pushedCount += heldRes.recordset.length;
+    }
+
+    // 4. مزامنة جلسات وورديات الكاشير (PosSessions)
+    if (!options?.targetTable || options.targetTable === 'PosSessions') {
+        const sessionsRes = await localPool.request().query(`
+            SELECT TOP 30 * FROM dbo.PosSessions 
+            WHERE SyncStatus = 'pending' OR LastSyncedAt IS NULL
+            ORDER BY StartTime DESC
+        `);
+        for (const s of sessionsRes.recordset) {
+            const ok = await putFirebaseRecord(fbConfig, `branches/${branchCode}/posSessions`, s.Id, s);
+            if (ok) {
+                await localPool.request().input('sId', s.Id).query(`UPDATE dbo.PosSessions SET SyncStatus = 'synced', LastSyncedAt = GETDATE() WHERE Id = @sId`);
+                pushedCount++;
+            }
+        }
+    }
+
+    // 5. سحب الأصناف المحدثة من السحابة إذا كانت متوفرة
+    if (options?.mode !== 'push') {
+        const cloudItems = await getFirebaseRecords(fbConfig, 'masterData/items');
+        if (cloudItems && typeof cloudItems === 'object') {
+            for (const [id, item] of Object.entries(cloudItems)) {
+                if (!item || typeof item !== 'object') continue;
+                try {
+                    await localPool.request()
+                        .input('id', id)
+                        .input('name', (item as any).Name || (item as any).name || '')
+                        .input('price', Number((item as any).Price || (item as any).price || 0))
+                        .input('barcode', (item as any).Barcode || (item as any).barcode || '')
+                        .query(`
+                            IF EXISTS (SELECT 1 FROM dbo.Items WHERE Id = @id)
+                                UPDATE dbo.Items SET Price = @price, Barcode = @barcode, UpdatedAt = GETDATE() WHERE Id = @id;
+                            ELSE
+                                INSERT INTO dbo.Items (Id, Name, Price, Barcode, CreatedAt, UpdatedAt) VALUES (@id, @name, @price, @barcode, GETDATE(), GETDATE());
+                        `);
+                    pulledCount++;
+                } catch {}
+            }
+        }
+    }
+
+    // حفظ سجل المزامنة وتحديث حالة النظام
+    await saveCentralConfig({
+        lastSyncTime: new Date().toISOString(),
+        lastSyncStatus: 'success',
+        lastPushedCount: pushedCount,
+        lastPulledCount: pulledCount,
+        lastSyncError: null
+    });
+
+    return {
+        success: true,
+        pushedCount,
+        pulledCount,
+        details: `تمت المزامنة اللحظية بنجاح مع سحابة Firebase (رُفع: ${pushedCount}، سُحب: ${pulledCount})`
+    };
+}
+
+/**
  * تشغيل دورة المزامنة الذكية ثنائية الاتجاه:
  * "إذا كان السطر موجوداً قم بتحديثه، وإذا لم يكن موجوداً قم بإضافته" (Upsert)
  */
@@ -1158,6 +1364,28 @@ export async function runFullSync(options?: {
 
     try {
         await saveCentralConfig({ lastSyncStatus: 'in_progress' });
+
+        // إذا كان نوع الاستضافة هو سحابة Firebase Realtime Database
+        if (config.centralHostingType === 'firebase') {
+            try {
+                const fbRes = await runFirebaseSync(localPool, config, options);
+                isSyncInProgress = false;
+                return fbRes;
+            } catch (fbErr: any) {
+                isSyncInProgress = false;
+                await saveCentralConfig({
+                    lastSyncStatus: 'failed',
+                    lastSyncError: fbErr.message || 'فشلت المزامنة مع سحابة Firebase'
+                });
+                return {
+                    success: false,
+                    pushedCount: 0,
+                    pulledCount: 0,
+                    error: fbErr.message || 'فشلت المزامنة مع سحابة Firebase'
+                };
+            }
+        }
+
         centralPool = await connectToCentral(config);
 
         await ensureSyncTrackingMatrixTable(localPool);

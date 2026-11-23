@@ -434,13 +434,19 @@ export default function CentralSyncSettingsPage() {
             setTestResult(data);
             if (data.success) {
                 toast({
-                    title: "تم الاتصال بالسيرفر المركزي بنجاح",
-                    description: `زمن الاستجابة: ${data.latencyMs}ms | قاعدة البيانات: ${data.database || config.centralDatabase}`
+                    title: config.centralHostingType === 'firebase' 
+                        ? "تم الاتصال بسحابة Firebase بنجاح 🔥" 
+                        : "تم الاتصال بالسيرفر المركزي بنجاح",
+                    description: config.centralHostingType === 'firebase'
+                        ? (data.message || `زمن الاستجابة: ${data.latencyMs}ms | السحابة جاهزة للمزامنة`)
+                        : `زمن الاستجابة: ${data.latencyMs}ms | قاعدة البيانات: ${data.database || config.centralDatabase}`
                 });
             } else {
                 toast({
-                    title: "فشل الاتصال بالسيرفر المركزي",
-                    description: data.error || "تأكد من عنوان IP، البورت، واسم المستخدم وكلمة المرور.",
+                    title: config.centralHostingType === 'firebase'
+                        ? "فشل الاتصال بسحابة Firebase"
+                        : "فشل الاتصال بالسيرفر المركزي",
+                    description: data.error || (config.centralHostingType === 'firebase' ? "تأكد من رابط قاعدة البيانات ورمز المصادقة." : "تأكد من عنوان IP، البورت، واسم المستخدم وكلمة المرور."),
                     variant: "destructive"
                 });
             }
@@ -2565,164 +2571,253 @@ export default function CentralSyncSettingsPage() {
                                                 <Cloud className="h-3 w-3 ml-1" />
                                                 سحابي
                                             </Button>
+                                            <Button
+                                                type="button"
+                                                size="sm"
+                                                variant={config.centralHostingType === 'firebase' ? 'default' : 'outline'}
+                                                className={`h-7 text-[11px] font-bold ${config.centralHostingType === 'firebase' ? 'bg-amber-600 hover:bg-amber-700 text-white' : 'border-amber-500/40 text-amber-700 dark:text-amber-400'}`}
+                                                onClick={() => setConfig(prev => ({
+                                                    ...prev,
+                                                    centralHostingType: 'firebase'
+                                                }))}
+                                            >
+                                                <Zap className="h-3 w-3 ml-1 text-amber-400" />
+                                                سحابة Firebase Realtime 🔥
+                                            </Button>
                                         </div>
                                     </div>
 
-                                    {/* لصق نص الاتصال الكامل للسيرفر المركزي (اختياري) */}
-                                    <div className="space-y-1.5 p-3 rounded-lg border bg-background/60">
-                                        <Label className="text-xs font-bold flex items-center gap-1.5">
-                                            <Terminal className="h-3.5 w-3.5 text-primary" />
-                                            لصق نص اتصال السيرفر المركزي (Connection String) — اختياري:
-                                        </Label>
-                                        <Input
-                                            dir="ltr"
-                                            value={config.centralConnectionString || ''}
-                                            onChange={(e) => {
-                                                const val = e.target.value;
-                                                const updates: Partial<CentralSyncConfig> = { centralConnectionString: val };
-                                                const pairs = val.split(';').map(s => s.trim()).filter(Boolean);
-                                                for (const pair of pairs) {
-                                                    const idx = pair.indexOf('=');
-                                                    if (idx === -1) continue;
-                                                    const k = pair.slice(0, idx).trim().toLowerCase();
-                                                    const v = pair.slice(idx + 1).trim();
-                                                    if (['server', 'data source', 'addr', 'address'].includes(k)) {
-                                                        let host = v.replace(/^tcp:/i, '').trim();
-                                                        if (host.includes(',')) {
-                                                            const [h, p] = host.split(',');
-                                                            host = h.trim();
-                                                            const prt = parseInt(p.trim(), 10);
-                                                            if (!isNaN(prt)) updates.centralSqlPort = prt;
-                                                        } else if (host.includes(':')) {
-                                                            const [h, p] = host.split(':');
-                                                            host = h.trim();
-                                                            const prt = parseInt(p.trim(), 10);
-                                                            if (!isNaN(prt)) updates.centralSqlPort = prt;
-                                                        }
-                                                        if (host) {
-                                                            updates.centralServerIp = host;
-                                                            if (host.includes('.rds.amazonaws.com') || host.includes('.database.windows.net')) {
-                                                                updates.centralHostingType = 'cloud';
-                                                                updates.centralEncrypt = true;
-                                                            }
-                                                        }
-                                                    } else if (['database', 'initial catalog'].includes(k)) {
-                                                        updates.centralDatabase = v.toLowerCase() === 'master' ? 'MultiBranchPOS_Central_DB' : v;
-                                                    } else if (['user id', 'uid', 'user', 'username'].includes(k)) {
-                                                        updates.centralUsername = v;
-                                                    } else if (['password', 'pwd'].includes(k)) {
-                                                        updates.centralPassword = v;
-                                                    } else if (k === 'encrypt') {
-                                                        const enc = ['true', 'yes', '1', 'mandatory'].includes(v.toLowerCase());
-                                                        updates.centralEncrypt = enc;
-                                                        if (enc) updates.centralHostingType = 'cloud';
-                                                    } else if (['trustservercertificate', 'trust server certificate'].includes(k)) {
-                                                        updates.centralTrustServerCertificate = !['false', 'no', '0'].includes(v.toLowerCase());
-                                                    }
-                                                }
-                                                setConfig(prev => ({ ...prev, ...updates }));
-                                            }}
-                                            placeholder="Server=192.168.1.10,1433;Database=MultiBranchPOS_Central_DB;User Id=sa;Password=***;"
-                                            className="h-9 text-xs font-mono"
-                                        />
-                                    </div>
+                                    {config.centralHostingType === 'firebase' ? (
+                                        <div className="space-y-4 pt-1">
+                                            <div className="p-3.5 rounded-xl border border-amber-500/30 bg-amber-500/5 flex items-start gap-3">
+                                                <div className="p-2 rounded-lg bg-amber-500/10 text-amber-500 shrink-0 mt-0.5">
+                                                    <Zap className="h-5 w-5" />
+                                                </div>
+                                                <div className="space-y-1 text-xs">
+                                                    <p className="font-bold text-foreground text-sm flex items-center gap-2">
+                                                        <span>سحابة Firebase Realtime (بدون الحاجة لـ IP ثابت أو بورتات)</span>
+                                                        <Badge variant="secondary" className="bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/20 text-[10px]">
+                                                            مزامنة لحظية
+                                                        </Badge>
+                                                    </p>
+                                                    <p className="text-muted-foreground leading-relaxed">
+                                                        تتيح لك ربط ومزامنة مبيعات الفروع وحركات الكاشير والموبايل فورياً ثانية بثانية عبر سحابة Google Firebase. تعمل مباشرة من أي مكان بدون راوتر ثابت أو تكاليف استضافة معقدة.
+                                                    </p>
+                                                </div>
+                                            </div>
 
-                                    <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                                        <div className="space-y-1.5">
-                                            <Label className="text-xs font-bold">
-                                                {config.centralHostingType === 'cloud'
-                                                    ? 'عنوان السيرفر السحابي'
-                                                    : config.centralHostingType === 'vps'
-                                                    ? 'عنوان الـ IP الخارجي للـ VPS'
-                                                    : 'عنوان السيرفر (IP أو اسم الجهاز)'}
-                                            </Label>
-                                            <Input 
-                                                dir="ltr"
-                                                value={config.centralServerIp} 
-                                                onChange={(e) => handleInputChange('centralServerIp', e.target.value)}
-                                                className="h-9 text-xs font-mono font-semibold"
-                                                placeholder={config.centralHostingType === 'cloud' ? 'mydb.xxxx.eu-north-1.rds.amazonaws.com' : '10.110.16.16'}
-                                            />
-                                        </div>
+                                            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                                                <div className="space-y-1.5 md:col-span-2">
+                                                    <Label className="text-xs font-bold flex items-center justify-between">
+                                                        <span>رابط قاعدة بيانات Firebase (Database URL) *</span>
+                                                        <span className="text-[10px] text-muted-foreground font-normal">من Firebase Console &gt; Realtime Database</span>
+                                                    </Label>
+                                                    <Input 
+                                                        dir="ltr"
+                                                        value={config.firebaseDatabaseUrl || ''} 
+                                                        onChange={(e) => handleInputChange('firebaseDatabaseUrl', e.target.value)}
+                                                        className="h-9 text-xs font-mono font-semibold"
+                                                        placeholder="https://your-project-id-default-rtdb.firebaseio.com"
+                                                    />
+                                                </div>
 
-                                        <div className="space-y-1.5">
-                                            <Label className="text-xs font-bold">رقم المنفذ (Port)</Label>
-                                            <Input 
-                                                dir="ltr"
-                                                type="number"
-                                                value={config.centralSqlPort} 
-                                                onChange={(e) => handleInputChange('centralSqlPort', parseInt(e.target.value) || 1433)}
-                                                className="h-9 text-xs font-mono"
-                                                placeholder="1433"
-                                            />
-                                        </div>
+                                                <div className="space-y-1.5">
+                                                    <Label className="text-xs font-bold flex items-center justify-between">
+                                                        <span>رمز المصادقة أو المفتاح السري (Auth Token / Secret)</span>
+                                                        <span className="text-[10px] text-muted-foreground font-normal">Database Secrets أو Auth Token</span>
+                                                    </Label>
+                                                    <Input 
+                                                        dir="ltr"
+                                                        type="password"
+                                                        value={config.firebaseAuthToken || ''} 
+                                                        onChange={(e) => handleInputChange('firebaseAuthToken', e.target.value)}
+                                                        className="h-9 text-xs font-mono"
+                                                        placeholder="رمز Secret أو Auth Token للقاعدة"
+                                                    />
+                                                </div>
 
-                                        <div className="space-y-1.5">
-                                            <Label className="text-xs font-bold">اسم قاعدة البيانات المركزية</Label>
-                                            <Input 
-                                                dir="ltr"
-                                                value={config.centralDatabase} 
-                                                onChange={(e) => handleInputChange('centralDatabase', e.target.value)}
-                                                className="h-9 text-xs font-mono font-bold text-foreground"
-                                                placeholder="MultiBranchPOS_Central_DB"
-                                            />
-                                        </div>
+                                                <div className="space-y-1.5">
+                                                    <Label className="text-xs font-bold">معرّف المشروع (Project ID)</Label>
+                                                    <Input 
+                                                        dir="ltr"
+                                                        value={config.firebaseProjectId || ''} 
+                                                        onChange={(e) => handleInputChange('firebaseProjectId', e.target.value)}
+                                                        className="h-9 text-xs font-mono"
+                                                        placeholder="my-accounting-pos"
+                                                    />
+                                                </div>
 
-                                        <div className="space-y-1.5">
-                                            <Label className="text-xs font-bold">اسم مستخدم SQL</Label>
-                                            <Input 
-                                                dir="ltr"
-                                                value={config.centralUsername} 
-                                                onChange={(e) => handleInputChange('centralUsername', e.target.value)}
-                                                className="h-9 text-xs font-mono"
-                                                placeholder="gmlogins"
-                                            />
-                                        </div>
-
-                                        <div className="space-y-1.5">
-                                            <Label className="text-xs font-bold">كلمة المرور</Label>
-                                            <Input 
-                                                dir="ltr"
-                                                type="password"
-                                                value={config.centralPassword} 
-                                                onChange={(e) => handleInputChange('centralPassword', e.target.value)}
-                                                className="h-9 text-xs font-mono"
-                                                placeholder="••••••••"
-                                            />
-                                        </div>
-
-                                        <div className="space-y-1.5">
-                                            <Label className="text-xs font-bold">المزامنة التلقائية الخلفية</Label>
-                                            <div className="flex items-center justify-between p-2 rounded-lg border bg-background h-9">
-                                                <span className="text-xs text-muted-foreground font-medium">تشغيل المزامنة الدورية</span>
-                                                <Switch 
-                                                    checked={config.autoSync} 
-                                                    onCheckedChange={(checked) => handleInputChange('autoSync', checked)} 
-                                                />
+                                                <div className="space-y-1.5 md:col-span-2">
+                                                    <Label className="text-xs font-bold">المزامنة التلقائية اللحظية</Label>
+                                                    <div className="flex items-center justify-between p-2 rounded-lg border bg-background h-9">
+                                                        <span className="text-xs text-muted-foreground font-medium">بث ونقل الحركات تلقائياً في الخلفية</span>
+                                                        <Switch 
+                                                            checked={config.autoSync} 
+                                                            onCheckedChange={(checked) => handleInputChange('autoSync', checked)} 
+                                                        />
+                                                    </div>
+                                                </div>
                                             </div>
                                         </div>
-                                    </div>
+                                    ) : (
+                                        <>
+                                            {/* لصق نص الاتصال الكامل للسيرفر المركزي (اختياري) */}
+                                            <div className="space-y-1.5 p-3 rounded-lg border bg-background/60">
+                                                <Label className="text-xs font-bold flex items-center gap-1.5">
+                                                    <Terminal className="h-3.5 w-3.5 text-primary" />
+                                                    لصق نص اتصال السيرفر المركزي (Connection String) — اختياري:
+                                                </Label>
+                                                <Input
+                                                    dir="ltr"
+                                                    value={config.centralConnectionString || ''}
+                                                    onChange={(e) => {
+                                                        const val = e.target.value;
+                                                        const updates: Partial<CentralSyncConfig> = { centralConnectionString: val };
+                                                        const pairs = val.split(';').map(s => s.trim()).filter(Boolean);
+                                                        for (const pair of pairs) {
+                                                            const idx = pair.indexOf('=');
+                                                            if (idx === -1) continue;
+                                                            const k = pair.slice(0, idx).trim().toLowerCase();
+                                                            const v = pair.slice(idx + 1).trim();
+                                                            if (['server', 'data source', 'addr', 'address'].includes(k)) {
+                                                                let host = v.replace(/^tcp:/i, '').trim();
+                                                                if (host.includes(',')) {
+                                                                    const [h, p] = host.split(',');
+                                                                    host = h.trim();
+                                                                    const prt = parseInt(p.trim(), 10);
+                                                                    if (!isNaN(prt)) updates.centralSqlPort = prt;
+                                                                } else if (host.includes(':')) {
+                                                                    const [h, p] = host.split(':');
+                                                                    host = h.trim();
+                                                                    const prt = parseInt(p.trim(), 10);
+                                                                    if (!isNaN(prt)) updates.centralSqlPort = prt;
+                                                                }
+                                                                if (host) {
+                                                                    updates.centralServerIp = host;
+                                                                    if (host.includes('.rds.amazonaws.com') || host.includes('.database.windows.net')) {
+                                                                        updates.centralHostingType = 'cloud';
+                                                                        updates.centralEncrypt = true;
+                                                                    }
+                                                                }
+                                                            } else if (['database', 'initial catalog'].includes(k)) {
+                                                                updates.centralDatabase = v.toLowerCase() === 'master' ? 'MultiBranchPOS_Central_DB' : v;
+                                                            } else if (['user id', 'uid', 'user', 'username'].includes(k)) {
+                                                                updates.centralUsername = v;
+                                                            } else if (['password', 'pwd'].includes(k)) {
+                                                                updates.centralPassword = v;
+                                                            } else if (k === 'encrypt') {
+                                                                const enc = ['true', 'yes', '1', 'mandatory'].includes(v.toLowerCase());
+                                                                updates.centralEncrypt = enc;
+                                                                if (enc) updates.centralHostingType = 'cloud';
+                                                            } else if (['trustservercertificate', 'trust server certificate'].includes(k)) {
+                                                                updates.centralTrustServerCertificate = !['false', 'no', '0'].includes(v.toLowerCase());
+                                                            }
+                                                        }
+                                                        setConfig(prev => ({ ...prev, ...updates }));
+                                                    }}
+                                                    placeholder="Server=192.168.1.10,1433;Database=MultiBranchPOS_Central_DB;User Id=sa;Password=***;"
+                                                    className="h-9 text-xs font-mono"
+                                                />
+                                            </div>
 
-                                    <div className="flex flex-wrap items-center gap-6 pt-1 text-xs">
-                                        <div className="flex items-center gap-2">
-                                            <Switch
-                                                checked={Boolean(config.centralEncrypt)}
-                                                onCheckedChange={(checked) => handleInputChange('centralEncrypt', checked)}
-                                            />
-                                            <Label className="text-xs font-semibold cursor-pointer">
-                                                تفعيل تشفير الاتصال (Encrypt=True)
-                                            </Label>
-                                        </div>
-                                        <div className="flex items-center gap-2">
-                                            <Switch
-                                                checked={config.centralTrustServerCertificate !== false}
-                                                onCheckedChange={(checked) => handleInputChange('centralTrustServerCertificate', checked)}
-                                            />
-                                            <Label className="text-xs font-semibold cursor-pointer">
-                                                الوثوق بشهادة السيرفر (TrustServerCertificate=True)
-                                            </Label>
-                                        </div>
-                                    </div>
+                                            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                                                <div className="space-y-1.5">
+                                                    <Label className="text-xs font-bold">
+                                                        {config.centralHostingType === 'cloud'
+                                                            ? 'عنوان السيرفر السحابي'
+                                                            : config.centralHostingType === 'vps'
+                                                            ? 'عنوان الـ IP الخارجي للـ VPS'
+                                                            : 'عنوان السيرفر (IP أو اسم الجهاز)'}
+                                                    </Label>
+                                                    <Input 
+                                                        dir="ltr"
+                                                        value={config.centralServerIp} 
+                                                        onChange={(e) => handleInputChange('centralServerIp', e.target.value)}
+                                                        className="h-9 text-xs font-mono font-semibold"
+                                                        placeholder={config.centralHostingType === 'cloud' ? 'mydb.xxxx.eu-north-1.rds.amazonaws.com' : '10.110.16.16'}
+                                                    />
+                                                </div>
+
+                                                <div className="space-y-1.5">
+                                                    <Label className="text-xs font-bold">رقم المنفذ (Port)</Label>
+                                                    <Input 
+                                                        dir="ltr"
+                                                        type="number"
+                                                        value={config.centralSqlPort} 
+                                                        onChange={(e) => handleInputChange('centralSqlPort', parseInt(e.target.value) || 1433)}
+                                                        className="h-9 text-xs font-mono"
+                                                        placeholder="1433"
+                                                    />
+                                                </div>
+
+                                                <div className="space-y-1.5">
+                                                    <Label className="text-xs font-bold">اسم قاعدة البيانات المركزية</Label>
+                                                    <Input 
+                                                        dir="ltr"
+                                                        value={config.centralDatabase} 
+                                                        onChange={(e) => handleInputChange('centralDatabase', e.target.value)}
+                                                        className="h-9 text-xs font-mono font-bold text-foreground"
+                                                        placeholder="MultiBranchPOS_Central_DB"
+                                                    />
+                                                </div>
+
+                                                <div className="space-y-1.5">
+                                                    <Label className="text-xs font-bold">اسم مستخدم SQL</Label>
+                                                    <Input 
+                                                        dir="ltr"
+                                                        value={config.centralUsername} 
+                                                        onChange={(e) => handleInputChange('centralUsername', e.target.value)}
+                                                        className="h-9 text-xs font-mono"
+                                                        placeholder="gmlogins"
+                                                    />
+                                                </div>
+
+                                                <div className="space-y-1.5">
+                                                    <Label className="text-xs font-bold">كلمة المرور</Label>
+                                                    <Input 
+                                                        dir="ltr"
+                                                        type="password"
+                                                        value={config.centralPassword} 
+                                                        onChange={(e) => handleInputChange('centralPassword', e.target.value)}
+                                                        className="h-9 text-xs font-mono"
+                                                        placeholder="••••••••"
+                                                    />
+                                                </div>
+
+                                                <div className="space-y-1.5">
+                                                    <Label className="text-xs font-bold">المزامنة التلقائية الخلفية</Label>
+                                                    <div className="flex items-center justify-between p-2 rounded-lg border bg-background h-9">
+                                                        <span className="text-xs text-muted-foreground font-medium">تشغيل المزامنة الدورية</span>
+                                                        <Switch 
+                                                            checked={config.autoSync} 
+                                                            onCheckedChange={(checked) => handleInputChange('autoSync', checked)} 
+                                                        />
+                                                    </div>
+                                                </div>
+                                            </div>
+
+                                            <div className="flex flex-wrap items-center gap-6 pt-1 text-xs">
+                                                <div className="flex items-center gap-2">
+                                                    <Switch
+                                                        checked={Boolean(config.centralEncrypt)}
+                                                        onCheckedChange={(checked) => handleInputChange('centralEncrypt', checked)}
+                                                    />
+                                                    <Label className="text-xs font-semibold cursor-pointer">
+                                                        تفعيل تشفير الاتصال (Encrypt=True)
+                                                    </Label>
+                                                </div>
+                                                <div className="flex items-center gap-2">
+                                                    <Switch
+                                                        checked={config.centralTrustServerCertificate !== false}
+                                                        onCheckedChange={(checked) => handleInputChange('centralTrustServerCertificate', checked)}
+                                                    />
+                                                    <Label className="text-xs font-semibold cursor-pointer">
+                                                        الوثوق بشهادة السيرفر (TrustServerCertificate=True)
+                                                    </Label>
+                                                </div>
+                                            </div>
+                                        </>
+                                    )}
                                 </div>
                             </CardContent>
                             <CardFooter className="bg-muted/20 border-t flex justify-between items-center py-3">
