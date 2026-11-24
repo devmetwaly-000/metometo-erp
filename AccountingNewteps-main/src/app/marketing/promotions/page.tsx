@@ -27,6 +27,10 @@ import { MultiSelect } from '@/components/ui/multi-select';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import Link from 'next/link';
 
+import { isPromotionCurrentlyActive, parsePromoDate } from '@/lib/promotions-engine';
+import { Switch } from "@/components/ui/switch";
+import { Checkbox } from "@/components/ui/checkbox";
+
 interface Tier {
     id: string; // uuid for local state key
     targetType: Promotion['targetType'];
@@ -51,6 +55,10 @@ interface Promotion {
     endDate: string;
     warehouseIds?: string[]; // New field for branch targeting
     tiers?: Tier[]; // New for tiered quantity discount
+    hasDailyTimeWindow?: boolean;
+    dailyStartTime?: string; // HH:mm format, e.g. "14:00"
+    dailyEndTime?: string;   // HH:mm format, e.g. "18:00"
+    activeDays?: number[];   // 0 = Sunday, 1 = Monday, ..., 5 = Friday, 6 = Saturday
 }
 
 const getPromotionTypeLabel = (type: Promotion['type']) => {
@@ -86,7 +94,11 @@ const PromotionForm = ({ promotion, onSave, onClose }: { promotion?: Promotion, 
             startDate: promotion.startDate.slice(0, 16),
             endDate: promotion.endDate.slice(0, 16),
             warehouseIds: promotion.warehouseIds || [],
-            tiers: promotion.tiers || []
+            tiers: promotion.tiers || [],
+            hasDailyTimeWindow: promotion.hasDailyTimeWindow || false,
+            dailyStartTime: promotion.dailyStartTime || '14:00',
+            dailyEndTime: promotion.dailyEndTime || '18:00',
+            activeDays: promotion.activeDays || [0, 1, 2, 3, 4, 5, 6],
         } : { 
             name: '', 
             description: '', 
@@ -98,6 +110,10 @@ const PromotionForm = ({ promotion, onSave, onClose }: { promotion?: Promotion, 
             targetType: 'items',
             warehouseIds: [],
             tiers: [],
+            hasDailyTimeWindow: false,
+            dailyStartTime: '14:00',
+            dailyEndTime: '18:00',
+            activeDays: [0, 1, 2, 3, 4, 5, 6],
         }
     );
     
@@ -208,6 +224,77 @@ const PromotionForm = ({ promotion, onSave, onClose }: { promotion?: Promotion, 
                  <div className="space-y-2">
                     <Label htmlFor="end-date">تاريخ ووقت الانتهاء</Label>
                     <Input id="end-date" type="datetime-local" value={formData.endDate} onChange={e => setFormData({...formData, endDate: e.target.value})} />
+                </div>
+            </div>
+
+            {/* نافذة الساعات اليومية وأيام الأسبوع المحددة */}
+            <div className="p-4 border rounded-lg bg-muted/20 space-y-4">
+                <div className="flex items-center justify-between">
+                    <div className="space-y-0.5">
+                        <Label className="text-sm font-semibold">تحديد ساعات يومية محددة للعرض (Happy Hour)</Label>
+                        <p className="text-xs text-muted-foreground">تطبيق الخصم فقط خلال أوقات محددة من اليوم (مثلاً من 2 ظهراً إلى 6 مساءً)</p>
+                    </div>
+                    <Switch 
+                        checked={Boolean(formData.hasDailyTimeWindow)}
+                        onCheckedChange={(checked) => setFormData({ ...formData, hasDailyTimeWindow: checked })}
+                    />
+                </div>
+
+                {formData.hasDailyTimeWindow && (
+                    <div className="grid grid-cols-2 gap-4 pt-2 border-t">
+                        <div className="space-y-2">
+                            <Label htmlFor="daily-start-time">وقت البدء اليومي</Label>
+                            <Input 
+                                id="daily-start-time" 
+                                type="time" 
+                                value={formData.dailyStartTime || '14:00'} 
+                                onChange={e => setFormData({ ...formData, dailyStartTime: e.target.value })} 
+                            />
+                        </div>
+                        <div className="space-y-2">
+                            <Label htmlFor="daily-end-time">وقت الانتهاء اليومي</Label>
+                            <Input 
+                                id="daily-end-time" 
+                                type="time" 
+                                value={formData.dailyEndTime || '18:00'} 
+                                onChange={e => setFormData({ ...formData, dailyEndTime: e.target.value })} 
+                            />
+                        </div>
+                    </div>
+                )}
+
+                <div className="space-y-2 pt-2 border-t">
+                    <Label className="text-xs font-semibold block">أيام الأسبوع النشط بها العرض:</Label>
+                    <div className="flex flex-wrap gap-2">
+                        {[
+                            { day: 5, label: 'الجمعة' },
+                            { day: 6, label: 'السبت' },
+                            { day: 0, label: 'الأحد' },
+                            { day: 1, label: 'الاثنين' },
+                            { day: 2, label: 'الثلاثاء' },
+                            { day: 3, label: 'الأربعاء' },
+                            { day: 4, label: 'الخميس' },
+                        ].map(({ day, label }) => {
+                            const activeDays = formData.activeDays || [0, 1, 2, 3, 4, 5, 6];
+                            const isChecked = activeDays.includes(day);
+                            return (
+                                <label key={day} className="flex items-center gap-1.5 text-xs border rounded px-2.5 py-1.5 cursor-pointer bg-background hover:bg-muted">
+                                    <input 
+                                        type="checkbox"
+                                        checked={isChecked}
+                                        onChange={(e) => {
+                                            const nextDays = e.target.checked
+                                                ? [...activeDays, day]
+                                                : activeDays.filter(d => d !== day);
+                                            setFormData({ ...formData, activeDays: nextDays });
+                                        }}
+                                        className="rounded text-primary focus:ring-primary h-3.5 w-3.5"
+                                    />
+                                    <span>{label}</span>
+                                </label>
+                            );
+                        })}
+                    </div>
                 </div>
             </div>
             <div className="flex justify-end pt-4">
@@ -615,11 +702,15 @@ export default function PromotionsPage() {
 
     const getStatus = (promo: Promotion) => {
         const now = new Date();
-        const start = new Date(promo.startDate);
-        const end = new Date(promo.endDate);
-        if (now < start) return { text: "قادم", color: "bg-blue-500", key: "upcoming" };
-        if (now > end) return { text: "منتهي", color: "bg-gray-500", key: "expired" };
-        return { text: "نشط", color: "bg-green-500", key: "active" };
+        const activeCheck = isPromotionCurrentlyActive(promo, now);
+        if (activeCheck.active) {
+            return { text: "نشط الآن 🟢", color: "bg-emerald-600 text-white", key: "active" };
+        }
+        const start = parsePromoDate(promo.startDate, false);
+        const end = parsePromoDate(promo.endDate, true);
+        if (now < start) return { text: "قادم ⏳", color: "bg-blue-500 text-white", key: "upcoming" };
+        if (now > end) return { text: "منتهي 🛑", color: "bg-gray-500 text-white", key: "expired" };
+        return { text: activeCheck.reason || "خارج توقيت السريان", color: "bg-amber-600 text-white", key: "inactive_window" };
     };
     
     const warehouseMap = useMemo(() => new Map((warehouses || []).map((w: any) => [w.id, w.name])), [warehouses]);

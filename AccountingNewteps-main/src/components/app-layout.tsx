@@ -385,6 +385,7 @@ export const navStructure = [
         { type: 'link', href: '/inventory/import-items', module: 'inventory_importItems', title: dictionary.nav.importFromExcel },
         { type: 'link', href: '/inventory/barcode-designer', module: 'inventory_barcodeDesigner', title: dictionary.nav.barcodeDesigner },
         { type: 'link', href: '/inventory/barcode-print', module: 'inventory_barcodePrint', title: dictionary.nav.barcodeBulkPrint },
+        { type: 'link', href: '/inventory/scale-export', module: 'inventory_items_list', title: 'موازين الباركود الإلكترونية (PLU)' },
     ]},
     { type: 'collapsible', title: dictionary.nav.warehouses, icon: <Warehouse />, modules: ['inventory_warehouses', 'inventory_goodsInTransit', 'inventory_requisitions_recommendations', 'inventory_stockOut', 'inventory_transfer', 'inventory_adjustment', 'inventory_movements', 'inventory_requisitions', 'reports_recipe'], children: [
         { type: 'link', href: '/master-data/branches', module: 'inventory_warehouses', title: dictionary.nav.branches },

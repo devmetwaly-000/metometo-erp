@@ -21,6 +21,7 @@ import {
     buildWhatsAppInvoiceMessage,
     sendWhatsAppMessage,
 } from '@/lib/customer-experience';
+import { isPromotionCurrentlyActive } from '@/lib/promotions-engine';
 import { useData } from "@/contexts/data-provider";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from '@/contexts/auth-context';
@@ -1453,8 +1454,7 @@ function PosPageContent() {
     useEffect(() => {
         const now = new Date();
         const activePromotions = promotions.filter((p: any) => {
-            const appliesToThisWarehouse = !p.warehouseIds || p.warehouseIds.length === 0 || p.warehouseIds.includes(warehouseForSession?.id);
-            return now < new Date(p.endDate) && new Date(p.startDate) <= now && appliesToThisWarehouse;
+            return isPromotionCurrentlyActive(p, now, warehouseForSession?.id).active;
         });
 
         let newCart: PosItem[] = cart.map(item => ({

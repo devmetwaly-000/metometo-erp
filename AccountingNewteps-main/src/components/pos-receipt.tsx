@@ -277,6 +277,24 @@ export const PosReceipt = ({ invoice, company, design, warehouse, customer, cust
                     </p>
                 </div>
             )}
+
+            {/* إظهار نقاط الولاء المكتسبة من الفاتورة ورصيد النقاط الكلي للعميل */}
+            {design?.showLoyaltyPoints !== false && (Number(invoice?.earnedPoints || 0) > 0 || Number(invoice?.customerEarnedPoints || 0) > 0 || (customer?.loyaltyPoints && Number(customer.loyaltyPoints) > 0)) && (
+                <div style={{ marginTop: '8px', paddingTop: '6px', borderTop: '1px dashed #000', backgroundColor: '#fafafa', padding: '5px 8px', borderRadius: '4px' }}>
+                    {Number(invoice?.earnedPoints || invoice?.customerEarnedPoints || 0) > 0 && (
+                        <p style={{ ...pStyle, display: 'flex', justifyContent: 'space-between', fontWeight: 'bold', color: '#047857', fontSize: `${(design?.fontSizes?.totals || 13)}px` }}>
+                            <span>النقاط المكتسبة من الفاتورة:</span>
+                            <span dir="ltr">+{Number(invoice?.earnedPoints || invoice?.customerEarnedPoints || 0).toFixed(0)} ⭐</span>
+                        </p>
+                    )}
+                    {customer?.loyaltyPoints !== undefined && (
+                        <p style={{ ...pStyle, display: 'flex', justifyContent: 'space-between', fontSize: `${Math.max(10, (design?.fontSizes?.totals || 13) - 2)}px`, color: '#4b5563' }}>
+                            <span>إجمالي رصيد نقاط العميل:</span>
+                            <span dir="ltr">{Number(customer.loyaltyPoints || 0).toFixed(0)} نقطة</span>
+                        </p>
+                    )}
+                </div>
+            )}
           </div>
         );
 

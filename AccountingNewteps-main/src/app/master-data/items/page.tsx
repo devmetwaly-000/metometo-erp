@@ -41,7 +41,8 @@ import { BarcodePrintDialog } from "@/components/barcode-print-dialog";
 import RecipeHistoryDialog from "@/components/recipe-history-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { PlusCircle, Trash2, Loader2, QrCode, TrendingUp, Search, Component, Save, History, Edit, MoreHorizontal, X, Clock, Calculator, Layers, CheckCheck, FolderTree, Check, AlertTriangle } from "lucide-react";
+import { PlusCircle, Trash2, Loader2, QrCode, TrendingUp, Search, Component, Save, History, Edit, MoreHorizontal, X, Clock, Calculator, Layers, CheckCheck, FolderTree, Check, AlertTriangle, Scale } from "lucide-react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Combobox } from "@/components/ui/combobox";
 import { useAuth } from "@/contexts/auth-context";
@@ -2393,7 +2394,13 @@ export default function ItemsPage() {
               <MatrixGeneratorDialog onSave={handleSaveMatrix} onOpenChange={setIsMatrixOpen} {...{itemSections, itemCategories, itemGroups, itemSubCategories1, itemSubCategories2, allItems, settings, getNextId}} />
             </Dialog>
            )}
-           {can("add", moduleName) && (
+           <Link href="/inventory/scale-export">
+            <Button variant="outline" size="sm" className="gap-1.5 text-blue-700 border-blue-200 hover:bg-blue-50">
+              <Scale className="h-4 w-4" />
+              تصدير للموازين ⚖️
+            </Button>
+          </Link>
+          {can("add", moduleName) && (
              <AddEntityDialog
                 title="إضافة صنف جديد"
                 description="أدخل بيانات الصنف الأساسية والتصنيفات."

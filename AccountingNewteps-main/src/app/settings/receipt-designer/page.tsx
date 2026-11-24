@@ -40,6 +40,7 @@ interface PosReceiptSettings extends BaseReceiptSettings {
     showCustomerName: boolean;
     showCustomerPhone: boolean;
     showEInvoiceQr?: boolean;
+    showLoyaltyPoints?: boolean;
     sectionOrder?: string[];
     fontSizes: {
         companyName: number;
@@ -80,6 +81,7 @@ const DEFAULT_POS_SETTINGS: PosReceiptSettings = {
     showCustomerName: true,
     showCustomerPhone: true,
     showEInvoiceQr: true,
+    showLoyaltyPoints: true,
     sectionOrder: [...DEFAULT_RECEIPT_SECTION_ORDER],
     fontSizes: {
         companyName: 16,
@@ -118,13 +120,15 @@ const SAMPLE_INVOICE = {
     tax: 11.20,
     total: 91.20,
     paidAmount: 100.00,
-    change: 8.80
+    change: 8.80,
+    earnedPoints: 12
 }
 
 const SAMPLE_CUSTOMER = {
     name: "عميل افتراضي",
     phone: "01234567890",
-    address: "123 شارع المثال، مدينة نصر، القاهرة"
+    address: "123 شارع المثال، مدينة نصر، القاهرة",
+    loyaltyPoints: 145
 };
 
 const SettingsToggle = ({ id, label, checked, onCheckedChange }: { id: string, label: string, checked: boolean, onCheckedChange: (checked: boolean) => void }) => (
@@ -298,6 +302,7 @@ export default function ReceiptDesignerPage() {
                                             <SettingsToggle id="pos-show-invoice-num" label="رقم الفاتورة" checked={posDesign.showInvoiceNumber} onCheckedChange={v => setPosDesign(p => ({...p, showInvoiceNumber: v}))} />
                                             <SettingsToggle id="pos-show-item-price" label="سعر الوحدة" checked={posDesign.showItemPrice} onCheckedChange={v => setPosDesign(p => ({...p, showItemPrice: v}))} />
                                             <SettingsToggle id="pos-show-einvoice-qr" label="رمز QR الإيصال الإلكتروني" checked={posDesign.showEInvoiceQr ?? true} onCheckedChange={v => setPosDesign(p => ({...p, showEInvoiceQr: v}))} />
+                                            <SettingsToggle id="pos-show-loyalty-points" label="نقاط الولاء المكتسبة والرصيد" checked={posDesign.showLoyaltyPoints ?? true} onCheckedChange={v => setPosDesign(p => ({...p, showLoyaltyPoints: v}))} />
                                         </AccordionContent>
                                     </AccordionItem>
                                     <AccordionItem value="item-3">
