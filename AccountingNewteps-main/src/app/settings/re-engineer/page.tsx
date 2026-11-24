@@ -13,9 +13,9 @@ import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useData } from "@/contexts/data-provider";
 import {
-    Loader2, RefreshCw, CheckCircle2, Database, Server, Globe, Save, Zap,
+    Loader2, RefreshCw, CheckCircle2, Database, Server, Globe, Save,
     ShieldCheck, AlertTriangle, Copy, Eye, EyeOff, Cloud, Terminal, ArrowLeftRight,
-    Building2, Store, Lock, HardDriveDownload, Flame
+    Building2, Store, Lock, HardDriveDownload, Flame, Activity, Layers
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
@@ -103,7 +103,7 @@ function buildConnStr(cfg: BranchDbConfigState): string {
 function detectHosting(server: string, encrypt?: boolean): { type: 'local' | 'cloud' | 'ip' | 'indexeddb'; label: string; icon: any } {
     const s = (server || '').toLowerCase().trim();
     if (s === 'indexeddb' || s.includes('indexeddb') || s === 'browser') {
-        return { type: 'indexeddb', label: 'متصفح محلي (IndexedDB)', icon: Zap };
+        return { type: 'indexeddb', label: 'متصفح محلي (IndexedDB)', icon: Globe };
     }
     if (s.includes('.rds.amazonaws.com') || s.includes('.database.windows.net') || encrypt) {
         return { type: 'cloud', label: 'سحابي', icon: Cloud };
@@ -866,7 +866,50 @@ export default function DatabaseReEngineeringPage() {
 
             {/* شريط الملخص العلوي للفرع والإدارة */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3 sm:gap-4">
-                {/* بطاقة ملخص الفرع */}
+                {/* 1. بطاقة ملخص الإدارة المركزية (تظهر أولاً على اليمين) */}
+                <Card className={cn(
+                    "border-2 transition-all",
+                    centralConnectedStatus?.connected ? "border-emerald-500/40 bg-emerald-500/5" : "border-indigo-500/40 bg-indigo-500/5"
+                )}>
+                    <CardContent className="p-3.5 sm:p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                        <div className="flex items-center gap-3">
+                            <div className="h-10 w-10 rounded-xl bg-indigo-500/10 text-indigo-600 flex items-center justify-center shrink-0">
+                                <Globe className="h-5 w-5" />
+                            </div>
+                            <div className="min-w-0">
+                                <div className="flex items-center gap-2 flex-wrap">
+                                    <span className="font-bold text-sm text-foreground">قاعدة الإدارة المركزية</span>
+                                    <Badge variant="outline" className={cn(
+                                        "text-[10px] font-bold",
+                                        centralHosting.type === 'cloud' ? "bg-amber-500/10 text-amber-700 dark:text-amber-300 border-amber-500/30" :
+                                        centralHosting.type === 'ip' ? "bg-sky-500/10 text-sky-700 dark:text-sky-300 border-sky-500/30" :
+                                        "bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border-emerald-500/30"
+                                    )}>
+                                        {centralHosting.label}
+                                    </Badge>
+                                    {centralConnectedStatus?.connected ? (
+                                        <Badge className="bg-emerald-600 text-white text-[9px] px-1.5 py-0">متصلة ✅</Badge>
+                                    ) : (
+                                        <Badge variant="outline" className="text-[9px] px-1.5 py-0 border-indigo-400">جاهزة للربط</Badge>
+                                    )}
+                                </div>
+                                <div className="text-[11px] text-muted-foreground mt-0.5 font-mono break-all" dir="ltr">
+                                    {centralConfig.centralServerIp}:{centralConfig.centralSqlPort} [{centralConfig.centralDatabase}]
+                                </div>
+                            </div>
+                        </div>
+                        <Button
+                            size="sm"
+                            variant={activeTab === 'central' ? 'default' : 'outline'}
+                            className="h-8 text-xs font-bold w-full sm:w-auto shrink-0 justify-center"
+                            onClick={() => setActiveTab('central')}
+                        >
+                            تعديل إعدادات الإدارة
+                        </Button>
+                    </CardContent>
+                </Card>
+
+                {/* 2. بطاقة ملخص الفرع (تظهر ثانياً على اليسار) */}
                 <Card className={cn(
                     "border-2 transition-all",
                     branchConnectedStatus?.connected ? "border-emerald-500/40 bg-emerald-500/5" : "border-amber-500/40 bg-amber-500/5"
@@ -909,61 +952,18 @@ export default function DatabaseReEngineeringPage() {
                         </Button>
                     </CardContent>
                 </Card>
-
-                {/* بطاقة ملخص الإدارة المركزية */}
-                <Card className={cn(
-                    "border-2 transition-all",
-                    centralConnectedStatus?.connected ? "border-emerald-500/40 bg-emerald-500/5" : "border-indigo-500/40 bg-indigo-500/5"
-                )}>
-                    <CardContent className="p-3.5 sm:p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                        <div className="flex items-center gap-3">
-                            <div className="h-10 w-10 rounded-xl bg-indigo-500/10 text-indigo-600 flex items-center justify-center shrink-0">
-                                <Globe className="h-5 w-5" />
-                            </div>
-                            <div className="min-w-0">
-                                <div className="flex items-center gap-2 flex-wrap">
-                                    <span className="font-bold text-sm text-foreground">قاعدة الإدارة المركزية</span>
-                                    <Badge variant="outline" className={cn(
-                                        "text-[10px] font-bold",
-                                        centralHosting.type === 'cloud' ? "bg-amber-500/10 text-amber-700 dark:text-amber-300 border-amber-500/30" :
-                                        centralHosting.type === 'ip' ? "bg-sky-500/10 text-sky-700 dark:text-sky-300 border-sky-500/30" :
-                                        "bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border-emerald-500/30"
-                                    )}>
-                                        {centralHosting.label}
-                                    </Badge>
-                                    {centralConnectedStatus?.connected ? (
-                                        <Badge className="bg-emerald-600 text-white text-[9px] px-1.5 py-0">متصلة ✅</Badge>
-                                    ) : (
-                                        <Badge variant="outline" className="text-[9px] px-1.5 py-0 border-indigo-400">جاهزة للربط</Badge>
-                                    )}
-                                </div>
-                                <div className="text-[11px] text-muted-foreground mt-0.5 font-mono break-all" dir="ltr">
-                                    {centralConfig.centralServerIp}:{centralConfig.centralSqlPort} [{centralConfig.centralDatabase}]
-                                </div>
-                            </div>
-                        </div>
-                        <Button
-                            size="sm"
-                            variant={activeTab === 'central' ? 'default' : 'outline'}
-                            className="h-8 text-xs font-bold w-full sm:w-auto shrink-0 justify-center"
-                            onClick={() => setActiveTab('central')}
-                        >
-                            تعديل إعدادات الإدارة
-                        </Button>
-                    </CardContent>
-                </Card>
             </div>
 
-            {/* التبويبات الرئيسية الموحدة */}
-            <Tabs value={activeTab} onValueChange={(v: any) => setActiveTab(v)}>
+            {/* التبويبات الرئيسية الموحدة بترتيب عربي متوافق تماماً */}
+            <Tabs value={activeTab} onValueChange={(v: any) => setActiveTab(v)} dir="rtl" className="w-full">
                 <TabsList className="grid w-full grid-cols-3 h-auto sm:h-11 p-1 bg-muted/60 gap-1">
-                    <TabsTrigger value="branch" className="text-[11px] sm:text-xs font-bold gap-1 sm:gap-2 py-2 px-1 text-center justify-center">
-                        <Store className="h-3.5 w-3.5 sm:h-4 sm:w-4 shrink-0" />
-                        <span className="truncate">1. قاعدة الفرع</span>
-                    </TabsTrigger>
                     <TabsTrigger value="central" className="text-[11px] sm:text-xs font-bold gap-1 sm:gap-2 py-2 px-1 text-center justify-center">
                         <Building2 className="h-3.5 w-3.5 sm:h-4 sm:w-4 shrink-0" />
-                        <span className="truncate">2. قاعدة الإدارة</span>
+                        <span className="truncate">1. قاعدة الإدارة</span>
+                    </TabsTrigger>
+                    <TabsTrigger value="branch" className="text-[11px] sm:text-xs font-bold gap-1 sm:gap-2 py-2 px-1 text-center justify-center">
+                        <Store className="h-3.5 w-3.5 sm:h-4 sm:w-4 shrink-0" />
+                        <span className="truncate">2. قاعدة الفرع</span>
                     </TabsTrigger>
                     <TabsTrigger value="topology" className="text-[11px] sm:text-xs font-bold gap-1 sm:gap-2 py-2 px-1 text-center justify-center">
                         <ArrowLeftRight className="h-3.5 w-3.5 sm:h-4 sm:w-4 shrink-0" />
@@ -989,8 +989,8 @@ export default function DatabaseReEngineeringPage() {
                                 </div>
                                 <div className="grid grid-cols-2 sm:flex sm:flex-wrap gap-1.5 w-full sm:w-auto">
                                     <Button type="button" variant="outline" size="sm" className="h-8 sm:h-7 text-[11px] font-bold w-full sm:w-auto justify-center border-purple-500/40 text-purple-700 dark:text-purple-300 hover:bg-purple-500/10" onClick={() => applyBranchPreset('indexeddb_firebase')}>
-                                        <Zap className="h-3 w-3 ml-1 text-purple-500" />
-                                        ⚡ متصفح (IndexedDB + فايربيز)
+                                        <Globe className="h-3.5 w-3.5 ml-1 text-purple-600" />
+                                        متصفح (IndexedDB + فايربيز)
                                     </Button>
                                     <Button type="button" variant="outline" size="sm" className="h-8 sm:h-7 text-[11px] font-bold w-full sm:w-auto justify-center" onClick={() => applyBranchPreset('local')}>
                                         💻 محلي
@@ -1010,7 +1010,7 @@ export default function DatabaseReEngineeringPage() {
                             {branchConfig.server === 'indexeddb' && (
                                 <div className="space-y-3 mb-4">
                                     <Alert className="border-purple-500/30 bg-purple-500/5">
-                                        <Zap className="h-4 w-4 text-purple-600" />
+                                        <CheckCircle2 className="h-4 w-4 text-purple-600" />
                                         <AlertTitle className="text-xs font-bold text-purple-800 dark:text-purple-200">وضع المتصفح الذكي (IndexedDB) نشط محلياً</AlertTitle>
                                         <AlertDescription className="text-xs text-purple-700/90 dark:text-purple-300/90 mt-1">
                                             يعمل هذا الفرع حالياً بتخزين محلي فائق السرعة داخل المتصفح (IndexedDB) بدون الحاجة لتثبيت أي سيرفر محلي. وتعتبر سحابة Firebase Realtime هي القاعدة المركزية لجميع الأجهزة المشتركة.
@@ -1288,7 +1288,7 @@ export default function DatabaseReEngineeringPage() {
                                     disabled={isTestingBranch}
                                     className="gap-2 text-xs font-bold h-8.5 sm:h-8 w-full sm:w-auto justify-center"
                                 >
-                                    {isTestingBranch ? <Loader2 className="h-4 w-4 animate-spin" /> : <Zap className="h-4 w-4 text-amber-500" />}
+                                    {isTestingBranch ? <Loader2 className="h-4 w-4 animate-spin" /> : <Activity className="h-4 w-4 text-emerald-600" />}
                                     {isTestingBranch ? 'جارٍ الاختبار...' : 'اختبار الاتصال بالسيرفر'}
                                 </Button>
 
@@ -1595,7 +1595,7 @@ export default function DatabaseReEngineeringPage() {
                                     disabled={isTestingCentral}
                                     className="gap-2 text-xs font-bold h-8.5 sm:h-8 w-full sm:w-auto justify-center"
                                 >
-                                    {isTestingCentral ? <Loader2 className="h-4 w-4 animate-spin" /> : <Zap className="h-4 w-4 text-indigo-600" />}
+                                    {isTestingCentral ? <Loader2 className="h-4 w-4 animate-spin" /> : <Activity className="h-4 w-4 text-indigo-600" />}
                                     {isTestingCentral ? 'جارٍ الاختبار...' : 'اختبار الاتصال بالسيرفر المركزي'}
                                 </Button>
 
@@ -1647,7 +1647,7 @@ export default function DatabaseReEngineeringPage() {
                                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b pb-2">
                                     <div>
                                         <h3 className="font-bold text-sm text-foreground flex items-center gap-2">
-                                            <Zap className="h-4 w-4 text-primary" />
+                                            <Layers className="h-4 w-4 text-primary" />
                                             السيناريوهات السبعة المعتمدة لمعمارية النظام (Architecture Scenarios)
                                         </h3>
                                         <p className="text-[11px] text-muted-foreground mt-0.5">
@@ -1684,7 +1684,7 @@ export default function DatabaseReEngineeringPage() {
                                                 className="w-full text-xs font-bold h-7.5 bg-background/80 hover:bg-background"
                                                 onClick={() => applyArchitectureScenario(sc.id)}
                                             >
-                                                تطبيق هذا السيناريو ⚡
+                                                تطبيق هذا السيناريو
                                             </Button>
                                         </div>
                                     ))}

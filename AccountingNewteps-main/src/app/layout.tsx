@@ -11,7 +11,7 @@ import { DataProvider, useData } from "@/contexts/data-provider";
 import { NotificationProvider } from "@/contexts/notification-context";
 import React, { ReactNode, useEffect, useRef, useState } from "react";
 import { useToast } from "@/hooks/use-toast";
-import { Loader2, Download, Smartphone, X, Database, Zap } from "lucide-react";
+import { Loader2, Download, Smartphone, X, Database, Globe } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 
@@ -261,7 +261,7 @@ const InnerDatabaseGate = ({ children }: { children: React.ReactNode }) => {
                     <div className="mt-3 p-3 bg-purple-500/10 border border-purple-500/30 rounded-xl flex flex-col sm:flex-row items-center justify-between gap-3 text-right">
                         <div className="space-y-0.5">
                             <div className="text-xs font-bold text-purple-700 dark:text-purple-300 flex items-center gap-1.5 justify-center sm:justify-start">
-                                <Zap className="h-3.5 w-3.5 text-purple-600" />
+                                <Globe className="h-3.5 w-3.5 text-purple-600" />
                                 <span>وضع المتصفح الذكي (Zero Installation)</span>
                             </div>
                             <div className="text-[11px] text-muted-foreground">
@@ -295,7 +295,7 @@ const InnerDatabaseGate = ({ children }: { children: React.ReactNode }) => {
                                 } catch {}
                             }}
                         >
-                            <Zap className="h-3.5 w-3.5 ml-1" />
+                            <Globe className="h-3.5 w-3.5 ml-1" />
                             تفعيل والدخول فوراً
                         </Button>
                     </div>

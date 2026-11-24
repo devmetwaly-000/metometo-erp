@@ -17,12 +17,12 @@ import { useToast } from "@/hooks/use-toast";
 import { useData } from "@/contexts/data-provider";
 import { 
     Server, RefreshCw, CheckCircle2, AlertTriangle, ShieldCheck, 
-    Database, ArrowUpRight, ArrowDownLeft, Clock, Zap, Loader2, Save,
+    Database, ArrowUpRight, ArrowDownLeft, Clock, Loader2, Save,
     ShoppingCart, Truck, Banknote, CreditCard, Receipt, Boxes, Activity, Sparkles,
     ArrowLeftRight, Wallet, Users, UserCheck, Terminal, Search, CheckCircle,
     HardDrive, Cpu, AlertCircle, FileText, CheckCheck, X, ListChecks, ShieldAlert,
     Lock, Key, Building2, Store, Shield, SlidersHorizontal, RotateCcw, PauseCircle, PlayCircle, Filter, ArrowUp, ArrowDown,
-    Eye, EyeOff, Trash2, Cloud, Globe
+    Eye, EyeOff, Trash2, Cloud, Globe, Flame
 } from "lucide-react";
 import { CentralSyncConfig, TableSyncMatrixItem, TablesSyncMatrixResponse, SyncDirection } from '@/lib/central-sync';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -1092,7 +1092,7 @@ export default function CentralSyncSettingsPage() {
                         disabled={isTesting}
                         className="col-span-1 w-full sm:w-auto gap-1.5 text-xs font-semibold h-8.5 sm:h-8 order-2 sm:order-4"
                     >
-                        {isTesting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Zap className="h-3.5 w-3.5 text-foreground" />}
+                        {isTesting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Activity className="h-3.5 w-3.5 text-foreground" />}
                         فحص الاتصال
                     </Button>
                     <Button 
@@ -1783,7 +1783,7 @@ export default function CentralSyncSettingsPage() {
                             <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
                                 <div className="space-y-0.5">
                                     <h4 className="text-sm font-bold text-foreground flex items-center gap-1.5">
-                                        <Zap className="h-4 w-4 text-foreground" />
+                                        <CheckCircle2 className="h-4 w-4 text-foreground" />
                                         إجراء تطبيق جماعي على قسم كامل
                                     </h4>
                                     <p className="text-[11px] text-muted-foreground">
@@ -2648,8 +2648,8 @@ export default function CentralSyncSettingsPage() {
                                                     centralHostingType: 'firebase'
                                                 }))}
                                             >
-                                                <Zap className="h-3 w-3 ml-1 text-amber-400" />
-                                                Firebase 🔥
+                                                <Flame className="h-3.5 w-3.5 ml-1 text-amber-500" />
+                                                Firebase سحابة
                                             </Button>
                                         </div>
                                     </div>
@@ -2658,7 +2658,7 @@ export default function CentralSyncSettingsPage() {
                                         <div className="space-y-4 pt-1">
                                             <div className="p-3 sm:p-3.5 rounded-xl border border-amber-500/30 bg-amber-500/5 flex items-start gap-3">
                                                 <div className="p-2 rounded-lg bg-amber-500/10 text-amber-500 shrink-0 mt-0.5">
-                                                    <Zap className="h-5 w-5" />
+                                                    <Flame className="h-5 w-5" />
                                                 </div>
                                                 <div className="space-y-1 text-xs">
                                                     <p className="font-bold text-foreground text-xs sm:text-sm flex items-center gap-2 flex-wrap">
@@ -2927,7 +2927,7 @@ export default function CentralSyncSettingsPage() {
                                     disabled={isTesting}
                                     className="gap-1.5 text-xs font-semibold h-8.5 sm:h-8 w-full sm:w-auto justify-center"
                                 >
-                                    {isTesting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Zap className="h-3.5 w-3.5 text-foreground" />}
+                                    {isTesting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Activity className="h-3.5 w-3.5 text-foreground" />}
                                     فحص صحة الاتصال
                                 </Button>
                                 <Button 

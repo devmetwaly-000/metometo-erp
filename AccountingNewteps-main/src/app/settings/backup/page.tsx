@@ -15,7 +15,7 @@ import { useData } from "@/contexts/data-provider";
 import {
   Download, Upload, Loader2, AlertTriangle, 
   HardDriveDownload, Database, ShieldAlert, FileCheck, Lock, Server, Copy,
-  Trash2, RefreshCw, Building2, Globe, CheckCircle2, Zap, ArrowLeftRight
+  Trash2, RefreshCw, Building2, Globe, CheckCircle2, ArrowLeftRight
 } from "lucide-react";
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,

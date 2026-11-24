@@ -1252,7 +1252,7 @@ export function AppLayoutContent({ children }: { children: React.ReactNode }) {
                              )}
                            >
                              {dbHosting.type === 'indexeddb' ? (
-                                <Zap className="h-3 w-3 sm:h-3.5 sm:w-3.5 shrink-0 text-purple-500" />
+                                <Laptop className="h-3 w-3 sm:h-3.5 sm:w-3.5 shrink-0 text-purple-500" />
                               ) : dbHosting.type === 'aws' || dbHosting.type === 'azure' ? (
                                <Cloud className="h-3 w-3 sm:h-3.5 sm:w-3.5 shrink-0 text-amber-500" />
                              ) : (
