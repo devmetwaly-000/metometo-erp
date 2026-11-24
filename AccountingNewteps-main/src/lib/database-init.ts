@@ -2293,6 +2293,30 @@ export async function createAndInitializeDatabase(options: DbInitOptions): Promi
                 [ArchiveBatchId] NVARCHAR(64) NULL,
                 [ArchivedAt] DATETIME2 NULL DEFAULT (sysutcdatetime()),
                 CONSTRAINT [PK_ArchivedRepRemittances] PRIMARY KEY CLUSTERED ([Id])
+            );`,
+
+            `IF NOT EXISTS (SELECT * FROM sys.tables WHERE name = 'BarcodeScales')
+            CREATE TABLE dbo.[BarcodeScales] (
+                [Id] NVARCHAR(64) NOT NULL,
+                [Name] NVARCHAR(255) NOT NULL,
+                [Ip] NVARCHAR(100) NOT NULL,
+                [Port] INT NOT NULL DEFAULT (3001),
+                [Model] NVARCHAR(100) NOT NULL DEFAULT ('mettler_toledo'),
+                [DepartmentId] NVARCHAR(64) NULL,
+                [DepartmentName] NVARCHAR(255) NULL,
+                [WarehouseId] NVARCHAR(64) NULL,
+                [Enabled] BIT NOT NULL DEFAULT (1),
+                [LastSync] NVARCHAR(100) NULL,
+                [LastStatus] NVARCHAR(50) NULL,
+                [LatencyMs] INT NULL,
+                [BranchCode] NVARCHAR(50) NULL,
+                [BranchName] NVARCHAR(255) NULL,
+                [SyncStatus] NVARCHAR(20) NULL DEFAULT ('synced'),
+                [LastSyncedAt] DATETIME2 NULL,
+                [UpdatedAt] DATETIME2 NOT NULL DEFAULT (sysutcdatetime()),
+                [CreatedAt] DATETIME2 NOT NULL DEFAULT (sysutcdatetime()),
+                [RowVersion] ROWVERSION,
+                CONSTRAINT [PK_BarcodeScales] PRIMARY KEY CLUSTERED ([Id])
             );`
         ];
 
@@ -2311,6 +2335,40 @@ export async function createAndInitializeDatabase(options: DbInitOptions): Promi
 
         // 3b. Schema Upgrades & Column Migrations for Existing Databases (Local & Central)
         const schemaUpgrades = [
+            `IF OBJECT_ID('dbo.BarcodeScales', 'U') IS NULL
+            BEGIN
+              CREATE TABLE dbo.[BarcodeScales] (
+                [Id] NVARCHAR(64) NOT NULL PRIMARY KEY,
+                [Name] NVARCHAR(255) NOT NULL,
+                [Ip] NVARCHAR(100) NOT NULL,
+                [Port] INT NOT NULL DEFAULT (3001),
+                [Model] NVARCHAR(100) NOT NULL DEFAULT ('mettler_toledo'),
+                [DepartmentId] NVARCHAR(64) NULL,
+                [DepartmentName] NVARCHAR(255) NULL,
+                [WarehouseId] NVARCHAR(64) NULL,
+                [Enabled] BIT NOT NULL DEFAULT (1),
+                [LastSync] NVARCHAR(100) NULL,
+                [LastStatus] NVARCHAR(50) NULL,
+                [LatencyMs] INT NULL,
+                [BranchCode] NVARCHAR(50) NULL,
+                [BranchName] NVARCHAR(255) NULL,
+                [SyncStatus] NVARCHAR(20) NULL DEFAULT ('synced'),
+                [LastSyncedAt] DATETIME2 NULL,
+                [UpdatedAt] DATETIME2 NOT NULL DEFAULT (sysutcdatetime()),
+                [CreatedAt] DATETIME2 NOT NULL DEFAULT (sysutcdatetime())
+              );
+              CREATE INDEX IX_BarcodeScales_Ip ON dbo.BarcodeScales (Ip);
+            END;`,
+            `IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('dbo.Promotions') AND name = 'HasDailyTimeWindow')
+                ALTER TABLE dbo.Promotions ADD [HasDailyTimeWindow] BIT NULL DEFAULT (0);`,
+            `IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('dbo.Promotions') AND name = 'DailyStartTime')
+                ALTER TABLE dbo.Promotions ADD [DailyStartTime] NVARCHAR(20) NULL;`,
+            `IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('dbo.Promotions') AND name = 'DailyEndTime')
+                ALTER TABLE dbo.Promotions ADD [DailyEndTime] NVARCHAR(20) NULL;`,
+            `IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('dbo.Promotions') AND name = 'ActiveDays')
+                ALTER TABLE dbo.Promotions ADD [ActiveDays] NVARCHAR(50) NULL;`,
+            `IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('dbo.SalesInvoices') AND name = 'EarnedPoints')
+                ALTER TABLE dbo.SalesInvoices ADD [EarnedPoints] DECIMAL(18,2) NULL CONSTRAINT DF_SalesInvoices_EarnedPoints DEFAULT ((0));`,
             `IF OBJECT_ID('dbo.RecipeHistory', 'U') IS NULL
             BEGIN
               CREATE TABLE dbo.[RecipeHistory] (

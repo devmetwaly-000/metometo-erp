@@ -15,6 +15,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Progress } from '@/components/ui/progress';
 import { ScaleItem, ScaleModel, generateScaleBarcode, generateScaleExportPayload } from '@/lib/scale-export';
 import { RegisteredScale } from '@/app/api/scales/broadcast/route';
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog';
 import { 
     Scale, 
     Download, 
@@ -42,14 +43,6 @@ import {
 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 
-const DEFAULT_SCALES: RegisteredScale[] = [
-    { id: 'scale-1', name: 'ميزان الجبن والألبان 1', ip: '192.168.1.151', port: 3001, model: 'mettler_toledo', departmentName: 'الأجبان', enabled: true },
-    { id: 'scale-2', name: 'ميزان الجزارة واللحوم 2', ip: '192.168.1.152', port: 3001, model: 'mettler_toledo', departmentName: 'اللحوم', enabled: true },
-    { id: 'scale-3', name: 'ميزان الخضار والفاكهة 3', ip: '192.168.1.153', port: 3001, model: 'mettler_toledo', departmentName: 'الخضار والفاكهة', enabled: true },
-    { id: 'scale-4', name: 'ميزan الأسماك 4', ip: '192.168.1.154', port: 3001, model: 'mettler_toledo', departmentName: 'الأسماك', enabled: true },
-    { id: 'scale-5', name: 'ميزان المخبوزات 5', ip: '192.168.1.155', port: 3001, model: 'mettler_toledo', departmentName: 'المخبوزات', enabled: true },
-];
-
 export default function ScaleExportPage() {
     const { allItems = [], items = [], itemCategories = [], dbAction, settings } = useData();
     const effectiveItems = allItems.length > 0 ? allItems : items;
@@ -66,36 +59,65 @@ export default function ScaleExportPage() {
     const [searchQuery, setSearchQuery] = useState('');
     const [selectedCategory, setSelectedCategory] = useState<string>('all');
 
-    // Registered Scales list
+    // Registered Scales list (يبدأ فارغاً بدون أي موازين افتراضية أو وهمية)
     const [scales, setScales] = useState<RegisteredScale[]>([]);
 
-    // Load registered scales from settings or localStorage
+    // Load registered scales from SQL Server (dbo.BarcodeScales) or localStorage or settings
     useEffect(() => {
-        try {
-            const savedFromDb = settings?.main?.barcodeScales || settings?.barcodeScales;
-            if (Array.isArray(savedFromDb) && savedFromDb.length > 0) {
-                setScales(savedFromDb);
-                return;
-            }
-            const local = localStorage.getItem('system_barcode_scales');
-            if (local) {
-                const parsed = JSON.parse(local);
-                if (Array.isArray(parsed) && parsed.length > 0) {
-                    setScales(parsed);
+        let isMounted = true;
+        const loadScales = async () => {
+            try {
+                // 1. القراءة من جدول SQL Server المخصص dbo.BarcodeScales
+                const apiRes = await fetch('/api/scales', { cache: 'no-store' }).catch(() => null);
+                if (apiRes && apiRes.ok) {
+                    const apiData = await apiRes.json().catch(() => null);
+                    if (apiData && Array.isArray(apiData.scales)) {
+                        if (isMounted) setScales(apiData.scales);
+                        try { localStorage.setItem('system_barcode_scales', JSON.stringify(apiData.scales)); } catch {}
+                        return;
+                    }
+                }
+
+                // 2. التحقق من التخزين المحلي للمتصفح
+                const local = localStorage.getItem('system_barcode_scales');
+                if (local !== null) {
+                    const parsed = JSON.parse(local);
+                    if (Array.isArray(parsed)) {
+                        if (isMounted) setScales(parsed);
+                        return;
+                    }
+                }
+
+                // 3. التحقق من إعدادات النظام العامة
+                const savedFromDb = settings?.main?.barcodeScales || settings?.barcodeScales;
+                if (Array.isArray(savedFromDb)) {
+                    if (isMounted) setScales(savedFromDb);
                     return;
                 }
+
+                if (isMounted) setScales([]);
+            } catch {
+                if (isMounted) setScales([]);
             }
-            setScales(DEFAULT_SCALES);
-        } catch {
-            setScales(DEFAULT_SCALES);
-        }
+        };
+
+        loadScales();
+        return () => { isMounted = false; };
     }, [settings]);
 
-    // Save scales list to localStorage and dbAction
+    // Save scales list to localStorage and SQL Server (dbo.BarcodeScales) and dbAction
     const saveScalesList = useCallback(async (newScales: RegisteredScale[]) => {
         setScales(newScales);
         try {
             localStorage.setItem('system_barcode_scales', JSON.stringify(newScales));
+
+            // حفظ في جدول قاعدة البيانات dbo.BarcodeScales
+            await fetch('/api/scales', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ scales: newScales })
+            }).catch(() => {});
+
             if (dbAction) {
                 await dbAction('settings', 'update', {
                     id: 'main',
@@ -472,7 +494,15 @@ export default function ScaleExportPage() {
     const handleDeleteScale = async (id: string) => {
         const updated = scales.filter(s => s.id !== id);
         await saveScalesList(updated);
-        toast({ title: 'تم حذف الميزان' });
+        toast({ title: 'تم حذف الميزان بنجاح ✅' });
+    };
+
+    const handleDeleteAllScales = async () => {
+        await saveScalesList([]);
+        try {
+            await fetch('/api/scales', { method: 'DELETE' }).catch(() => {});
+        } catch {}
+        toast({ title: 'تم مسح وحذف كافة الموازين بالكامل 🗑️' });
     };
 
     const handleToggleScale = async (id: string, enabled: boolean) => {
@@ -600,24 +630,51 @@ export default function ScaleExportPage() {
                     </TabsList>
 
                     {activeTab === 'network' && (
-                        <Button 
-                            size="sm" 
-                            className="gap-1.5"
-                            onClick={() => {
-                                setEditingScale({
-                                    name: `ميزان رقم ${scales.length + 1}`,
-                                    ip: '192.168.1.',
-                                    port: 3001,
-                                    model: 'mettler_toledo',
-                                    departmentName: 'الكل',
-                                    enabled: true
-                                });
-                                setIsScaleDialogOpen(true);
-                            }}
-                        >
-                            <Plus className="h-4 w-4" />
-                            إضافة ميزان فردي
-                        </Button>
+                        <div className="flex items-center gap-2">
+                            {scales.length > 0 && (
+                                <AlertDialog>
+                                    <AlertDialogTrigger asChild>
+                                        <Button size="sm" variant="outline" className="gap-1.5 text-destructive border-destructive/30 hover:bg-destructive/10">
+                                            <Trash2 className="h-4 w-4" />
+                                            حذف كافة الموازين ({scales.length})
+                                        </Button>
+                                    </AlertDialogTrigger>
+                                    <AlertDialogContent dir="rtl">
+                                        <AlertDialogHeader>
+                                            <AlertDialogTitle>هل تريد حذف جميع الموازين؟</AlertDialogTitle>
+                                            <AlertDialogDescription>
+                                                سيتم حذف كافة الموازين المسجلة ({scales.length} ميزان) فوراً وتفريغ القائمة بالكامل من النظام وقاعدة البيانات.
+                                            </AlertDialogDescription>
+                                        </AlertDialogHeader>
+                                        <AlertDialogFooter className="gap-2">
+                                            <AlertDialogCancel>إلغاء</AlertDialogCancel>
+                                            <AlertDialogAction onClick={handleDeleteAllScales} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
+                                                نعم، احذف الكل
+                                            </AlertDialogAction>
+                                        </AlertDialogFooter>
+                                    </AlertDialogContent>
+                                </AlertDialog>
+                            )}
+
+                            <Button 
+                                size="sm" 
+                                className="gap-1.5"
+                                onClick={() => {
+                                    setEditingScale({
+                                        name: `ميزان رقم ${scales.length + 1}`,
+                                        ip: '192.168.1.',
+                                        port: 3001,
+                                        model: 'mettler_toledo',
+                                        departmentName: 'الكل',
+                                        enabled: true
+                                    });
+                                    setIsScaleDialogOpen(true);
+                                }}
+                            >
+                                <Plus className="h-4 w-4" />
+                                إضافة ميزان فردي
+                            </Button>
+                        </div>
                     )}
                 </div>
 

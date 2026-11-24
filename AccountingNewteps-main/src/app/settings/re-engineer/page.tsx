@@ -1711,7 +1711,7 @@ export default function DatabaseReEngineeringPage() {
                                         <div className="flex items-center justify-between">
                                             <span className="text-muted-foreground">الحالة:</span>
                                             {branchConnectedStatus?.connected ? (
-                                                <span className="text-emerald-600 font-bold text-[10px]">متصلة ✅ ({branchConnectedStatus.tablesCount || 96} جدول)</span>
+                                                <span className="text-emerald-600 font-bold text-[10px]">متصلة ✅ ({branchConnectedStatus.tablesCount || 98} جدول)</span>
                                             ) : (
                                                 <span className="text-destructive font-bold text-[10px]">غير متصلة ❌</span>
                                             )}

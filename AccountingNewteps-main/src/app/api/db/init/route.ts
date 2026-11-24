@@ -22,7 +22,7 @@ export async function GET() {
             localConfig,
             database: 'MultiBranchPOS_IndexedDB',
             server: 'IndexedDB (Browser)',
-            tablesCount: 96,
+            tablesCount: 98,
             usersCount: 1,
             status: 'healthy',
             message: 'وضع المتصفح الذكي (IndexedDB + Firebase) نشط وجاهز للعمل محلياً بدون سيرفر.'
