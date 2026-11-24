@@ -4,7 +4,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import PageHeader from "@/components/page-header";
 import { Button } from "@/components/ui/button";
 import {
-  Card, CardContent, CardDescription, CardHeader, CardTitle,
+    Card, CardContent, CardDescription, CardHeader, CardTitle,
 } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -18,8 +18,8 @@ import {
   Trash2, RefreshCw, Building2, Globe, CheckCircle2, ArrowLeftRight
 } from "lucide-react";
 import {
-  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
-  AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger,
+    AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
+    AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import { Badge } from "@/components/ui/badge";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
@@ -289,7 +289,7 @@ export default function BackupPage() {
                 const fileInput = document.getElementById('restore-file') as HTMLInputElement;
                 if (fileInput) fileInput.value = '';
 
-                try { await localforage.clear(); } catch {}
+                try { await localforage.clear(); } catch { }
                 if (processSyncQueue) {
                     await processSyncQueue();
                 }
@@ -334,7 +334,7 @@ export default function BackupPage() {
                 // مسح الكاش المحلي في المتصفح بالكامل لضمان اختفاء الفروع والمخازن والخزن والمناديب والكاشيرات فوراً
                 try {
                     await localforage.clear();
-                } catch {}
+                } catch { }
 
                 toast({
                     title: "تم تنفيذ الحذف والتصفير بنجاح ✅",
@@ -389,7 +389,7 @@ export default function BackupPage() {
             });
             const result = await res.json();
             if (result.success) {
-                try { await localforage.clear(); } catch {}
+                try { await localforage.clear(); } catch { }
                 toast({ title: 'تم حذف بيانات الفرع بنجاح ✅', description: result.message });
                 setBranchPassword('');
                 setSelectedBranchId('');
@@ -452,10 +452,10 @@ export default function BackupPage() {
         <>
             <PageHeader title="النسخ الاحتياطي وحذف وإعادة ضبط البيانات (الإدارة المركزية والفرع)">
                 <div className="w-full sm:w-auto grid grid-cols-2 sm:flex sm:flex-wrap gap-1.5 sm:gap-2">
-                    <Button 
+                    <Button
                         asChild
-                        variant="outline" 
-                        size="sm" 
+                        variant="outline"
+                        size="sm"
                         className="col-span-1 w-full sm:w-auto justify-center gap-1.5 text-xs font-bold h-8.5 sm:h-8"
                     >
                         <a href="/settings/re-engineer">
@@ -463,10 +463,10 @@ export default function BackupPage() {
                             مركز إدارة السيرفرات
                         </a>
                     </Button>
-                    <Button 
-                        variant="outline" 
-                        size="sm" 
-                        onClick={fetchBackupInfo} 
+                    <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={fetchBackupInfo}
                         disabled={isLoadingInfo}
                         className="col-span-1 w-full sm:w-auto justify-center gap-1.5 text-xs font-bold h-8.5 sm:h-8"
                     >
@@ -497,8 +497,8 @@ export default function BackupPage() {
                                                 backupInfo?.branchHosting?.type === 'cloud' || backupInfo?.isCloudLocal
                                                     ? "bg-amber-500/10 text-amber-700 dark:text-amber-300 border-amber-500/30"
                                                     : backupInfo?.branchHosting?.type === 'ip'
-                                                    ? "bg-sky-500/10 text-sky-700 dark:text-sky-300 border-sky-500/30"
-                                                    : "bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border-emerald-500/30"
+                                                        ? "bg-sky-500/10 text-sky-700 dark:text-sky-300 border-sky-500/30"
+                                                        : "bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border-emerald-500/30"
                                             )}>
                                                 {backupInfo?.branchHosting?.label || (backupInfo?.isCloudLocal ? '☁️ سحابي' : '💻 محلي')}
                                             </Badge>
@@ -539,8 +539,8 @@ export default function BackupPage() {
                                                 backupInfo?.centralHosting?.type === 'cloud'
                                                     ? "bg-amber-500/10 text-amber-700 dark:text-amber-300 border-amber-500/30"
                                                     : backupInfo?.centralHosting?.type === 'ip'
-                                                    ? "bg-sky-500/10 text-sky-700 dark:text-sky-300 border-sky-500/30"
-                                                    : "bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border-emerald-500/30"
+                                                        ? "bg-sky-500/10 text-sky-700 dark:text-sky-300 border-sky-500/30"
+                                                        : "bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border-emerald-500/30"
                                             )}>
                                                 {backupInfo?.centralHosting?.label || '🌐 سيرفر IP / شبكة'}
                                             </Badge>
@@ -601,11 +601,10 @@ export default function BackupPage() {
                             >
                                 <Label
                                     htmlFor="scope-both"
-                                    className={`p-3.5 rounded-xl border-2 cursor-pointer transition-all flex flex-col gap-1.5 ${
-                                        targetScope === 'both'
-                                            ? 'border-destructive bg-destructive/10 shadow-xs'
-                                            : 'border-border hover:bg-muted/30 opacity-75'
-                                    }`}
+                                    className={`p-3.5 rounded-xl border-2 cursor-pointer transition-all flex flex-col gap-1.5 ${targetScope === 'both'
+                                        ? 'border-destructive bg-destructive/10 shadow-xs'
+                                        : 'border-border hover:bg-muted/30 opacity-75'
+                                        }`}
                                 >
                                     <div className="flex items-center justify-between">
                                         <span className="font-bold text-xs text-foreground flex items-center gap-2">
@@ -621,11 +620,10 @@ export default function BackupPage() {
 
                                 <Label
                                     htmlFor="scope-local"
-                                    className={`p-3.5 rounded-xl border-2 cursor-pointer transition-all flex flex-col gap-1.5 ${
-                                        targetScope === 'local'
-                                            ? 'border-primary bg-primary/5 shadow-xs'
-                                            : 'border-border hover:bg-muted/30 opacity-75'
-                                    }`}
+                                    className={`p-3.5 rounded-xl border-2 cursor-pointer transition-all flex flex-col gap-1.5 ${targetScope === 'local'
+                                        ? 'border-primary bg-primary/5 shadow-xs'
+                                        : 'border-border hover:bg-muted/30 opacity-75'
+                                        }`}
                                 >
                                     <div className="flex items-center justify-between">
                                         <span className="font-bold text-xs text-foreground flex items-center gap-2">
@@ -643,11 +641,10 @@ export default function BackupPage() {
 
                                 <Label
                                     htmlFor="scope-central"
-                                    className={`p-3.5 rounded-xl border-2 cursor-pointer transition-all flex flex-col gap-1.5 ${
-                                        targetScope === 'central'
-                                            ? 'border-indigo-600 bg-indigo-500/10 shadow-xs'
-                                            : 'border-border hover:bg-muted/30 opacity-75'
-                                    }`}
+                                    className={`p-3.5 rounded-xl border-2 cursor-pointer transition-all flex flex-col gap-1.5 ${targetScope === 'central'
+                                        ? 'border-indigo-600 bg-indigo-500/10 shadow-xs'
+                                        : 'border-border hover:bg-muted/30 opacity-75'
+                                        }`}
                                 >
                                     <div className="flex items-center justify-between">
                                         <span className="font-bold text-xs text-foreground flex items-center gap-2">
@@ -671,19 +668,18 @@ export default function BackupPage() {
                                 <Trash2 className="h-4 w-4 text-destructive" />
                                 ثانياً: اختر مستوى المسح:
                             </Label>
-                            <RadioGroup 
-                                value={resetType} 
+                            <RadioGroup
+                                value={resetType}
                                 onValueChange={(v: any) => setResetType(v)}
                                 className="grid grid-cols-1 md:grid-cols-2 gap-4"
                             >
                                 {/* الخيار أ: ضبط المصنع الكامل (مسح كل شيء) */}
-                                <Label 
+                                <Label
                                     htmlFor="opt-factory"
-                                    className={`p-4 rounded-xl border-2 cursor-pointer transition-all flex flex-col gap-2 ${
-                                        resetType === 'factory_reset' 
-                                            ? 'border-destructive bg-destructive/5 shadow-xs' 
-                                            : 'border-border hover:bg-muted/30 opacity-70'
-                                    }`}
+                                    className={`p-4 rounded-xl border-2 cursor-pointer transition-all flex flex-col gap-2 ${resetType === 'factory_reset'
+                                        ? 'border-destructive bg-destructive/5 shadow-xs'
+                                        : 'border-border hover:bg-muted/30 opacity-70'
+                                        }`}
                                 >
                                     <div className="flex items-center justify-between">
                                         <span className="font-bold text-xs text-destructive flex items-center gap-2">
@@ -703,13 +699,12 @@ export default function BackupPage() {
                                 </Label>
 
                                 {/* الخيار ب: تصفير الحركات فقط */}
-                                <Label 
+                                <Label
                                     htmlFor="opt-trans"
-                                    className={`p-4 rounded-xl border-2 cursor-pointer transition-all flex flex-col gap-2 ${
-                                        resetType === 'transactions_only' 
-                                            ? 'border-primary bg-primary/5 shadow-xs' 
-                                            : 'border-border hover:bg-muted/30 opacity-70'
-                                    }`}
+                                    className={`p-4 rounded-xl border-2 cursor-pointer transition-all flex flex-col gap-2 ${resetType === 'transactions_only'
+                                        ? 'border-primary bg-primary/5 shadow-xs'
+                                        : 'border-border hover:bg-muted/30 opacity-70'
+                                        }`}
                                 >
                                     <div className="flex items-center justify-between">
                                         <span className="font-bold text-xs text-foreground flex items-center gap-2">
@@ -734,8 +729,8 @@ export default function BackupPage() {
                         <div className="pt-2 flex justify-end">
                             <AlertDialog open={isResetDialogOpen} onOpenChange={setIsResetDialogOpen}>
                                 <AlertDialogTrigger asChild>
-                                    <Button 
-                                        variant="destructive" 
+                                    <Button
+                                        variant="destructive"
                                         className="h-10 px-6 text-xs font-bold gap-2 shadow-sm"
                                     >
                                         <Trash2 className="h-4 w-4" />
@@ -757,8 +752,8 @@ export default function BackupPage() {
                                                     {targetScope === 'both'
                                                         ? 'الإدارة المركزية + الفرع المحلي معاً'
                                                         : targetScope === 'local'
-                                                        ? 'قاعدة بيانات الفرع المحلي فقط'
-                                                        : 'قاعدة بيانات الإدارة المركزية فقط'}
+                                                            ? 'قاعدة بيانات الفرع المحلي فقط'
+                                                            : 'قاعدة بيانات الإدارة المركزية فقط'}
                                                 </div>
                                                 <div>
                                                     • <strong>مستوى الحذف:</strong>{' '}
@@ -775,7 +770,7 @@ export default function BackupPage() {
                                                     <Lock className="h-3.5 w-3.5 text-muted-foreground" />
                                                     أدخل كلمة مرور الإدارة للمتابعة:
                                                 </Label>
-                                                <Input 
+                                                <Input
                                                     type="password"
                                                     value={adminPassword}
                                                     onChange={e => setAdminPassword(e.target.value)}
@@ -788,7 +783,7 @@ export default function BackupPage() {
                                     </AlertDialogHeader>
                                     <AlertDialogFooter className="flex-row-reverse gap-2">
                                         <AlertDialogCancel className="h-9 text-xs font-bold">إلغاء</AlertDialogCancel>
-                                        <AlertDialogAction 
+                                        <AlertDialogAction
                                             onClick={handleExecuteReset}
                                             disabled={!adminPassword.trim() || isLoadingReset}
                                             className="h-9 text-xs font-bold bg-destructive hover:bg-destructive/90 text-destructive-foreground gap-1.5"
@@ -985,8 +980,8 @@ export default function BackupPage() {
                                 <p className="text-[11px] text-muted-foreground leading-relaxed">
                                     تقوم بسحب كافة الجداول في ملف JSON موثق، وتنزيلها مباشرة إلى جهازك بنقرة زر. تعمل بكفاءة تامة على الخوادم السحابية والسيرفرات المحلية دون قيود صلاحيات.
                                 </p>
-                                <Button 
-                                    onClick={handleExportJson} 
+                                <Button
+                                    onClick={handleExportJson}
                                     disabled={isLoadingJsonBackup}
                                     className="w-full h-9 text-xs font-bold bg-emerald-600 hover:bg-emerald-700 text-white gap-2 shadow-sm"
                                 >
@@ -1014,16 +1009,16 @@ export default function BackupPage() {
                                 )}
                                 <div className="space-y-1">
                                     <Label className="text-[10px] text-muted-foreground">مسار المجلد على السيرفر (اختياري):</Label>
-                                    <Input 
-                                        value={customBakDir} 
+                                    <Input
+                                        value={customBakDir}
                                         onChange={e => setCustomBakDir(e.target.value)}
-                                        placeholder="C:\SQL_Backups" 
+                                        placeholder="C:\SQL_Backups"
                                         className="h-8 text-xs font-mono"
                                     />
                                 </div>
-                                <Button 
-                                    variant="outline" 
-                                    onClick={handleCreateSqlBak} 
+                                <Button
+                                    variant="outline"
+                                    onClick={handleCreateSqlBak}
                                     disabled={isLoadingBakBackup || Boolean(backupInfo?.branchHosting?.type === 'cloud' || backupInfo?.isCloudLocal)}
                                     className="w-full h-8 text-xs font-bold gap-2 border-sky-500/30 hover:bg-sky-500/10 text-foreground"
                                 >
@@ -1037,10 +1032,10 @@ export default function BackupPage() {
                                 {lastBakPath && (
                                     <div className="p-2 rounded bg-muted text-[11px] font-mono flex items-center justify-between gap-2 border">
                                         <span className="truncate" title={lastBakPath}>{lastBakPath}</span>
-                                        <Button 
-                                            size="icon" 
-                                            variant="ghost" 
-                                            className="h-6 w-6 shrink-0" 
+                                        <Button
+                                            size="icon"
+                                            variant="ghost"
+                                            className="h-6 w-6 shrink-0"
                                             onClick={() => copyToClipboard(lastBakPath)}
                                             title="نسخ المسار"
                                         >
@@ -1098,8 +1093,8 @@ export default function BackupPage() {
                                     onChange={handleFileChange}
                                     className="hidden"
                                 />
-                                <Label 
-                                    htmlFor="restore-file" 
+                                <Label
+                                    htmlFor="restore-file"
                                     className="cursor-pointer flex flex-col items-center justify-center gap-2 py-3"
                                 >
                                     <div className="h-10 w-10 rounded-full bg-amber-500/10 text-foreground flex items-center justify-center">
@@ -1139,7 +1134,7 @@ export default function BackupPage() {
 
                             <AlertDialog>
                                 <AlertDialogTrigger asChild>
-                                    <Button 
+                                    <Button
                                         disabled={!parsedBackupData || isLoadingRestore}
                                         className="w-full h-9 text-xs font-bold bg-amber-600 hover:bg-amber-700 text-white gap-2 shadow-sm"
                                     >
@@ -1165,7 +1160,7 @@ export default function BackupPage() {
                                     </AlertDialogHeader>
                                     <AlertDialogFooter className="flex flex-col-reverse sm:flex-row gap-2 pt-2 border-t">
                                         <AlertDialogCancel className="h-8.5 sm:h-8 text-xs font-bold w-full sm:w-auto">إلغاء</AlertDialogCancel>
-                                        <AlertDialogAction 
+                                        <AlertDialogAction
                                             onClick={handleRestoreConfirm}
                                             className="h-8.5 sm:h-8 text-xs font-bold bg-amber-600 hover:bg-amber-700 text-white w-full sm:w-auto"
                                         >
