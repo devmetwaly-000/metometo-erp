@@ -8,6 +8,8 @@
  */
 
 import sql from 'mssql';
+import fs from 'fs';
+import path from 'path';
 import { getDbPool } from '@/lib/db';
 import { 
     testFirebaseRealtimeConnection, 
@@ -270,10 +272,30 @@ export function initServerAutoSync() {
     }, 60000);
 }
 
+const CENTRAL_CONFIG_FILE_PATH = path.join(process.cwd(), 'central-sync-config.json');
+const TMP_CENTRAL_CONFIG_FILE_PATH = path.join('/tmp', 'central-sync-config.json');
+let inMemoryCentralConfig: CentralSyncConfig | null = null;
+
 /**
- * جلب إعدادات السيرفر المركزي من قاعدة البيانات المحلية
+ * جلب إعدادات السيرفر المركزي من قاعدة البيانات المحلية أو التخزين الآمن
  */
 export async function getCentralConfig(): Promise<CentralSyncConfig> {
+    if (inMemoryCentralConfig) {
+        return inMemoryCentralConfig;
+    }
+    try {
+        const filePath = fs.existsSync(CENTRAL_CONFIG_FILE_PATH)
+            ? CENTRAL_CONFIG_FILE_PATH
+            : (fs.existsSync(TMP_CENTRAL_CONFIG_FILE_PATH) ? TMP_CENTRAL_CONFIG_FILE_PATH : null);
+        if (filePath) {
+            const raw = fs.readFileSync(filePath, 'utf8');
+            const parsed = JSON.parse(raw);
+            const cfg: CentralSyncConfig = { ...DEFAULT_CONFIG, ...parsed };
+            inMemoryCentralConfig = cfg;
+            return cfg;
+        }
+    } catch {}
+
     try {
         initServerAutoSync();
         const pool = await getDbPool();
@@ -293,28 +315,28 @@ export async function getCentralConfig(): Promise<CentralSyncConfig> {
                 const safePassword = (parsed.centralPassword && parsed.centralPassword.trim() !== '') 
                     ? parsed.centralPassword.trim() 
                     : DEFAULT_CONFIG.centralPassword;
-                return { 
+                const result = { 
                     ...DEFAULT_CONFIG, 
                     ...parsed,
                     centralPassword: safePassword,
                     systemRole: explicitRole || parsed.systemRole || DEFAULT_CONFIG.systemRole
                 };
+                inMemoryCentralConfig = result;
+                return result;
             } catch {
                 return { ...DEFAULT_CONFIG, systemRole: explicitRole || DEFAULT_CONFIG.systemRole };
             }
         }
         return { ...DEFAULT_CONFIG, systemRole: explicitRole || DEFAULT_CONFIG.systemRole };
     } catch (e) {
-        console.error('Error fetching central sync config:', e);
-        return DEFAULT_CONFIG;
+        return inMemoryCentralConfig || DEFAULT_CONFIG;
     }
 }
 
 /**
- * حفظ إعدادات السيرفر المركزي في قاعدة البيانات المحلية
+ * حفظ إعدادات السيرفر المركزي في قاعدة البيانات والتخزين الآمن
  */
 export async function saveCentralConfig(config: Partial<CentralSyncConfig>): Promise<CentralSyncConfig> {
-    const pool = await getDbPool();
     const current = await getCentralConfig();
     const cleanPassword = (config.centralPassword !== undefined && config.centralPassword !== null && config.centralPassword.trim() !== '')
         ? config.centralPassword.trim()
@@ -325,15 +347,30 @@ export async function saveCentralConfig(config: Partial<CentralSyncConfig>): Pro
         centralPassword: cleanPassword
     };
 
-    await pool.request()
-        .input('Key', sql.NVarChar(100), 'central_sync')
-        .input('Val', sql.NVarChar(sql.MAX), JSON.stringify(updated))
-        .query(`
-            IF NOT EXISTS (SELECT 1 FROM dbo.AppSettings WHERE SettingKey = @Key)
-                INSERT INTO dbo.AppSettings (SettingKey, SettingValue, SyncStatus, LastSyncedAt) VALUES (@Key, @Val, 'synced', SYSUTCDATETIME());
-            ELSE
-                UPDATE dbo.AppSettings SET SettingValue = @Val, SyncStatus = 'synced', LastSyncedAt = SYSUTCDATETIME() WHERE SettingKey = @Key;
-        `);
+    inMemoryCentralConfig = updated;
+
+    try {
+        fs.writeFileSync(CENTRAL_CONFIG_FILE_PATH, JSON.stringify(updated, null, 2), 'utf8');
+    } catch {
+        try {
+            fs.writeFileSync(TMP_CENTRAL_CONFIG_FILE_PATH, JSON.stringify(updated, null, 2), 'utf8');
+        } catch {}
+    }
+
+    try {
+        const pool = await getDbPool();
+        await pool.request()
+            .input('Key', sql.NVarChar(100), 'central_sync')
+            .input('Val', sql.NVarChar(sql.MAX), JSON.stringify(updated))
+            .query(`
+                IF NOT EXISTS (SELECT 1 FROM dbo.AppSettings WHERE SettingKey = @Key)
+                    INSERT INTO dbo.AppSettings (SettingKey, SettingValue, SyncStatus, LastSyncedAt) VALUES (@Key, @Val, 'synced', SYSUTCDATETIME());
+                ELSE
+                    UPDATE dbo.AppSettings SET SettingValue = @Val, SyncStatus = 'synced', LastSyncedAt = SYSUTCDATETIME() WHERE SettingKey = @Key;
+            `);
+    } catch (dbErr) {
+        // إذا كان النظام يعمل بنمط IndexedDB أو كان السيرفر المحلي غير متصل، نكتفي بالحفظ في الذاكرة والملف
+    }
 
     return updated;
 }

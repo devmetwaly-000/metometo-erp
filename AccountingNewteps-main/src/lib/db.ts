@@ -16,6 +16,8 @@ export interface LocalDbConfig {
 }
 
 const CONFIG_FILE_PATH = path.join(process.cwd(), 'local-db-config.json');
+const TMP_CONFIG_FILE_PATH = path.join('/tmp', 'local-db-config.json');
+let inMemoryLocalDbConfig: LocalDbConfig | null = null;
 
 const DEFAULT_LOCAL_DB_CONFIG: LocalDbConfig = {
     connectionMode: 'fields',
@@ -96,9 +98,16 @@ export function formatSqlConnectionString(cfg: LocalDbConfig): string {
  * قراءة إعدادات الاتصال بالسيرفر المحلي / السحابي (AWS / IP خارجي)
  */
 export function getLocalDbConfig(): LocalDbConfig {
+    if (inMemoryLocalDbConfig) {
+        return inMemoryLocalDbConfig;
+    }
     try {
-        if (fs.existsSync(CONFIG_FILE_PATH)) {
-            const raw = fs.readFileSync(CONFIG_FILE_PATH, 'utf8');
+        const filePath = fs.existsSync(CONFIG_FILE_PATH)
+            ? CONFIG_FILE_PATH
+            : (fs.existsSync(TMP_CONFIG_FILE_PATH) ? TMP_CONFIG_FILE_PATH : null);
+
+        if (filePath) {
+            const raw = fs.readFileSync(filePath, 'utf8');
             const parsed = JSON.parse(raw);
             const merged: LocalDbConfig = {
                 ...DEFAULT_LOCAL_DB_CONFIG,
@@ -109,6 +118,7 @@ export function getLocalDbConfig(): LocalDbConfig {
             if (!merged.connectionString) {
                 merged.connectionString = formatSqlConnectionString(merged);
             }
+            inMemoryLocalDbConfig = merged;
             return merged;
         }
     } catch (err) {
@@ -212,7 +222,18 @@ export async function saveLocalDbConfig(input: Partial<LocalDbConfig>): Promise<
         updated.connectionString = formatSqlConnectionString(updated);
     }
 
-    fs.writeFileSync(CONFIG_FILE_PATH, JSON.stringify(updated, null, 2), 'utf8');
+    inMemoryLocalDbConfig = updated;
+
+    try {
+        fs.writeFileSync(CONFIG_FILE_PATH, JSON.stringify(updated, null, 2), 'utf8');
+    } catch (fsErr: any) {
+        console.warn('[LocalDbConfig] Could not write to CONFIG_FILE_PATH (e.g. read-only serverless filesystem):', fsErr.message);
+        try {
+            fs.writeFileSync(TMP_CONFIG_FILE_PATH, JSON.stringify(updated, null, 2), 'utf8');
+        } catch (tmpErr: any) {
+            console.warn('[LocalDbConfig] Could not write to /tmp either:', tmpErr.message);
+        }
+    }
     schemaMigratedForKey = null;
     await resetDbPool();
     return updated;

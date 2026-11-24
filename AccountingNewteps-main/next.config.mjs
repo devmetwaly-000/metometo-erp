@@ -81,13 +81,13 @@ const withPWA = nextPWA({
 
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  webpack: (config) => { config.parallelism = 1; config.resolve.alias = { ...config.resolve.alias, "@": path.resolve(process.cwd(), "src") }; return config; },
+  webpack: (config) => { config.parallelism = 2; config.resolve.alias = { ...config.resolve.alias, "@": path.resolve(process.cwd(), "src") }; return config; },
   eslint: { ignoreDuringBuilds: true },
   typescript: { ignoreBuildErrors: true },
   serverExternalPackages: ['pdf-to-printer'],
   reactStrictMode: false,
   experimental: {
-    cpus: 1,
+    cpus: 2,
 optimizePackageImports: [
       'lucide-react',
       'date-fns',

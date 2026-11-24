@@ -15,7 +15,7 @@ import { useData } from "@/contexts/data-provider";
 import {
     Loader2, RefreshCw, CheckCircle2, Database, Server, Globe, Save, Zap,
     ShieldCheck, AlertTriangle, Copy, Eye, EyeOff, Cloud, Terminal, ArrowLeftRight,
-    Building2, Store, Lock, HardDriveDownload
+    Building2, Store, Lock, HardDriveDownload, Flame
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
@@ -41,7 +41,11 @@ interface BranchDbConfigState {
 // واجهة إعدادات قاعدة بيانات الإدارة المركزية
 interface CentralDbConfigState {
     systemRole: 'branch' | 'central';
-    centralHostingType: 'local' | 'vps' | 'cloud';
+    centralHostingType: 'local' | 'vps' | 'cloud' | 'firebase';
+    firebaseDatabaseUrl?: string;
+    firebaseAuthToken?: string;
+    firebaseProjectId?: string;
+    firebaseApiKey?: string;
     centralConnectionString: string;
     centralServerIp: string;
     centralSqlPort: number;
@@ -218,6 +222,10 @@ export default function DatabaseReEngineeringPage() {
         systemRole: 'branch',
         centralHostingType: 'local',
         centralConnectionString: '',
+        firebaseDatabaseUrl: '',
+        firebaseAuthToken: '',
+        firebaseProjectId: '',
+        firebaseApiKey: '',
         centralServerIp: '10.110.16.16',
         centralSqlPort: 1433,
         centralDatabase: 'MultiBranchPOS_Central_DB',
@@ -305,6 +313,10 @@ export default function DatabaseReEngineeringPage() {
                     centralTrustServerCertificate: c.centralTrustServerCertificate !== false,
                     currentBranchCode: c.currentBranchCode || '900',
                     currentBranchName: c.currentBranchName || 'الفرع الرئيسي',
+                    firebaseDatabaseUrl: c.firebaseDatabaseUrl || '',
+                    firebaseAuthToken: c.firebaseAuthToken || '',
+                    firebaseProjectId: c.firebaseProjectId || '',
+                    firebaseApiKey: c.firebaseApiKey || '',
                 }));
             }
         } catch (err: any) {
@@ -354,6 +366,7 @@ export default function DatabaseReEngineeringPage() {
             };
             setBranchConfig(next);
             try { localStorage.setItem('system_storage_engine', 'indexeddb_firebase'); } catch {}
+            setCentralConfig(prev => ({ ...prev, centralHostingType: 'firebase' }));
         } else if (type === 'local') {
             try { localStorage.setItem('system_storage_engine', 'sql'); } catch {}
             const next: BranchDbConfigState = {
@@ -395,6 +408,84 @@ export default function DatabaseReEngineeringPage() {
             };
             next.connectionString = buildConnStr(next);
             setBranchConfig(next);
+        }
+    };
+
+    
+    const handleFirebaseSmartPaste = (raw: string) => {
+        let dbUrl = '';
+        let projId = '';
+        let key = '';
+
+        const dbUrlMatch = raw.match(/databaseURL\s*:\s*["']([^"']+)["']/i) || 
+                           raw.match(/https:\/\/[a-z0-9-]+\.(?:europe-west1\.|asia-southeast1\.)?firebasedatabase\.app/i) || 
+                           raw.match(/https:\/\/[a-z0-9-]+-default-rtdb\.firebaseio\.com/i) || 
+                           raw.match(/https:\/\/[a-z0-9-]+\.firebaseio\.com/i);
+        if (dbUrlMatch) dbUrl = dbUrlMatch[1] || dbUrlMatch[0];
+
+        const projMatch = raw.match(/projectId\s*:\s*["']([^"']+)["']/i);
+        if (projMatch) projId = projMatch[1];
+
+        const keyMatch = raw.match(/apiKey\s*:\s*["']([^"']+)["']/i) || 
+                         raw.match(/auth[_\s-]*token\s*[:=]\s*["']?([a-zA-Z0-9_\-]+)["']?/i);
+        if (keyMatch) key = keyMatch[1];
+
+        setCentralConfig(prev => ({
+            ...prev,
+            centralHostingType: 'firebase',
+            firebaseDatabaseUrl: dbUrl || prev.firebaseDatabaseUrl,
+            firebaseProjectId: projId || prev.firebaseProjectId,
+            firebaseAuthToken: key || prev.firebaseAuthToken
+        }));
+        toast({ title: 'تم استخراج بيانات Firebase بنجاح 📋' });
+    };
+
+    const applyArchitectureScenario = async (scenarioId: number) => {
+        if (scenarioId === 1) {
+            applyBranchPreset('local');
+            applyCentralPreset('external_ip');
+            toast({ title: 'تم تفعيل السيناريو 1: سيكوال محلي ➔ سيكوال شبكة LAN' });
+        } else if (scenarioId === 2) {
+            applyBranchPreset('local');
+            applyCentralPreset('aws_rds');
+            toast({ title: 'تم تفعيل السيناريو 2: سيكوال محلي ➔ سيكوال أمازون AWS' });
+        } else if (scenarioId === 3) {
+            applyBranchPreset('local');
+            setCentralConfig(prev => ({
+                ...prev,
+                centralHostingType: 'vps',
+                centralServerIp: '10.110.16.16',
+                centralSqlPort: 1433,
+                centralDatabase: 'MultiBranchPOS_Central_DB',
+                centralUsername: 'sa'
+            }));
+            toast({ title: 'تم تفعيل السيناريو 3: سيكوال محلي ➔ سيكوال خارجي VPS IP' });
+        } else if (scenarioId === 4) {
+            applyBranchPreset('aws_rds');
+            setCentralConfig(prev => ({
+                ...prev,
+                centralHostingType: 'vps',
+                centralServerIp: '10.110.16.16',
+                centralSqlPort: 1433,
+                centralDatabase: 'MultiBranchPOS_Central_DB',
+                centralUsername: 'sa'
+            }));
+            toast({ title: 'تم تفعيل السيناريو 4: سيكوال سحابي ➔ سيكوال خارجي VPS IP' });
+        } else if (scenarioId === 5) {
+            applyBranchPreset('aws_rds');
+            applyCentralPreset('aws_rds');
+            toast({ title: 'تم تفعيل السيناريو 5: سيكوال أمازون ➔ سيكوال مركزي أمازون AWS' });
+        } else if (scenarioId === 6) {
+            applyBranchPreset('aws_rds');
+            applyCentralPreset('local');
+            toast({ title: 'تم تفعيل السيناريو 6: سيكوال سحابي ➔ سيكوال مركزي لوكال IP' });
+        } else if (scenarioId === 7) {
+            applyBranchPreset('indexeddb_firebase');
+            setCentralConfig(prev => ({
+                ...prev,
+                centralHostingType: 'firebase'
+            }));
+            toast({ title: 'تم تفعيل السيناريو 7: متصفح محلي Index DB ➔ سحابة مركزية Firebase' });
         }
     };
 
@@ -486,7 +577,14 @@ export default function DatabaseReEngineeringPage() {
         setCentralConfig(prev => ({ ...prev, [field]: val }));
     };
 
-    const applyCentralPreset = (type: 'local' | 'external_ip' | 'aws_rds') => {
+    const applyCentralPreset = (type: 'local' | 'external_ip' | 'aws_rds' | 'firebase') => {
+        if (type === 'firebase') {
+            setCentralConfig(prev => ({
+                ...prev,
+                centralHostingType: 'firebase',
+            }));
+            return;
+        }
         if (type === 'local') {
             setCentralConfig(prev => ({
                 ...prev,
@@ -904,13 +1002,116 @@ export default function DatabaseReEngineeringPage() {
 
                         <CardContent className="p-3.5 sm:p-6 space-y-4 sm:space-y-5">
                             {branchConfig.server === 'indexeddb' && (
-                                <Alert className="border-purple-500/30 bg-purple-500/5 mb-3">
-                                    <Zap className="h-4 w-4 text-purple-600" />
-                                    <AlertTitle className="text-xs font-bold text-purple-800 dark:text-purple-200">وضع المتصفح الذكي (IndexedDB + Firebase) نشط</AlertTitle>
-                                    <AlertDescription className="text-xs text-purple-700/90 dark:text-purple-300/90 mt-1">
-                                        يعمل هذا الفرع حالياً بتخزين محلي فائق السرعة داخل المتصفح (IndexedDB) بدون الحاجة لتثبيت أي سيرفر محلي. وتتم المزامنة المركزية تلقائياً مع سحابة Firebase Realtime.
-                                    </AlertDescription>
-                                </Alert>
+                                <div className="space-y-3 mb-4">
+                                    <Alert className="border-purple-500/30 bg-purple-500/5">
+                                        <Zap className="h-4 w-4 text-purple-600" />
+                                        <AlertTitle className="text-xs font-bold text-purple-800 dark:text-purple-200">وضع المتصفح الذكي (IndexedDB) نشط محلياً</AlertTitle>
+                                        <AlertDescription className="text-xs text-purple-700/90 dark:text-purple-300/90 mt-1">
+                                            يعمل هذا الفرع حالياً بتخزين محلي فائق السرعة داخل المتصفح (IndexedDB) بدون الحاجة لتثبيت أي سيرفر محلي. وتعتبر سحابة Firebase Realtime هي القاعدة المركزية لجميع الأجهزة المشتركة.
+                                        </AlertDescription>
+                                    </Alert>
+
+                                    {/* بطاقة إدخال بيانات سحابة Firebase المركزية الإلزامية */}
+                                    <div className="p-4 rounded-xl border-2 border-orange-500/30 bg-orange-500/5 space-y-3">
+                                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                                            <div className="flex items-center gap-2">
+                                                <Flame className="h-5 w-5 text-orange-600 shrink-0" />
+                                                <span className="font-bold text-xs text-foreground">بيانات سحابة Firebase المركزية (مطلوبة لمزامنة الأجهزة)</span>
+                                            </div>
+                                            <Badge variant="outline" className="text-[10px] w-fit border-orange-500/40 text-orange-700 dark:text-orange-300 font-bold">
+                                                القاعدة المركزية المشتركة 🔥
+                                            </Badge>
+                                        </div>
+                                        <p className="text-[11px] text-muted-foreground leading-relaxed">
+                                            عند استخدام المتصفح (IndexedDB)، تكون سحابة Firebase هي المرجع المركزي لجميع الأجهزة والفروع لمزامنة الفواتير والأصناف والأسعار.
+                                        </p>
+
+                                        {/* مربع اللصق الذكي */}
+                                        <div className="space-y-1">
+                                            <Label className="text-[11px] font-bold">لصق كود أو إعدادات Firebase مباشرة (Smart Paste):</Label>
+                                            <Textarea
+                                                dir="ltr"
+                                                rows={2}
+                                                placeholder='الصق كود الـ JSON أو الـ Config كاملاً (databaseURL, apiKey, projectId...)'
+                                                onChange={(e) => handleFirebaseSmartPaste(e.target.value)}
+                                                className="font-mono text-xs"
+                                            />
+                                        </div>
+
+                                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                                            <div className="sm:col-span-2 space-y-1">
+                                                <Label className="text-[11px] font-bold">رابط قاعدة البيانات (Database URL) *:</Label>
+                                                <Input
+                                                    dir="ltr"
+                                                    value={centralConfig.firebaseDatabaseUrl || ''}
+                                                    onChange={(e) => handleCentralFieldChange('firebaseDatabaseUrl', e.target.value)}
+                                                    placeholder="https://your-app-default-rtdb.firebaseio.com"
+                                                    className="h-8 font-mono text-xs font-bold"
+                                                />
+                                            </div>
+                                            <div className="space-y-1">
+                                                <Label className="text-[11px] font-bold">معرف المشروع (Project ID):</Label>
+                                                <Input
+                                                    dir="ltr"
+                                                    value={centralConfig.firebaseProjectId || ''}
+                                                    onChange={(e) => handleCentralFieldChange('firebaseProjectId', e.target.value)}
+                                                    placeholder="your-project-id"
+                                                    className="h-8 font-mono text-xs"
+                                                />
+                                            </div>
+                                        </div>
+
+                                        <div className="space-y-1">
+                                            <Label className="text-[11px] font-bold">المفتاح السري أو رمز المصادقة (Auth Token / Secret):</Label>
+                                            <div className="relative">
+                                                <Input
+                                                    dir="ltr"
+                                                    type={showCentralPassword ? "text" : "password"}
+                                                    value={centralConfig.firebaseAuthToken || centralConfig.firebaseApiKey || ''}
+                                                    onChange={(e) => {
+                                                        handleCentralFieldChange('firebaseAuthToken', e.target.value);
+                                                        handleCentralFieldChange('firebaseApiKey', e.target.value);
+                                                    }}
+                                                    placeholder="Database Secret or Web API Key"
+                                                    className="h-8 font-mono text-xs pl-9"
+                                                />
+                                                <Button
+                                                    type="button"
+                                                    variant="ghost"
+                                                    size="sm"
+                                                    className="absolute left-1 top-1 h-6 w-6 p-0 text-muted-foreground"
+                                                    onClick={() => setShowCentralPassword(!showCentralPassword)}
+                                                >
+                                                    {showCentralPassword ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
+                                                </Button>
+                                            </div>
+                                        </div>
+
+                                        <div className="flex flex-wrap items-center gap-2 pt-1">
+                                            <Button
+                                                type="button"
+                                                variant="outline"
+                                                size="sm"
+                                                onClick={handleTestCentralConnection}
+                                                disabled={isTestingCentral}
+                                                className="h-8 text-xs font-bold gap-1.5"
+                                            >
+                                                {isTestingCentral ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Flame className="h-3.5 w-3.5 text-orange-600" />}
+                                                اختبار اتصال Firebase
+                                            </Button>
+                                            <Button
+                                                type="button"
+                                                size="sm"
+                                                onClick={handleSaveCentralConfig}
+                                                disabled={isSavingCentral}
+                                                className="h-8 text-xs font-bold gap-1.5 bg-orange-600 hover:bg-orange-700 text-white"
+                                            >
+                                                {isSavingCentral ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5" />}
+                                                حفظ إعدادات Firebase المركزية
+                                            </Button>
+                                        </div>
+                                    </div>
+                                </div>
                             )}
                             <Tabs
                                 value={branchConfig.connectionMode || 'fields'}
@@ -1128,7 +1329,11 @@ export default function DatabaseReEngineeringPage() {
                                         قاعدة البيانات الرئيسية التي تتجمع فيها حركات ومبيعات الفروع.
                                     </CardDescription>
                                 </div>
-                                <div className="grid grid-cols-3 sm:flex sm:flex-wrap gap-1.5 w-full sm:w-auto">
+                                <div className="grid grid-cols-2 sm:flex sm:flex-wrap gap-1.5 w-full sm:w-auto">
+                                    <Button type="button" variant="outline" size="sm" className="h-8 sm:h-7 text-[11px] font-bold w-full sm:w-auto justify-center border-orange-500/40 text-orange-700 dark:text-orange-300 hover:bg-orange-500/10" onClick={() => applyCentralPreset('firebase')}>
+                                        <Flame className="h-3 w-3 ml-1 text-orange-600" />
+                                        🔥 سحابة Firebase
+                                    </Button>
                                     <Button type="button" variant="outline" size="sm" className="h-8 sm:h-7 text-[11px] font-bold w-full sm:w-auto justify-center" onClick={() => applyCentralPreset('local')}>
                                         💻 محلي
                                     </Button>
@@ -1182,7 +1387,83 @@ export default function DatabaseReEngineeringPage() {
                                 </div>
                             </div>
 
-                            {/* الحقول التفصيلية للسيرفر المركزي */}
+                            {/* إذا كان المزود المركزي هو سحابة Firebase Realtime */}
+                            {centralConfig.centralHostingType === 'firebase' ? (
+                                <div className="space-y-4 p-4 rounded-xl border-2 border-orange-500/30 bg-orange-500/5">
+                                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-orange-500/20 pb-2">
+                                        <div className="flex items-center gap-2">
+                                            <Flame className="h-5 w-5 text-orange-600" />
+                                            <span className="font-bold text-sm text-foreground">بيانات سحابة Firebase Realtime Database المركزية</span>
+                                        </div>
+                                        <Badge variant="outline" className="border-orange-500/40 text-orange-700 dark:text-orange-300 font-bold text-[10px]">
+                                            سحابة مركزية NoSQL 🔥
+                                        </Badge>
+                                    </div>
+
+                                    {/* مربع اللصق الذكي */}
+                                    <div className="space-y-1">
+                                        <Label className="text-xs font-bold">لصق كود أو إعدادات Firebase مباشرة (Smart Paste):</Label>
+                                        <Textarea
+                                            dir="ltr"
+                                            rows={2}
+                                            placeholder='الصق كود الـ JSON أو الـ Config كاملاً (databaseURL, apiKey, projectId...)'
+                                            onChange={(e) => handleFirebaseSmartPaste(e.target.value)}
+                                            className="font-mono text-xs"
+                                        />
+                                    </div>
+
+                                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4">
+                                        <div className="sm:col-span-2 space-y-1.5">
+                                            <Label className="text-xs font-bold">رابط قاعدة بيانات Firebase (Database URL) *:</Label>
+                                            <Input
+                                                dir="ltr"
+                                                value={centralConfig.firebaseDatabaseUrl || ''}
+                                                onChange={(e) => handleCentralFieldChange('firebaseDatabaseUrl', e.target.value)}
+                                                placeholder="https://your-app-default-rtdb.firebaseio.com"
+                                                className="h-9 font-mono text-xs font-bold"
+                                            />
+                                        </div>
+                                        <div className="space-y-1.5">
+                                            <Label className="text-xs font-bold">معرف المشروع (Project ID):</Label>
+                                            <Input
+                                                dir="ltr"
+                                                value={centralConfig.firebaseProjectId || ''}
+                                                onChange={(e) => handleCentralFieldChange('firebaseProjectId', e.target.value)}
+                                                placeholder="your-project-id"
+                                                className="h-9 font-mono text-xs"
+                                            />
+                                        </div>
+                                    </div>
+
+                                    <div className="space-y-1.5">
+                                        <Label className="text-xs font-bold">رمز المصادقة أو المفتاح السري (Auth Token / Database Secret):</Label>
+                                        <div className="relative">
+                                            <Input
+                                                dir="ltr"
+                                                type={showCentralPassword ? "text" : "password"}
+                                                value={centralConfig.firebaseAuthToken || centralConfig.firebaseApiKey || ''}
+                                                onChange={(e) => {
+                                                    handleCentralFieldChange('firebaseAuthToken', e.target.value);
+                                                    handleCentralFieldChange('firebaseApiKey', e.target.value);
+                                                }}
+                                                placeholder="Database Secret or API Key"
+                                                className="h-9 font-mono text-xs pl-9"
+                                            />
+                                            <Button
+                                                type="button"
+                                                variant="ghost"
+                                                size="sm"
+                                                className="absolute left-1 top-1 h-7 w-7 p-0 text-muted-foreground"
+                                                onClick={() => setShowCentralPassword(!showCentralPassword)}
+                                            >
+                                                {showCentralPassword ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
+                                            </Button>
+                                        </div>
+                                    </div>
+                                </div>
+                            ) : (
+                            <>
+                            {/* الحقول التفصيلية لسيرفر SQL Server المركزي */}
                             <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4">
                                 <div className="sm:col-span-2 space-y-1.5">
                                     <Label className="text-xs font-bold">عنوان السيرفر المركزي (IP أو النطاق أو Localhost):</Label>
@@ -1277,6 +1558,8 @@ export default function DatabaseReEngineeringPage() {
                                 </div>
                             </div>
 
+                            </>)}
+
                             {/* نتيجة فحص اتصال السيرفر المركزي */}
                             {centralTestResult && (
                                 <Alert className={centralTestResult.success ? "border-emerald-500/40 bg-emerald-500/10" : "border-destructive/40 bg-destructive/10"}>
@@ -1352,8 +1635,57 @@ export default function DatabaseReEngineeringPage() {
                             </CardDescription>
                         </CardHeader>
 
-                        <CardContent className="p-6">
-                            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 items-center">
+                        <CardContent className="p-6 space-y-6">
+                            {/* مصفوفة السيناريوهات السبعة للربط والمزامنة */}
+                            <div className="space-y-3">
+                                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b pb-2">
+                                    <div>
+                                        <h3 className="font-bold text-sm text-foreground flex items-center gap-2">
+                                            <Zap className="h-4 w-4 text-primary" />
+                                            السيناريوهات السبعة المعتمدة لمعمارية النظام (Architecture Scenarios)
+                                        </h3>
+                                        <p className="text-[11px] text-muted-foreground mt-0.5">
+                                            اضغط على أي سيناريو أدناه لتهيئة وضبط السيرفر المحلي والمركزي تلقائياً بضغطة زر واحدة:
+                                        </p>
+                                    </div>
+                                    <Badge variant="outline" className="text-[10px] font-mono w-fit">
+                                        7 سيناريوهات تشغيلية
+                                    </Badge>
+                                </div>
+
+                                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 pt-1">
+                                    {[
+                                        { id: 1, title: '1. سيكوال محلي ➔ سيكوال مركزي (LAN IP)', badge: 'شبكة داخلية', desc: 'سيرفر SQL محلي بالفرع، وسيرفر SQL رئيسي على شبكة المحل (LAN)', color: 'border-emerald-500/30 bg-emerald-500/5' },
+                                        { id: 2, title: '2. سيكوال محلي ➔ سيكوال مركزي (أمازون AWS)', badge: 'هجين سحابي', desc: 'سيرفر SQL محلي سريع بالفرع، ومزامنة مع قاعدة سحابية على AWS RDS', color: 'border-sky-500/30 bg-sky-500/5' },
+                                        { id: 3, title: '3. سيكوال محلي ➔ سيكوال مركزي (VPS IP)', badge: 'سيرفر VPS', desc: 'سيرفر SQL محلي بالفرع، ومزامنة مع سيرفر VPS خارجي بـ Real IP', color: 'border-indigo-500/30 bg-indigo-500/5' },
+                                        { id: 4, title: '4. سيكوال سحابي ➔ سيكوال مركزي (VPS IP)', badge: 'سحابي متعدد', desc: 'سيرفر الفرع سحابي مشفر، وسيرفر الإدارة على VPS خارجي', color: 'border-amber-500/30 bg-amber-500/5' },
+                                        { id: 5, title: '5. سيكوال أمازون ➔ سيكوال مركزي (أمازون AWS)', badge: 'سحابي موحد', desc: 'الفرع والإدارة يعملان على نفس السيرفر السحابي عالي الأداء AWS RDS', color: 'border-blue-500/30 bg-blue-500/5' },
+                                        { id: 6, title: '6. سيكوال سحابي ➔ سيكوال مركزي (لوكال IP)', badge: 'عكسي محلي', desc: 'الفرع مربوط بسيرفر سحابي، بينما سيرفر الإدارة على سيرفر محلي LAN', color: 'border-teal-500/30 bg-teal-500/5' },
+                                        { id: 7, title: '7. متصفح محلي (Index DB) ➔ سحابة Firebase', badge: 'Zero-Install 🔥', desc: 'الفرع على المتصفح بـ Index DB بدون تثبيت، وسحابة Firebase قاعدة مركزية لجميع الأجهزة', color: 'border-purple-500/40 bg-purple-500/10' }
+                                    ].map(sc => (
+                                        <div key={sc.id} className={cn("p-3.5 rounded-xl border-2 flex flex-col justify-between gap-2.5 transition-all hover:shadow-sm", sc.color)}>
+                                            <div className="space-y-1">
+                                                <div className="flex items-center justify-between gap-1">
+                                                    <span className="font-bold text-xs text-foreground">{sc.title}</span>
+                                                    <Badge variant="outline" className="text-[9px] px-1 py-0">{sc.badge}</Badge>
+                                                </div>
+                                                <p className="text-[11px] text-muted-foreground leading-snug">{sc.desc}</p>
+                                            </div>
+                                            <Button
+                                                type="button"
+                                                size="sm"
+                                                variant="outline"
+                                                className="w-full text-xs font-bold h-7.5 bg-background/80 hover:bg-background"
+                                                onClick={() => applyArchitectureScenario(sc.id)}
+                                            >
+                                                تطبيق هذا السيناريو ⚡
+                                            </Button>
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+
+                            <div className="border-t pt-5 grid grid-cols-1 lg:grid-cols-3 gap-6 items-center">
                                 {/* الطرف الأول: قاعدة بيانات الفرع */}
                                 <div className="p-5 rounded-2xl border-2 border-primary/30 bg-primary/5 space-y-3 text-center">
                                     <div className="mx-auto h-12 w-12 rounded-2xl bg-primary/20 text-primary flex items-center justify-center">
