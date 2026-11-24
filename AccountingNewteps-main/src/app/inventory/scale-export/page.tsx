@@ -13,7 +13,7 @@ import { Switch } from '@/components/ui/switch';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Progress } from '@/components/ui/progress';
-import { ScaleItem, ScaleModel, generateScaleBarcode } from '@/lib/scale-export';
+import { ScaleItem, ScaleModel, generateScaleBarcode, generateScaleExportPayload } from '@/lib/scale-export';
 import { RegisteredScale } from '@/app/api/scales/broadcast/route';
 import { 
     Scale, 
@@ -62,7 +62,7 @@ export default function ScaleExportPage() {
     const [selectedModel, setSelectedModel] = useState<ScaleModel>('mettler_toledo');
     const [barcodePrefix, setBarcodePrefix] = useState('21');
     const [shelfLifeDays, setShelfLifeDays] = useState(15);
-    const [onlyWeighted, setOnlyWeighted] = useState(true);
+    const [onlyWeighted, setOnlyWeighted] = useState(false);
     const [searchQuery, setSearchQuery] = useState('');
     const [selectedCategory, setSelectedCategory] = useState<string>('all');
 
@@ -177,48 +177,36 @@ export default function ScaleExportPage() {
             }));
     }, [effectiveItems, itemCategories, selectedCategory, searchQuery, onlyWeighted, barcodePrefix, shelfLifeDays]);
 
-    // Handle File Export via API
+    // Handle File Export via Direct Client Engine + API Fallback
     const handleDownload = async (model: ScaleModel) => {
         if (filteredItems.length === 0) {
             toast({
                 variant: 'destructive',
-                title: 'لا توجد أصناف',
-                description: 'يرجى التأكد من وجود أصناف مطابقة للتصدير'
+                title: 'لا توجد أصناف للتصدير',
+                description: 'يرجى التأكد من وجود أصناف مطابقة للشروط أو إيقاف خيار "أصناف الوزن فقط" لتضمين كافة الأصناف'
             });
             return;
         }
 
         setIsExporting(true);
         try {
-            const res = await fetch('/api/scales/export', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    scaleModel: model,
-                    items: filteredItems,
-                    barcodePrefix,
-                    shelfLifeDays
-                })
+            // توليد الملف فورياً في المتصفح بسرعة فائقة (يعمل أيضاً بدون اتصال إنترنت)
+            const payload = generateScaleExportPayload({
+                model,
+                items: filteredItems,
+                barcodePrefix,
+                shelfLifeDays,
             });
 
-            if (!res.ok) {
-                const errData = await res.json().catch(() => ({}));
-                throw new Error(errData.message || 'فشل توليد ملف الميزان');
-            }
-
-            const blob = await res.blob();
-            const disposition = res.headers.get('Content-Disposition');
-            let filename = `scale_export_${model}.csv`;
-            if (disposition && disposition.includes('filename=')) {
-                filename = decodeURIComponent(disposition.split('filename=')[1].replace(/["']/g, ''));
-            } else if (model === 'universal_excel') {
-                filename = `Scale_PLU_Export.xlsx`;
-            }
+            const blob = new Blob(
+                [payload.content as any],
+                { type: payload.mimeType }
+            );
 
             const url = window.URL.createObjectURL(blob);
             const a = document.createElement('a');
             a.href = url;
-            a.download = filename;
+            a.download = payload.filename;
             document.body.appendChild(a);
             a.click();
             window.URL.revokeObjectURL(url);
@@ -226,14 +214,56 @@ export default function ScaleExportPage() {
 
             toast({
                 title: 'تم تصدير ملف الميزان بنجاح ✅',
-                description: `تم تنزيل ${filteredItems.length} صنف بصيغة ${model.toUpperCase()}`
+                description: `تم تنزيل ${filteredItems.length} صنف بصيغة ${payload.filename}`
             });
-        } catch (err: any) {
-            toast({
-                variant: 'destructive',
-                title: 'خطأ في التصدير',
-                description: err.message
-            });
+        } catch (clientErr: any) {
+            console.warn('Direct client export failed, falling back to API:', clientErr);
+            try {
+                const res = await fetch('/api/scales/export', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        scaleModel: model,
+                        items: filteredItems,
+                        barcodePrefix,
+                        shelfLifeDays
+                    })
+                });
+
+                if (!res.ok) {
+                    const errData = await res.json().catch(() => ({}));
+                    throw new Error(errData.message || errData.error || 'فشل توليد ملف الميزان');
+                }
+
+                const blob = await res.blob();
+                const disposition = res.headers.get('Content-Disposition');
+                let filename = `scale_export_${model}.csv`;
+                if (disposition && disposition.includes('filename=')) {
+                    filename = decodeURIComponent(disposition.split('filename=')[1].replace(/["']/g, ''));
+                } else if (model === 'universal_excel') {
+                    filename = `Scale_PLU_Export.xlsx`;
+                }
+
+                const url = window.URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = filename;
+                document.body.appendChild(a);
+                a.click();
+                window.URL.revokeObjectURL(url);
+                document.body.removeChild(a);
+
+                toast({
+                    title: 'تم تصدير ملف الميزان بنجاح ✅',
+                    description: `تم تنزيل ${filteredItems.length} صنف`
+                });
+            } catch (err: any) {
+                toast({
+                    variant: 'destructive',
+                    title: 'خطأ في التصدير',
+                    description: err.message
+                });
+            }
         } finally {
             setIsExporting(false);
         }

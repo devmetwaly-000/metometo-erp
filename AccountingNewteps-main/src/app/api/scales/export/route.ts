@@ -1,94 +1,64 @@
 import { NextResponse } from 'next/server';
-import {
-    prepareScaleItems,
-    generateUniversalExcel,
-    generateUniversalCsv,
-    generateCasClWorksFile,
-    generateRongtaFile,
-    generateDibalFile,
-    ScaleModel
-} from '@/lib/scale-export';
+import { generateScaleExportPayload, ScaleItem, ScaleModel } from '@/lib/scale-export';
 
 export const dynamic = 'force-dynamic';
 
 export async function POST(req: Request) {
     try {
-        const body = await req.json();
-        const { items, model = 'universal_excel', options = {} } = body;
+        const body = await req.json().catch(() => ({}));
+        const rawModel = body.scaleModel || body.model || 'universal_excel';
+        const items = body.items || [];
+        const barcodePrefix = body.barcodePrefix || body.options?.barcodePrefix || '21';
+        const shelfLifeDays = Number(body.shelfLifeDays || body.options?.defaultShelfLifeDays || 15);
 
         if (!Array.isArray(items) || items.length === 0) {
-            return NextResponse.json({ success: false, error: 'لم يتم تحديد أي أصناف للتصدير.' }, { status: 400 });
-        }
-
-        const scaleItems = prepareScaleItems(items, { ...options, model: model as ScaleModel });
-        if (scaleItems.length === 0) {
             return NextResponse.json({
                 success: false,
-                error: 'لم يتم العثور على أصناف وزنية صالحة للتصدير. تأكد من تحديد وحدة الصنف (كجم / جرام) أو نوع الباركود الوزني ean13_scale.'
+                message: 'لم يتم تحديد أي أصناف للتصدير. تأكد من وجود أصناف في القائمة.'
             }, { status: 400 });
         }
 
-        const timestamp = new Date().toISOString().slice(0, 10);
-
-        if (model === 'universal_excel') {
-            const excelBuffer = generateUniversalExcel(scaleItems);
-            return new NextResponse(excelBuffer as any, {
-                status: 200,
-                headers: {
-                    'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-                    'Content-Disposition': `attachment; filename="scale_plu_export_${timestamp}.xlsx"`
-                }
-            });
+        // Mapping model aliases
+        let model: ScaleModel = 'universal_excel';
+        const m = String(rawModel).toLowerCase();
+        if (m.includes('toledo') || m.includes('mettler')) {
+            model = 'mettler_toledo';
+        } else if (m.includes('cas') || m.includes('cl5000') || m.includes('clworks')) {
+            model = 'cas_cl5000';
+        } else if (m.includes('rongta') || m.includes('rls')) {
+            model = 'rongta_rls1000';
+        } else if (m.includes('dibal')) {
+            model = 'dibal';
+        } else if (m.includes('csv')) {
+            model = 'universal_csv';
+        } else {
+            model = 'universal_excel';
         }
 
-        if (model === 'universal_csv') {
-            const csvContent = generateUniversalCsv(scaleItems);
-            return new NextResponse(csvContent, {
-                status: 200,
-                headers: {
-                    'Content-Type': 'text/csv; charset=utf-8',
-                    'Content-Disposition': `attachment; filename="scale_plu_universal_${timestamp}.csv"`
-                }
-            });
-        }
+        const payload = generateScaleExportPayload({
+            model,
+            items: items as ScaleItem[],
+            barcodePrefix,
+            shelfLifeDays,
+        });
 
-        if (model === 'cas_clworks') {
-            const casContent = generateCasClWorksFile(scaleItems);
-            return new NextResponse(casContent, {
-                status: 200,
-                headers: {
-                    'Content-Type': 'text/plain; charset=utf-8',
-                    'Content-Disposition': `attachment; filename="cas_clworks_plu_${timestamp}.txt"`
-                }
-            });
-        }
+        const bodyData = typeof payload.content === 'string'
+            ? payload.content
+            : Buffer.from(payload.content);
 
-        if (model === 'rongta_rls') {
-            const rongtaContent = generateRongtaFile(scaleItems);
-            return new NextResponse(rongtaContent, {
-                status: 200,
-                headers: {
-                    'Content-Type': 'text/csv; charset=utf-8',
-                    'Content-Disposition': `attachment; filename="rongta_rls1000_plu_${timestamp}.csv"`
-                }
-            });
-        }
-
-        if (model === 'dibal_txt') {
-            const dibalContent = generateDibalFile(scaleItems);
-            return new NextResponse(dibalContent, {
-                status: 200,
-                headers: {
-                    'Content-Type': 'text/plain; charset=utf-8',
-                    'Content-Disposition': `attachment; filename="dibal_articles_${timestamp}.txt"`
-                }
-            });
-        }
-
-        return NextResponse.json({ success: false, error: 'موديل الميزان غير مدعوم.' }, { status: 400 });
+        return new NextResponse(bodyData as any, {
+            status: 200,
+            headers: {
+                'Content-Type': payload.mimeType,
+                'Content-Disposition': `attachment; filename="${payload.filename}"`,
+                'Access-Control-Expose-Headers': 'Content-Disposition'
+            }
+        });
     } catch (err: any) {
         console.error('Scale export error:', err);
-        return NextResponse.json({ success: false, error: err.message || 'حدث خطأ أثناء تصدير ملف الميزان.' }, { status: 500 });
+        return NextResponse.json({
+            success: false,
+            message: `حدث خطأ أثناء تصدير ملف الميزان: ${err.message}`
+        }, { status: 500 });
     }
 }
-
