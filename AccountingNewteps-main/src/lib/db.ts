@@ -17,6 +17,12 @@ export interface LocalDbConfig {
 
 const CONFIG_FILE_PATH = path.join(process.cwd(), 'local-db-config.json');
 const TMP_CONFIG_FILE_PATH = path.join('/tmp', 'local-db-config.json');
+const isServerless = Boolean(
+    process.env.VERCEL || 
+    process.env.AWS_LAMBDA_FUNCTION_NAME || 
+    process.env.LAMBDA_TASK_ROOT || 
+    process.env.NEXT_RUNTIME === 'edge'
+);
 let inMemoryLocalDbConfig: LocalDbConfig | null = null;
 
 const DEFAULT_LOCAL_DB_CONFIG: LocalDbConfig = {
@@ -102,9 +108,9 @@ export function getLocalDbConfig(): LocalDbConfig {
         return inMemoryLocalDbConfig;
     }
     try {
-        const filePath = fs.existsSync(CONFIG_FILE_PATH)
-            ? CONFIG_FILE_PATH
-            : (fs.existsSync(TMP_CONFIG_FILE_PATH) ? TMP_CONFIG_FILE_PATH : null);
+        const filePath = isServerless
+            ? (fs.existsSync(TMP_CONFIG_FILE_PATH) ? TMP_CONFIG_FILE_PATH : (fs.existsSync(CONFIG_FILE_PATH) ? CONFIG_FILE_PATH : null))
+            : (fs.existsSync(CONFIG_FILE_PATH) ? CONFIG_FILE_PATH : (fs.existsSync(TMP_CONFIG_FILE_PATH) ? TMP_CONFIG_FILE_PATH : null));
 
         if (filePath) {
             const raw = fs.readFileSync(filePath, 'utf8');
@@ -224,18 +230,29 @@ export async function saveLocalDbConfig(input: Partial<LocalDbConfig>): Promise<
 
     inMemoryLocalDbConfig = updated;
 
-    try {
-        fs.writeFileSync(CONFIG_FILE_PATH, JSON.stringify(updated, null, 2), 'utf8');
-    } catch (fsErr: any) {
-        console.warn('[LocalDbConfig] Could not write to CONFIG_FILE_PATH (e.g. read-only serverless filesystem):', fsErr.message);
+    if (isServerless) {
         try {
             fs.writeFileSync(TMP_CONFIG_FILE_PATH, JSON.stringify(updated, null, 2), 'utf8');
         } catch (tmpErr: any) {
-            console.warn('[LocalDbConfig] Could not write to /tmp either:', tmpErr.message);
+            console.warn('[LocalDbConfig] Could not write to /tmp in serverless environment:', tmpErr.message);
+        }
+    } else {
+        try {
+            fs.writeFileSync(CONFIG_FILE_PATH, JSON.stringify(updated, null, 2), 'utf8');
+        } catch (fsErr: any) {
+            console.warn('[LocalDbConfig] Could not write to CONFIG_FILE_PATH (e.g. read-only filesystem):', fsErr.message);
+            try {
+                fs.writeFileSync(TMP_CONFIG_FILE_PATH, JSON.stringify(updated, null, 2), 'utf8');
+            } catch (tmpErr: any) {
+                console.warn('[LocalDbConfig] Could not write to /tmp either:', tmpErr.message);
+            }
         }
     }
     schemaMigratedForKey = null;
-    await resetDbPool();
+    const isIndexed = String(updated.server || '').toLowerCase().includes('indexeddb');
+    if (!isIndexed) {
+        await resetDbPool();
+    }
     return updated;
 }
 
@@ -376,6 +393,10 @@ export async function getDbPool(): Promise<sql.ConnectionPool> {
 
     connectingPromise = (async () => {
         const currentCfg = getLocalDbConfig();
+        const serverName = String(currentCfg.server || '').toLowerCase().trim();
+        if (serverName === 'indexeddb' || serverName.includes('indexeddb') || serverName === 'browser') {
+            throw new Error('النظام يعمل في وضع المتصفح الذكي (IndexedDB + Firebase) ولا يتطلب الاتصال بمحرك SQL Server.');
+        }
         const sqlConfig = buildMssqlConfig(currentCfg);
 
         try {

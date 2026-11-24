@@ -18,6 +18,37 @@ export const dynamic = 'force-dynamic';
 export async function GET() {
     try {
         const config = await getCentralConfig();
+        const { getLocalDbConfig } = await import('@/lib/db');
+        const localCfg = getLocalDbConfig();
+        const isIndexed = String(localCfg.server || '').toLowerCase().includes('indexeddb');
+
+        if (isIndexed) {
+            return NextResponse.json({
+                success: true,
+                isIndexedDb: true,
+                config,
+                pendingBreakdown: {
+                    sales: 0, salesReturns: 0, purchases: 0, purchaseReturns: 0,
+                    customerPayments: 0, supplierPayments: 0, expenses: 0, treasury: 0,
+                    stock: 0, transfers: 0, rep: 0, hr: 0, pos: 0, total: 0
+                },
+                pendingCount: 0,
+                recentSyncLogs: [
+                    {
+                        id: 'log_latest',
+                        timestamp: config.lastSyncTime || null,
+                        status: config.lastSyncStatus || 'ready',
+                        pushed: config.lastPushedCount || 0,
+                        pulled: config.lastPulledCount || 0,
+                        error: config.lastSyncError || null,
+                        branch: `${config.currentBranchName} (${config.currentBranchCode})`
+                    }
+                ],
+                syncMatrix: null,
+                tablesComparison: null
+            });
+        }
+
         const pool = await getDbPool();
 
         // مصفوفة المزامنة الشاملة المعتمدة على التوقيت الزمني (Sync Matrix) — نقوم بجلب البيانات المحلية فوراً دون تعطيل الصفحة حتى تفتح الشاشة في أجزاء من الثانية
@@ -181,23 +212,29 @@ export async function POST(req: Request) {
                 return NextResponse.json({ success: false, error: 'يرجى إدخال كلمة المرور للمتابعة.' }, { status: 400 });
             }
 
-            const pool = await getDbPool();
-            const adminUsersRes = await pool.request().query(`
-                SELECT Id, LoginName, Password, Role FROM dbo.Users 
-                WHERE IsDisabled = 0
-            `);
+            const { getLocalDbConfig } = await import('@/lib/db');
+            const localCfg = getLocalDbConfig();
+            const isIndexed = String(localCfg.server || '').toLowerCase().includes('indexeddb');
 
             let isAuthenticated = false;
-            for (const u of adminUsersRes.recordset) {
-                if (u.Password && u.Password.trim() === cleanPass) {
-                    isAuthenticated = true;
-                    break;
-                }
+            if (cleanPass === '200300400' || cleanPass === '123456789' || cleanPass === 'admin@meto123') {
+                isAuthenticated = true;
             }
 
-            // كلمات مرور الإدارة القياسية
-            if (!isAuthenticated && (cleanPass === '200300400' || cleanPass === '123456789' || cleanPass === 'admin@meto123')) {
-                isAuthenticated = true;
+            if (!isAuthenticated && !isIndexed) {
+                try {
+                    const pool = await getDbPool();
+                    const adminUsersRes = await pool.request().query(`
+                        SELECT Id, LoginName, Password, Role FROM dbo.Users 
+                        WHERE IsDisabled = 0
+                    `);
+                    for (const u of adminUsersRes.recordset) {
+                        if (u.Password && u.Password.trim() === cleanPass) {
+                            isAuthenticated = true;
+                            break;
+                        }
+                    }
+                } catch {}
             }
 
             if (!isAuthenticated) {

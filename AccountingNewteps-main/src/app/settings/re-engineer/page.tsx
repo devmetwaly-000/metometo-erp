@@ -520,6 +520,12 @@ export default function DatabaseReEngineeringPage() {
         setIsSavingBranch(true);
         addLog(`[الفرع] جارٍ حفظ إعدادات الاتصال بالسيرفر (${branchConfig.server}:${branchConfig.port})...`);
         try {
+            if (branchConfig.server === 'indexeddb') {
+                try {
+                    localStorage.setItem('system_storage_engine', 'indexeddb_firebase');
+                    localStorage.setItem('branch_db_config', JSON.stringify(branchConfig));
+                } catch {}
+            }
             const res = await fetch('/api/db/init', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },

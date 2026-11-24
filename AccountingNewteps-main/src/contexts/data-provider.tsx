@@ -164,8 +164,63 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         isOnlineRef.current = isOnline;
     }, [isOnline]);
 
+    const flushOfflineSyncQueue = useCallback(async () => {
+        if (typeof window === 'undefined' || !navigator.onLine) return;
+        try {
+            const queueKey = 'app_offline_sync_queue';
+            const rawQueue = localStorage.getItem(queueKey);
+            if (!rawQueue) return;
+            const queue: any[] = JSON.parse(rawQueue);
+            if (!Array.isArray(queue) || queue.length === 0) return;
+
+            console.log(`[OfflineSync] Processing ${queue.length} offline queued actions...`);
+            const remaining: any[] = [];
+            for (const item of queue) {
+                try {
+                    const res = await fetch('/api/db/action', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            path: item.path,
+                            action: item.action,
+                            payload: item.payload
+                        })
+                    });
+                    if (!res.ok) {
+                        remaining.push(item);
+                    }
+                } catch {
+                    remaining.push(item);
+                }
+            }
+            if (remaining.length > 0) {
+                localStorage.setItem(queueKey, JSON.stringify(remaining));
+            } else {
+                localStorage.removeItem(queueKey);
+                console.log('[OfflineSync] All pending offline actions synced successfully!');
+            }
+        } catch (err) {
+            console.warn('[OfflineSync] Flush failed:', err);
+        }
+    }, []);
+
     const refreshDataFromSqlServer = useCallback(async (): Promise<boolean> => {
         let connected = false;
+
+        // فحص سريع إذا كان الجهاز غير متصل بالإنترنت
+        if (typeof window !== 'undefined' && !navigator.onLine) {
+            setIsOnline(false);
+            try {
+                const cached = await localforage.getItem<any>(CACHE_KEY);
+                if (cached && Object.keys(cached).length > 0) {
+                    setAllData(cached);
+                }
+            } catch {}
+            setHasCheckedConnection(true);
+            setIsLoading(false);
+            return false;
+        }
+
         const controller = new AbortController();
         const timeoutId = setTimeout(() => controller.abort(), 25000);
         try {
@@ -213,23 +268,11 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
             }
         } catch (error) {
             clearTimeout(timeoutId);
-            // Only mark offline if /api/db/health is also failing, so a heavy sync timeout does not mistakenly force offline
-            try {
-                const healthRes = await fetch('/api/db/health', { cache: 'no-store' });
-                const healthJson = await healthRes.json().catch(() => null);
-                if (!healthRes.ok || !healthJson?.ok) {
-                    setIsOnline(false);
-                }
-            } catch {
-                setIsOnline(false);
-            }
+            setIsOnline(false);
             console.warn('Could not sync with SQL Server, operating with cached data:', error);
             try {
-                const cached = await Promise.race([
-                    localforage.getItem<any>(CACHE_KEY),
-                    new Promise<null>(resolve => setTimeout(() => resolve(null), 500))
-                ]);
-                if (cached) {
+                const cached = await localforage.getItem<any>(CACHE_KEY);
+                if (cached && Object.keys(cached).length > 0) {
                     setAllData(cached);
                 }
             } catch {}
@@ -270,12 +313,7 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         const init = async () => {
             // First load from local storage cache for instant UI response
             try {
-                // IndexedDB/localforage can stall on a damaged or locked browser cache.
-                // Never let that prevent the live SQL sync from starting.
-                const cached = await Promise.race([
-                    localforage.getItem<any>(CACHE_KEY),
-                    new Promise<null>(resolve => setTimeout(() => resolve(null), 750))
-                ]);
+                const cached = await localforage.getItem<any>(CACHE_KEY);
                 if (isMounted && cached && Object.keys(cached).length > 0) {
                     setAllData(cached);
                     setIsLoading(false);
@@ -284,15 +322,31 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
                 console.warn('Local cache read error:', err);
             }
 
-            // Then fetch live data from SQL Server
+            // Then fetch live data from server or process pending offline queue
+            await flushOfflineSyncQueue();
             await refreshDataFromSqlServer();
         };
 
         init();
+
+        const handleOnline = () => {
+            setIsOnline(true);
+            flushOfflineSyncQueue().then(() => {
+                refreshDataFromSqlServer();
+            });
+        };
+        const handleOffline = () => {
+            setIsOnline(false);
+        };
+        window.addEventListener('online', handleOnline);
+        window.addEventListener('offline', handleOffline);
+
         return () => {
             isMounted = false;
+            window.removeEventListener('online', handleOnline);
+            window.removeEventListener('offline', handleOffline);
         };
-    }, [refreshDataFromSqlServer]);
+    }, [flushOfflineSyncQueue, refreshDataFromSqlServer]);
 
     const checkServerHealth = useCallback(async (force = false) => {
         const now = Date.now();
@@ -473,6 +527,24 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
             console.warn('Failed to persist to IndexedDB:', e);
         }
 
+        // If currently offline, queue mutation locally and return immediately without throwing
+        const isCurrentlyOffline = typeof window !== 'undefined' && (!navigator.onLine || !isOnlineRef.current);
+        if (isCurrentlyOffline) {
+            try {
+                const queueKey = 'app_offline_sync_queue';
+                const queue = JSON.parse(localStorage.getItem(queueKey) || '[]');
+                queue.push({
+                    id: `mut_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+                    path,
+                    action,
+                    payload: action === 'add' ? { id: generatedId, ...payload } : payload,
+                    timestamp: Date.now()
+                });
+                localStorage.setItem(queueKey, JSON.stringify(queue));
+            } catch {}
+            return generatedId;
+        }
+
         // Persist to SQL Server
         try {
             const res = await fetch('/api/db/action', {
@@ -507,23 +579,21 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
                 throw new Error(message);
             }
         } catch (err: any) {
-            console.error(`dbAction network error for path ${path}:`, err);
+            console.warn(`dbAction network error for path ${path}, falling back to offline queue:`, err);
             try {
-                fetch('/api/system/log-error', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        source: 'Client:dbAction',
-                        action: `${path}/${action}`,
-                        errorMessage: err?.message || String(err),
-                        errorStack: err?.stack || null,
-                        requestPayload: payload,
-                        endpoint: '/api/db/action'
-                    })
-                }).catch(() => {});
+                const queueKey = 'app_offline_sync_queue';
+                const queue = JSON.parse(localStorage.getItem(queueKey) || '[]');
+                queue.push({
+                    id: `mut_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+                    path,
+                    action,
+                    payload: action === 'add' ? { id: generatedId, ...payload } : payload,
+                    timestamp: Date.now()
+                });
+                localStorage.setItem(queueKey, JSON.stringify(queue));
             } catch {}
-            setTimeout(() => refreshDataFromSqlServer?.(), 1000);
-            throw err;
+            setIsOnline(false);
+            return generatedId;
         }
     }, [refreshDataFromSqlServer]);
 

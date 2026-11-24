@@ -274,6 +274,12 @@ export function initServerAutoSync() {
 
 const CENTRAL_CONFIG_FILE_PATH = path.join(process.cwd(), 'central-sync-config.json');
 const TMP_CENTRAL_CONFIG_FILE_PATH = path.join('/tmp', 'central-sync-config.json');
+const isServerless = Boolean(
+    process.env.VERCEL || 
+    process.env.AWS_LAMBDA_FUNCTION_NAME || 
+    process.env.LAMBDA_TASK_ROOT || 
+    process.env.NEXT_RUNTIME === 'edge'
+);
 let inMemoryCentralConfig: CentralSyncConfig | null = null;
 
 /**
@@ -284,9 +290,9 @@ export async function getCentralConfig(): Promise<CentralSyncConfig> {
         return inMemoryCentralConfig;
     }
     try {
-        const filePath = fs.existsSync(CENTRAL_CONFIG_FILE_PATH)
-            ? CENTRAL_CONFIG_FILE_PATH
-            : (fs.existsSync(TMP_CENTRAL_CONFIG_FILE_PATH) ? TMP_CENTRAL_CONFIG_FILE_PATH : null);
+        const filePath = isServerless
+            ? (fs.existsSync(TMP_CENTRAL_CONFIG_FILE_PATH) ? TMP_CENTRAL_CONFIG_FILE_PATH : (fs.existsSync(CENTRAL_CONFIG_FILE_PATH) ? CENTRAL_CONFIG_FILE_PATH : null))
+            : (fs.existsSync(CENTRAL_CONFIG_FILE_PATH) ? CENTRAL_CONFIG_FILE_PATH : (fs.existsSync(TMP_CENTRAL_CONFIG_FILE_PATH) ? TMP_CENTRAL_CONFIG_FILE_PATH : null));
         if (filePath) {
             const raw = fs.readFileSync(filePath, 'utf8');
             const parsed = JSON.parse(raw);
@@ -349,25 +355,36 @@ export async function saveCentralConfig(config: Partial<CentralSyncConfig>): Pro
 
     inMemoryCentralConfig = updated;
 
-    try {
-        fs.writeFileSync(CENTRAL_CONFIG_FILE_PATH, JSON.stringify(updated, null, 2), 'utf8');
-    } catch {
+    if (isServerless) {
         try {
             fs.writeFileSync(TMP_CENTRAL_CONFIG_FILE_PATH, JSON.stringify(updated, null, 2), 'utf8');
         } catch {}
+    } else {
+        try {
+            fs.writeFileSync(CENTRAL_CONFIG_FILE_PATH, JSON.stringify(updated, null, 2), 'utf8');
+        } catch {
+            try {
+                fs.writeFileSync(TMP_CENTRAL_CONFIG_FILE_PATH, JSON.stringify(updated, null, 2), 'utf8');
+            } catch {}
+        }
     }
 
     try {
-        const pool = await getDbPool();
-        await pool.request()
-            .input('Key', sql.NVarChar(100), 'central_sync')
-            .input('Val', sql.NVarChar(sql.MAX), JSON.stringify(updated))
-            .query(`
-                IF NOT EXISTS (SELECT 1 FROM dbo.AppSettings WHERE SettingKey = @Key)
-                    INSERT INTO dbo.AppSettings (SettingKey, SettingValue, SyncStatus, LastSyncedAt) VALUES (@Key, @Val, 'synced', SYSUTCDATETIME());
-                ELSE
-                    UPDATE dbo.AppSettings SET SettingValue = @Val, SyncStatus = 'synced', LastSyncedAt = SYSUTCDATETIME() WHERE SettingKey = @Key;
-            `);
+        const { getLocalDbConfig } = await import('@/lib/db');
+        const localCfg = getLocalDbConfig();
+        const isIndexed = String(localCfg.server || '').toLowerCase().includes('indexeddb');
+        if (!isIndexed) {
+            const pool = await getDbPool();
+            await pool.request()
+                .input('Key', sql.NVarChar(100), 'central_sync')
+                .input('Val', sql.NVarChar(sql.MAX), JSON.stringify(updated))
+                .query(`
+                    IF NOT EXISTS (SELECT 1 FROM dbo.AppSettings WHERE SettingKey = @Key)
+                        INSERT INTO dbo.AppSettings (SettingKey, SettingValue, SyncStatus, LastSyncedAt) VALUES (@Key, @Val, 'synced', SYSUTCDATETIME());
+                    ELSE
+                        UPDATE dbo.AppSettings SET SettingValue = @Val, SyncStatus = 'synced', LastSyncedAt = SYSUTCDATETIME() WHERE SettingKey = @Key;
+                `);
+        }
     } catch (dbErr) {
         // إذا كان النظام يعمل بنمط IndexedDB أو كان السيرفر المحلي غير متصل، نكتفي بالحفظ في الذاكرة والملف
     }

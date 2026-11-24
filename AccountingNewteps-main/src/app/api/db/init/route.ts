@@ -89,7 +89,30 @@ export async function POST(req: Request) {
 
         // 3. حفظ نص الاتصال أو إعدادات السيرفر المحلي / السحابي وإعادة ربط النظام فوراً
         if (action === 'save') {
-            const savedConfig = await saveLocalDbConfig(body.config || body);
+            const incoming = body.config || body;
+            const isIncomingIndexedDb =
+                String(incoming.server || '').toLowerCase().trim() === 'indexeddb' ||
+                String(incoming.server || '').toLowerCase().includes('indexeddb') ||
+                String(incoming.connectionString || '').toLowerCase().includes('browserlocal');
+
+            const savedConfig = await saveLocalDbConfig(incoming);
+            if (isIncomingIndexedDb) {
+                return NextResponse.json({
+                    success: true,
+                    isIndexedDb: true,
+                    config: savedConfig,
+                    connectionTest: {
+                        success: true,
+                        databaseExists: true,
+                        server: 'IndexedDB (Browser)',
+                        database: 'MultiBranchPOS_IndexedDB',
+                        serverVersion: 'Browser IndexedDB + Firebase Realtime',
+                        message: 'تم تفعيل وضع المتصفح الذكي (IndexedDB + Firebase Realtime) بنجاح!'
+                    },
+                    message: 'تم حفظ وتفعيل وضع المتصفح الذكي (IndexedDB + Firebase) بنجاح.'
+                });
+            }
+
             const testResult = await testLocalDbConnection(savedConfig);
             return NextResponse.json({
                 success: true,

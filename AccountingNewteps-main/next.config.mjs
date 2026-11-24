@@ -5,9 +5,12 @@ import path from "node:path";
 
 const withPWA = nextPWA({
   dest: "public",
-  cacheOnFrontEndNav: false,
-  aggressiveFrontEndNavCaching: false,
-  reloadOnOnline: true,
+  cacheOnFrontEndNav: true,
+  aggressiveFrontEndNavCaching: true,
+  reloadOnOnline: false,
+  fallbacks: {
+    document: "/offline",
+  },
   // Disable PWA in development to avoid compilation blocking
   disable: process.env.NODE_ENV === 'development' || process.env.DISABLE_PWA === 'true',
   workboxOptions: {
@@ -21,10 +24,32 @@ const withPWA = nextPWA({
         options: {
           cacheName: 'pages-cache',
           expiration: {
-            maxEntries: 100,
+            maxEntries: 120,
             maxAgeSeconds: 24 * 60 * 60 * 30, // 30 Days
           },
-          networkTimeoutSeconds: 10,
+          networkTimeoutSeconds: 2,
+        },
+      },
+      {
+        urlPattern: /\?_rsc=/i,
+        handler: 'StaleWhileRevalidate',
+        options: {
+          cacheName: 'next-rsc-cache',
+          expiration: {
+            maxEntries: 200,
+            maxAgeSeconds: 24 * 60 * 60 * 30, // 30 Days
+          },
+        },
+      },
+      {
+        urlPattern: /\/_next\/data\/.*/i,
+        handler: 'StaleWhileRevalidate',
+        options: {
+          cacheName: 'next-data',
+          expiration: {
+            maxEntries: 100,
+            maxAgeSeconds: 24 * 60 * 60 * 30,
+          },
         },
       },
       {
@@ -33,7 +58,7 @@ const withPWA = nextPWA({
         options: {
           cacheName: 'static-resources',
           expiration: {
-            maxEntries: 100,
+            maxEntries: 200,
             maxAgeSeconds: 24 * 60 * 60 * 30, // 30 Days
           },
         },
@@ -50,6 +75,17 @@ const withPWA = nextPWA({
         },
       },
       {
+        urlPattern: /\.(?:png|jpg|jpeg|svg|gif|webp|ico|woff|woff2|ttf|eot)$/i,
+        handler: 'StaleWhileRevalidate',
+        options: {
+          cacheName: 'static-assets',
+          expiration: {
+            maxEntries: 100,
+            maxAgeSeconds: 24 * 60 * 60 * 30,
+          },
+        },
+      },
+      {
         urlPattern: /\.(?:json|xml|csv)$/i,
         handler: 'NetworkFirst',
         options: {
@@ -58,6 +94,7 @@ const withPWA = nextPWA({
             maxEntries: 64,
             maxAgeSeconds: 24 * 60 * 60 * 24, // 24 Hours
           },
+          networkTimeoutSeconds: 2,
         },
       },
       {
@@ -72,7 +109,7 @@ const withPWA = nextPWA({
             maxEntries: 32,
             maxAgeSeconds: 60 * 60, // 1 hour
           },
-          networkTimeoutSeconds: 10,
+          networkTimeoutSeconds: 3,
         },
       },
     ],
