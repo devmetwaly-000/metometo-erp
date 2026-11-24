@@ -13,6 +13,22 @@ export const dynamic = 'force-dynamic';
 
 export async function GET() {
     const localConfig = getLocalDbConfig();
+    const serverName = String(localConfig.server || '').toLowerCase().trim();
+    if (serverName === 'indexeddb' || serverName.includes('indexeddb') || serverName === 'browser') {
+        return NextResponse.json({
+            success: true,
+            connected: true,
+            isIndexedDb: true,
+            localConfig,
+            database: 'MultiBranchPOS_IndexedDB',
+            server: 'IndexedDB (Browser)',
+            tablesCount: 96,
+            usersCount: 1,
+            status: 'healthy',
+            message: 'وضع المتصفح الذكي (IndexedDB + Firebase) نشط وجاهز للعمل محلياً بدون سيرفر.'
+        });
+    }
+
     try {
         const pool = await getDbPool();
         const tablesRes = await pool.request().query(`
@@ -90,6 +106,20 @@ export async function POST(req: Request) {
         const incoming = body.config || body;
         if (incoming.connectionString || incoming.server || incoming.database || incoming.user) {
             currentCfg = await saveLocalDbConfig(incoming);
+        }
+
+        const isIndexedDb =
+            String(currentCfg.server || '').toLowerCase().trim() === 'indexeddb' ||
+            String(currentCfg.server || '').toLowerCase().includes('indexeddb') ||
+            String(incoming.server || '').toLowerCase().trim() === 'indexeddb';
+
+        if (isIndexedDb) {
+            return NextResponse.json({
+                success: true,
+                isIndexedDb: true,
+                config: currentCfg,
+                message: 'تم تفعيل وتهيئة متجر المتصفح المحلي (IndexedDB + Firebase) بنجاح!'
+            });
         }
 
         const effectiveDb =

@@ -11,7 +11,7 @@ import { DataProvider, useData } from "@/contexts/data-provider";
 import { NotificationProvider } from "@/contexts/notification-context";
 import React, { ReactNode, useEffect, useRef, useState } from "react";
 import { useToast } from "@/hooks/use-toast";
-import { Loader2, Download, Smartphone, X, Database } from "lucide-react";
+import { Loader2, Download, Smartphone, X, Database, Zap } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 
@@ -258,6 +258,47 @@ const InnerDatabaseGate = ({ children }: { children: React.ReactNode }) => {
                         <Database className="h-8 w-8" />
                     </div>
                     <h1 className="text-2xl font-bold">إعداد قاعدة البيانات</h1>
+                    <div className="mt-3 p-3 bg-purple-500/10 border border-purple-500/30 rounded-xl flex flex-col sm:flex-row items-center justify-between gap-3 text-right">
+                        <div className="space-y-0.5">
+                            <div className="text-xs font-bold text-purple-700 dark:text-purple-300 flex items-center gap-1.5 justify-center sm:justify-start">
+                                <Zap className="h-3.5 w-3.5 text-purple-600" />
+                                <span>وضع المتصفح الذكي (Zero Installation)</span>
+                            </div>
+                            <div className="text-[11px] text-muted-foreground">
+                                تشغيل فوري داخل المتصفح (IndexedDB) ومزامنة سحابية مع Firebase بدون الحاجة لتثبيت SQL Server على هذا الجهاز!
+                            </div>
+                        </div>
+                        <Button
+                            type="button"
+                            size="sm"
+                            className="bg-purple-600 hover:bg-purple-700 text-white font-bold text-xs h-8 shrink-0 w-full sm:w-auto"
+                            onClick={async () => {
+                                try {
+                                    await fetch('/api/db/init', {
+                                        method: 'POST',
+                                        headers: { 'Content-Type': 'application/json' },
+                                        body: JSON.stringify({
+                                            action: 'save',
+                                            config: {
+                                                connectionMode: 'fields',
+                                                server: 'indexeddb',
+                                                port: 0,
+                                                database: 'MultiBranchPOS_IndexedDB',
+                                                user: 'browser_user',
+                                                password: '',
+                                                connectionString: 'Engine=IndexedDB;Mode=BrowserLocal;Sync=FirebaseRTDB;'
+                                            }
+                                        })
+                                    });
+                                    localStorage.setItem('system_storage_engine', 'indexeddb_firebase');
+                                    window.location.reload();
+                                } catch {}
+                            }}
+                        >
+                            <Zap className="h-3.5 w-3.5 ml-1" />
+                            تفعيل والدخول فوراً
+                        </Button>
+                    </div>
                     <p className="mt-3 text-muted-foreground">
                         لم يتم العثور على قاعدة البيانات <span className="font-semibold text-foreground">{databaseName}</span>.
                         يمكنك إنشاؤها محلياً أو تحديد نص اتصال لسيرفر خارجي أو سحابي.

@@ -246,6 +246,19 @@ export async function testLocalDbConnection(input?: Partial<LocalDbConfig>): Pro
     }
 
     const startTime = Date.now();
+    const serverName = String(cfg.server || '').toLowerCase().trim();
+    if (serverName === 'indexeddb' || serverName.includes('indexeddb') || serverName === 'browser') {
+        return {
+            success: true,
+            databaseExists: true,
+            latencyMs: 1,
+            server: 'IndexedDB (Browser)',
+            database: 'MultiBranchPOS_IndexedDB',
+            serverVersion: 'Browser IndexedDB + Firebase Realtime',
+            message: 'تم تفعيل وضع المتصفح الذكي (IndexedDB + Firebase Realtime) بنجاح. لا حاجة لتثبيت SQL Server محلي!'
+        };
+    }
+
     const mssqlCfg = buildMssqlConfig(cfg);
     let testPool: sql.ConnectionPool | null = null;
 

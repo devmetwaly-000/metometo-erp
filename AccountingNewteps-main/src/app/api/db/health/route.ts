@@ -1,9 +1,15 @@
 import { NextResponse } from 'next/server';
-import { getDbPool, resetDbPool } from '@/lib/db';
+import { getDbPool, resetDbPool, getLocalDbConfig } from '@/lib/db';
 
 export const dynamic = 'force-dynamic';
 
 export async function GET() {
+    const localCfg = getLocalDbConfig();
+    const serverName = String(localCfg.server || '').toLowerCase().trim();
+    if (serverName === 'indexeddb' || serverName.includes('indexeddb') || serverName === 'browser') {
+        return NextResponse.json({ ok: true, isIndexedDb: true, engine: 'IndexedDB + Firebase' });
+    }
+
     try {
         const pool = await getDbPool();
         await pool.request().query('SELECT 1 AS ok');

@@ -7,11 +7,14 @@ import { getCentralConfig } from '@/lib/central-sync';
 export const dynamic = 'force-dynamic';
 
 function detectDbHosting(server: string, encrypt?: boolean): {
-    type: 'aws' | 'azure' | 'vps' | 'local';
+    type: 'aws' | 'azure' | 'vps' | 'local' | 'indexeddb';
     label: string;
     details: string;
 } {
     const s = (server || 'localhost').toLowerCase().trim();
+    if (s === 'indexeddb' || s.includes('indexeddb') || s === 'browser') {
+        return { type: 'indexeddb', label: 'المتصفح الذكي (IndexedDB + Firebase)', details: 'IndexedDB (Browser Storage)' };
+    }
     if (s.includes('.rds.amazonaws.com')) {
         return { type: 'aws', label: 'سيرفر سحابي (Cloud)', details: server };
     }
@@ -36,7 +39,7 @@ export async function GET() {
     const localCfg = getLocalDbConfig();
     const branchHosting = detectDbHosting(localCfg.server, localCfg.encrypt);
 
-    let centralHosting: { type: 'aws' | 'azure' | 'vps' | 'local'; label: string; server: string; database: string } = {
+    let centralHosting: { type: 'aws' | 'azure' | 'vps' | 'local' | 'indexeddb'; label: string; server: string; database: string } = {
         type: 'local',
         label: 'محلي (Localhost)',
         server: 'localhost:1433',

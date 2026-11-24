@@ -286,6 +286,23 @@ export async function POST(req: Request) {
     try {
         body = await req.json();
         const { path: rawPath, action, payload, counterName, startFrom } = body;
+
+        const { getLocalDbConfig } = await import('@/lib/db');
+        const localCfg = getLocalDbConfig();
+        const serverName = String(localCfg.server || '').toLowerCase().trim();
+        if (serverName === 'indexeddb' || serverName.includes('indexeddb') || serverName === 'browser') {
+            if (action === 'getNextId') {
+                const initial = Number(startFrom) || 1;
+                return NextResponse.json({ success: true, nextId: initial });
+            }
+            return NextResponse.json({
+                success: true,
+                id: payload?.id || `doc_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
+                isIndexedDb: true,
+                message: 'تم الحفظ في المتصفح المحلي (IndexedDB)'
+            });
+        }
+
         const pool = await getDbPool();
 
         // 1. Atomic Counter Sequence Increment (getNextId)

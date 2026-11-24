@@ -173,7 +173,26 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
             clearTimeout(timeoutId);
             if (res.ok) {
                 const json = await res.json();
-                if (json.success && json.data) {
+                if (json.isIndexedDb) {
+                    const cached = await localforage.getItem<any>(CACHE_KEY);
+                    if (cached && Object.keys(cached).length > 0) {
+                        setAllData(cached);
+                    } else {
+                        const initialDefaults = {
+                            items: [], customers: [], suppliers: [],
+                            warehouses: [{ id: 'wh_main', name: 'المخزن الرئيسي', isDefault: true }],
+                            cashAccounts: [{ id: 'cash_main', name: 'الخزينة الرئيسية', isDefault: true }],
+                            users: [], settings: { main: { systemName: 'نظام نقاط البيع وإدارة الفروع' } },
+                            salesInvoices: [], posSales: []
+                        };
+                        setAllData(initialDefaults);
+                        await localforage.setItem(CACHE_KEY, initialDefaults);
+                    }
+                    setDatabaseSetupRequired(false);
+                    setDatabaseSetupError(null);
+                    setIsOnline(true);
+                    connected = true;
+                } else if (json.success && json.data) {
                     setAllData(json.data);
                     await localforage.setItem(CACHE_KEY, json.data);
                     setDatabaseSetupRequired(false);
@@ -298,7 +317,7 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
                 setIsOnline(true);
                 setDatabaseSetupRequired(false);
                 setDatabaseSetupError(null);
-                if (wasOffline) {
+                if (wasOffline && !json.isIndexedDb) {
                     // Re-sync latest data in background without blocking online status or flipping back to offline
                     void refreshDataFromSqlServer().catch((err) => {
                         console.warn('Background sync after reconnect failed:', err);
@@ -430,6 +449,29 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
             }
             return prev;
         });
+
+        // Persist optimistic mutation directly to IndexedDB / localforage
+        try {
+            const currentCache = (await localforage.getItem<any>(CACHE_KEY)) || {};
+            const slice = currentCache[path];
+            let nextCache = { ...currentCache };
+            if (Array.isArray(slice)) {
+                if (action === 'add') {
+                    nextCache[path] = [{ id: generatedId, ...payload }, ...slice];
+                } else if (action === 'update') {
+                    nextCache[path] = slice.map((item: any) =>
+                        item.id === payload.id ? { ...item, ...(payload.data || payload) } : item
+                    );
+                } else if (action === 'remove') {
+                    nextCache[path] = slice.filter((item: any) => item.id !== (payload.id || payload));
+                }
+            } else if (path === 'settings' || typeof slice === 'object') {
+                nextCache[path] = { ...(slice || {}), ...(payload.data || payload) };
+            }
+            await localforage.setItem(CACHE_KEY, nextCache);
+        } catch (e) {
+            console.warn('Failed to persist to IndexedDB:', e);
+        }
 
         // Persist to SQL Server
         try {

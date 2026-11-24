@@ -1,10 +1,21 @@
 import { NextResponse } from 'next/server';
-import { getDbPool } from '@/lib/db';
+import { getDbPool, getLocalDbConfig } from '@/lib/db';
 import { logSystemError } from '@/lib/error-logger';
 
 export const dynamic = 'force-dynamic';
 
 export async function GET() {
+    const localCfg = getLocalDbConfig();
+    const serverName = String(localCfg.server || '').toLowerCase().trim();
+    if (serverName === 'indexeddb' || serverName.includes('indexeddb') || serverName === 'browser') {
+        return NextResponse.json({
+            success: true,
+            isIndexedDb: true,
+            data: null,
+            message: 'وضع المتصفح الذكي (IndexedDB + Firebase) نشط'
+        });
+    }
+
     try {
         const pool = await getDbPool();
 

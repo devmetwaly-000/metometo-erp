@@ -103,6 +103,7 @@ import {
   ChevronLeft,
   ChevronRight,
   RefreshCw,
+  Zap,
   X
 } from "lucide-react";
 import Link from "next/link";
@@ -657,7 +658,7 @@ export function AppLayoutContent({ children }: { children: React.ReactNode }) {
     process.env.NODE_ENV === 'production' ? 'production' : 'development'
   );
   const [dbHosting, setDbHosting] = useState<{
-    type: 'aws' | 'azure' | 'vps' | 'local';
+    type: 'aws' | 'azure' | 'vps' | 'local' | 'indexeddb';
     label: string;
     server: string;
     database: string;
@@ -1240,14 +1241,18 @@ export function AppLayoutContent({ children }: { children: React.ReactNode }) {
                              href="/settings/re-engineer"
                              className={cn(
                                "flex items-center gap-1 px-2 py-0.5 sm:px-2.5 sm:py-1 rounded-full border text-[10px] sm:text-[11px] font-bold select-none transition-colors whitespace-nowrap shrink-0",
-                               dbHosting.type === 'aws' || dbHosting.type === 'azure'
+                               dbHosting.type === 'indexeddb'
+                                  ? 'border-purple-500/40 bg-purple-500/10 text-purple-700 dark:text-purple-300 hover:bg-purple-500/20'
+                                  : dbHosting.type === 'aws' || dbHosting.type === 'azure'
                                  ? "border-amber-500/40 bg-amber-500/10 text-amber-600 dark:text-amber-300 hover:bg-amber-500/20"
                                  : dbHosting.type === 'vps'
                                  ? "border-sky-500/40 bg-sky-500/10 text-sky-600 dark:text-sky-300 hover:bg-sky-500/20"
                                  : "border-emerald-500/40 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-500/20"
                              )}
                            >
-                             {dbHosting.type === 'aws' || dbHosting.type === 'azure' ? (
+                             {dbHosting.type === 'indexeddb' ? (
+                                <Zap className="h-3 w-3 sm:h-3.5 sm:w-3.5 shrink-0 text-purple-500" />
+                              ) : dbHosting.type === 'aws' || dbHosting.type === 'azure' ? (
                                <Cloud className="h-3 w-3 sm:h-3.5 sm:w-3.5 shrink-0 text-amber-500" />
                              ) : (
                                <DatabaseBackup className="h-3 w-3 sm:h-3.5 sm:w-3.5 shrink-0" />
@@ -1271,7 +1276,7 @@ export function AppLayoutContent({ children }: { children: React.ReactNode }) {
                              <div className="flex items-center justify-between gap-2">
                                <span className="font-bold">🏪 سيرفر الفرع:</span>
                                <Badge variant="outline" className="text-[9px] py-0 px-1 font-mono">
-                                 {dbHosting.type === 'aws' ? 'سحابي' : dbHosting.type === 'vps' ? 'سيرفر IP' : 'محلي'}
+                                 {dbHosting.type === 'indexeddb' ? 'متصفح (IndexedDB)' : dbHosting.type === 'aws' ? 'سحابي' : dbHosting.type === 'vps' ? 'سيرفر IP' : 'محلي'}
                                </Badge>
                              </div>
                              <div className="font-mono text-[10px] text-muted-foreground truncate" dir="ltr">

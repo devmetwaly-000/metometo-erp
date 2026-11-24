@@ -96,8 +96,11 @@ function buildConnStr(cfg: BranchDbConfigState): string {
     return `Server=${cfg.server || 'localhost'},${cfg.port || 1433};Database=${cfg.database || 'MultiBranchPOS_DB'};User Id=${cfg.user || 'sa'};Password=${cfg.password || ''};Encrypt=${cfg.encrypt ? 'true' : 'false'};TrustServerCertificate=${cfg.trustServerCertificate !== false ? 'true' : 'false'};`;
 }
 
-function detectHosting(server: string, encrypt?: boolean): { type: 'local' | 'cloud' | 'ip'; label: string; icon: any } {
+function detectHosting(server: string, encrypt?: boolean): { type: 'local' | 'cloud' | 'ip' | 'indexeddb'; label: string; icon: any } {
     const s = (server || '').toLowerCase().trim();
+    if (s === 'indexeddb' || s.includes('indexeddb') || s === 'browser') {
+        return { type: 'indexeddb', label: 'متصفح محلي (IndexedDB)', icon: Zap };
+    }
     if (s.includes('.rds.amazonaws.com') || s.includes('.database.windows.net') || encrypt) {
         return { type: 'cloud', label: 'سحابي', icon: Cloud };
     }
@@ -336,8 +339,23 @@ export default function DatabaseReEngineeringPage() {
         }));
     };
 
-    const applyBranchPreset = (type: 'local' | 'external_ip' | 'aws_rds') => {
-        if (type === 'local') {
+    const applyBranchPreset = (type: 'local' | 'external_ip' | 'aws_rds' | 'indexeddb_firebase') => {
+        if (type === 'indexeddb_firebase') {
+            const next: BranchDbConfigState = {
+                ...branchConfig,
+                server: 'indexeddb',
+                port: 0,
+                database: 'MultiBranchPOS_IndexedDB',
+                user: 'browser_user',
+                password: '',
+                encrypt: true,
+                trustServerCertificate: true,
+                connectionString: 'Engine=IndexedDB;Mode=BrowserLocal;Sync=FirebaseRTDB;'
+            };
+            setBranchConfig(next);
+            try { localStorage.setItem('system_storage_engine', 'indexeddb_firebase'); } catch {}
+        } else if (type === 'local') {
+            try { localStorage.setItem('system_storage_engine', 'sql'); } catch {}
             const next: BranchDbConfigState = {
                 ...branchConfig,
                 server: 'localhost',
@@ -759,6 +777,7 @@ export default function DatabaseReEngineeringPage() {
                                     <span className="font-bold text-sm text-foreground">قاعدة بيانات الفرع</span>
                                     <Badge variant="outline" className={cn(
                                         "text-[10px] font-bold",
+                                        branchHosting.type === 'indexeddb' ? "bg-purple-500/10 text-purple-700 dark:text-purple-300 border-purple-500/30" :
                                         branchHosting.type === 'cloud' ? "bg-amber-500/10 text-amber-700 dark:text-amber-300 border-amber-500/30" :
                                         branchHosting.type === 'ip' ? "bg-sky-500/10 text-sky-700 dark:text-sky-300 border-sky-500/30" :
                                         "bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border-emerald-500/30"
@@ -864,7 +883,11 @@ export default function DatabaseReEngineeringPage() {
                                         قاعدة البيانات المحلية المخصصة للفرع ونقطة البيع.
                                     </CardDescription>
                                 </div>
-                                <div className="grid grid-cols-3 sm:flex sm:flex-wrap gap-1.5 w-full sm:w-auto">
+                                <div className="grid grid-cols-2 sm:flex sm:flex-wrap gap-1.5 w-full sm:w-auto">
+                                    <Button type="button" variant="outline" size="sm" className="h-8 sm:h-7 text-[11px] font-bold w-full sm:w-auto justify-center border-purple-500/40 text-purple-700 dark:text-purple-300 hover:bg-purple-500/10" onClick={() => applyBranchPreset('indexeddb_firebase')}>
+                                        <Zap className="h-3 w-3 ml-1 text-purple-500" />
+                                        ⚡ متصفح (IndexedDB + فايربيز)
+                                    </Button>
                                     <Button type="button" variant="outline" size="sm" className="h-8 sm:h-7 text-[11px] font-bold w-full sm:w-auto justify-center" onClick={() => applyBranchPreset('local')}>
                                         💻 محلي
                                     </Button>
@@ -880,6 +903,15 @@ export default function DatabaseReEngineeringPage() {
                         </CardHeader>
 
                         <CardContent className="p-3.5 sm:p-6 space-y-4 sm:space-y-5">
+                            {branchConfig.server === 'indexeddb' && (
+                                <Alert className="border-purple-500/30 bg-purple-500/5 mb-3">
+                                    <Zap className="h-4 w-4 text-purple-600" />
+                                    <AlertTitle className="text-xs font-bold text-purple-800 dark:text-purple-200">وضع المتصفح الذكي (IndexedDB + Firebase) نشط</AlertTitle>
+                                    <AlertDescription className="text-xs text-purple-700/90 dark:text-purple-300/90 mt-1">
+                                        يعمل هذا الفرع حالياً بتخزين محلي فائق السرعة داخل المتصفح (IndexedDB) بدون الحاجة لتثبيت أي سيرفر محلي. وتتم المزامنة المركزية تلقائياً مع سحابة Firebase Realtime.
+                                    </AlertDescription>
+                                </Alert>
+                            )}
                             <Tabs
                                 value={branchConfig.connectionMode || 'fields'}
                                 onValueChange={(v) => handleBranchFieldChange('connectionMode', v as 'fields' | 'connectionString')}
