@@ -5,7 +5,7 @@ import { generateScaleExportPayload, ScaleItem } from '@/lib/scale-export';
 export const dynamic = 'force-dynamic';
 
 interface SendToScaleRequest {
-    scaleModel: 'universal_csv' | 'universal_excel' | 'cas_cl5000' | 'rongta_rls1000' | 'dibal';
+    scaleModel: 'universal_csv' | 'universal_excel' | 'mettler_toledo' | 'toledo_txt' | 'cas_cl5000' | 'rongta_rls1000' | 'dibal' | string;
     scaleIp: string;
     scalePort: number;
     items: ScaleItem[];

@@ -283,11 +283,17 @@ export default function ScaleExportPage() {
                             {/* Scale Model */}
                             <div className="space-y-2">
                                 <Label>طراز الميزان / الصيغة</Label>
-                                <Select value={selectedModel} onValueChange={(val: ScaleModel) => setSelectedModel(val)}>
+                                <Select value={selectedModel} onValueChange={(val: ScaleModel) => {
+                                    setSelectedModel(val);
+                                    if (val === 'mettler_toledo') setScalePort(3001);
+                                    else if (val === 'cas_cl5000') setScalePort(2002);
+                                    else if (val === 'rongta_rls1000') setScalePort(4001);
+                                }}>
                                     <SelectTrigger>
                                         <SelectValue placeholder="اختر طراز الميزان" />
                                     </SelectTrigger>
                                     <SelectContent>
+                                        <SelectItem value="mettler_toledo">Mettler Toledo (ميتلر توليدو - bPlus / Tiger / FreshBase / SPCT)</SelectItem>
                                         <SelectItem value="universal_excel">Excel عام (.xlsx) - متوافق شامل</SelectItem>
                                         <SelectItem value="universal_csv">CSV عام (.csv) - متوافق مع البرامج القياسية</SelectItem>
                                         <SelectItem value="cas_cl5000">CAS CL-Series (CL-5000 / CL-5200 / CL-7000)</SelectItem>
