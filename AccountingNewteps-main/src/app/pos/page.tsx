@@ -9,6 +9,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Trash2, ShoppingCart, XCircle, Printer, Grip, Dot, Search, Ban, PanelLeft, Boxes, SquareCheck, ListRestart, FileClock, Eye, Loader2, Undo2, PlusCircle, UserPlus, LogOut, Percent, Truck, ArrowLeft, Banknote, Landmark, Wallet, Phone, CircleDollarSign, FileText, CreditCard, UserRound, User as UserIcon, PlayCircle, History, Coins, Building2, LayoutDashboard, Monitor, Gift, MessageCircle, Settings2, PowerOff, Camera, AlertTriangle, PauseCircle } from "lucide-react";
 import CameraBarcodeScanner from '@/components/camera-barcode-scanner';
 import { PosSyncStatusBadge } from '@/components/pos-sync-status-badge';
+import { PosSilentPrinterDialog, getPosSilentPrinterConfig } from '@/components/pos-silent-printer-dialog';
 import {
     getCustomerExperienceConfig,
     calculateEarnedPoints,
@@ -2076,61 +2077,104 @@ function PosPageContent() {
     }, [settings, warehouseForSession, toast]);
     
     const handlePrintReceipt = useCallback(async (saleData: any) => {
+        const silentCfg = getPosSilentPrinterConfig();
         const allPrinterSettings = settings?.main?.printers || {};
         const branchSettings = warehouseForSession?.id ? allPrinterSettings.branchOverrides?.[warehouseForSession.id] : {};
         const printerSettings = { ...(allPrinterSettings.default || DEFAULT_PRINTER_SETTINGS), ...branchSettings };
 
-        if (!printerSettings || !printerSettings.posPrinterType) {
-            toast({ variant: "destructive", title: "خطأ في الطباعة", description: "لم يتم تكوين إعدادات طابعة الإيصالات لهذا الفرع."});
-            return;
-        }
+        // أولوية لطابعة الكاشير الصامتة المحددة محلياً إذا كانت مفعلة
+        const posPrinterType = (silentCfg.enabled && silentCfg.printerAddress)
+            ? silentCfg.printerType
+            : (terminalForSession?.posPrinterType ?? printerSettings?.posPrinterType);
 
-        const posPrinterType = terminalForSession?.posPrinterType ?? printerSettings.posPrinterType;
-        const posPrinterAddress = terminalForSession?.posPrinterAddress ?? printerSettings.posPrinterAddress;
+        const posPrinterAddress = (silentCfg.enabled && silentCfg.printerAddress)
+            ? silentCfg.printerAddress
+            : (terminalForSession?.posPrinterAddress ?? printerSettings?.posPrinterAddress);
 
-        if ((posPrinterType === 'system' || posPrinterType === 'ip') && posPrinterAddress) {
-            const lines = saleData.items.map((item: PosItem) => ({
-                left: `${item.qty} × ${item.name}`,
-                right: (item.total).toFixed(roundingPrecision)
-            }));
+        // إذا كانت الطباعة الصامتة المباشرة مفعلة وهناك طابعة محددة (نظام أو IP)
+        if (silentCfg.enabled && posPrinterAddress && (posPrinterType === 'system' || posPrinterType === 'ip')) {
+            const lines: Array<{ left?: string; right?: string }> = [];
+            
+            // بيانات رأس الإيصال
+            if (warehouseForSession?.name) lines.push({ left: 'فرع:', right: warehouseForSession.name });
+            if (user?.name) lines.push({ left: 'كاشير:', right: user.name });
+            if (saleData.customerName) lines.push({ left: 'العميل:', right: saleData.customerName });
+            const dateStr = new Date(saleData.date || Date.now()).toLocaleDateString('ar-EG');
+            const timeStr = new Date(saleData.date || Date.now()).toLocaleTimeString('ar-EG', { hour: '2-digit', minute: '2-digit' });
+            lines.push({ left: 'التاريخ:', right: `${dateStr} ${timeStr}` });
+            if (saleData.invoiceNumber) lines.push({ left: 'رقم الفاتورة:', right: saleData.invoiceNumber });
             lines.push({ left: '---------------------------', right: '' });
-            const totalAmount = saleData.total;
-            const paidAmt = saleData.paidAmount ?? totalAmount;
-            const remainingDue = Math.max(0, totalAmount - paidAmt);
-            lines.push({ left: 'الإجمالي:', right: totalAmount.toFixed(roundingPrecision) });
-            if(saleData.tips > 0) lines.push({ left: 'الإكرامية (Tips):', right: saleData.tips.toFixed(roundingPrecision) });
-            lines.push({ left: 'المدفوع:', right: paidAmt.toFixed(roundingPrecision) });
-            lines.push({ left: 'باقي المستحق على الفاتورة:', right: remainingDue.toFixed(roundingPrecision) });
-            const title = companySettings.companyName ? `فاتورة - ${companySettings.companyName}` : 'فاتورة مبيعات';
-            try {
-                const res = await fetch('/api/print', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        printer: posPrinterAddress,
-                        printerType: posPrinterType,
-                        content: { title, lines, footer: `رقم: ${saleData.invoiceNumber || ''}` }
-                    })
+
+            // الأصناف
+            for (const item of (saleData.items || [])) {
+                lines.push({
+                    left: `${item.qty} × ${item.name}`,
+                    right: Number(item.total).toFixed(roundingPrecision)
                 });
-                const data = await res.json();
-                if (!res.ok || data?.ok === false) throw new Error(data?.error || 'فشل إرسال أمر طباعة');
-                toast({ title: 'تمت الطباعة بنجاح', description: `تمت الطباعة على ${posPrinterAddress}` });
-            } catch (e: any) {
-                toast({ variant: 'destructive', title: 'خطأ الطباعة المباشرة', description: e?.message || 'تعذر الطباعة على الطابعة المحددة.' });
-                if (posPrinterType === 'system') {
-                    const posReceiptFallback = (
-                        <PosReceipt
-                            invoice={saleData}
-                            company={companySettings}
-                            design={receiptDesign}
-                            warehouse={warehouseForSession}
-                            customer={saleData.customerId ? customers.find((c: any) => c.id === saleData.customerId) : null}
-                        />
-                    );
-                    await sendToPrinter(posReceiptFallback, 'pos');
+            }
+            lines.push({ left: '---------------------------', right: '' });
+
+            // الإجماليات
+            const totalAmount = Number(saleData.total || 0);
+            const paidAmt = Number(saleData.paidAmount ?? totalAmount);
+            const remainingDue = Math.max(0, totalAmount - paidAmt);
+            
+            if (saleData.subtotal && saleData.discount) {
+                lines.push({ left: 'الإجمالي قبل الخصم:', right: Number(saleData.subtotal).toFixed(roundingPrecision) });
+                lines.push({ left: 'الخصم:', right: Number(saleData.discount).toFixed(roundingPrecision) });
+            }
+            if (saleData.taxAmount > 0) {
+                lines.push({ left: 'ضريبة القيمة المضافة:', right: Number(saleData.taxAmount).toFixed(roundingPrecision) });
+            }
+            lines.push({ left: 'صافي الفاتورة:', right: totalAmount.toFixed(roundingPrecision) });
+            if (saleData.tips > 0) lines.push({ left: 'الإكرامية (Tips):', right: Number(saleData.tips).toFixed(roundingPrecision) });
+            lines.push({ left: 'المدفوع:', right: paidAmt.toFixed(roundingPrecision) });
+            if (remainingDue > 0) lines.push({ left: 'المتبقي:', right: remainingDue.toFixed(roundingPrecision) });
+            if (saleData.earnedPoints > 0) lines.push({ left: 'نقاط مكتسبة:', right: `+${saleData.earnedPoints} ⭐` });
+
+            const title = companySettings.companyName ? `فاتورة - ${companySettings.companyName}` : 'فاتورة مبيعات';
+            const footer = companySettings.receiptFooter || 'شكراً لزيارتكم ونسعد بخدمتكم دائماً!';
+
+            try {
+                const copies = Math.max(1, Number(silentCfg.copies || 1));
+                for (let c = 0; c < copies; c++) {
+                    const res = await fetch('/api/print', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            printer: posPrinterAddress,
+                            printerType: posPrinterType,
+                            options: { width: silentCfg.paperWidth || '80mm' },
+                            content: { title, lines, footer: `${footer}\nرقم: ${saleData.invoiceNumber || ''}` }
+                        })
+                    });
+                    const data = await res.json().catch(() => null);
+                    if (!res.ok || data?.ok === false) throw new Error(data?.error || 'فشل إرسال أمر الطباعة');
                 }
+                toast({
+                    title: 'تمت الطباعة الصامتة بنجاح 🖨️',
+                    description: `تمت الطباعة على [${posPrinterAddress}] ${copies > 1 ? `(${copies} نسخ)` : ''}`
+                });
+            } catch (e: any) {
+                console.warn('Direct silent print error, falling back to standard print:', e);
+                toast({
+                    variant: 'destructive',
+                    title: 'تنبيه في الطباعة الصامتة',
+                    description: `${e?.message || 'تعذر الطباعة المباشرة'}. جارٍ التحويل لمعاينة الطباعة.`
+                });
+                const posReceiptFallback = (
+                    <PosReceipt
+                        invoice={saleData}
+                        company={companySettings}
+                        design={receiptDesign}
+                        warehouse={warehouseForSession}
+                        customer={saleData.customerId ? customers.find((c: any) => c.id === saleData.customerId) : null}
+                    />
+                );
+                await sendToPrinter(posReceiptFallback, 'pos');
             }
         } else {
+            // المعاينة العادية
             const posReceiptComponent = (
                 <PosReceipt
                     invoice={saleData}
@@ -2981,6 +3025,7 @@ function PosPageContent() {
                                     </span>
                                 </div>
                                 <div className="flex items-center gap-1.5">
+                                    <PosSilentPrinterDialog />
                                     <PosSyncStatusBadge />
                                     {showBackButton && (
                                          <Button variant="ghost" size="icon" onClick={handleHoldInvoice}>
@@ -3250,7 +3295,8 @@ function PosPageContent() {
                         <Button variant="outline" size="icon" className="h-12 w-12 shrink-0 rounded-xl" onClick={() => setIsQueryModalOpen(true)} title="استعلام المخزون">
                             <Boxes className="h-6 w-6" />
                         </Button>
-                        <div className="hidden xl:flex items-center">
+                        <div className="hidden xl:flex items-center gap-1.5">
+                            <PosSilentPrinterDialog />
                             <PosSyncStatusBadge className="h-12 rounded-xl" />
                         </div>
                     </div>
