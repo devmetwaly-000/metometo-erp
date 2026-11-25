@@ -8,6 +8,7 @@ import { Label } from "@/components/ui/label";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Trash2, ShoppingCart, XCircle, Printer, Grip, Dot, Search, Ban, PanelLeft, Boxes, SquareCheck, ListRestart, FileClock, Eye, Loader2, Undo2, PlusCircle, UserPlus, LogOut, Percent, Truck, ArrowLeft, Banknote, Landmark, Wallet, Phone, CircleDollarSign, FileText, CreditCard, UserRound, User as UserIcon, PlayCircle, History, Coins, Building2, LayoutDashboard, Monitor, Gift, MessageCircle, Settings2, PowerOff, Camera, AlertTriangle, PauseCircle } from "lucide-react";
 import CameraBarcodeScanner from '@/components/camera-barcode-scanner';
+import { PosSyncStatusBadge } from '@/components/pos-sync-status-badge';
 import {
     getCustomerExperienceConfig,
     calculateEarnedPoints,
@@ -2969,7 +2970,7 @@ function PosPageContent() {
                 >
                     <Card className="flex-1 flex flex-col md:overflow-hidden">
                         <CardHeader className="shrink-0 p-3 flex-col gap-2">
-                            <div className='flex items-center justify-between'>
+                            <div className='flex items-center justify-between gap-2 flex-wrap'>
                                 <div className="flex items-center gap-2">
                                     <CardTitle className="flex items-center gap-2">
                                         <ShoppingCart/> 
@@ -2979,11 +2980,14 @@ function PosPageContent() {
                                         عدد الأصناف: {totalItemsCount}
                                     </span>
                                 </div>
-                                {showBackButton && (
-                                     <Button variant="ghost" size="icon" onClick={handleHoldInvoice}>
-                                        <ArrowLeft className="h-5 w-5"/>
-                                    </Button>
-                                )}
+                                <div className="flex items-center gap-1.5">
+                                    <PosSyncStatusBadge />
+                                    {showBackButton && (
+                                         <Button variant="ghost" size="icon" onClick={handleHoldInvoice}>
+                                            <ArrowLeft className="h-5 w-5"/>
+                                        </Button>
+                                    )}
+                                </div>
                             </div>
                             <div className='flex items-center justify-between gap-1'>
                                 <Input placeholder="رقم/اسم الطلب" value={orderReference} onChange={(e: any) => setOrderReference(e.target.value)} className="h-9 flex-1"/>
@@ -3246,6 +3250,9 @@ function PosPageContent() {
                         <Button variant="outline" size="icon" className="h-12 w-12 shrink-0 rounded-xl" onClick={() => setIsQueryModalOpen(true)} title="استعلام المخزون">
                             <Boxes className="h-6 w-6" />
                         </Button>
+                        <div className="hidden xl:flex items-center">
+                            <PosSyncStatusBadge className="h-12 rounded-xl" />
+                        </div>
                     </div>
                     
                     <div className="flex-1 flex flex-col md:flex-row gap-3 overflow-y-auto md:overflow-hidden min-h-[25vh] md:min-h-0">
