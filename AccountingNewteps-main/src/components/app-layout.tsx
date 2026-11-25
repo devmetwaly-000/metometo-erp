@@ -103,7 +103,6 @@ import {
   ChevronLeft,
   ChevronRight,
   RefreshCw,
-  Zap,
   X
 } from "lucide-react";
 import Link from "next/link";

@@ -866,50 +866,7 @@ export default function DatabaseReEngineeringPage() {
 
             {/* شريط الملخص العلوي للفرع والإدارة */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3 sm:gap-4">
-                {/* 1. بطاقة ملخص الإدارة المركزية (تظهر أولاً على اليمين) */}
-                <Card className={cn(
-                    "border-2 transition-all",
-                    centralConnectedStatus?.connected ? "border-emerald-500/40 bg-emerald-500/5" : "border-indigo-500/40 bg-indigo-500/5"
-                )}>
-                    <CardContent className="p-3.5 sm:p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                        <div className="flex items-center gap-3">
-                            <div className="h-10 w-10 rounded-xl bg-indigo-500/10 text-indigo-600 flex items-center justify-center shrink-0">
-                                <Globe className="h-5 w-5" />
-                            </div>
-                            <div className="min-w-0">
-                                <div className="flex items-center gap-2 flex-wrap">
-                                    <span className="font-bold text-sm text-foreground">قاعدة الإدارة المركزية</span>
-                                    <Badge variant="outline" className={cn(
-                                        "text-[10px] font-bold",
-                                        centralHosting.type === 'cloud' ? "bg-amber-500/10 text-amber-700 dark:text-amber-300 border-amber-500/30" :
-                                        centralHosting.type === 'ip' ? "bg-sky-500/10 text-sky-700 dark:text-sky-300 border-sky-500/30" :
-                                        "bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border-emerald-500/30"
-                                    )}>
-                                        {centralHosting.label}
-                                    </Badge>
-                                    {centralConnectedStatus?.connected ? (
-                                        <Badge className="bg-emerald-600 text-white text-[9px] px-1.5 py-0">متصلة ✅</Badge>
-                                    ) : (
-                                        <Badge variant="outline" className="text-[9px] px-1.5 py-0 border-indigo-400">جاهزة للربط</Badge>
-                                    )}
-                                </div>
-                                <div className="text-[11px] text-muted-foreground mt-0.5 font-mono break-all" dir="ltr">
-                                    {centralConfig.centralServerIp}:{centralConfig.centralSqlPort} [{centralConfig.centralDatabase}]
-                                </div>
-                            </div>
-                        </div>
-                        <Button
-                            size="sm"
-                            variant={activeTab === 'central' ? 'default' : 'outline'}
-                            className="h-8 text-xs font-bold w-full sm:w-auto shrink-0 justify-center"
-                            onClick={() => setActiveTab('central')}
-                        >
-                            تعديل إعدادات الإدارة
-                        </Button>
-                    </CardContent>
-                </Card>
-
-                {/* 2. بطاقة ملخص الفرع (تظهر ثانياً على اليسار) */}
+                {/* 1. بطاقة ملخص الفرع (تظهر أولاً) */}
                 <Card className={cn(
                     "border-2 transition-all",
                     branchConnectedStatus?.connected ? "border-emerald-500/40 bg-emerald-500/5" : "border-amber-500/40 bg-amber-500/5"
@@ -952,18 +909,61 @@ export default function DatabaseReEngineeringPage() {
                         </Button>
                     </CardContent>
                 </Card>
+
+                {/* 2. بطاقة ملخص الإدارة المركزية (تظهر ثانياً) */}
+                <Card className={cn(
+                    "border-2 transition-all",
+                    centralConnectedStatus?.connected ? "border-emerald-500/40 bg-emerald-500/5" : "border-indigo-500/40 bg-indigo-500/5"
+                )}>
+                    <CardContent className="p-3.5 sm:p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                        <div className="flex items-center gap-3">
+                            <div className="h-10 w-10 rounded-xl bg-indigo-500/10 text-indigo-600 flex items-center justify-center shrink-0">
+                                <Globe className="h-5 w-5" />
+                            </div>
+                            <div className="min-w-0">
+                                <div className="flex items-center gap-2 flex-wrap">
+                                    <span className="font-bold text-sm text-foreground">قاعدة الإدارة المركزية</span>
+                                    <Badge variant="outline" className={cn(
+                                        "text-[10px] font-bold",
+                                        centralHosting.type === 'cloud' ? "bg-amber-500/10 text-amber-700 dark:text-amber-300 border-amber-500/30" :
+                                        centralHosting.type === 'ip' ? "bg-sky-500/10 text-sky-700 dark:text-sky-300 border-sky-500/30" :
+                                        "bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border-emerald-500/30"
+                                    )}>
+                                        {centralHosting.label}
+                                    </Badge>
+                                    {centralConnectedStatus?.connected ? (
+                                        <Badge className="bg-emerald-600 text-white text-[9px] px-1.5 py-0">متصلة ✅</Badge>
+                                    ) : (
+                                        <Badge variant="outline" className="text-[9px] px-1.5 py-0 border-indigo-400">جاهزة للربط</Badge>
+                                    )}
+                                </div>
+                                <div className="text-[11px] text-muted-foreground mt-0.5 font-mono break-all" dir="ltr">
+                                    {centralConfig.centralServerIp}:{centralConfig.centralSqlPort} [{centralConfig.centralDatabase}]
+                                </div>
+                            </div>
+                        </div>
+                        <Button
+                            size="sm"
+                            variant={activeTab === 'central' ? 'default' : 'outline'}
+                            className="h-8 text-xs font-bold w-full sm:w-auto shrink-0 justify-center"
+                            onClick={() => setActiveTab('central')}
+                        >
+                            تعديل إعدادات الإدارة
+                        </Button>
+                    </CardContent>
+                </Card>
             </div>
 
             {/* التبويبات الرئيسية الموحدة بترتيب عربي متوافق تماماً */}
             <Tabs value={activeTab} onValueChange={(v: any) => setActiveTab(v)} dir="rtl" className="w-full">
                 <TabsList className="grid w-full grid-cols-3 h-auto sm:h-11 p-1 bg-muted/60 gap-1">
-                    <TabsTrigger value="central" className="text-[11px] sm:text-xs font-bold gap-1 sm:gap-2 py-2 px-1 text-center justify-center">
-                        <Building2 className="h-3.5 w-3.5 sm:h-4 sm:w-4 shrink-0" />
-                        <span className="truncate">1. قاعدة الإدارة</span>
-                    </TabsTrigger>
                     <TabsTrigger value="branch" className="text-[11px] sm:text-xs font-bold gap-1 sm:gap-2 py-2 px-1 text-center justify-center">
                         <Store className="h-3.5 w-3.5 sm:h-4 sm:w-4 shrink-0" />
-                        <span className="truncate">2. قاعدة الفرع</span>
+                        <span className="truncate">1. قاعدة الفرع</span>
+                    </TabsTrigger>
+                    <TabsTrigger value="central" className="text-[11px] sm:text-xs font-bold gap-1 sm:gap-2 py-2 px-1 text-center justify-center">
+                        <Building2 className="h-3.5 w-3.5 sm:h-4 sm:w-4 shrink-0" />
+                        <span className="truncate">2. قاعدة الإدارة</span>
                     </TabsTrigger>
                     <TabsTrigger value="topology" className="text-[11px] sm:text-xs font-bold gap-1 sm:gap-2 py-2 px-1 text-center justify-center">
                         <ArrowLeftRight className="h-3.5 w-3.5 sm:h-4 sm:w-4 shrink-0" />

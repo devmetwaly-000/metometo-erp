@@ -366,7 +366,7 @@ export default function GoodsInTransitPage() {
                 </CardDescription>
             </div>
             <Badge variant="outline" className={purchaseWorkflow === 'direct' ? 'border-emerald-500 text-emerald-700 bg-emerald-50' : 'border-amber-500 text-foreground bg-amber-50'}>
-                {purchaseWorkflow === 'direct' ? '⚡ استلام مباشر' : '🚛 بضاعة بالطريق'}
+                {purchaseWorkflow === 'direct' ? 'استلام مباشر' : '🚛 بضاعة بالطريق'}
             </Badge>
           </CardHeader>
           <CardContent>

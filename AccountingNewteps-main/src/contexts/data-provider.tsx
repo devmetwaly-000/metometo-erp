@@ -135,6 +135,9 @@ interface DataContextType {
     databaseSetupError: string | null;
     isCreatingLocalDatabase: boolean;
     syncQueueCount: number;
+    offlineQueueCount: number;
+    isSyncingOffline: boolean;
+    flushOfflineSyncQueue: () => Promise<void>;
     unreconciledDeliveryCount: number; 
     processSyncQueue: () => Promise<void>;
     allData: any;
@@ -164,14 +167,53 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         isOnlineRef.current = isOnline;
     }, [isOnline]);
 
+    const [offlineQueueCount, setOfflineQueueCount] = useState<number>(0);
+    const [isSyncingOffline, setIsSyncingOffline] = useState<boolean>(false);
+
+    const refreshOfflineQueueCount = useCallback(() => {
+        if (typeof window === 'undefined') return 0;
+        try {
+            const raw = localStorage.getItem('app_offline_sync_queue');
+            if (!raw) {
+                setOfflineQueueCount(0);
+                return 0;
+            }
+            const q = JSON.parse(raw);
+            const count = Array.isArray(q) ? q.length : 0;
+            setOfflineQueueCount(count);
+            return count;
+        } catch {
+            setOfflineQueueCount(0);
+            return 0;
+        }
+    }, []);
+
+    useEffect(() => {
+        refreshOfflineQueueCount();
+        const handler = () => refreshOfflineQueueCount();
+        window.addEventListener('offline-queue-updated', handler);
+        window.addEventListener('storage', handler);
+        return () => {
+            window.removeEventListener('offline-queue-updated', handler);
+            window.removeEventListener('storage', handler);
+        };
+    }, [refreshOfflineQueueCount]);
+
     const flushOfflineSyncQueue = useCallback(async () => {
         if (typeof window === 'undefined' || !navigator.onLine) return;
+        setIsSyncingOffline(true);
         try {
             const queueKey = 'app_offline_sync_queue';
             const rawQueue = localStorage.getItem(queueKey);
-            if (!rawQueue) return;
+            if (!rawQueue) {
+                setOfflineQueueCount(0);
+                return;
+            }
             const queue: any[] = JSON.parse(rawQueue);
-            if (!Array.isArray(queue) || queue.length === 0) return;
+            if (!Array.isArray(queue) || queue.length === 0) {
+                setOfflineQueueCount(0);
+                return;
+            }
 
             console.log(`[OfflineSync] Processing ${queue.length} offline queued actions...`);
             const remaining: any[] = [];
@@ -195,12 +237,17 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
             }
             if (remaining.length > 0) {
                 localStorage.setItem(queueKey, JSON.stringify(remaining));
+                setOfflineQueueCount(remaining.length);
             } else {
                 localStorage.removeItem(queueKey);
+                setOfflineQueueCount(0);
                 console.log('[OfflineSync] All pending offline actions synced successfully!');
             }
+            window.dispatchEvent(new Event('offline-queue-updated'));
         } catch (err) {
             console.warn('[OfflineSync] Flush failed:', err);
+        } finally {
+            setIsSyncingOffline(false);
         }
     }, []);
 
@@ -541,6 +588,7 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
                     timestamp: Date.now()
                 });
                 localStorage.setItem(queueKey, JSON.stringify(queue));
+                window.dispatchEvent(new Event('offline-queue-updated'));
             } catch {}
             return generatedId;
         }
@@ -591,6 +639,7 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
                     timestamp: Date.now()
                 });
                 localStorage.setItem(queueKey, JSON.stringify(queue));
+                window.dispatchEvent(new Event('offline-queue-updated'));
             } catch {}
             setIsOnline(false);
             return generatedId;
@@ -858,6 +907,9 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         databaseSetupError,
         isCreatingLocalDatabase,
         syncQueueCount: 0,
+        offlineQueueCount,
+        isSyncingOffline,
+        flushOfflineSyncQueue,
         unreconciledDeliveryCount,
         processSyncQueue,
         allData,

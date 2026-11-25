@@ -450,7 +450,7 @@ function BulkCategoryUpdateDialog({
                             title="توليد شجرة التصنيفات القياسية للمكملات والرياضة"
                         >
                             {isSeeding ? <Loader2 className="h-3 w-3 animate-spin" /> : <Save className="h-3 w-3 text-primary" />}
-                            ⚡ توليد التصنيفات المقترحة
+                            توليد التصنيفات المقترحة
                         </Button>
                     </div>
                     <DialogDescription className="text-xs">
@@ -1646,7 +1646,7 @@ function ItemForm({ item, onSave, onClose, itemSections, itemCategories, itemGro
                 title="توليد شجرة التصنيفات المقترحة للمكملات والرياضة"
             >
                 {isSeeding ? <Loader2 className="h-3 w-3 animate-spin" /> : <Save className="h-3 w-3 text-primary" />}
-                ⚡ توليد التصنيفات المقترحة
+                توليد التصنيفات المقترحة
             </Button>
         </div>
         <Separator />
