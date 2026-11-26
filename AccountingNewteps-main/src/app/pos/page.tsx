@@ -2095,45 +2095,72 @@ function PosPageContent() {
         if (silentCfg.enabled && posPrinterAddress && (posPrinterType === 'system' || posPrinterType === 'ip')) {
             const lines: Array<{ left?: string; right?: string }> = [];
             
-            // بيانات رأس الإيصال
-            if (warehouseForSession?.name) lines.push({ left: 'فرع:', right: warehouseForSession.name });
-            if (user?.name) lines.push({ left: 'كاشير:', right: user.name });
-            if (saleData.customerName) lines.push({ left: 'العميل:', right: saleData.customerName });
+            // بيانات رأس الإيصال طبقاً لتصميم مصمم الإيصالات
+            if (warehouseForSession?.name) lines.push({ left: 'الفرع:', right: warehouseForSession.name });
+            if (receiptDesign?.showAddress !== false && companySettings?.companyAddress) {
+                lines.push({ left: 'العنوان:', right: companySettings.companyAddress });
+            }
+            if (receiptDesign?.showPhoneNumber !== false && companySettings?.phone) {
+                lines.push({ left: 'الهاتف:', right: companySettings.phone });
+            }
+            if (receiptDesign?.showCashier !== false && user?.name) {
+                lines.push({ left: 'كاشير:', right: user.name });
+            }
+            if (receiptDesign?.showCustomerName !== false && saleData.customerName) {
+                lines.push({ left: 'العميل:', right: saleData.customerName });
+            }
+            if (receiptDesign?.showCustomerPhone !== false && (saleData.customerPhone || saleData.customer?.phone)) {
+                lines.push({ left: 'هاتف العميل:', right: saleData.customerPhone || saleData.customer?.phone });
+            }
             const dateStr = new Date(saleData.date || Date.now()).toLocaleDateString('ar-EG');
             const timeStr = new Date(saleData.date || Date.now()).toLocaleTimeString('ar-EG', { hour: '2-digit', minute: '2-digit' });
-            lines.push({ left: 'التاريخ:', right: `${dateStr} ${timeStr}` });
-            if (saleData.invoiceNumber) lines.push({ left: 'رقم الفاتورة:', right: saleData.invoiceNumber });
+            lines.push({ left: 'التاريخ والوقت:', right: `${dateStr} ${timeStr}` });
+            if (receiptDesign?.showInvoiceNumber !== false && saleData.invoiceNumber) {
+                lines.push({ left: 'رقم الفاتورة:', right: saleData.invoiceNumber });
+            }
             lines.push({ left: '---------------------------', right: '' });
 
-            // الأصناف
+            // الأصناف طبقاً لخيارات مصمم الإيصالات
             for (const item of (saleData.items || [])) {
+                let itemLabel = `${item.qty} × ${item.name}`;
+                if (receiptDesign?.showCode && item.code) {
+                    itemLabel += ` [${item.code}]`;
+                }
+                const itemRight = receiptDesign?.showItemPrice !== false 
+                    ? Number(item.total).toFixed(roundingPrecision)
+                    : '';
                 lines.push({
-                    left: `${item.qty} × ${item.name}`,
-                    right: Number(item.total).toFixed(roundingPrecision)
+                    left: itemLabel,
+                    right: itemRight
                 });
             }
             lines.push({ left: '---------------------------', right: '' });
 
-            // الإجماليات
+            // الإجماليات طبقاً لخيارات مصمم الإيصالات
             const totalAmount = Number(saleData.total || 0);
             const paidAmt = Number(saleData.paidAmount ?? totalAmount);
             const remainingDue = Math.max(0, totalAmount - paidAmt);
             
-            if (saleData.subtotal && saleData.discount) {
+            if (receiptDesign?.showDiscount !== false && saleData.subtotal && saleData.discount) {
                 lines.push({ left: 'الإجمالي قبل الخصم:', right: Number(saleData.subtotal).toFixed(roundingPrecision) });
                 lines.push({ left: 'الخصم:', right: Number(saleData.discount).toFixed(roundingPrecision) });
             }
-            if (saleData.taxAmount > 0) {
+            if (receiptDesign?.showTax !== false && saleData.taxAmount > 0) {
                 lines.push({ left: 'ضريبة القيمة المضافة:', right: Number(saleData.taxAmount).toFixed(roundingPrecision) });
             }
             lines.push({ left: 'صافي الفاتورة:', right: totalAmount.toFixed(roundingPrecision) });
             if (saleData.tips > 0) lines.push({ left: 'الإكرامية (Tips):', right: Number(saleData.tips).toFixed(roundingPrecision) });
             lines.push({ left: 'المدفوع:', right: paidAmt.toFixed(roundingPrecision) });
             if (remainingDue > 0) lines.push({ left: 'المتبقي:', right: remainingDue.toFixed(roundingPrecision) });
-            if (saleData.earnedPoints > 0) lines.push({ left: 'نقاط مكتسبة:', right: `+${saleData.earnedPoints} ⭐` });
+            if (receiptDesign?.showLoyaltyPoints !== false && saleData.earnedPoints > 0) {
+                lines.push({ left: 'نقاط مكتسبة:', right: `+${saleData.earnedPoints} ⭐` });
+            }
 
-            const title = companySettings.companyName ? `فاتورة - ${companySettings.companyName}` : 'فاتورة مبيعات';
+            const title = (receiptDesign?.showCompanyName !== false && companySettings.companyName) 
+                ? companySettings.companyName 
+                : 'فاتورة مبيعات';
             const footer = companySettings.receiptFooter || 'شكراً لزيارتكم ونسعد بخدمتكم دائماً!';
+            const paperWidth = silentCfg.paperWidth || (receiptDesign?.receiptWidth ? `${receiptDesign.receiptWidth}mm` : '80mm');
 
             try {
                 const copies = Math.max(1, Number(silentCfg.copies || 1));
@@ -2144,7 +2171,7 @@ function PosPageContent() {
                         body: JSON.stringify({
                             printer: posPrinterAddress,
                             printerType: posPrinterType,
-                            options: { width: silentCfg.paperWidth || '80mm' },
+                            options: { width: paperWidth },
                             content: { title, lines, footer: `${footer}\nرقم: ${saleData.invoiceNumber || ''}` }
                         })
                     });
