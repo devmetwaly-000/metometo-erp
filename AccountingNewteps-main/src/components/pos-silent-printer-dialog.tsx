@@ -301,7 +301,7 @@ export function PosSilentPrinterDialog({
 
                         {/* 3. اختيار الطابعة حسب النوع */}
                         {config.printerType === 'system' && (
-                            <div className="space-y-2 p-3 rounded-xl border bg-card">
+                            <div className="space-y-3 p-3 rounded-xl border bg-card">
                                 <div className="flex items-center justify-between">
                                     <Label className="font-bold text-xs">اختر الطابعة الحرارية المثبتة:</Label>
                                     <Button
@@ -316,21 +316,56 @@ export function PosSilentPrinterDialog({
                                         إعادة فحص الطابعات
                                     </Button>
                                 </div>
-                                <select
-                                    dir="ltr"
-                                    value={config.printerAddress}
-                                    onChange={(e) => handleUpdate({ printerAddress: e.target.value })}
-                                    className="w-full h-10 px-3 rounded-lg border bg-background font-mono text-xs focus:outline-none focus:ring-2 focus:ring-primary"
-                                >
-                                    <option value="">-- اختر طابعة الكاشير من القائمة --</option>
-                                    {systemPrinters.map((p: any) => (
-                                        <option key={p.deviceId || p.name} value={p.name}>
-                                            {p.name} {p.isDefault ? ' (الافتراضية ⭐)' : ''}
-                                        </option>
-                                    ))}
-                                </select>
+
+                                {systemPrinters.length > 0 ? (
+                                    <select
+                                        dir="ltr"
+                                        value={config.printerAddress}
+                                        onChange={(e) => handleUpdate({ printerAddress: e.target.value })}
+                                        className="w-full h-10 px-3 rounded-lg border bg-background font-mono text-xs focus:outline-none focus:ring-2 focus:ring-primary"
+                                    >
+                                        <option value="">-- اختر طابعة الكاشير من القائمة --</option>
+                                        {systemPrinters.map((p: any) => (
+                                            <option key={p.deviceId || p.name} value={p.name}>
+                                                {p.name} {p.isDefault ? ' (الافتراضية ⭐)' : ''}
+                                            </option>
+                                        ))}
+                                    </select>
+                                ) : (
+                                    <div className="space-y-2.5">
+                                        <div className="p-2.5 rounded-lg border border-amber-500/30 bg-amber-500/10 text-xs text-amber-800 dark:text-amber-200 space-y-1.5">
+                                            <div className="font-bold flex items-center gap-1.5">
+                                                <span>☁️</span>
+                                                <span>تنبيه: أنت تعمل عبر الرابط السحابي (Cloud / Vercel):</span>
+                                            </div>
+                                            <p className="text-[11px] leading-relaxed">
+                                                المتصفح يمنع السيرفر السحابي من قراءة منافذ USB بجهازك مباشرة لأسباب أمنية. للطباعة الصامتة الفورية على طابعتك الافتراضية المثبتة بويندوز (مثل <strong>EPSON TM-T20</strong>):
+                                            </p>
+                                            <Button
+                                                type="button"
+                                                size="sm"
+                                                className="w-full bg-amber-600 hover:bg-amber-700 text-white font-bold h-8 text-xs mt-1"
+                                                onClick={() => handleUpdate({ printerType: 'browser' })}
+                                            >
+                                                تفعيل وضع "كشك المتصفح (Kiosk)" للطباعة الصامتة المباشرة 🚀
+                                            </Button>
+                                        </div>
+
+                                        <div className="space-y-1">
+                                            <Label className="text-[11px] text-muted-foreground">أو اكتب اسم الطابعة كما هو معرف في ويندوز يدوياً:</Label>
+                                            <Input
+                                                dir="ltr"
+                                                placeholder="مثال: EPSON TM-T20 ReceiptE4"
+                                                value={config.printerAddress}
+                                                onChange={(e) => handleUpdate({ printerAddress: e.target.value })}
+                                                className="h-9 font-mono text-xs"
+                                            />
+                                        </div>
+                                    </div>
+                                )}
+
                                 <p className="text-[11px] text-muted-foreground">
-                                    💡 تشمل الطابعات الحرارية USB الشائعة: Xprinter, Rongta, Bixolon, Epson, POS-80C.
+                                    💡 تشمل الطابعات الحرارية USB الشائعة: Epson, Xprinter, Rongta, Bixolon, POS-80C.
                                 </p>
                             </div>
                         )}
@@ -370,10 +405,13 @@ export function PosSilentPrinterDialog({
                                     {showKioskGuide ? 'إخفاء الدليل' : 'عرض خطوات تشغيل وضع الكشك 📖'}
                                 </Button>
                                 {showKioskGuide && (
-                                    <div className="p-2.5 rounded bg-background/80 border text-[11px] font-mono leading-relaxed text-foreground space-y-1" dir="ltr">
-                                        <p className="font-bold text-primary">Windows Chrome Shortcut:</p>
-                                        <p className="bg-muted p-1.5 rounded select-all break-all">
-                                            chrome.exe --kiosk --kiosk-printing "http://localhost:3000/pos"
+                                    <div className="p-2.5 rounded bg-background/80 border text-[11px] font-mono leading-relaxed text-foreground space-y-2" dir="ltr">
+                                        <p className="font-bold text-primary">Windows Chrome Shortcut (اختصار تشغيل وضع الكشك الصامت):</p>
+                                        <p className="bg-muted p-2 rounded select-all break-all text-xs font-bold text-emerald-600 dark:text-emerald-400">
+                                            chrome.exe --kiosk-printing &quot;{typeof window !== 'undefined' ? window.location.href : 'https://metwaly-erp.vercel.app/pos'}&quot;
+                                        </p>
+                                        <p className="text-[10px] text-muted-foreground font-sans text-right" dir="rtl">
+                                            💡 بمجرد وضع هذا الأمر في اختصار متصفح كروم على سطح المكتب، يتم إرسال أي فاتورة فوراً إلى طابعة ويندوز الافتراضية (<strong>{config.printerAddress || 'EPSON TM-T20'}</strong>) بدون أي نافذة أو تأخير.
                                         </p>
                                     </div>
                                 )}
