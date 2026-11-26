@@ -9,7 +9,7 @@ import {
     Warehouse, FileX, Undo2, Users, HandCoins, Building2, ShoppingBag, Coins, 
     TrendingDown, LayoutGrid, FileClock, Percent, Bike, UserRound, FileUp, FileDown, 
     History, AlertTriangle, FileText, Component as FileCog, ShoppingCart, ArrowRightLeft, 
-    Scale, Flame, DollarSign, Receipt, CreditCard, Users2, Boxes, Layers
+    Scale, Flame, DollarSign, Receipt, CreditCard, Users2, Boxes, Layers, ShieldCheck
 } from "lucide-react";
 import Link from 'next/link';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -61,6 +61,7 @@ const reportCategories = [
         value: "sales",
         reports: [
             { title: "التحليلات الرسومية", description: "نظرة عامة مرئية على أداء عملك ومؤشرات النمو.", href: "/analytics", icon: <BarChart />, module: "analytics" },
+            { title: "المطابقة والرقابة لنقاط البيع", description: "مطابقة رقابية دقيقة بين مبيعات الأصناف وحركات السداد ورصد الانحرافات والعجز.", href: "/reports/pos-reconciliation", icon: <ShieldCheck className="text-emerald-500" />, module: "reports_pos" },
             { title: "تقرير المبيعات المفصل", description: "تحليل مفصل لجميع الفواتير مع فلاتر متعددة.", href: "/reports/sales-reports", icon: <BarChart />, module: "reports_sales" },
             { title: "مبيعات نقاط البيع (مجمع)", description: "ملخص مبيعات الأصناف عبر نقاط البيع والكاشير.", href: "/reports/pos-sales", icon: <ShoppingBag />, module: "reports_posSales" },
             { title: "تقارير نقاط البيع (مفصل)", description: "عرض تفصيلي لكل فاتورة كاشير مع طرق الدفع.", href: "/reports/pos-reports", icon: <FileText />, module: "reports_pos" },

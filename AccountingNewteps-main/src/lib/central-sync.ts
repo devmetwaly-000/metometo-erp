@@ -163,6 +163,7 @@ export const TABLE_METADATA_MAP: Record<string, TableSyncMeta> = {
     PosSessions: { name: 'جلسات ودورات نقاط البيع', category: 'نقاط البيع', direction: 'push', idColumn: 'Id', description: 'سجل فتح وإغلاق دوريات وشفتات الكاشير اليومية وحصيلة الدرج', dataScope: 'جلسات كاشير' },
     PosTerminals: { name: 'شاشات وأجهزة الكاشير', category: 'نقاط البيع', direction: 'bidirectional', idColumn: 'Id', description: 'تعريف أجهزة وشاشات نقاط البيع وطابعات الإيصالات والمطبخ', dataScope: 'أجهزة نقاط بيع' },
     PosAuditLogs: { name: 'سجل رقابة وتدقيق الكاشير', category: 'نقاط البيع', direction: 'push', idColumn: 'Id', description: 'سجل رقابة عمليات الكاشير الحساسة وحذف الفواتير والبنود', dataScope: 'سجل رقابي' },
+    PosReconciliations: { name: 'مطابقات ورقابة الكاشير', category: 'نقاط البيع', direction: 'push', idColumn: 'Id', description: 'سجلات المطابقة الرقابية بين مبيعات الأصناف وحركات السداد والعجز والزيادة', dataScope: 'مطابقات رقابية' },
     Promotions: { name: 'العروض الترويجية والخصومات', category: 'نقاط البيع', direction: 'bidirectional', idColumn: 'Id', description: 'خطط الخصومات، العروض الترويجية، وكوبونات التخفيض', dataScope: 'عروض وخصومات' },
     RestaurantTables: { name: 'طاولات وصالات المطعم', category: 'نقاط البيع', direction: 'bidirectional', idColumn: 'Id', description: 'خريطة طاولات وصالات تقديم الطلبات ومواقع الجلوس', dataScope: 'صالات وطاولات' },
 

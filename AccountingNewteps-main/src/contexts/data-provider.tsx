@@ -34,6 +34,7 @@ export const PARTITION_CONFIG: Record<string, string> = {
     loginHistory: 'timestamp',
     syncHistory: 'timestamp',
     posAuditLogs: 'date',
+    posReconciliations: 'date',
     depreciationRecords: 'date',
     inventoryClosings: 'closingDate'
 };
@@ -96,6 +97,7 @@ interface DataContextType {
     posReturns: any[];
     posSessions: any[];
     posAuditLogs: any[];
+    posReconciliations: any[];
     heldInvoices: any[];
     posCounters: any;
 
@@ -704,6 +706,7 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     const posReturns = useMemo(() => allData?.posReturns || [], [allData?.posReturns]);
     const posSessions = useMemo(() => allData?.posSessions || [], [allData?.posSessions]);
     const posAuditLogs = useMemo(() => allData?.posAuditLogs || [], [allData?.posAuditLogs]);
+    const posReconciliations = useMemo(() => allData?.posReconciliations || [], [allData?.posReconciliations]);
     const heldInvoices = useMemo(() => allData?.heldInvoices || [], [allData?.heldInvoices]);
     const posCounters = useMemo(() => allData?.posCounters || {}, [allData?.posCounters]);
 
@@ -892,7 +895,7 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     const value: DataContextType = {
         allItems, items, customers, suppliers, warehouses, allWarehouses, repWarehouses, cashAccounts, partners, users, deliveryStaff, itemGroups, itemSections, itemCategories, itemSubCategories1, itemSubCategories2, inventoryZones, inventorySections, itemColors, itemSizes, barcodeDesigns, posTerminals, promotions, roles, settings, inventory, restaurantTables, paymentMethods, sellers, targets, licenses, snoozedRecommendations, syncHistory, customerVisits, loginHistory, gratuityLogs, gratuityDistributions,
         stockInRecords, stockOutRecords, stockTransferRecords, stockAdjustmentRecords, stockIssuesToReps, stockReturnsFromReps, inventoryClosings, requisitions,
-        salesInvoices, salesReturns, purchaseInvoices, purchaseReturns, posSales, posReturns, posSessions, posAuditLogs, heldInvoices, posCounters,
+        salesInvoices, salesReturns, purchaseInvoices, purchaseReturns, posSales, posReturns, posSessions, posAuditLogs, posReconciliations, heldInvoices, posCounters,
         expenses, exceptionalIncomes, customerPayments, supplierPayments, treasuryTransactions, profitDistributions, priceChangeLogs,
         purchaseOrders,
         employees, employeeAdvances, employeeAdjustments, repRemittances, payrollRecords, fixedAssets, depreciationRecords,

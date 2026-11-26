@@ -806,6 +806,40 @@ export async function createAndInitializeDatabase(options: DbInitOptions): Promi
                 CONSTRAINT [PK_PosAuditLogs] PRIMARY KEY CLUSTERED ([Id])
             );`,
 
+            `IF NOT EXISTS (SELECT * FROM sys.tables WHERE name = 'PosReconciliations')
+            CREATE TABLE dbo.[PosReconciliations] (
+                [Id] NVARCHAR(64) NOT NULL,
+                [Date] DATETIME2 NOT NULL,
+                [SessionId] NVARCHAR(64) NULL,
+                [CashierId] NVARCHAR(64) NULL,
+                [CashierName] NVARCHAR(255) NULL,
+                [WarehouseId] NVARCHAR(64) NULL,
+                [WarehouseName] NVARCHAR(255) NULL,
+                [TerminalId] NVARCHAR(64) NULL,
+                [ItemSalesTotal] DECIMAL(18,4) NOT NULL DEFAULT ((0)),
+                [PaymentsTotal] DECIMAL(18,4) NOT NULL DEFAULT ((0)),
+                [CashTotal] DECIMAL(18,4) NOT NULL DEFAULT ((0)),
+                [CardTotal] DECIMAL(18,4) NOT NULL DEFAULT ((0)),
+                [CreditTotal] DECIMAL(18,4) NOT NULL DEFAULT ((0)),
+                [DiscountsTotal] DECIMAL(18,4) NOT NULL DEFAULT ((0)),
+                [ReturnsTotal] DECIMAL(18,4) NOT NULL DEFAULT ((0)),
+                [ActualCashCounted] DECIMAL(18,4) NOT NULL DEFAULT ((0)),
+                [Variance] DECIMAL(18,4) NOT NULL DEFAULT ((0)),
+                [Status] NVARCHAR(50) NOT NULL DEFAULT ('matched'),
+                [AuditNotes] NVARCHAR(MAX) NULL,
+                [AuditedBy] NVARCHAR(64) NULL,
+                [AuditedByName] NVARCHAR(255) NULL,
+                [AuditedAt] DATETIME2 NULL,
+                [BranchCode] NVARCHAR(50) NULL,
+                [BranchName] NVARCHAR(255) NULL,
+                [SyncStatus] NVARCHAR(20) NULL DEFAULT ('synced'),
+                [LastSyncedAt] DATETIME2 NULL,
+                [UpdatedAt] DATETIME2 NOT NULL DEFAULT (sysutcdatetime()),
+                [CreatedAt] DATETIME2 NOT NULL DEFAULT (sysutcdatetime()),
+                [RowVersion] ROWVERSION,
+                CONSTRAINT [PK_PosReconciliations] PRIMARY KEY CLUSTERED ([Id])
+            );`,
+
             `IF NOT EXISTS (SELECT * FROM sys.tables WHERE name = 'PosSessions')
             CREATE TABLE dbo.[PosSessions] (
                 [Id] NVARCHAR(64) NOT NULL,
