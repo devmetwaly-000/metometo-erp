@@ -21,6 +21,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { useData } from "@/contexts/data-provider";
+import { calculateStockForItemInWarehouse } from "@/lib/inventory-utils";
 import { Loader2, Target, TrendingUp, MoreHorizontal, FilePlus, ArrowRightLeft, Clock, Search, BarChart2, Filter, Lightbulb, AlertTriangle } from "lucide-react";
 import { useSearchParams, useRouter } from 'next/navigation';
 import { Badge } from "@/components/ui/badge";
@@ -202,53 +203,24 @@ export default function RecommendationsPage() {
 
         return map;
     }, [purchaseInvoices, suppliers]);
-    
-    const calculateStockForItemInWarehouse = useCallback((itemId: string, whId: string, allData: any): number => {
-      const {
-        inventoryClosings, stockInRecords, stockOutRecords, stockTransferRecords, stockAdjustmentRecords,
-        salesInvoices, salesReturns, posSales, posReturns, purchaseReturns,
-        stockIssuesToReps, stockReturnsFromReps
-      } = allData;
-        if (!whId) return 0;
-        
-        const closingsForWarehouse = (inventoryClosings || []).filter((c: any) => c.warehouseId === whId)
-            .sort((a: any,b: any) => new Date(b.closingDate).getTime() - new Date(a.date).getTime());
-        
-        const lastClosing = closingsForWarehouse[0] ?? null;
-        let lastClosingDate = lastClosing ? new Date(lastClosing.closingDate) : new Date(0);
-        let stock = lastClosing?.balances?.find((b: any) => b.itemId === itemId)?.balance || 0;
-
-        if (lastClosing) {
-            lastClosingDate.setDate(lastClosingDate.getDate() + 1);
-            lastClosingDate.setHours(0, 0, 0, 0);
-        }
-        
-        const filterTransactions = (t: any) => new Date(t.date) >= lastClosingDate;
-
-        // INCOMING
-        (stockInRecords || []).filter((si:any) => si.warehouseId === whId && filterTransactions(si)).forEach((si: any) => si.items.forEach((i: any) => { if ((i.id || i.itemId) === itemId) stock += i.qty; }));
-        (stockTransferRecords || []).filter((t:any) => t.toSourceId === whId && filterTransactions(t)).forEach((t: any) => t.items.forEach((i: any) => { if (i.id === itemId) stock += i.qty; }));
-        (stockAdjustmentRecords || []).filter((adj:any) => adj.warehouseId === whId && filterTransactions(adj)).forEach((adj: any) => adj.items.forEach((i: any) => { if (i.itemId === itemId && i.difference > 0) stock += i.difference; }));
-        const seenRetIds = new Set<string>();
-        (salesReturns || []).filter((sr:any) => sr.warehouseId === whId && filterTransactions(sr)).forEach((sr: any) => { if (sr.id) seenRetIds.add(sr.id); sr.items.forEach((i: any) => { if (i.id === itemId) stock += i.qty; }); });
-        (posReturns || []).filter((pr:any) => (!pr.id || !seenRetIds.has(pr.id)) && (pr as any).warehouseId === whId && filterTransactions(pr)).forEach((pr: any) => pr.items.forEach((i: any) => { if (i.id === itemId) stock += i.qty; }));
-        (stockReturnsFromReps || []).filter((rfr:any) => rfr.warehouseId === whId && filterTransactions(rfr)).forEach((rfr: any) => rfr.items.forEach((i: any) => { if (i.id === itemId) stock += i.qty; }));
-        
-        // OUTGOING
-        const seenSaleIds = new Set<string>();
-        (salesInvoices || []).filter((s:any) => s.warehouseId === whId && (s.status === 'approved' || s.status === 'completed' || !s.status) && filterTransactions(s)).forEach((s: any) => { if (s.id) seenSaleIds.add(s.id); s.items.forEach((i: any) => { if (i.id === itemId) stock -= i.qty; }); });
-        (posSales || []).filter((s: any) => (!s.id || !seenSaleIds.has(s.id)) && s.warehouseId === whId && filterTransactions(s)).forEach((s: any) => s.items.forEach((i: any) => { if (i.id === itemId) stock -= i.qty; }));
-        (stockOutRecords || []).filter((so:any) => so.sourceId === whId && filterTransactions(so)).forEach((so: any) => so.items.forEach((i:any) => { if (i.id === itemId) stock -= i.qty; }));
-        (stockTransferRecords || []).filter((t:any) => t.fromSourceId === whId && filterTransactions(t)).forEach((t: any) => t.items.forEach((i: any) => { if (i.id === itemId) stock -= i.qty; }));
-        (stockAdjustmentRecords || []).filter((adj:any) => adj.warehouseId === whId && filterTransactions(adj)).forEach((adj: any) => adj.items.forEach((i: any) => { if (i.itemId === itemId && i.difference < 0) stock += i.difference; }));
-        (purchaseReturns || []).filter((pr:any) => pr.warehouseId === whId && filterTransactions(pr)).forEach((pr: any) => pr.items.forEach((i: any) => { if (i.id === itemId) stock -= i.qty; }));
-        (stockIssuesToReps || []).filter((itr:any) => itr.warehouseId === whId && filterTransactions(itr)).forEach((itr: any) => itr.items.filter((i: any) => { if (i.id === itemId) stock -= i.qty; }));
-        
-        return stock;
-    }, [inventoryClosings, stockInRecords, stockOutRecords, stockTransferRecords, stockAdjustmentRecords, salesInvoices, salesReturns, posSales, posReturns, purchaseReturns, stockIssuesToReps, stockReturnsFromReps]);
-
 
     const calculateManufacturableStock = useCallback((item: Item, warehouseId: string, allData: any): number => {
+        if (!item.components || item.components.length === 0) {
+            return 0; // Not a manufacturable item
+        }
+        
+        let maxPossibleUnits = Infinity;
+
+        for (const component of item.components) {
+            const componentStock = calculateStockForItemInWarehouse(component.itemId, warehouseId, allData);
+            const unitsPossibleFromComponent = Math.floor(componentStock / component.quantity);
+            if (unitsPossibleFromComponent < maxPossibleUnits) {
+                maxPossibleUnits = unitsPossibleFromComponent;
+            }
+        }
+        
+        return maxPossibleUnits === Infinity ? 0 : maxPossibleUnits;
+    }, []);
         if (!item.components || item.components.length === 0) {
             return 0; // Not a manufacturable item
         }
