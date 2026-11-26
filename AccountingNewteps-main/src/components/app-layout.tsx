@@ -464,7 +464,14 @@ export const navStructure = [
         { type: 'link', href: '/hr/payroll', module: 'hr_payroll', title: dictionary.nav.payroll },
     ]},
      { type: 'collapsible', title: dictionary.nav.reports, icon: <BarChart />, modules: ['analytics', 'reports_recipe', 'reports_customerReceivables', 'reports_supplierPayables', 'reports_supplierStatement', 'reports_itemProfitLoss', 'reports_salesByCategory', 'reports_itemLedger', 'reports_financialStatements', 'reports_partnerShares', 'reports_sales', 'reports_pos', 'reports_posSales', 'reports_itemSalesCount', 'reports_priceChangeLogs', 'inventory_movements', 'reports_pos', 'sales_returns', 'reports_cashAccountStatement', 'reports_itemExpiry', 'reports_restaurantTables', 'reports_sellerTargets', 'inventory_stockIn', 'reports_stockStatus', 'reports_stockOutReport', 'accounting_expenses', 'accounting_vat', 'purchases_invoices', 'inventory_transfer', 'inventory_adjustment', 'hr_payroll'], children: [
+        { type: 'link', href: '/reports', module: 'reports_sales', title: "مركز التقارير الموحد" },
         { type: 'link', href: '/analytics', module: 'analytics', title: dictionary.nav.graphicalAnalytics },
+        { type: 'collapsible', title: "الرقابة وتدقيق نقاط البيع", modules: ['reports_pos'], children: [
+            { type: 'link', href: '/reports/pos-reconciliation', module: 'reports_pos', title: "المطابقة والرقابة لنقاط البيع" },
+            { type: 'link', href: '/reports/cashier-discrepancies', module: 'reports_pos', title: dictionary.nav.cashierDiscrepancies },
+            { type: 'link', href: '/reports/payment-methods-report', module: 'reports_pos', title: dictionary.nav.paymentMethodsReport },
+            { type: 'link', href: '/reports/cancelled-invoices', module: 'reports_pos', title: dictionary.nav.cancelledInvoices },
+        ]},
         { type: 'collapsible', title: dictionary.nav.salesReports, modules: ['reports_sales', 'reports_posSales', 'reports_pos', 'sales_returns', 'reports_itemSalesCount', 'reports_restaurantTables', 'reports_sellerTargets'], children: [
             { type: 'link', href: '/reports/sales-reports', module: 'reports_sales', title: dictionary.nav.detailedSalesReport },
             { type: 'link', href: '/reports/pos-sales', module: 'reports_posSales', title: dictionary.nav.posSalesSummary },
@@ -473,11 +480,8 @@ export const navStructure = [
             { type: 'link', href: '/reports/rep-sales-report', module: 'reports_sales', title: "تقرير مبيعات وأداء المناديب" },
             { type: 'link', href: '/reports/fast-slow-moving', module: 'reports_sales', title: "الأصناف الأكثر مبيعاً والراكدة" },
             { type: 'link', href: '/reports/sales-returns-report', module: 'sales_returns', title: dictionary.nav.salesReturnsReport },
-            { type: 'link', href: '/reports/cancelled-invoices', module: 'reports_pos', title: dictionary.nav.cancelledInvoices },
             { type: 'link', href: '/reports/item-sales-count', module: 'reports_itemSalesCount', title: dictionary.nav.itemSalesCountReport },
             { type: 'link', href: '/reports/tables-report', module: 'reports_restaurantTables', title: dictionary.nav.tablesReport },
-            { type: 'link', href: '/reports/cashier-discrepancies', module: 'reports_pos', title: dictionary.nav.cashierDiscrepancies },
-            { type: 'link', href: '/reports/payment-methods-report', module: 'reports_pos', title: dictionary.nav.paymentMethodsReport },
             { type: 'link', href: '/reports/seller-targets', module: 'reports_sellerTargets', title: dictionary.nav.sellerTargetsReport },
         ]},
         { type: 'collapsible', title: "تقارير المشتريات والموردين", modules: ['purchases_invoices', 'reports_supplierPayables', 'reports_supplierStatement'], children: [
