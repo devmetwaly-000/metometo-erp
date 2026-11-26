@@ -183,13 +183,14 @@ export default function DatabaseReEngineeringPage() {
     // -------------------------------------------------------------
     // Branch DB State
     // -------------------------------------------------------------
+    const [isConfigLoading, setIsConfigLoading] = useState(true);
     const [branchConfig, setBranchConfig] = useState<BranchDbConfigState>({
-        connectionMode: 'fields',
-        connectionString: 'Server=localhost,1433;Database=MultiBranchPOS_DB;User Id=meto_pos;Password=MetoPosPass123!;Encrypt=false;TrustServerCertificate=true;',
-        server: 'localhost',
+        connectionMode: 'connectionString',
+        connectionString: '',
+        server: '',
         port: 1433,
         database: 'MultiBranchPOS_DB',
-        user: 'meto_pos',
+        user: '',
         password: '',
         encrypt: false,
         trustServerCertificate: true,
@@ -321,6 +322,8 @@ export default function DatabaseReEngineeringPage() {
             }
         } catch (err: any) {
             console.error('Failed to load central sync config:', err);
+        } finally {
+            setIsConfigLoading(false);
         }
     }, []);
 
@@ -879,23 +882,29 @@ export default function DatabaseReEngineeringPage() {
                             <div className="min-w-0">
                                 <div className="flex items-center gap-2 flex-wrap">
                                     <span className="font-bold text-sm text-foreground">قاعدة بيانات الفرع</span>
-                                    <Badge variant="outline" className={cn(
-                                        "text-[10px] font-bold",
-                                        branchHosting.type === 'indexeddb' ? "bg-purple-500/10 text-purple-700 dark:text-purple-300 border-purple-500/30" :
-                                        branchHosting.type === 'cloud' ? "bg-amber-500/10 text-amber-700 dark:text-amber-300 border-amber-500/30" :
-                                        branchHosting.type === 'ip' ? "bg-sky-500/10 text-sky-700 dark:text-sky-300 border-sky-500/30" :
-                                        "bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border-emerald-500/30"
-                                    )}>
-                                        {branchHosting.label}
-                                    </Badge>
-                                    {branchConnectedStatus?.connected ? (
+                                    {isConfigLoading ? (
+                                        <Badge variant="outline" className="text-[10px] animate-pulse">جارٍ فحص الاستضافة...</Badge>
+                                    ) : (
+                                        <Badge variant="outline" className={cn(
+                                            "text-[10px] font-bold",
+                                            branchHosting.type === 'indexeddb' ? "bg-purple-500/10 text-purple-700 dark:text-purple-300 border-purple-500/30" :
+                                            branchHosting.type === 'cloud' ? "bg-amber-500/10 text-amber-700 dark:text-amber-300 border-amber-500/30" :
+                                            branchHosting.type === 'ip' ? "bg-sky-500/10 text-sky-700 dark:text-sky-300 border-sky-500/30" :
+                                            "bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border-emerald-500/30"
+                                        )}>
+                                            {branchHosting.label}
+                                        </Badge>
+                                    )}
+                                    {isConfigLoading ? (
+                                        <Badge variant="outline" className="text-[9px] px-1.5 py-0 animate-pulse">...</Badge>
+                                    ) : branchConnectedStatus?.connected ? (
                                         <Badge className="bg-emerald-600 text-white text-[9px] px-1.5 py-0">متصلة ✅</Badge>
                                     ) : (
                                         <Badge variant="destructive" className="text-[9px] px-1.5 py-0">غير متصلة</Badge>
                                     )}
                                 </div>
                                 <div className="text-[11px] text-muted-foreground mt-0.5 font-mono break-all" dir="ltr">
-                                    {branchConfig.server}:{branchConfig.port} [{branchConfig.database}]
+                                    {isConfigLoading ? 'جارٍ جلب السيرفر المتصل...' : `${branchConfig.server}:${branchConfig.port} [${branchConfig.database}]`}
                                 </div>
                             </div>
                         </div>
