@@ -167,21 +167,33 @@ const PaymentDialog = ({ onAddPayment, totalDue, paymentMethods }: { onAddPaymen
     const [method, setMethod] = useState('');
     const amountInputRef = useRef<HTMLInputElement>(null);
 
+    // دالة مساعدة لتركيز وتظليل المبلغ فوراً
+    const focusAndSelectAmount = useCallback(() => {
+        const input = amountInputRef.current;
+        if (input) {
+            input.focus();
+            input.select();
+        }
+    }, []);
+
     useEffect(() => {
         setAmount(totalDue > 0 ? Number(totalDue.toFixed(2)) : 0);
         if (paymentMethods.length > 0 && !method) {
             setMethod(paymentMethods[0].name);
         }
-        setTimeout(() => {
-            amountInputRef.current?.focus();
-            amountInputRef.current?.select();
-        }, 100);
-    }, [totalDue, paymentMethods, method]);
+        // تركيز وتظليل فوري بمجرد فتح النافذة
+        const timer1 = setTimeout(focusAndSelectAmount, 50);
+        const timer2 = setTimeout(focusAndSelectAmount, 150);
+        return () => {
+            clearTimeout(timer1);
+            clearTimeout(timer2);
+        };
+    }, [totalDue, paymentMethods, method, focusAndSelectAmount]);
 
     const handleMethodSelect = (selectedMethod: string) => {
         setMethod(selectedMethod);
-        amountInputRef.current?.focus();
-        amountInputRef.current?.select();
+        // عند اختيار أي طريقة دفع: تظليل المبلغ فوراً استعداداً للكتابة
+        setTimeout(focusAndSelectAmount, 30);
     }
 
     const handleAdd = () => {
@@ -252,8 +264,10 @@ const PaymentDialog = ({ onAddPayment, totalDue, paymentMethods }: { onAddPaymen
                             ref={amountInputRef}
                             value={amount} 
                             onChange={(e: any) => setAmount(e.target.value)} 
-                            className="text-2xl h-14 text-center" 
+                            className="text-2xl h-14 text-center font-bold" 
                             onFocus={e => e.target.select()}
+                            onClick={e => (e.target as HTMLInputElement).select()}
+                            autoFocus
                         />
                      </div>
                       <Button className="h-14 text-xl" onClick={handleAdd}>إضافة الدفعة</Button>
