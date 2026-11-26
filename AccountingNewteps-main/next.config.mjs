@@ -8,6 +8,8 @@ const withPWA = nextPWA({
   cacheOnFrontEndNav: true,
   aggressiveFrontEndNavCaching: true,
   reloadOnOnline: false,
+  cacheStartUrl: true,
+  dynamicStartUrl: false,
   fallbacks: {
     document: "/offline",
   },
@@ -16,75 +18,98 @@ const withPWA = nextPWA({
   workboxOptions: {
     disableDevLogs: true,
     runtimeCaching: [
+      // 1. Navigation requests (full page loads / refreshes / deep links)
       {
         urlPattern: ({ request, url }) => {
-          return request.mode === 'navigate';
+          const isSameOrigin = self.origin === url.origin;
+          return request.mode === 'navigate' && isSameOrigin && !url.pathname.startsWith('/api/');
         },
         handler: 'NetworkFirst',
         options: {
           cacheName: 'pages-cache',
           expiration: {
-            maxEntries: 120,
+            maxEntries: 250,
             maxAgeSeconds: 24 * 60 * 60 * 30, // 30 Days
           },
           networkTimeoutSeconds: 2,
         },
       },
+      // 2. Next.js App Router RSC Payloads (matches ?_rsc=, &rsc=, OR RSC headers)
       {
-        urlPattern: /\?_rsc=/i,
+        urlPattern: ({ request, url }) => {
+          const isSameOrigin = self.origin === url.origin;
+          if (!isSameOrigin || url.pathname.startsWith('/api/')) return false;
+          return (
+            url.searchParams.has('_rsc') ||
+            request.headers.get('RSC') === '1' ||
+            request.headers.get('Next-Router-Prefetch') === '1' ||
+            request.headers.get('Next-Router-State-Tree') !== null ||
+            /[?&]_rsc=/i.test(url.search)
+          );
+        },
         handler: 'StaleWhileRevalidate',
         options: {
           cacheName: 'next-rsc-cache',
           expiration: {
-            maxEntries: 200,
+            maxEntries: 500,
             maxAgeSeconds: 24 * 60 * 60 * 30, // 30 Days
           },
         },
       },
+      // 3. Document / HTML background warmup fetches (when Accept header includes text/html)
       {
-        urlPattern: /\/_next\/data\/.*/i,
-        handler: 'StaleWhileRevalidate',
+        urlPattern: ({ request, url }) => {
+          const isSameOrigin = self.origin === url.origin;
+          if (!isSameOrigin || url.pathname.startsWith('/api/') || url.pathname.startsWith('/_next/')) return false;
+          return request.destination === 'document' || request.headers.get('accept')?.includes('text/html');
+        },
+        handler: 'NetworkFirst',
         options: {
-          cacheName: 'next-data',
+          cacheName: 'pages-cache',
           expiration: {
-            maxEntries: 100,
-            maxAgeSeconds: 24 * 60 * 60 * 30,
+            maxEntries: 250,
+            maxAgeSeconds: 24 * 60 * 60 * 30, // 30 Days
           },
+          networkTimeoutSeconds: 2,
         },
       },
+      // 4. Next.js static build chunks (JS, CSS)
       {
         urlPattern: /\/_next\/static\/.*/i,
         handler: 'StaleWhileRevalidate',
         options: {
           cacheName: 'static-resources',
           expiration: {
-            maxEntries: 200,
+            maxEntries: 1000,
             maxAgeSeconds: 24 * 60 * 60 * 30, // 30 Days
           },
         },
       },
-       {
+      // 5. Next.js image optimization
+      {
         urlPattern: /\/_next\/image\?.*/i,
         handler: 'StaleWhileRevalidate',
         options: {
           cacheName: 'next-image',
           expiration: {
-            maxEntries: 100,
+            maxEntries: 200,
             maxAgeSeconds: 24 * 60 * 60 * 30, // 30 Days
           },
         },
       },
+      // 6. Fonts and media assets
       {
-        urlPattern: /\.(?:png|jpg|jpeg|svg|gif|webp|ico|woff|woff2|ttf|eot)$/i,
+        urlPattern: /\.(?:png|jpg|jpeg|svg|gif|webp|ico|woff|woff2|ttf|eot|wasm)$/i,
         handler: 'StaleWhileRevalidate',
         options: {
           cacheName: 'static-assets',
           expiration: {
-            maxEntries: 100,
+            maxEntries: 250,
             maxAgeSeconds: 24 * 60 * 60 * 30,
           },
         },
       },
+      // 7. Static JSON / XML
       {
         urlPattern: /\.(?:json|xml|csv)$/i,
         handler: 'NetworkFirst',
@@ -97,6 +122,7 @@ const withPWA = nextPWA({
           networkTimeoutSeconds: 2,
         },
       },
+      // 8. Cross origin requests
       {
         urlPattern: ({ url }) => {
           const isSameOrigin = self.origin === url.origin;

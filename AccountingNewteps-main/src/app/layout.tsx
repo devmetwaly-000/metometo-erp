@@ -14,6 +14,7 @@ import { useToast } from "@/hooks/use-toast";
 import { Loader2, Download, Smartphone, X, Database, Globe } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
+import { RoutePreloader } from "@/components/route-preloader";
 
 
 // New component to handle PWA lifecycle events and Mobile Install Banner
@@ -386,6 +387,7 @@ const InnerDatabaseGate = ({ children }: { children: React.ReactNode }) => {
                 <AppLayout>{children}</AppLayout>
                 <Toaster />
                 <PWALifecycle />
+                <RoutePreloader />
             </PermissionsProvider>
         </NotificationProvider>
     );

@@ -271,7 +271,7 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         }
 
         const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 25000);
+        const timeoutId = setTimeout(() => controller.abort(), 4000);
         try {
             const res = await fetch('/api/db/sync', { cache: 'no-store', signal: controller.signal });
             clearTimeout(timeoutId);
@@ -405,7 +405,7 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         isCheckingHealthRef.current = true;
         lastHealthCheckAtRef.current = now;
         const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 20000);
+        const timeoutId = setTimeout(() => controller.abort(), 3000);
 
         try {
             const res = await fetch('/api/db/health', {
