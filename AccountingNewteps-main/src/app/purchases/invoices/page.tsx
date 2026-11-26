@@ -431,10 +431,10 @@ export default function PurchaseInvoicePage() {
         }
 
         setIsSaving(true);
+        // التسكين اللوجستي مخصص حصراً للمخازن الرئيسية المعرفة كـ isMain صراحة وتملك حاويات/أقسام
         const isLogisticsWarehouse = Boolean(
-            warehouses.find((w: any) => w.id === warehouseId)?.isMain ||
-            inventorySections.some((s: any) => (s.mainWarehouseId || s.MainWarehouseId) === warehouseId) ||
-            inventoryZones.some((z: any) => z.id === warehouseId)
+            warehouses.find((w: any) => w.id === warehouseId)?.isMain &&
+            inventorySections.some((s: any) => (s.mainWarehouseId || s.MainWarehouseId) === warehouseId)
         );
         try {
             const stockInId = await saveInvoiceAsync(updatePrices);
@@ -445,7 +445,7 @@ export default function PurchaseInvoicePage() {
                 });
                 router.push(stockInId ? `/inventory/stock-in?stockInId=${stockInId}` : '/inventory/stock-in');
             } else {
-                toast({ title: 'تم حفظ فاتورة الشراء واستلام البضاعة بنجاح' });
+                toast({ title: 'تم حفظ فاتورة الشراء واستلام البضاعة في المخزن بنجاح' });
                 router.push('/purchases/invoices/list');
             }
         } catch (error) {
@@ -539,23 +539,36 @@ export default function PurchaseInvoicePage() {
             }
         }
         
+        // التسكين اللوجستي مخصص حصراً للمخازن الرئيسية المعرفة كـ isMain صراحة وتملك حاويات/أقسام
         const isLogisticsWarehouse = Boolean(
-            warehouses.find((w: any) => w.id === warehouseId)?.isMain ||
-            inventorySections.some((s: any) => (s.mainWarehouseId || s.MainWarehouseId) === warehouseId) ||
-            inventoryZones.some((z: any) => z.id === warehouseId)
+            warehouses.find((w: any) => w.id === warehouseId)?.isMain &&
+            inventorySections.some((s: any) => (s.mainWarehouseId || s.MainWarehouseId) === warehouseId)
         );
 
-        if (purchaseWorkflow === 'direct' || isLogisticsWarehouse) {
+        if (purchaseWorkflow === 'direct' || !isLogisticsWarehouse) {
             const createdStockInId = await dbAction('stockInRecords', 'add', {
                 warehouseId: warehouseId, 
                 date: finalInvoiceDate.toISOString(),
                 items: invoiceItems.map(item => ({ itemId: item.id, name: item.name, qty: item.qty, cost: item.inventoryCost, expiryDate: item.expiryDate })),
                 reason: 'purchase', 
-                notes: `استلام ${isLogisticsWarehouse ? 'لوجستي بانتظار التسكين' : 'مباشر'} من فاتورة شراء رقم ${invoiceData.invoiceNumber}`,
+                notes: `استلام مباشر في المخزن من فاتورة شراء رقم ${invoiceData.invoiceNumber}`,
                 receiptNumber: `إذ-د-${await getNextId('stockIn')}`,
                 purchaseInvoiceId: newInvoiceId, 
                 batchNumber: batchNumberToSave,
-                status: isLogisticsWarehouse ? 'pending_putaway' : 'completed', 
+                status: 'completed', 
+            });
+            return createdStockInId;
+        } else if (isLogisticsWarehouse) {
+            const createdStockInId = await dbAction('stockInRecords', 'add', {
+                warehouseId: warehouseId, 
+                date: finalInvoiceDate.toISOString(),
+                items: invoiceItems.map(item => ({ itemId: item.id, name: item.name, qty: item.qty, cost: item.inventoryCost, expiryDate: item.expiryDate })),
+                reason: 'purchase', 
+                notes: `استلام لوجستي بانتظار التسكين من فاتورة شراء رقم ${invoiceData.invoiceNumber}`,
+                receiptNumber: `إذ-د-${await getNextId('stockIn')}`,
+                purchaseInvoiceId: newInvoiceId, 
+                batchNumber: batchNumberToSave,
+                status: 'pending_putaway', 
             });
             return createdStockInId;
         }

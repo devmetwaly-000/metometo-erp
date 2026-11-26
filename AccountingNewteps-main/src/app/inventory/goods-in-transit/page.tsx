@@ -164,10 +164,10 @@ export default function GoodsInTransitPage() {
 
  const handleReceive = async (item: any) => {
     const warehouse = allWarehouses.find((w:any) => w.id === item.warehouseId);
+    // التسكين فقط للمخزن الرئيسي المعرف كـ isMain ويمتلك أقساماً وحاويات فعلية
     const isMainWarehouse = Boolean(
-        warehouse?.isMain ||
-        inventorySections.some((section: any) => (section.mainWarehouseId || section.MainWarehouseId) === item.warehouseId) ||
-        inventoryZones.some((zone: any) => zone.id === item.warehouseId)
+        warehouse?.isMain &&
+        inventorySections.some((section: any) => (section.mainWarehouseId || section.MainWarehouseId) === item.warehouseId)
     );
     
     // If it's a main warehouse, redirect to the put-away screen

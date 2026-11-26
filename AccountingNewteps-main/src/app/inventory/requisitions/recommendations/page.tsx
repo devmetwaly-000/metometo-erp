@@ -221,22 +221,6 @@ export default function RecommendationsPage() {
         
         return maxPossibleUnits === Infinity ? 0 : maxPossibleUnits;
     }, []);
-        if (!item.components || item.components.length === 0) {
-            return 0; // Not a manufacturable item
-        }
-        
-        let maxPossibleUnits = Infinity;
-
-        for (const component of item.components) {
-            const componentStock = calculateStockForItemInWarehouse(component.itemId, warehouseId, allData);
-            const unitsPossibleFromComponent = Math.floor(componentStock / component.quantity);
-            if (unitsPossibleFromComponent < maxPossibleUnits) {
-                maxPossibleUnits = unitsPossibleFromComponent;
-            }
-        }
-        
-        return maxPossibleUnits === Infinity ? 0 : maxPossibleUnits;
-    }, [calculateStockForItemInWarehouse]);
 
     const generateRecommendations = useCallback(() => {
         if (!warehouseId) {

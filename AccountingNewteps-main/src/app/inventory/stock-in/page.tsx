@@ -580,10 +580,10 @@ export default function StockInPage() {
     const isMainWarehouse = useCallback((warehouseId?: string) => {
         if (!warehouseId) return false;
         const wh = warehouses.find((w: any) => w.id === warehouseId);
+        // المخزن اللوجستي هو المعرف كـ isMain صراحة ويمتلك أقساماً وحاويات
         const hasSections = (inventorySections || []).some((s: any) => (s.mainWarehouseId || s.MainWarehouseId) === warehouseId);
-        const inZones = (inventoryZones || []).some((z: any) => z.id === warehouseId);
-        return Boolean(wh?.isMain || hasSections || inZones);
-    }, [warehouses, inventorySections, inventoryZones]);
+        return Boolean(wh?.isMain && hasSections);
+    }, [warehouses, inventorySections]);
 
     const records = useMemo(() => {
         if (loading) return [];
@@ -615,9 +615,10 @@ export default function StockInPage() {
 
     const pendingRecords = useMemo(() => {
         return records.filter((r: any) => {
+            // فقط الأذونات الصريحة التي تنتظر التسكين في المستودعات اللوجستية وتكون غير مكتملة
             if (r.status === 'pending_putaway') return true;
             const isAllocated = Array.isArray(r.allocations) && r.allocations.length > 0;
-            return !isAllocated && r.status !== 'cancelled';
+            return !isAllocated && r.status !== 'cancelled' && r.status !== 'completed' && r.status !== 'approved';
         });
     }, [records]);
 
