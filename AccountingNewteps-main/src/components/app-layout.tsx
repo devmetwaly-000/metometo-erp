@@ -625,7 +625,7 @@ const MobileSidebar = () => {
                                         <AvatarFallback className="text-xs">{user?.name?.charAt(0) || 'U'}</AvatarFallback>
                                     </Avatar>
                                     <div className="flex flex-col flex-1 overflow-hidden text-right">
-                                        <span className="font-semibold text-xs truncate">{user?.name || "مستخدم"}</span>
+                                        <span className="font-semibold text-xs truncate dark:text-yellow-400">{user?.name || "مستخدم"}</span>
                                     </div>
                                 </Button>
                             </DropdownMenuTrigger>
@@ -1037,7 +1037,7 @@ export function AppLayoutContent({ children }: { children: React.ReactNode }) {
                                 <AvatarFallback className="text-xs">{user?.name?.charAt(0) || 'U'}</AvatarFallback>
                             </Avatar>
                             <div className="flex flex-col flex-1 overflow-hidden text-right">
-                                <span className="font-semibold text-xs truncate">{user?.name || "مستخدم"}</span>
+                                <span className="font-semibold text-xs truncate dark:text-yellow-400">{user?.name || "مستخدم"}</span>
                                 <span className="text-[10px] text-muted-foreground truncate">{user?.loginName ? `${user.loginName}@admin.com` : "email@example.com"}</span>
                             </div>
                         </Button>
