@@ -61,9 +61,33 @@ export default function GratuityManagementPage() {
     const [distNotes, setDistNotes] = useState('');
     const [isSaving, setIsSaving] = useState(false);
 
+    // Merge gratuityLogs with any POS/sales invoices that recorded tips without a separate gratuityLog entry
+    const combinedGratuityLogs = useMemo(() => {
+        const baseLogs = Array.isArray(gratuityLogs) ? [...gratuityLogs] : [];
+        const existingInvNums = new Set(baseLogs.map((l: any) => l.invoiceNumber).filter(Boolean));
+        const allSales = [...(posSales || []), ...(salesInvoices || [])];
+        for (const sale of allSales) {
+            const tipAmt = Number(sale?.tips || 0);
+            if (tipAmt > 0 && !existingInvNums.has(sale.invoiceNumber)) {
+                existingInvNums.add(sale.invoiceNumber);
+                baseLogs.push({
+                    id: `sale_tip_${sale.id}`,
+                    date: sale.date,
+                    amount: tipAmt,
+                    invoiceNumber: sale.invoiceNumber || '',
+                    invoiceId: sale.id,
+                    cashierId: sale.cashierId || '',
+                    cashierName: sale.cashierName || 'كاشير',
+                    warehouseId: sale.warehouseId || '',
+                });
+            }
+        }
+        return baseLogs;
+    }, [gratuityLogs, posSales, salesInvoices]);
+
     // 1. Calculate Fund Balance (Absolute Total)
-    const totalCollectedAllTime = useMemo(() => gratuityLogs.reduce((sum, log) => sum + log.amount, 0), [gratuityLogs]);
-    const totalDistributedAllTime = useMemo(() => gratuityDistributions.reduce((sum, dist) => sum + dist.amount, 0), [gratuityDistributions]);
+    const totalCollectedAllTime = useMemo(() => combinedGratuityLogs.reduce((sum, log) => sum + Number(log.amount || 0), 0), [combinedGratuityLogs]);
+    const totalDistributedAllTime = useMemo(() => (gratuityDistributions || []).reduce((sum, dist) => sum + Number(dist.amount ?? dist.totalAmount ?? 0), 0), [gratuityDistributions]);
     const currentFundBalance = totalCollectedAllTime - totalDistributedAllTime;
 
     // 2. Filtered Data for Reporting
@@ -73,7 +97,7 @@ export default function GratuityManagementPage() {
         start.setHours(0,0,0,0);
         end.setHours(23,59,59,999);
 
-        return gratuityLogs.filter(log => {
+        return combinedGratuityLogs.filter(log => {
             const date = new Date(log.date);
             if (date < start || date > end) return false;
             if (filters.cashierId !== 'all' && log.cashierId !== filters.cashierId) return false;
@@ -83,8 +107,8 @@ export default function GratuityManagementPage() {
             // Find the original sale to get the percentage
             const allSales = [...posSales, ...salesInvoices];
             const sale = allSales.find(s => s.invoiceNumber === log.invoiceNumber);
-            const saleTotal = sale ? (sale.total - log.amount) : 0; // Net sale without tip
-            const tipPercent = saleTotal > 0 ? (log.amount / saleTotal) * 100 : 0;
+            const saleTotal = sale ? (sale.total - Number(log.amount || 0)) : 0; // Net sale without tip
+            const tipPercent = saleTotal > 0 ? (Number(log.amount || 0) / saleTotal) * 100 : 0;
             
             return {
                 ...log,
@@ -92,7 +116,7 @@ export default function GratuityManagementPage() {
                 tipPercent
             };
         }).sort((a,b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-    }, [gratuityLogs, filters, posSales, salesInvoices]);
+    }, [combinedGratuityLogs, filters, posSales, salesInvoices]);
 
     const filteredDists = useMemo(() => {
         const start = filters.fromDate ? new Date(filters.fromDate) : new Date(0);

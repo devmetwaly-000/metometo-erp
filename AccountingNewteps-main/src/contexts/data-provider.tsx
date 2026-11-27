@@ -520,18 +520,19 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
         // Optimistic UI state update
         setAllData((prev: any) => {
-            const slice = prev[path];
-            if (Array.isArray(slice)) {
+            const slice = prev?.[path];
+            if (Array.isArray(slice) || (action === 'add' && !slice && path !== 'settings')) {
+                const safeSlice = Array.isArray(slice) ? slice : [];
                 if (action === 'add') {
                     const newItem = { id: generatedId, ...payload };
-                    return { ...prev, [path]: [newItem, ...slice] };
+                    return { ...prev, [path]: [newItem, ...safeSlice] };
                 } else if (action === 'update') {
-                    const updated = slice.map((item: any) =>
+                    const updated = safeSlice.map((item: any) =>
                         item.id === payload.id ? { ...item, ...(payload.data || payload) } : item
                     );
                     return { ...prev, [path]: updated };
                 } else if (action === 'remove') {
-                    const filtered = slice.filter((item: any) => item.id !== (payload.id || payload));
+                    const filtered = safeSlice.filter((item: any) => item.id !== (payload.id || payload));
                     return { ...prev, [path]: filtered };
                 }
             } else if (path === 'settings' || (slice && typeof slice === 'object')) {
@@ -558,15 +559,16 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
             const currentCache = (await localforage.getItem<any>(CACHE_KEY)) || {};
             const slice = currentCache[path];
             let nextCache = { ...currentCache };
-            if (Array.isArray(slice)) {
+            if (Array.isArray(slice) || (action === 'add' && !slice && path !== 'settings')) {
+                const safeSlice = Array.isArray(slice) ? slice : [];
                 if (action === 'add') {
-                    nextCache[path] = [{ id: generatedId, ...payload }, ...slice];
+                    nextCache[path] = [{ id: generatedId, ...payload }, ...safeSlice];
                 } else if (action === 'update') {
-                    nextCache[path] = slice.map((item: any) =>
+                    nextCache[path] = safeSlice.map((item: any) =>
                         item.id === payload.id ? { ...item, ...(payload.data || payload) } : item
                     );
                 } else if (action === 'remove') {
-                    nextCache[path] = slice.filter((item: any) => item.id !== (payload.id || payload));
+                    nextCache[path] = safeSlice.filter((item: any) => item.id !== (payload.id || payload));
                 }
             } else if (path === 'settings' || typeof slice === 'object') {
                 nextCache[path] = { ...(slice || {}), ...(payload.data || payload) };

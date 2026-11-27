@@ -103,6 +103,7 @@ const reportCategories: ReportCategory[] = [
             { title: "تقرير مرتجعات المبيعات", description: "تحليل شامل لمرتجعات المبيعات وفواتير الرد وأسباب الإرجاع.", href: "/reports/sales-returns-report", icon: <Undo2 className="h-6 w-6 text-rose-500" />, module: "sales_returns" },
             { title: "تقرير عدد مرات البيع", description: "عرض أكثر الأصناف تكراراً في الفواتير ومعدل الطلب.", href: "/reports/item-sales-count", icon: <TrendingUp className="h-6 w-6 text-emerald-500" />, module: "reports_itemSalesCount" },
             { title: "تقرير الطاولات والصالات", description: "تحليل نشاط ومبيعات كل طاولة ومواقع الجلوس بالمطعم والكافيه.", href: "/reports/tables-report", icon: <LayoutGrid className="h-6 w-6 text-amber-500" />, module: "reports_restaurantTables" },
+            { title: "حركات وصندوق الإكراميات (Tips)", description: "سجل الإكراميات المحصلة من فواتير الكاشير وتوزيعاتها على الموظفين.", href: "/accounting/gratuity", icon: <Wallet className="h-6 w-6 text-emerald-500" />, module: "accounting_gratuity" },
             { title: "تقرير أهداف البائعين والمبيعات", description: "متابعة أداء البائعين وموظفي المبيعات مقارنة بالتارجت المستهدف.", href: "/reports/seller-targets", icon: <Percent className="h-6 w-6 text-cyan-600" />, module: "reports_sellerTargets" },
             { title: "تحليلات وتدقيق العروض الترويجية", description: "تحليل ربحية ومبيعات العروض الترويجية والارتباط بين الأصناف.", href: "/reports/promotions", icon: <Percent className="h-6 w-6 text-pink-500" />, module: "marketing_promotions" },
         ]

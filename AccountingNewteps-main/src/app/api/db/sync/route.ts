@@ -553,8 +553,32 @@ export async function GET() {
                 targets: targetsRes.recordset.reduce((acc: any, t: any) => { acc[t.TargetKey] = parseJson(t.DetailsJson, t); return acc; }, {}),
                 heldInvoices,
                 posAuditLogs: posAuditLogsRes.recordset.map(l => ({ ...l, id: l.Id })),
-                gratuityLogs: gratuityLogsRes.recordset.map(gl => ({ ...gl, id: gl.Id, amount: Number(gl.Amount), date: gl.Date ? new Date(gl.Date).toISOString() : null })),
-                gratuityDistributions: gratuityDistributionsRes.recordset.map(gd => ({ ...gd, id: gd.Id, totalAmount: Number(gd.TotalAmount), date: gd.Date ? new Date(gd.Date).toISOString() : null, details: parseJson(gd.DetailsJson, {}) })),
+                gratuityLogs: gratuityLogsRes.recordset.map(gl => ({
+                    ...gl,
+                    id: gl.Id || gl.id,
+                    amount: Number(gl.Amount ?? gl.amount ?? 0),
+                    date: gl.Date ? new Date(gl.Date).toISOString() : (gl.date || null),
+                    invoiceNumber: gl.InvoiceNumber || gl.invoiceNumber || '',
+                    invoiceId: gl.InvoiceId || gl.invoiceId || '',
+                    cashierId: gl.CashierId || gl.cashierId || '',
+                    cashierName: gl.CashierName || gl.cashierName || '',
+                    warehouseId: gl.WarehouseId || gl.warehouseId || '',
+                })),
+                gratuityDistributions: gratuityDistributionsRes.recordset.map(gd => {
+                    const details = parseJson(gd.DetailsJson, {});
+                    return {
+                        ...gd,
+                        id: gd.Id || gd.id,
+                        amount: Number(gd.TotalAmount ?? gd.amount ?? 0),
+                        totalAmount: Number(gd.TotalAmount ?? gd.amount ?? 0),
+                        date: gd.Date ? new Date(gd.Date).toISOString() : (gd.date || null),
+                        notes: details?.notes || gd.Notes || gd.notes || '',
+                        fromAccountId: details?.fromAccountId || gd.FromAccountId || '',
+                        userId: details?.userId || gd.UserId || '',
+                        userName: details?.userName || gd.UserName || '',
+                        details,
+                    };
+                }),
                 
                 // Commercial Documents
                 salesInvoices,
