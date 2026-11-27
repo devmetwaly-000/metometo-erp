@@ -130,7 +130,7 @@ export default function TablesPage() {
       toast({ variant: 'destructive', title: 'عملية محظورة', description: 'لا يمكن فتح شاشة الكاشير أو تحصيل الطاولات في الإدارة المركزية. متاح لفروع البيع فقط.' });
       return;
     }
-    router.push(`/pos?tableId=${table.id}`);
+    router.push(`/pos?tableId=${encodeURIComponent(table.id)}&tableNumber=${encodeURIComponent(table.number)}`);
   };
 
   const handlePrintCheck = (heldInvoice: HeldInvoice | null) => {

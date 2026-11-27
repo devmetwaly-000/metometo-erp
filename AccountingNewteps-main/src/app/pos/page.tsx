@@ -1247,8 +1247,30 @@ function PosPageContent() {
     const longPressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
 
-    const tableId = useMemo(() => searchParams.get('tableId'), [searchParams]);
-    const tableData = useMemo(() => restaurantTables.find((t: any) => t.id === tableId), [tableId, restaurantTables]);
+    const tableId = useMemo(() => {
+        const fromParam = searchParams.get('tableId');
+        if (fromParam) return fromParam;
+        if (typeof window !== 'undefined') {
+            return new URLSearchParams(window.location.search).get('tableId');
+        }
+        return null;
+    }, [searchParams]);
+
+    const tableNumberFromUrl = useMemo(() => {
+        const fromParam = searchParams.get('tableNumber');
+        if (fromParam) return fromParam;
+        if (typeof window !== 'undefined') {
+            return new URLSearchParams(window.location.search).get('tableNumber');
+        }
+        return null;
+    }, [searchParams]);
+
+    const tableData = useMemo(() => {
+        if (!tableId) return undefined;
+        return (restaurantTables || []).find((t: any) => String(t.id) === String(tableId));
+    }, [tableId, restaurantTables]);
+
+    const effectiveTableNumber = tableData?.number ?? tableNumberFromUrl;
     const [showBackButton, setShowBackButton] = useState(false);
     const [currentHeldInvoiceId, setCurrentHeldInvoiceId] = useState<string | null>(null);
     const [isExitDialogOpen, setIsExitDialogOpen] = useState(false);
@@ -1273,8 +1295,17 @@ function PosPageContent() {
     });
 
     const handleAttemptExit = useCallback(() => {
+        if (tableIdRef.current) {
+            allowExitRef.current = true;
+            if (handleHoldInvoiceRef.current) {
+                void handleHoldInvoiceRef.current();
+            } else {
+                router.push('/tables');
+            }
+            return;
+        }
         setIsExitDialogOpen(true);
-    }, []);
+    }, [router]);
 
     // حماية الخروج من شاشة البيع: إظهار رسالة تأكيد عند محاولة إعادة التحميل (Refresh) أو إغلاق المتصفح
     useEffect(() => {
@@ -2712,9 +2743,9 @@ function PosPageContent() {
             orderReference: orderReference,
         };
 
-        if (tableId && tableData) {
+        if (tableId) {
             heldInvoiceData.tableId = tableId;
-            heldInvoiceData.tableName = (tableData as any).number ? `طاولة ${tableData.number}` : undefined;
+            heldInvoiceData.tableName = effectiveTableNumber ? `طاولة ${effectiveTableNumber}` : undefined;
         }
         
         try {
@@ -3187,11 +3218,11 @@ function PosPageContent() {
                                 <div className="flex items-center gap-2 flex-wrap">
                                     <CardTitle className="flex items-center gap-2 text-base">
                                         <ShoppingCart className="h-5 w-5" /> 
-                                        {tableData ? (
+                                        {(tableData || tableId) ? (
                                             <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-lg bg-amber-500/15 text-amber-700 dark:text-amber-300 border border-amber-500/40 font-extrabold text-sm">
                                                 <UtensilsCrossed className="h-4 w-4" />
-                                                طاولة {tableData.number}
-                                                {tableData.groupName ? ` (${tableData.groupName})` : ''}
+                                                {effectiveTableNumber ? `طاولة ${effectiveTableNumber}` : 'طاولة مفتوحة'}
+                                                {tableData?.groupName ? ` (${tableData.groupName})` : ''}
                                             </span>
                                         ) : 'سلة المبيعات'}
                                     </CardTitle>
@@ -3200,7 +3231,7 @@ function PosPageContent() {
                                     </span>
                                 </div>
                                 <div className="flex items-center gap-1 flex-wrap">
-                                    {tableData && (
+                                    {(tableData || tableId) && (
                                         <>
                                             <Button
                                                 type="button"
@@ -3228,7 +3259,7 @@ function PosPageContent() {
                                             </Button>
                                         </>
                                     )}
-                                    {!tableData && restaurantTables && restaurantTables.length > 0 && (
+                                    {!(tableData || tableId) && restaurantTables && restaurantTables.length > 0 && (
                                         <Button
                                             type="button"
                                             variant="outline"
@@ -3424,7 +3455,7 @@ function PosPageContent() {
                             size="icon" 
                             className="h-12 w-12 shrink-0 flex hover:bg-muted/60" 
                             onClick={handleAttemptExit}
-                            title="الرجوع إلى لوحة التحكم (الرئيسية)"
+                            title={tableId ? "حفظ والعودة لشاشة الطاولات" : "الرجوع إلى لوحة التحكم (الرئيسية)"}
                         >
                             <Undo2 className="h-6 w-6" />
                         </Button>
@@ -3775,7 +3806,7 @@ function PosPageContent() {
 
         {/* نافذة حماية وتأكيد الخروج من شاشة البيع - متوافقة تماماً مع الموبايل والشاشات اللمسية */}
         <AlertDialog open={isExitDialogOpen} onOpenChange={setIsExitDialogOpen}>
-            <AlertDialogContent className="w-[94vw] max-w-md p-4 sm:p-6 rounded-2xl text-right overflow-hidden shadow-2xl border bg-card" dir="rtl">
+            <AlertDialogContent className="flex flex-col w-[92vw] max-w-md max-h-[90vh] overflow-y-auto p-5 sm:p-6 rounded-2xl text-right shadow-2xl border bg-card" dir="rtl">
                 <AlertDialogHeader className="space-y-2 text-right">
                     <AlertDialogTitle className="flex items-center gap-2 text-base font-bold">
                         {cart.length > 0 ? (
