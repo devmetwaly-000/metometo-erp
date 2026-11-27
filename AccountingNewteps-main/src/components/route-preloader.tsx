@@ -3,6 +3,7 @@
 import { useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { navStructure } from "@/components/app-layout";
+import { useData } from "@/contexts/data-provider";
 
 const highPriorityRoutes = [
   '/pos',
@@ -25,10 +26,12 @@ const highPriorityRoutes = [
 
 export function RoutePreloader() {
   const router = useRouter();
+  const { isOnline, hasCheckedConnection } = useData();
   const hasStartedRef = useRef(false);
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
+    if (!hasCheckedConnection || !isOnline || !navigator.onLine) return;
     if (hasStartedRef.current) return;
     hasStartedRef.current = true;
 
@@ -42,7 +45,7 @@ export function RoutePreloader() {
 
       // 1. Next.js Client-Side router prefetch (fetches JS chunks)
       try {
-        router.prefetch(path);
+        (router as any)?.prefetch?.(path);
       } catch {}
 
       // 2. تخزين وثيقة الـ HTML الأصلية في pages-cache
@@ -119,7 +122,7 @@ export function RoutePreloader() {
       if (timerId) clearTimeout(timerId);
       window.removeEventListener('online', handleOnline);
     };
-  }, [router]);
+  }, [router, isOnline, hasCheckedConnection]);
 
   return null;
 }
