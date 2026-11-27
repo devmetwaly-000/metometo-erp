@@ -54,22 +54,26 @@ const PWALifecycle = () => {
   };
 
   useEffect(() => {
-    if (!hasCheckedConnection) return;
+    if (!hasCheckedConnection || typeof window === 'undefined') return;
 
     if (!isOnline) {
       wasOfflineRef.current = true;
-      toast({
-        variant: "destructive",
-        title: "أنت في وضع عدم الاتصال",
-        description: "يتم استخدام البيانات والصفحات المخزنة محلياً.",
-        duration: 5000,
-      });
-    } else if (wasOfflineRef.current) {
+      const alreadyNotified = sessionStorage.getItem('offline_toast_shown') === '1';
+      if (!alreadyNotified) {
+        sessionStorage.setItem('offline_toast_shown', '1');
+        toast({
+          title: "أنت تعمل الآن في وضع عدم الاتصال (أوفلاين)",
+          description: "يتم استخدام البيانات والصفحات المخزنة محلياً وستتم المزامنة تلقائياً عند عودة الإنترنت.",
+          duration: 3500,
+        });
+      }
+    } else if (wasOfflineRef.current || sessionStorage.getItem('offline_toast_shown') === '1') {
       wasOfflineRef.current = false;
+      sessionStorage.removeItem('offline_toast_shown');
       toast({
         title: "تمت استعادة الاتصال بالسيرفر",
         description: "عاد الاتصال بقاعدة البيانات وتمت مزامنة البيانات تلقائياً.",
-        duration: 4000,
+        duration: 3500,
       });
     }
   }, [hasCheckedConnection, isOnline, toast]);
