@@ -1256,6 +1256,10 @@ function PosPageContent() {
     const [selectedTargetTableId, setSelectedTargetTableId] = useState<string>('');
     const [isProcessingTableAction, setIsProcessingTableAction] = useState(false);
     const allowExitRef = useRef(false);
+    const lastLoadedTableKeyRef = useRef<string | null>(null);
+    const tableIdRef = useRef<string | null>(tableId);
+    tableIdRef.current = tableId;
+    const handleHoldInvoiceRef = useRef<(() => Promise<void>) | null>(null);
 
     const [customGroupsWidth, setCustomGroupsWidth] = useState<number | null>(() => {
         if (typeof window === 'undefined') return null;
@@ -1294,6 +1298,18 @@ function PosPageContent() {
 
         const handlePopState = (e: PopStateEvent) => {
             if (allowExitRef.current) return;
+            // في وضع الطاولات: الرجوع الطبيعي لصفحة الطاولات مع حفظ الطلب تلقائياً إذا وجدت أصناف
+            if (tableIdRef.current) {
+                e.preventDefault();
+                e.stopImmediatePropagation();
+                allowExitRef.current = true;
+                if (handleHoldInvoiceRef.current) {
+                    void handleHoldInvoiceRef.current();
+                } else {
+                    router.push('/tables');
+                }
+                return;
+            }
             e.preventDefault();
             e.stopImmediatePropagation();
             try {
@@ -1426,6 +1442,12 @@ function PosPageContent() {
         if (tableId) {
             setShowBackButton(true);
             const tableInvoice = (heldInvoices || []).find((inv: HeldInvoice) => inv && inv.tableId === tableId);
+            const loadKey = `${tableId}::${tableInvoice?.id || 'empty'}`;
+            if (lastLoadedTableKeyRef.current === loadKey) {
+                return;
+            }
+            lastLoadedTableKeyRef.current = loadKey;
+
             if (tableInvoice) {
                 setCurrentHeldInvoiceId(tableInvoice.id);
                 const safeCart = Array.isArray(tableInvoice.cart)
@@ -1435,22 +1457,23 @@ function PosPageContent() {
                     : [];
                 setCart(safeCart);
                 setDiscount(tableInvoice.discount || 0);
-                setTips(tableInvoice.tips || 0); // Restore tips
-                setOrderReference(tableInvoice.orderReference || '');
+                setTips(tableInvoice.tips || 0);
+                setOrderReference(tableInvoice.orderReference || `طاولة ${tableData?.number || ''}`);
             } else {
                 resetCartAndPayments();
                 setCurrentHeldInvoiceId(null);
-                 if (tableData) {
+                if (tableData) {
                     setOrderReference(tableData.number ? `طاولة ${tableData.number}` : '');
                 }
             }
         } else {
-            if (showBackButton) {
-                resetCartAndPayments(); 
+            if (lastLoadedTableKeyRef.current !== null) {
+                lastLoadedTableKeyRef.current = null;
+                resetCartAndPayments();
             }
             setShowBackButton(false);
         }
-    }, [tableId, heldInvoices, tableData, showBackButton, resetCartAndPayments]);
+    }, [tableId, heldInvoices, tableData, resetCartAndPayments]);
 
 
      const getItemIdsForLevel = (levelType: string, levelId: string): Set<string> => {
@@ -2672,6 +2695,7 @@ function PosPageContent() {
                  if (currentHeldInvoiceId) {
                     await dbAction('heldInvoices', 'remove', {id: currentHeldInvoiceId});
                  }
+                 allowExitRef.current = true;
                  router.push('/tables');
             }
             return;
@@ -2700,10 +2724,11 @@ function PosPageContent() {
             } else {
                 const newHeldId = await dbAction('heldInvoices', 'add', heldInvoiceData);
                 setCurrentHeldInvoiceId(newHeldId as string);
-                toast({ title: 'تم تعليق الفاتورة', description: 'يمكنك استرجاعها من قائمة الفواتير المعلقة.' });
+                toast({ title: 'تم تعليق الفاتورة', description: tableId ? 'تم حفظ الطلب على الطاولة بنجاح.' : 'يمكنك استرجاعها من قائمة الفواتير المعلقة.' });
             }
             if(tableId) {
                  await dbAction('restaurantTables', 'update', {id: tableId, data: {status: 'occupied'}});
+                 allowExitRef.current = true;
                  router.push('/tables');
             } else {
                 resetSale();
@@ -2712,6 +2737,8 @@ function PosPageContent() {
             toast({ variant: 'destructive', title: 'خطأ', description: 'فشل حفظ الطلب المعلق.' });
         }
     }, [user?.name, cart, total, discount, tips, orderReference, tableId, tableData, currentHeldInvoiceId, dbAction, toast, router, resetSale]);
+
+    handleHoldInvoiceRef.current = handleHoldInvoice;
 
     const posTableCandidates = useMemo(() => {
         if (!posTableActionModal || !restaurantTables) return [];
@@ -3216,8 +3243,9 @@ function PosPageContent() {
                                     <PosSilentPrinterDialog />
                                     <PosSyncStatusBadge />
                                     {showBackButton && (
-                                         <Button variant="ghost" size="icon" onClick={handleHoldInvoice} title="حفظ والعودة للطاولات">
-                                            <ArrowLeft className="h-5 w-5"/>
+                                         <Button variant="outline" size="sm" className="h-8 px-2.5 text-xs gap-1 font-bold" onClick={handleHoldInvoice} title="حفظ والعودة للطاولات">
+                                            <ArrowLeft className="h-4 w-4"/>
+                                            <span>الطاولات</span>
                                         </Button>
                                     )}
                                 </div>
@@ -3786,7 +3814,9 @@ function PosPageContent() {
                                 </>
                             ) : (
                                 <p className="text-foreground/90 pt-1">
-                                    هل أنت متأكد من الخروج من شاشة نقاط البيع والعودة إلى لوحة التحكم الرئيسية؟
+                                    {tableId
+                                        ? 'هل تريد العودة إلى شاشة الطاولات؟'
+                                        : 'هل أنت متأكد من الخروج من شاشة نقاط البيع والعودة إلى لوحة التحكم الرئيسية؟'}
                                 </p>
                             )}
                         </div>
@@ -3806,42 +3836,52 @@ function PosPageContent() {
                                 className="w-full h-10 font-bold border-amber-500/40 text-amber-700 dark:text-amber-300 hover:bg-amber-500/10 justify-center rounded-xl text-xs sm:text-sm"
                                 onClick={async () => {
                                     setIsExitDialogOpen(false);
-                                    await handleHoldInvoice();
                                     allowExitRef.current = true;
-                                    router.push('/');
+                                    await handleHoldInvoice();
+                                    if (!tableId) {
+                                        router.push('/');
+                                    }
                                 }}
                             >
                                 <PauseCircle className="h-4 w-4 ml-1.5 text-amber-500" />
-                                تعليق الفاتورة والعودة للرئيسية
+                                {tableId ? 'حفظ الطلب والعودة لشاشة الطاولات' : 'تعليق الفاتورة والعودة للرئيسية'}
                             </Button>
                             <Button 
                                 variant="ghost" 
                                 className="w-full h-9 font-semibold text-destructive hover:bg-destructive/10 hover:text-destructive justify-center rounded-xl text-xs"
-                                onClick={() => {
+                                onClick={async () => {
                                     setIsExitDialogOpen(false);
                                     setCart([]);
                                     allowExitRef.current = true;
-                                    router.push('/');
+                                    if (tableId) {
+                                        await dbAction('restaurantTables', 'update', { id: tableId, data: { status: 'available' } });
+                                        if (currentHeldInvoiceId) {
+                                            await dbAction('heldInvoices', 'remove', { id: currentHeldInvoiceId });
+                                        }
+                                        router.push('/tables');
+                                    } else {
+                                        router.push('/');
+                                    }
                                 }}
                             >
                                 <Trash2 className="h-3.5 w-3.5 ml-1.5" />
-                                إلغاء الفاتورة والخروج بدون حفظ
+                                {tableId ? 'إلغاء الطلب والعودة للطاولات بدون حفظ' : 'إلغاء الفاتورة والخروج بدون حفظ'}
                             </Button>
                         </>
                     ) : (
                         <>
                             <AlertDialogAction asChild>
                                 <Button 
-                                    variant="destructive" 
+                                    variant={tableId ? "default" : "destructive"}
                                     className="w-full h-11 font-bold justify-center rounded-xl text-sm"
                                     onClick={() => {
                                         setIsExitDialogOpen(false);
                                         allowExitRef.current = true;
-                                        router.push('/');
+                                        router.push(tableId ? '/tables' : '/');
                                     }}
                                 >
                                     <LogOut className="h-4 w-4 ml-1.5" />
-                                    نعم، الخروج للرئيسية
+                                    {tableId ? 'العودة لشاشة الطاولات' : 'نعم، الخروج للرئيسية'}
                                 </Button>
                             </AlertDialogAction>
                             <AlertDialogCancel asChild>

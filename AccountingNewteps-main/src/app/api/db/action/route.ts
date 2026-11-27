@@ -1292,6 +1292,13 @@ export async function POST(req: Request) {
             }
 
             if (path === 'heldInvoices') {
+                const cartPayload = {
+                    cart: payload.cart || payload.items || [],
+                    discount: Number(payload.discount || 0),
+                    tips: Number(payload.tips || 0),
+                    orderReference: payload.orderReference || '',
+                    tableName: payload.tableName || '',
+                };
                 await pool.request()
                     .input('Id', sql.NVarChar(64), id)
                     .input('HeldAt', sql.DateTime2, parseDate(payload.heldAt))
@@ -1301,7 +1308,7 @@ export async function POST(req: Request) {
                     .input('TableId', sql.NVarChar(64), payload.tableId || null)
                     .input('CustomerName', sql.NVarChar(255), payload.customerName || null)
                     .input('Total', sql.Decimal(18, 4), Number(payload.total) || 0)
-                    .input('CartData', sql.NVarChar(sql.MAX), jsonString(payload.cart || payload.items))
+                    .input('CartData', sql.NVarChar(sql.MAX), jsonString(cartPayload))
                     .query(`
                         INSERT INTO dbo.HeldInvoices (Id, HeldAt, CashierId, CashierName, TerminalId, TableId, CustomerName, Total, CartData)
                         VALUES (@Id, @HeldAt, @CashierId, @CashierName, @TerminalId, @TableId, @CustomerName, @Total, @CartData);
@@ -2631,7 +2638,14 @@ export async function POST(req: Request) {
                     fields.push('Total = @Total');
                 }
                 if (data.cart !== undefined || data.items !== undefined) {
-                    req.input('CartData', sql.NVarChar(sql.MAX), jsonString(data.cart || data.items));
+                    const cartPayload = {
+                        cart: data.cart || data.items || [],
+                        discount: Number(data.discount || 0),
+                        tips: Number(data.tips || 0),
+                        orderReference: data.orderReference || '',
+                        tableName: data.tableName || '',
+                    };
+                    req.input('CartData', sql.NVarChar(sql.MAX), jsonString(cartPayload));
                     fields.push('CartData = @CartData');
                 }
                 await req.query(`UPDATE dbo.HeldInvoices SET ${fields.join(', ')} WHERE Id = @Id;`);

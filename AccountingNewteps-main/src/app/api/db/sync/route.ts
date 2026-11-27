@@ -354,6 +354,7 @@ export async function GET() {
         // POS & Restaurant
         const heldInvoices = heldInvoicesRes.recordset.map(h => {
             const parsedCart = parseJson(h.CartData || h.cartData || h.items || h.cart, []);
+            const isObj = parsedCart && !Array.isArray(parsedCart) && typeof parsedCart === 'object';
             const validCart = Array.isArray(parsedCart) ? parsedCart : (parsedCart?.cart || []);
             return {
                 ...h,
@@ -363,6 +364,10 @@ export async function GET() {
                 cashierName: h.CashierName || h.cashierName,
                 terminalId: h.TerminalId || h.terminalId,
                 tableId: h.TableId || h.tableId,
+                tableName: (isObj && parsedCart.tableName) || h.TableName || h.tableName || '',
+                orderReference: (isObj && parsedCart.orderReference) || h.OrderReference || h.orderReference || '',
+                discount: isObj ? Number(parsedCart.discount || 0) : Number(h.discount || 0),
+                tips: isObj ? Number(parsedCart.tips || 0) : Number(h.tips || 0),
                 customerName: h.CustomerName || h.customerName,
                 total: Number(h.Total ?? h.total ?? 0),
                 cart: validCart,
