@@ -1153,6 +1153,144 @@ export async function POST(req: Request) {
                 return NextResponse.json({ success: true, id });
             }
 
+            if (path === 'deliveryStaff') {
+                await pool.request()
+                    .input('Id', sql.NVarChar(64), id)
+                    .input('Name', sql.NVarChar(255), payload.name || '')
+                    .input('Phone', sql.NVarChar(50), payload.phone || null)
+                    .input('VehicleType', sql.NVarChar(100), payload.vehicleType || null)
+                    .input('VehicleNumber', sql.NVarChar(50), payload.vehicleNumber || null)
+                    .input('WarehouseId', sql.NVarChar(64), payload.warehouseId || null)
+                    .input('IsActive', sql.Bit, payload.isActive !== false ? 1 : 0)
+                    .query(`
+                        INSERT INTO dbo.DeliveryStaff (Id, Name, Phone, VehicleType, VehicleNumber, WarehouseId, IsActive)
+                        VALUES (@Id, @Name, @Phone, @VehicleType, @VehicleNumber, @WarehouseId, @IsActive);
+                    `);
+                return NextResponse.json({ success: true, id });
+            }
+
+            if (path === 'employees') {
+                await pool.request()
+                    .input('Id', sql.NVarChar(64), id)
+                    .input('Name', sql.NVarChar(255), payload.name || '')
+                    .input('Role', sql.NVarChar(100), payload.role || null)
+                    .input('Salary', sql.Decimal(18, 4), Number(payload.salary) || 0)
+                    .input('Phone', sql.NVarChar(50), payload.phone || null)
+                    .input('HireDate', sql.DateTime2, payload.hireDate ? parseDate(payload.hireDate) : null)
+                    .query(`
+                        INSERT INTO dbo.Employees (Id, Name, Role, Salary, Phone, HireDate)
+                        VALUES (@Id, @Name, @Role, @Salary, @Phone, @HireDate);
+                    `);
+                return NextResponse.json({ success: true, id });
+            }
+
+            if (path === 'sellers') {
+                await pool.request()
+                    .input('Id', sql.NVarChar(64), id)
+                    .input('Name', sql.NVarChar(255), payload.name || '')
+                    .input('Phone', sql.NVarChar(50), payload.phone || null)
+                    .input('CommissionRate', sql.Decimal(5, 2), Number(payload.commissionRate) || 0)
+                    .input('WarehouseId', sql.NVarChar(64), payload.warehouseId || null)
+                    .input('IsActive', sql.Bit, payload.isActive !== false ? 1 : 0)
+                    .query(`
+                        INSERT INTO dbo.Sellers (Id, Name, Phone, CommissionRate, WarehouseId, IsActive)
+                        VALUES (@Id, @Name, @Phone, @CommissionRate, @WarehouseId, @IsActive);
+                    `);
+                return NextResponse.json({ success: true, id });
+            }
+
+            if (path === 'partners') {
+                await pool.request()
+                    .input('Id', sql.NVarChar(64), id)
+                    .input('Name', sql.NVarChar(255), payload.name || '')
+                    .input('SharePercentage', sql.Decimal(5, 2), Number(payload.sharePercentage ?? payload.share) || 0)
+                    .input('Contact', sql.NVarChar(255), payload.contact || null)
+                    .query(`
+                        INSERT INTO dbo.Partners (Id, Name, SharePercentage, Contact)
+                        VALUES (@Id, @Name, @SharePercentage, @Contact);
+                    `);
+                return NextResponse.json({ success: true, id });
+            }
+
+            if (path === 'paymentMethods') {
+                await pool.request()
+                    .input('Id', sql.NVarChar(64), id)
+                    .input('Name', sql.NVarChar(255), payload.name || '')
+                    .input('AccountId', sql.NVarChar(64), payload.accountId || null)
+                    .query(`
+                        INSERT INTO dbo.PaymentMethods (Id, Name, AccountId)
+                        VALUES (@Id, @Name, @AccountId);
+                    `);
+                return NextResponse.json({ success: true, id });
+            }
+
+            if (path === 'promotions') {
+                await pool.request()
+                    .input('Id', sql.NVarChar(64), id)
+                    .input('Name', sql.NVarChar(255), payload.name || '')
+                    .input('Type', sql.NVarChar(50), payload.type || 'percentage')
+                    .input('Value', sql.Decimal(18, 4), Number(payload.value) || 0)
+                    .input('StartDate', sql.DateTime2, parseDate(payload.startDate))
+                    .input('EndDate', sql.DateTime2, parseDate(payload.endDate))
+                    .input('IsActive', sql.Bit, payload.isActive !== false ? 1 : 0)
+                    .input('ConditionsJson', sql.NVarChar(sql.MAX), jsonString(payload))
+                    .query(`
+                        INSERT INTO dbo.Promotions (Id, Name, Type, Value, StartDate, EndDate, IsActive, ConditionsJson)
+                        VALUES (@Id, @Name, @Type, @Value, @StartDate, @EndDate, @IsActive, @ConditionsJson);
+                    `);
+                return NextResponse.json({ success: true, id });
+            }
+
+            if (path === 'itemColors') {
+                await pool.request()
+                    .input('Id', sql.NVarChar(64), id)
+                    .input('Name', sql.NVarChar(100), payload.name || '')
+                    .input('ColorCode', sql.NVarChar(50), payload.colorCode || payload.code || null)
+                    .query(`
+                        INSERT INTO dbo.ItemColors (Id, Name, ColorCode)
+                        VALUES (@Id, @Name, @ColorCode);
+                    `);
+                return NextResponse.json({ success: true, id });
+            }
+
+            if (path === 'itemSizes') {
+                await pool.request()
+                    .input('Id', sql.NVarChar(64), id)
+                    .input('Name', sql.NVarChar(100), payload.name || '')
+                    .query(`
+                        INSERT INTO dbo.ItemSizes (Id, Name)
+                        VALUES (@Id, @Name);
+                    `);
+                return NextResponse.json({ success: true, id });
+            }
+
+            if (path === 'barcodeDesigns') {
+                await pool.request()
+                    .input('Id', sql.NVarChar(64), id)
+                    .input('Name', sql.NVarChar(255), payload.name || null)
+                    .input('ConfigJson', sql.NVarChar(sql.MAX), jsonString(payload))
+                    .query(`
+                        INSERT INTO dbo.BarcodeDesigns (Id, Name, ConfigJson)
+                        VALUES (@Id, @Name, @ConfigJson);
+                    `);
+                return NextResponse.json({ success: true, id });
+            }
+
+            if (path === 'targets') {
+                await pool.request()
+                    .input('Id', sql.NVarChar(64), id)
+                    .input('TargetKey', sql.NVarChar(100), payload.targetKey || id)
+                    .input('TargetPeriod', sql.NVarChar(50), payload.targetPeriod || 'monthly')
+                    .input('TargetAmount', sql.Decimal(18, 4), Number(payload.targetAmount ?? payload.amount) || 0)
+                    .input('AchievedAmount', sql.Decimal(18, 4), Number(payload.achievedAmount) || 0)
+                    .input('DetailsJson', sql.NVarChar(sql.MAX), jsonString(payload))
+                    .query(`
+                        INSERT INTO dbo.Targets (Id, TargetKey, TargetPeriod, TargetAmount, AchievedAmount, DetailsJson)
+                        VALUES (@Id, @TargetKey, @TargetPeriod, @TargetAmount, @AchievedAmount, @DetailsJson);
+                    `);
+                return NextResponse.json({ success: true, id });
+            }
+
             if (path === 'heldInvoices') {
                 await pool.request()
                     .input('Id', sql.NVarChar(64), id)
@@ -2498,6 +2636,158 @@ export async function POST(req: Request) {
                 }
                 await req.query(`UPDATE dbo.HeldInvoices SET ${fields.join(', ')} WHERE Id = @Id;`);
                 return NextResponse.json({ success: true, id: updateId });
+            }
+
+            if (path === 'deliveryStaff' && updateId) {
+                const fields: string[] = ['UpdatedAt = sysutcdatetime()'];
+                const req = pool.request().input('Id', sql.NVarChar(64), String(updateId));
+                if (data.name !== undefined) { req.input('Name', sql.NVarChar(255), data.name); fields.push('Name = @Name'); }
+                if (data.phone !== undefined) { req.input('Phone', sql.NVarChar(50), data.phone || null); fields.push('Phone = @Phone'); }
+                if (data.vehicleType !== undefined) { req.input('VehicleType', sql.NVarChar(100), data.vehicleType || null); fields.push('VehicleType = @VehicleType'); }
+                if (data.vehicleNumber !== undefined) { req.input('VehicleNumber', sql.NVarChar(50), data.vehicleNumber || null); fields.push('VehicleNumber = @VehicleNumber'); }
+                if (data.warehouseId !== undefined) { req.input('WarehouseId', sql.NVarChar(64), data.warehouseId || null); fields.push('WarehouseId = @WarehouseId'); }
+                if (data.isActive !== undefined) { req.input('IsActive', sql.Bit, data.isActive ? 1 : 0); fields.push('IsActive = @IsActive'); }
+                await req.query(`UPDATE dbo.DeliveryStaff SET ${fields.join(', ')} WHERE Id = @Id;`);
+                return NextResponse.json({ success: true, id: updateId });
+            }
+
+            if (path === 'employees' && updateId) {
+                const fields: string[] = ['UpdatedAt = sysutcdatetime()'];
+                const req = pool.request().input('Id', sql.NVarChar(64), String(updateId));
+                if (data.name !== undefined) { req.input('Name', sql.NVarChar(255), data.name); fields.push('Name = @Name'); }
+                if (data.role !== undefined) { req.input('Role', sql.NVarChar(100), data.role || null); fields.push('Role = @Role'); }
+                if (data.salary !== undefined) { req.input('Salary', sql.Decimal(18, 4), Number(data.salary) || 0); fields.push('Salary = @Salary'); }
+                if (data.phone !== undefined) { req.input('Phone', sql.NVarChar(50), data.phone || null); fields.push('Phone = @Phone'); }
+                if (data.hireDate !== undefined) { req.input('HireDate', sql.DateTime2, data.hireDate ? parseDate(data.hireDate) : null); fields.push('HireDate = @HireDate'); }
+                await req.query(`UPDATE dbo.Employees SET ${fields.join(', ')} WHERE Id = @Id;`);
+                return NextResponse.json({ success: true, id: updateId });
+            }
+
+            if (path === 'sellers' && updateId) {
+                const fields: string[] = ['UpdatedAt = sysutcdatetime()'];
+                const req = pool.request().input('Id', sql.NVarChar(64), String(updateId));
+                if (data.name !== undefined) { req.input('Name', sql.NVarChar(255), data.name); fields.push('Name = @Name'); }
+                if (data.phone !== undefined) { req.input('Phone', sql.NVarChar(50), data.phone || null); fields.push('Phone = @Phone'); }
+                if (data.commissionRate !== undefined) { req.input('CommissionRate', sql.Decimal(5, 2), Number(data.commissionRate) || 0); fields.push('CommissionRate = @CommissionRate'); }
+                if (data.warehouseId !== undefined) { req.input('WarehouseId', sql.NVarChar(64), data.warehouseId || null); fields.push('WarehouseId = @WarehouseId'); }
+                if (data.isActive !== undefined) { req.input('IsActive', sql.Bit, data.isActive ? 1 : 0); fields.push('IsActive = @IsActive'); }
+                await req.query(`UPDATE dbo.Sellers SET ${fields.join(', ')} WHERE Id = @Id;`);
+                return NextResponse.json({ success: true, id: updateId });
+            }
+
+            if (path === 'partners' && updateId) {
+                const fields: string[] = ['UpdatedAt = sysutcdatetime()'];
+                const req = pool.request().input('Id', sql.NVarChar(64), String(updateId));
+                if (data.name !== undefined) { req.input('Name', sql.NVarChar(255), data.name); fields.push('Name = @Name'); }
+                if (data.sharePercentage !== undefined || data.share !== undefined) { req.input('SharePercentage', sql.Decimal(5, 2), Number(data.sharePercentage ?? data.share) || 0); fields.push('SharePercentage = @SharePercentage'); }
+                if (data.contact !== undefined) { req.input('Contact', sql.NVarChar(255), data.contact || null); fields.push('Contact = @Contact'); }
+                await req.query(`UPDATE dbo.Partners SET ${fields.join(', ')} WHERE Id = @Id;`);
+                return NextResponse.json({ success: true, id: updateId });
+            }
+
+            if (path === 'paymentMethods' && updateId) {
+                const fields: string[] = ['UpdatedAt = sysutcdatetime()'];
+                const req = pool.request().input('Id', sql.NVarChar(64), String(updateId));
+                if (data.name !== undefined) { req.input('Name', sql.NVarChar(255), data.name); fields.push('Name = @Name'); }
+                if (data.accountId !== undefined) { req.input('AccountId', sql.NVarChar(64), data.accountId || null); fields.push('AccountId = @AccountId'); }
+                await req.query(`UPDATE dbo.PaymentMethods SET ${fields.join(', ')} WHERE Id = @Id;`);
+                return NextResponse.json({ success: true, id: updateId });
+            }
+
+            if (path === 'promotions' && updateId) {
+                const fields: string[] = ['UpdatedAt = sysutcdatetime()'];
+                const req = pool.request().input('Id', sql.NVarChar(64), String(updateId));
+                if (data.name !== undefined) { req.input('Name', sql.NVarChar(255), data.name); fields.push('Name = @Name'); }
+                if (data.type !== undefined) { req.input('Type', sql.NVarChar(50), data.type); fields.push('Type = @Type'); }
+                if (data.value !== undefined) { req.input('Value', sql.Decimal(18, 4), Number(data.value) || 0); fields.push('Value = @Value'); }
+                if (data.startDate !== undefined) { req.input('StartDate', sql.DateTime2, parseDate(data.startDate)); fields.push('StartDate = @StartDate'); }
+                if (data.endDate !== undefined) { req.input('EndDate', sql.DateTime2, parseDate(data.endDate)); fields.push('EndDate = @EndDate'); }
+                if (data.isActive !== undefined) { req.input('IsActive', sql.Bit, data.isActive ? 1 : 0); fields.push('IsActive = @IsActive'); }
+                req.input('ConditionsJson', sql.NVarChar(sql.MAX), jsonString(data));
+                fields.push('ConditionsJson = @ConditionsJson');
+                await req.query(`UPDATE dbo.Promotions SET ${fields.join(', ')} WHERE Id = @Id;`);
+                return NextResponse.json({ success: true, id: updateId });
+            }
+
+            if (path === 'itemColors' && updateId) {
+                const fields: string[] = ['UpdatedAt = sysutcdatetime()'];
+                const req = pool.request().input('Id', sql.NVarChar(64), String(updateId));
+                if (data.name !== undefined) { req.input('Name', sql.NVarChar(100), data.name); fields.push('Name = @Name'); }
+                if (data.colorCode !== undefined || data.code !== undefined) { req.input('ColorCode', sql.NVarChar(50), (data.colorCode ?? data.code) || null); fields.push('ColorCode = @ColorCode'); }
+                await req.query(`UPDATE dbo.ItemColors SET ${fields.join(', ')} WHERE Id = @Id;`);
+                return NextResponse.json({ success: true, id: updateId });
+            }
+
+            if (path === 'itemSizes' && updateId) {
+                const fields: string[] = ['UpdatedAt = sysutcdatetime()'];
+                const req = pool.request().input('Id', sql.NVarChar(64), String(updateId));
+                if (data.name !== undefined) { req.input('Name', sql.NVarChar(100), data.name); fields.push('Name = @Name'); }
+                await req.query(`UPDATE dbo.ItemSizes SET ${fields.join(', ')} WHERE Id = @Id;`);
+                return NextResponse.json({ success: true, id: updateId });
+            }
+
+            if (path === 'barcodeDesigns' && updateId) {
+                const fields: string[] = ['UpdatedAt = sysutcdatetime()'];
+                const req = pool.request().input('Id', sql.NVarChar(64), String(updateId));
+                if (data.name !== undefined) { req.input('Name', sql.NVarChar(255), data.name || null); fields.push('Name = @Name'); }
+                req.input('ConfigJson', sql.NVarChar(sql.MAX), jsonString(data));
+                fields.push('ConfigJson = @ConfigJson');
+                await req.query(`UPDATE dbo.BarcodeDesigns SET ${fields.join(', ')} WHERE Id = @Id;`);
+                return NextResponse.json({ success: true, id: updateId });
+            }
+
+            if (path === 'suppliers' && updateId) {
+                const fields: string[] = ['UpdatedAt = sysutcdatetime()'];
+                const req = pool.request().input('Id', sql.NVarChar(64), String(updateId));
+                if (data.name !== undefined) { req.input('Name', sql.NVarChar(255), data.name); fields.push('Name = @Name'); }
+                if (data.contact !== undefined) { req.input('Contact', sql.NVarChar(255), data.contact || null); fields.push('Contact = @Contact'); }
+                if (data.openingBalance !== undefined) { req.input('OpeningBalance', sql.Decimal(18, 4), Number(data.openingBalance) || 0); fields.push('OpeningBalance = @OpeningBalance'); }
+                if (data.items !== undefined) { req.input('ItemsJson', sql.NVarChar(sql.MAX), jsonString(data.items)); fields.push('ItemsJson = @ItemsJson'); }
+                await req.query(`UPDATE dbo.Suppliers SET ${fields.join(', ')} WHERE Id = @Id;`);
+                return NextResponse.json({ success: true, id: updateId });
+            }
+
+            if (path === 'cashAccounts' && updateId) {
+                const fields: string[] = ['UpdatedAt = sysutcdatetime()'];
+                const req = pool.request().input('Id', sql.NVarChar(64), String(updateId));
+                if (data.name !== undefined) { req.input('Name', sql.NVarChar(255), data.name); fields.push('Name = @Name'); }
+                if (data.type !== undefined) { req.input('Type', sql.NVarChar(50), data.type); fields.push('Type = @Type'); }
+                if (data.openingBalance !== undefined) { req.input('OpeningBalance', sql.Decimal(18, 4), Number(data.openingBalance) || 0); fields.push('OpeningBalance = @OpeningBalance'); }
+                if (data.userId !== undefined) { req.input('UserId', sql.NVarChar(64), data.userId || null); fields.push('UserId = @UserId'); }
+                if (data.warehouseId !== undefined) { req.input('WarehouseId', sql.NVarChar(64), data.warehouseId || null); fields.push('WarehouseId = @WarehouseId'); }
+                await req.query(`UPDATE dbo.CashAccounts SET ${fields.join(', ')} WHERE Id = @Id;`);
+                return NextResponse.json({ success: true, id: updateId });
+            }
+
+            if (path === 'expenses' && updateId) {
+                const fields: string[] = ['UpdatedAt = sysutcdatetime()'];
+                const req = pool.request().input('Id', sql.NVarChar(64), String(updateId));
+                if (data.date !== undefined) { req.input('Date', sql.DateTime2, parseDate(data.date)); fields.push('Date = @Date'); }
+                if (data.expenseType !== undefined) { req.input('ExpenseType', sql.NVarChar(100), data.expenseType || null); fields.push('ExpenseType = @ExpenseType'); }
+                if (data.description !== undefined) { req.input('Description', sql.NVarChar(500), data.description || null); fields.push('Description = @Description'); }
+                if (data.amount !== undefined) { req.input('Amount', sql.Decimal(18, 4), Number(data.amount) || 0); fields.push('Amount = @Amount'); }
+                if (data.paidFromAccountId !== undefined) { req.input('PaidFromAccountId', sql.NVarChar(64), data.paidFromAccountId || null); fields.push('PaidFromAccountId = @PaidFromAccountId'); }
+                if (data.warehouseId !== undefined) { req.input('WarehouseId', sql.NVarChar(64), data.warehouseId || null); fields.push('WarehouseId = @WarehouseId'); }
+                await req.query(`UPDATE dbo.Expenses SET ${fields.join(', ')} WHERE Id = @Id;`);
+                return NextResponse.json({ success: true, id: updateId });
+            }
+
+            if (path === 'targets') {
+                const tId = updateId || data?.id || 'main_targets';
+                await pool.request()
+                    .input('Id', sql.NVarChar(64), String(tId))
+                    .input('TargetKey', sql.NVarChar(100), data?.targetKey || String(tId))
+                    .input('TargetPeriod', sql.NVarChar(50), data?.targetPeriod || 'monthly')
+                    .input('TargetAmount', sql.Decimal(18, 4), Number(data?.targetAmount ?? data?.amount) || 0)
+                    .input('AchievedAmount', sql.Decimal(18, 4), Number(data?.achievedAmount) || 0)
+                    .input('DetailsJson', sql.NVarChar(sql.MAX), jsonString(data))
+                    .query(`
+                        IF EXISTS (SELECT 1 FROM dbo.Targets WHERE Id = @Id OR TargetKey = @TargetKey)
+                            UPDATE dbo.Targets SET TargetPeriod = @TargetPeriod, TargetAmount = @TargetAmount, AchievedAmount = @AchievedAmount, DetailsJson = @DetailsJson, UpdatedAt = sysutcdatetime() WHERE Id = @Id OR TargetKey = @TargetKey;
+                        ELSE
+                            INSERT INTO dbo.Targets (Id, TargetKey, TargetPeriod, TargetAmount, AchievedAmount, DetailsJson) VALUES (@Id, @TargetKey, @TargetPeriod, @TargetAmount, @AchievedAmount, @DetailsJson);
+                    `);
+                return NextResponse.json({ success: true, id: String(tId) });
             }
         }
 
