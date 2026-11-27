@@ -39,6 +39,13 @@ import { Combobox } from '@/components/ui/combobox';
 import * as XLSX from 'xlsx';
 import { cn } from '@/lib/utils';
 
+const toLocalYMD = (d: Date) => {
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${y}-${m}-${day}`;
+};
+
 export default function GratuityManagementPage() {
     const { 
         gratuityLogs, gratuityDistributions, posSales, salesInvoices,
@@ -47,12 +54,17 @@ export default function GratuityManagementPage() {
     const { user } = useAuth();
     const { toast } = useToast();
 
-    // Filter States
-    const [filters, setFilters] = useState({
-        cashierId: 'all',
-        warehouseId: 'all',
-        fromDate: new Date(new Date().setMonth(new Date().getMonth() - 1)).toISOString().split('T')[0],
-        toDate: new Date().toISOString().split('T')[0]
+    // Filter States (using local timezone so transactions after midnight appear immediately)
+    const [filters, setFilters] = useState(() => {
+        const now = new Date();
+        const monthAgo = new Date(now);
+        monthAgo.setMonth(monthAgo.getMonth() - 1);
+        return {
+            cashierId: 'all',
+            warehouseId: 'all',
+            fromDate: toLocalYMD(monthAgo),
+            toDate: toLocalYMD(now)
+        };
     });
 
     // Form State for Distribution
@@ -92,10 +104,8 @@ export default function GratuityManagementPage() {
 
     // 2. Filtered Data for Reporting
     const filteredLogs = useMemo(() => {
-        const start = filters.fromDate ? new Date(filters.fromDate) : new Date(0);
-        const end = filters.toDate ? new Date(filters.toDate) : new Date();
-        start.setHours(0,0,0,0);
-        end.setHours(23,59,59,999);
+        const start = filters.fromDate ? new Date(`${filters.fromDate}T00:00:00.000`) : new Date(0);
+        const end = filters.toDate ? new Date(`${filters.toDate}T23:59:59.999`) : new Date();
 
         return combinedGratuityLogs.filter(log => {
             const date = new Date(log.date);
@@ -119,8 +129,8 @@ export default function GratuityManagementPage() {
     }, [combinedGratuityLogs, filters, posSales, salesInvoices]);
 
     const filteredDists = useMemo(() => {
-        const start = filters.fromDate ? new Date(filters.fromDate) : new Date(0);
-        const end = filters.toDate ? new Date(filters.toDate) : new Date();
+        const start = filters.fromDate ? new Date(`${filters.fromDate}T00:00:00.000`) : new Date(0);
+        const end = filters.toDate ? new Date(`${filters.toDate}T23:59:59.999`) : new Date();
         return gratuityDistributions.filter(dist => {
             const date = new Date(dist.date);
             return date >= start && date <= end;
