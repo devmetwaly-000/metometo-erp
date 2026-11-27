@@ -106,6 +106,7 @@ export default function TablesPage() {
   
   const [selectedWarehouseId, setSelectedWarehouseId] = useState('all');
   const [selectedTableForDetails, setSelectedTableForDetails] = useState<{table: RestaurantTable, heldInvoice: HeldInvoice | null} | null>(null);
+  const [tableToCancel, setTableToCancel] = useState<RestaurantTable | null>(null);
   const [tableActionModal, setTableActionModal] = useState<{ mode: 'transfer' | 'merge'; sourceTable: RestaurantTable; sourceInvoice: HeldInvoice } | null>(null);
   const [selectedTargetTableId, setSelectedTargetTableId] = useState<string>('');
   const [isProcessingTableAction, setIsProcessingTableAction] = useState(false);
@@ -324,7 +325,7 @@ export default function TablesPage() {
                 <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
             </div>
         ) : (
-            <Dialog onOpenChange={(open) => !open && setSelectedTableForDetails(null)}>
+            <>
                  <div className="space-y-8">
                     {Object.keys(groupedTables).length > 0 ? Object.entries(groupedTables).map(([groupName, tables]) => (
                         <div key={groupName}>
@@ -368,64 +369,54 @@ export default function TablesPage() {
                                                 </CardFooter>
                                             </Card>
                                              {isOccupied && (
-                                                <div className="absolute top-2 left-2 rtl:left-auto rtl:right-2 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity">
-                                                     <AlertDialog>
-                                                        <DropdownMenu>
-                                                            <DropdownMenuTrigger asChild>
-                                                            <Button aria-haspopup="true" size="icon" variant="secondary" className="h-8 w-8 rounded-full shadow-sm">
-                                                                <MoreVertical className="h-4 w-4" />
-                                                            </Button>
-                                                            </DropdownMenuTrigger>
-                                                            <DropdownMenuContent align="end">
-                                                                <DropdownMenuLabel>إجراءات طاولة {table.number}</DropdownMenuLabel>
-                                                                 <DialogTrigger asChild>
-                                                                    <DropdownMenuItem onSelect={(e) => { e.preventDefault(); setSelectedTableForDetails({table, heldInvoice}); }}>
-                                                                        <Eye className="ml-2 h-4 w-4" /> عرض الطلب
-                                                                    </DropdownMenuItem>
-                                                                </DialogTrigger>
-                                                                <DropdownMenuItem onClick={() => handlePrintCheck(heldInvoice)}>
-                                                                    <Printer className="ml-2 h-4 w-4" /> طباعة الشيك
-                                                                </DropdownMenuItem>
-                                                                <DropdownMenuSeparator/>
-                                                                <DropdownMenuItem onSelect={(e) => {
-                                                                    e.preventDefault();
-                                                                    if (heldInvoice) {
-                                                                        setSelectedTargetTableId('');
-                                                                        setTableActionModal({ mode: 'transfer', sourceTable: table, sourceInvoice: heldInvoice });
-                                                                    }
-                                                                }}>
-                                                                    <ArrowRightLeft className="ml-2 h-4 w-4 text-blue-500" /> نقل إلى طاولة أخرى
-                                                                </DropdownMenuItem>
-                                                                <DropdownMenuItem onSelect={(e) => {
-                                                                    e.preventDefault();
-                                                                    if (heldInvoice) {
-                                                                        setSelectedTargetTableId('');
-                                                                        setTableActionModal({ mode: 'merge', sourceTable: table, sourceInvoice: heldInvoice });
-                                                                    }
-                                                                }}>
-                                                                    <GitMerge className="ml-2 h-4 w-4 text-amber-500" /> دمج في شيك طاولة أخرى
-                                                                </DropdownMenuItem>
-                                                                <DropdownMenuSeparator/>
-                                                                <AlertDialogTrigger asChild>
-                                                                    <DropdownMenuItem className="text-destructive" onSelect={(e: any) => e.preventDefault()}>
-                                                                        <XCircle className="ml-2 h-4 w-4"/> إلغاء الطلب
-                                                                    </DropdownMenuItem>
-                                                                </AlertDialogTrigger>
-                                                            </DropdownMenuContent>
-                                                        </DropdownMenu>
-                                                        <AlertDialogContent>
-                                                            <AlertDialogHeader>
-                                                                <AlertDialogTitle>إلغاء الطلب؟</AlertDialogTitle>
-                                                                <AlertDialogDescription>
-                                                                    سيتم حذف الطلب المعلق على الطاولة "{table.number}" وستصبح متاحة مرة أخرى. هذا الإجراء سيتم تسجيله للمراجعة.
-                                                                </AlertDialogDescription>
-                                                            </AlertDialogHeader>
-                                                            <AlertDialogFooter>
-                                                                <AlertDialogCancel>تراجع</AlertDialogCancel>
-                                                                <AlertDialogAction onClick={() => handleCancelOrder(table)} className="bg-destructive hover:bg-destructive/90">نعم، قم بالإلغاء</AlertDialogAction>
-                                                            </AlertDialogFooter>
-                                                        </AlertDialogContent>
-                                                     </AlertDialog>
+                                                <div
+                                                    className="absolute top-2 left-2 rtl:left-auto rtl:right-2 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity"
+                                                    onClick={(e) => e.stopPropagation()}
+                                                >
+                                                    <DropdownMenu modal={false}>
+                                                        <DropdownMenuTrigger asChild>
+                                                        <Button aria-haspopup="true" size="icon" variant="secondary" className="h-8 w-8 rounded-full shadow-sm">
+                                                            <MoreVertical className="h-4 w-4" />
+                                                        </Button>
+                                                        </DropdownMenuTrigger>
+                                                        <DropdownMenuContent align="end">
+                                                            <DropdownMenuLabel>إجراءات طاولة {table.number}</DropdownMenuLabel>
+                                                            <DropdownMenuItem onSelect={() => {
+                                                                setTimeout(() => setSelectedTableForDetails({table, heldInvoice}), 10);
+                                                            }}>
+                                                                <Eye className="ml-2 h-4 w-4" /> عرض الطلب
+                                                            </DropdownMenuItem>
+                                                            <DropdownMenuItem onSelect={() => handlePrintCheck(heldInvoice)}>
+                                                                <Printer className="ml-2 h-4 w-4" /> طباعة الشيك
+                                                            </DropdownMenuItem>
+                                                            <DropdownMenuSeparator/>
+                                                            <DropdownMenuItem onSelect={() => {
+                                                                if (heldInvoice) {
+                                                                    setSelectedTargetTableId('');
+                                                                    setTimeout(() => setTableActionModal({ mode: 'transfer', sourceTable: table, sourceInvoice: heldInvoice }), 10);
+                                                                }
+                                                            }}>
+                                                                <ArrowRightLeft className="ml-2 h-4 w-4 text-blue-500" /> نقل إلى طاولة أخرى
+                                                            </DropdownMenuItem>
+                                                            <DropdownMenuItem onSelect={() => {
+                                                                if (heldInvoice) {
+                                                                    setSelectedTargetTableId('');
+                                                                    setTimeout(() => setTableActionModal({ mode: 'merge', sourceTable: table, sourceInvoice: heldInvoice }), 10);
+                                                                }
+                                                            }}>
+                                                                <GitMerge className="ml-2 h-4 w-4 text-amber-500" /> دمج في شيك طاولة أخرى
+                                                            </DropdownMenuItem>
+                                                            <DropdownMenuSeparator/>
+                                                            <DropdownMenuItem
+                                                                className="text-destructive"
+                                                                onSelect={() => {
+                                                                    setTimeout(() => setTableToCancel(table), 10);
+                                                                }}
+                                                            >
+                                                                <XCircle className="ml-2 h-4 w-4"/> إلغاء الطلب
+                                                            </DropdownMenuItem>
+                                                        </DropdownMenuContent>
+                                                    </DropdownMenu>
                                                 </div>
                                             )}
                                         </div>
@@ -441,12 +432,39 @@ export default function TablesPage() {
                         </Card>
                     )}
                 </div>
-                 <TableItemsDialog 
-                    table={selectedTableForDetails?.table || null} 
-                    heldInvoice={selectedTableForDetails?.heldInvoice || null} 
-                    onOpenChange={(open) => !open && setSelectedTableForDetails(null)}
-                />
-            </Dialog>
+                <Dialog open={!!selectedTableForDetails} onOpenChange={(open) => !open && setSelectedTableForDetails(null)}>
+                    <TableItemsDialog 
+                        table={selectedTableForDetails?.table || null} 
+                        heldInvoice={selectedTableForDetails?.heldInvoice || null} 
+                        onOpenChange={(open) => !open && setSelectedTableForDetails(null)}
+                    />
+                </Dialog>
+
+                <AlertDialog open={!!tableToCancel} onOpenChange={(open) => !open && setTableToCancel(null)}>
+                    <AlertDialogContent dir="rtl">
+                        <AlertDialogHeader>
+                            <AlertDialogTitle>إلغاء الطلب؟</AlertDialogTitle>
+                            <AlertDialogDescription>
+                                سيتم حذف الطلب المعلق على الطاولة "{tableToCancel?.number}" وستصبح متاحة مرة أخرى. هذا الإجراء سيتم تسجيله للمراجعة.
+                            </AlertDialogDescription>
+                        </AlertDialogHeader>
+                        <AlertDialogFooter>
+                            <AlertDialogCancel>تراجع</AlertDialogCancel>
+                            <AlertDialogAction
+                                onClick={() => {
+                                    if (tableToCancel) {
+                                        void handleCancelOrder(tableToCancel);
+                                    }
+                                    setTableToCancel(null);
+                                }}
+                                className="bg-destructive hover:bg-destructive/90"
+                            >
+                                نعم، قم بالإلغاء
+                            </AlertDialogAction>
+                        </AlertDialogFooter>
+                    </AlertDialogContent>
+                </AlertDialog>
+            </>
         )}
 
         {/* حوار نقل أو دمج طلبات الطاولات */}
