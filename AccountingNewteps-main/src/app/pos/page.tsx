@@ -3857,19 +3857,19 @@ function PosPageContent() {
 
         {/* حوار اختيار / نقل / دمج الطاولة من شاشة الكاشير */}
         <Dialog open={!!posTableActionModal} onOpenChange={(open) => { if (!open) { setPosTableActionModal(null); setSelectedTargetTableId(''); } }}>
-            <DialogContent className="sm:max-w-md" dir="rtl">
-                <DialogHeader>
-                    <DialogTitle className="flex items-center gap-2">
+            <UIDialogContent className="sm:max-w-md" dir="rtl">
+                <UIDialogHeader>
+                    <UIDialogTitle className="flex items-center gap-2">
                         {posTableActionModal === 'transfer' && <><ArrowRightLeft className="h-5 w-5 text-blue-500" /> نقل طلب طاولة {tableData?.number}</>}
                         {posTableActionModal === 'merge' && <><GitMerge className="h-5 w-5 text-amber-500" /> دمج طاولة {tableData?.number} في شيك طاولة أخرى</>}
                         {posTableActionModal === 'select' && <><UtensilsCrossed className="h-5 w-5 text-primary" /> اختر طاولة للعمل عليها</>}
-                    </DialogTitle>
+                    </UIDialogTitle>
                     <DialogDescription className="text-xs pt-1">
                         {posTableActionModal === 'transfer' && 'اختر الطاولة المتاحة لنقل جميع الأصناف إليها.'}
                         {posTableActionModal === 'merge' && 'اختر الطاولة المشغولة لدمج الطلبين معاً في شيك واحد.'}
                         {posTableActionModal === 'select' && 'اختر طاولة متاحة لبدء طلب جديد أو طاولة مشغولة لاستكمال شيكها.'}
                     </DialogDescription>
-                </DialogHeader>
+                </UIDialogHeader>
 
                 <div className="py-2">
                     {posTableCandidates.length > 0 ? (
@@ -3914,7 +3914,7 @@ function PosPageContent() {
                     )}
                 </div>
 
-                <DialogFooter className="gap-2 sm:gap-0">
+                <UIDialogFooter className="gap-2 sm:gap-0">
                     <Button variant="outline" onClick={() => { setPosTableActionModal(null); setSelectedTargetTableId(''); }}>
                         إلغاء
                     </Button>
@@ -3927,8 +3927,8 @@ function PosPageContent() {
                         {posTableActionModal === 'merge' && 'تأكيد الدمج في شيك واحد'}
                         {posTableActionModal === 'select' && 'فتح الطاولة'}
                     </Button>
-                </DialogFooter>
-            </DialogContent>
+                </UIDialogFooter>
+            </UIDialogContent>
         </Dialog>
         </>
     );
