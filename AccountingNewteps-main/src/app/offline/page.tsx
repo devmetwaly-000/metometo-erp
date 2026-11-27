@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { 
   WifiOff, 
@@ -23,6 +22,7 @@ export default function OfflinePage() {
   const router = useRouter();
   const [isReconnecting, setIsReconnecting] = useState(false);
   const [isOnlineAgain, setIsOnlineAgain] = useState(false);
+  const [cachedRoutes, setCachedRoutes] = useState<Record<string, boolean>>({});
 
   useEffect(() => {
     const handleOnline = () => {
@@ -34,6 +34,23 @@ export default function OfflinePage() {
 
     window.addEventListener("online", handleOnline);
     return () => window.removeEventListener("online", handleOnline);
+  }, []);
+
+  useEffect(() => {
+    if (typeof window !== "undefined" && "caches" in window) {
+      Promise.all(
+        offlineHubLinks.map(async (item) => {
+          try {
+            const match = await caches.match(item.href, { ignoreSearch: true, ignoreVary: true });
+            return [item.href, Boolean(match)] as const;
+          } catch {
+            return [item.href, false] as const;
+          }
+        })
+      ).then((results) => {
+        setCachedRoutes(Object.fromEntries(results));
+      });
+    }
   }, []);
 
   const handleRetry = () => {
@@ -149,24 +166,32 @@ export default function OfflinePage() {
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
             {offlineHubLinks.map((item) => {
               const Icon = item.icon;
+              const isCached = cachedRoutes[item.href];
               return (
-                <Link key={item.href} href={item.href} className="group block focus:outline-none">
+                <a key={item.href} href={item.href} className="group block focus:outline-none">
                   <Card className="h-full border transition-all duration-200 hover:border-primary/50 hover:shadow-md cursor-pointer">
                     <CardContent className="p-4 flex items-start gap-3.5">
                       <div className={`p-2.5 rounded-xl border shrink-0 ${item.color}`}>
                         <Icon className="h-5 w-5" />
                       </div>
-                      <div className="space-y-1 text-right">
-                        <h3 className="text-sm font-bold group-hover:text-primary transition-colors">
-                          {item.title}
-                        </h3>
+                      <div className="space-y-1 text-right flex-1">
+                        <div className="flex items-center justify-between gap-2">
+                          <h3 className="text-sm font-bold group-hover:text-primary transition-colors">
+                            {item.title}
+                          </h3>
+                          {isCached === true && (
+                            <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 shrink-0">
+                              جاهز ✓
+                            </span>
+                          )}
+                        </div>
                         <p className="text-xs text-muted-foreground line-clamp-2 leading-relaxed">
                           {item.description}
                         </p>
                       </div>
                     </CardContent>
                   </Card>
-                </Link>
+                </a>
               );
             })}
           </div>

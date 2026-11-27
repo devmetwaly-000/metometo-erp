@@ -27,6 +27,10 @@ const withPWA = nextPWA({
         handler: 'NetworkFirst',
         options: {
           cacheName: 'pages-cache',
+          matchOptions: {
+            ignoreVary: true,
+            ignoreSearch: true,
+          },
           expiration: {
             maxEntries: 250,
             maxAgeSeconds: 24 * 60 * 60 * 30, // 30 Days
@@ -50,6 +54,10 @@ const withPWA = nextPWA({
         handler: 'StaleWhileRevalidate',
         options: {
           cacheName: 'next-rsc-cache',
+          matchOptions: {
+            ignoreVary: true,
+            ignoreSearch: true,
+          },
           expiration: {
             maxEntries: 500,
             maxAgeSeconds: 24 * 60 * 60 * 30, // 30 Days
@@ -66,6 +74,10 @@ const withPWA = nextPWA({
         handler: 'NetworkFirst',
         options: {
           cacheName: 'pages-cache',
+          matchOptions: {
+            ignoreVary: true,
+            ignoreSearch: true,
+          },
           expiration: {
             maxEntries: 250,
             maxAgeSeconds: 24 * 60 * 60 * 30, // 30 Days

@@ -32,42 +32,33 @@ export function RoutePreloader() {
     if (hasStartedRef.current) return;
     hasStartedRef.current = true;
 
+    let cancelled = false;
+    let timerId: any = null;
+
     // دالة تسخين وتخزين المسار بجميع صيغه (HTML, RSC Payload, JS Chunks) ليعمل أوفلاين 100%
-    const warmupRoute = (path: string) => {
+    const warmupRoute = async (path: string) => {
+      if (cancelled || !navigator.onLine) return;
       if (!path || !path.startsWith('/') || path.startsWith('/api') || path.startsWith('/_next')) return;
 
-      // 1. Next.js Client-Side router prefetch
+      // 1. Next.js Client-Side router prefetch (fetches JS chunks)
       try {
         router.prefetch(path);
       } catch {}
 
       // 2. تخزين وثيقة الـ HTML الأصلية في pages-cache
-      try {
+      // 3. تخزين محتوى الـ RSC في next-rsc-cache
+      await Promise.allSettled([
         fetch(path, {
           headers: { 'Accept': 'text/html,application/xhtml+xml,application/xml' },
           priority: 'low',
-        }).catch(() => {});
-      } catch {}
-
-      // 3. تخزين محتوى الـ RSC عبر الـ Headers في next-rsc-cache
-      try {
+        } as any).catch(() => {}),
         fetch(path, {
           headers: { 'RSC': '1', 'Next-Router-Prefetch': '1' },
           priority: 'low',
-        }).catch(() => {});
-      } catch {}
-
-      // 4. تخزين محتوى الـ RSC عبر Query String المتوافق مع Next.js App Router
-      try {
-        const sep = path.includes('?') ? '&' : '?';
-        fetch(`${path}${sep}_rsc=offline_ready`, {
-          headers: { 'RSC': '1' },
-          priority: 'low',
-        }).catch(() => {});
-      } catch {}
+        } as any).catch(() => {}),
+      ]);
     };
 
-    // استخراج جميع الروابط من القوائم
     const extractRoutes = (items: readonly any[]): string[] => {
       let routes: string[] = [];
       for (const item of items) {
@@ -81,48 +72,50 @@ export function RoutePreloader() {
       return routes;
     };
 
-    // 1. تشغيل المسارات الأساسية ذات الأولوية فوراً
-    highPriorityRoutes.forEach((route) => {
-      warmupRoute(route);
-    });
-
-    // 2. تشغيل باقي المسارات تدريجياً في الخلفية بدون التأثير على سلاسة التطبيق
-    let remainingRoutes: string[] = [];
-    try {
-      const all = extractRoutes(navStructure || []);
-      remainingRoutes = Array.from(new Set(all.filter((r) => !highPriorityRoutes.includes(r))));
-    } catch {
-      remainingRoutes = [];
-    }
-
-    let idx = 0;
-    let timerId: any = null;
-
-    const prefetchNext = () => {
-      if (idx < remainingRoutes.length) {
-        const nextRoute = remainingRoutes[idx];
-        warmupRoute(nextRoute);
-        idx++;
-        timerId = setTimeout(prefetchNext, 150);
+    const startWarmupQueue = async () => {
+      // الانتظار حتى يكون الـ Service Worker نشطاً وجاهزاً لاعتراض الطلبات وحفظها في الكاش
+      if ('serviceWorker' in navigator) {
+        try {
+          await navigator.serviceWorker.ready;
+        } catch {}
       }
+
+      if (cancelled || !navigator.onLine) return;
+
+      let allNavRoutes: string[] = [];
+      try {
+        allNavRoutes = extractRoutes(navStructure || []);
+      } catch {
+        allNavRoutes = [];
+      }
+
+      const orderedRoutes = Array.from(new Set([...highPriorityRoutes, ...allNavRoutes]));
+      let idx = 0;
+
+      const processNext = async () => {
+        if (cancelled || idx >= orderedRoutes.length) return;
+        const nextRoute = orderedRoutes[idx++];
+        await warmupRoute(nextRoute);
+        if (!cancelled && idx < orderedRoutes.length) {
+          timerId = setTimeout(processNext, 100);
+        }
+      };
+
+      void processNext();
     };
 
-    const idleTimer = setTimeout(() => {
-      if ('requestIdleCallback' in window) {
-        (window as any).requestIdleCallback(() => prefetchNext());
-      } else {
-        prefetchNext();
-      }
-    }, 2000);
+    const startTimer = setTimeout(() => {
+      void startWarmupQueue();
+    }, 1200);
 
-    // إعادة تسخين الكاش عند عودة الاتصال لضمان تحديث الصفحات
     const handleOnline = () => {
-      highPriorityRoutes.forEach((route) => warmupRoute(route));
+      void startWarmupQueue();
     };
     window.addEventListener('online', handleOnline);
 
     return () => {
-      clearTimeout(idleTimer);
+      cancelled = true;
+      clearTimeout(startTimer);
       if (timerId) clearTimeout(timerId);
       window.removeEventListener('online', handleOnline);
     };
