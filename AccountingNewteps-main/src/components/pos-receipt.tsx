@@ -210,6 +210,7 @@ export const PosReceipt = ({ invoice, company, design, warehouse, customer, cust
       case 'invoiceMeta':
         return (
           <div key="invoiceMeta" style={{ borderBottom: '1px dashed #000', paddingBottom: '8px', marginBottom: '8px', fontSize: `${design?.fontSizes?.header || 13}px`, position: 'relative', zIndex: 1 }}>
+            {invoice?.tableName && <p style={{...pStyle, fontWeight: 'bold', fontSize: `${(design?.fontSizes?.header || 13) + 2}px`}}>الطاولة: {invoice.tableName}</p>}
             {design?.showInvoiceNumber !== false && <p style={pStyle}>رقم الفاتورة: <span dir="ltr" style={{ display: 'inline-block', unicodeBidi: 'embed' }}>{invoice?.invoiceNumber}</span></p>}
             <p style={pStyle}>التاريخ: {invoice?.date ? new Date(invoice.date).toLocaleString('ar-EG') : '-'}</p>
             {design?.showCashier !== false && <p style={pStyle}>الكاشير: {invoice?.cashierName || '---'}</p>}

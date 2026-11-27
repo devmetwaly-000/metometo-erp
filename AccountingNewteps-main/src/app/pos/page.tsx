@@ -6,7 +6,8 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Trash2, ShoppingCart, XCircle, Printer, Grip, Dot, Search, Ban, PanelLeft, Boxes, SquareCheck, ListRestart, FileClock, Eye, Loader2, Undo2, PlusCircle, UserPlus, LogOut, Percent, Truck, ArrowLeft, Banknote, Landmark, Wallet, Phone, CircleDollarSign, FileText, CreditCard, UserRound, User as UserIcon, PlayCircle, History, Coins, Building2, LayoutDashboard, Monitor, Gift, MessageCircle, Settings2, PowerOff, Camera, AlertTriangle, PauseCircle } from "lucide-react";
+import { Trash2, ShoppingCart, XCircle, Printer, Grip, Dot, Search, Ban, PanelLeft, Boxes, SquareCheck, ListRestart, FileClock, Eye, Loader2, Undo2, PlusCircle, UserPlus, LogOut, Percent, Truck, ArrowLeft, Banknote, Landmark, Wallet, Phone, CircleDollarSign, FileText, CreditCard, UserRound, User as UserIcon, PlayCircle, History, Coins, Building2, LayoutDashboard, Monitor, Gift, MessageCircle, Settings2, PowerOff, Camera, AlertTriangle, PauseCircle, UtensilsCrossed, ArrowRightLeft, GitMerge } from "lucide-react";
+import { transferTableOrder, mergeTableOrders } from "@/lib/table-actions";
 import CameraBarcodeScanner from '@/components/camera-barcode-scanner';
 import { PosSyncStatusBadge } from '@/components/pos-sync-status-badge';
 import { PosSilentPrinterDialog, getPosSilentPrinterConfig } from '@/components/pos-silent-printer-dialog';
@@ -1251,6 +1252,9 @@ function PosPageContent() {
     const [showBackButton, setShowBackButton] = useState(false);
     const [currentHeldInvoiceId, setCurrentHeldInvoiceId] = useState<string | null>(null);
     const [isExitDialogOpen, setIsExitDialogOpen] = useState(false);
+    const [posTableActionModal, setPosTableActionModal] = useState<'transfer' | 'merge' | 'select' | null>(null);
+    const [selectedTargetTableId, setSelectedTargetTableId] = useState<string>('');
+    const [isProcessingTableAction, setIsProcessingTableAction] = useState(false);
     const allowExitRef = useRef(false);
 
     const [customGroupsWidth, setCustomGroupsWidth] = useState<number | null>(() => {
@@ -2111,6 +2115,7 @@ function PosPageContent() {
             
             // بيانات رأس الإيصال طبقاً لتصميم مصمم الإيصالات
             if (warehouseForSession?.name) lines.push({ left: 'الفرع:', right: warehouseForSession.name });
+            if (saleData.tableName) lines.push({ left: 'الطاولة:', right: saleData.tableName });
             if (receiptDesign?.showAddress !== false && companySettings?.companyAddress) {
                 lines.push({ left: 'العنوان:', right: companySettings.companyAddress });
             }
@@ -2708,6 +2713,102 @@ function PosPageContent() {
         }
     }, [user?.name, cart, total, discount, tips, orderReference, tableId, tableData, currentHeldInvoiceId, dbAction, toast, router, resetSale]);
 
+    const posTableCandidates = useMemo(() => {
+        if (!posTableActionModal || !restaurantTables) return [];
+        const heldTableIds = new Set((heldInvoices || []).map((inv: HeldInvoice) => inv.tableId));
+
+        return restaurantTables
+            .filter((t: any) => {
+                if (tableId && t.id === tableId) return false;
+                if (tableData?.warehouseId && t.warehouseId !== tableData.warehouseId) return false;
+                const isOccupied = heldTableIds.has(t.id);
+                if (posTableActionModal === 'transfer') return !isOccupied;
+                if (posTableActionModal === 'merge') return isOccupied;
+                return true; // 'select' shows all tables in branch
+            })
+            .sort((a: any, b: any) => a.number - b.number);
+    }, [posTableActionModal, restaurantTables, heldInvoices, tableId, tableData]);
+
+    const handleExecutePosTableAction = async () => {
+        if (!selectedTargetTableId) return;
+        const targetTable = restaurantTables.find((t: any) => t.id === selectedTargetTableId);
+        if (!targetTable) return;
+
+        if (posTableActionModal === 'select') {
+            setPosTableActionModal(null);
+            setSelectedTargetTableId('');
+            router.push(`/pos?tableId=${targetTable.id}`);
+            return;
+        }
+
+        if (!tableData || !tableId) return;
+        setIsProcessingTableAction(true);
+        try {
+            // Ensure current cart items are persisted to heldInvoices first
+            let activeSourceInvoice = (heldInvoices || []).find((inv: HeldInvoice) => inv.id === currentHeldInvoiceId || inv.tableId === tableId);
+            const currentInvoicePayload: any = {
+                heldAt: new Date().toISOString(),
+                cashierName: user?.name || 'كاشير',
+                itemCount: cart.reduce((acc, item) => acc + item.qty, 0),
+                total,
+                cart,
+                discount,
+                tips,
+                orderReference: orderReference || `طاولة ${tableData.number}`,
+                tableId,
+                tableName: `طاولة ${tableData.number}`,
+            };
+
+            if (activeSourceInvoice) {
+                await dbAction('heldInvoices', 'update', { id: activeSourceInvoice.id, data: currentInvoicePayload });
+                activeSourceInvoice = { ...activeSourceInvoice, ...currentInvoicePayload };
+            } else {
+                const newId = await dbAction('heldInvoices', 'add', currentInvoicePayload);
+                activeSourceInvoice = { id: newId, ...currentInvoicePayload };
+            }
+
+            if (posTableActionModal === 'transfer') {
+                await transferTableOrder({
+                    sourceTable: tableData,
+                    targetTable,
+                    heldInvoice: activeSourceInvoice,
+                    dbAction,
+                    user,
+                });
+                toast({
+                    title: 'تم نقل الطلب بنجاح ✅',
+                    description: `تم نقل طلب طاولة ${tableData.number} إلى طاولة ${targetTable.number}.`,
+                });
+            } else if (posTableActionModal === 'merge') {
+                const targetInvoice = (heldInvoices || []).find((inv: HeldInvoice) => inv.tableId === targetTable.id);
+                await mergeTableOrders({
+                    sourceTable: tableData,
+                    targetTable,
+                    sourceInvoice: activeSourceInvoice,
+                    targetInvoice,
+                    dbAction,
+                    user,
+                });
+                toast({
+                    title: 'تم دمج الطاولتين في شيك واحد ✅',
+                    description: `تم دمج طاولة ${tableData.number} داخل شيك طاولة ${targetTable.number}.`,
+                });
+            }
+
+            setPosTableActionModal(null);
+            setSelectedTargetTableId('');
+            router.push(`/pos?tableId=${targetTable.id}`);
+        } catch (err: any) {
+            toast({
+                variant: 'destructive',
+                title: 'تعذر إتمام العملية',
+                description: err?.message || 'حدث خطأ أثناء تنفيذ العملية.',
+            });
+        } finally {
+            setIsProcessingTableAction(false);
+        }
+    };
+
 
     const handleStartMyShift = async (data: { posTerminalId: string, sessionWarehouseId: string }) => {
         if (!openWorkDay || !user) return;
@@ -3056,20 +3157,66 @@ function PosPageContent() {
                     <Card className="flex-1 flex flex-col md:overflow-hidden">
                         <CardHeader className="shrink-0 p-3 flex-col gap-2">
                             <div className='flex items-center justify-between gap-2 flex-wrap'>
-                                <div className="flex items-center gap-2">
-                                    <CardTitle className="flex items-center gap-2">
-                                        <ShoppingCart/> 
-                                        {tableData ? `طاولة: ${tableData.number}` : 'سلة المبيعات'}
+                                <div className="flex items-center gap-2 flex-wrap">
+                                    <CardTitle className="flex items-center gap-2 text-base">
+                                        <ShoppingCart className="h-5 w-5" /> 
+                                        {tableData ? (
+                                            <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-lg bg-amber-500/15 text-amber-700 dark:text-amber-300 border border-amber-500/40 font-extrabold text-sm">
+                                                <UtensilsCrossed className="h-4 w-4" />
+                                                طاولة {tableData.number}
+                                                {tableData.groupName ? ` (${tableData.groupName})` : ''}
+                                            </span>
+                                        ) : 'سلة المبيعات'}
                                     </CardTitle>
                                     <span className="inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-semibold bg-secondary text-secondary-foreground">
                                         عدد الأصناف: {totalItemsCount}
                                     </span>
                                 </div>
-                                <div className="flex items-center gap-1.5">
+                                <div className="flex items-center gap-1 flex-wrap">
+                                    {tableData && (
+                                        <>
+                                            <Button
+                                                type="button"
+                                                variant="outline"
+                                                size="sm"
+                                                className="h-8 px-2 text-xs gap-1 border-blue-500/30 text-blue-600 dark:text-blue-400 hover:bg-blue-500/10"
+                                                disabled={cart.length === 0 && !currentHeldInvoiceId}
+                                                onClick={() => { setSelectedTargetTableId(''); setPosTableActionModal('transfer'); }}
+                                                title="نقل الطلب إلى طاولة أخرى"
+                                            >
+                                                <ArrowRightLeft className="h-3.5 w-3.5" />
+                                                <span className="hidden sm:inline">نقل</span>
+                                            </Button>
+                                            <Button
+                                                type="button"
+                                                variant="outline"
+                                                size="sm"
+                                                className="h-8 px-2 text-xs gap-1 border-amber-500/30 text-amber-600 dark:text-amber-400 hover:bg-amber-500/10"
+                                                disabled={cart.length === 0 && !currentHeldInvoiceId}
+                                                onClick={() => { setSelectedTargetTableId(''); setPosTableActionModal('merge'); }}
+                                                title="دمج مع طاولة أخرى في شيك واحد"
+                                            >
+                                                <GitMerge className="h-3.5 w-3.5" />
+                                                <span className="hidden sm:inline">دمج</span>
+                                            </Button>
+                                        </>
+                                    )}
+                                    {!tableData && restaurantTables && restaurantTables.length > 0 && (
+                                        <Button
+                                            type="button"
+                                            variant="outline"
+                                            size="sm"
+                                            className="h-8 px-2.5 text-xs gap-1.5"
+                                            onClick={() => { setSelectedTargetTableId(''); setPosTableActionModal('select'); }}
+                                        >
+                                            <UtensilsCrossed className="h-3.5 w-3.5" />
+                                            <span>الطاولات</span>
+                                        </Button>
+                                    )}
                                     <PosSilentPrinterDialog />
                                     <PosSyncStatusBadge />
                                     {showBackButton && (
-                                         <Button variant="ghost" size="icon" onClick={handleHoldInvoice}>
+                                         <Button variant="ghost" size="icon" onClick={handleHoldInvoice} title="حفظ والعودة للطاولات">
                                             <ArrowLeft className="h-5 w-5"/>
                                         </Button>
                                     )}
@@ -3707,6 +3854,82 @@ function PosPageContent() {
                 </AlertDialogFooter>
             </AlertDialogContent>
         </AlertDialog>
+
+        {/* حوار اختيار / نقل / دمج الطاولة من شاشة الكاشير */}
+        <Dialog open={!!posTableActionModal} onOpenChange={(open) => { if (!open) { setPosTableActionModal(null); setSelectedTargetTableId(''); } }}>
+            <DialogContent className="sm:max-w-md" dir="rtl">
+                <DialogHeader>
+                    <DialogTitle className="flex items-center gap-2">
+                        {posTableActionModal === 'transfer' && <><ArrowRightLeft className="h-5 w-5 text-blue-500" /> نقل طلب طاولة {tableData?.number}</>}
+                        {posTableActionModal === 'merge' && <><GitMerge className="h-5 w-5 text-amber-500" /> دمج طاولة {tableData?.number} في شيك طاولة أخرى</>}
+                        {posTableActionModal === 'select' && <><UtensilsCrossed className="h-5 w-5 text-primary" /> اختر طاولة للعمل عليها</>}
+                    </DialogTitle>
+                    <DialogDescription className="text-xs pt-1">
+                        {posTableActionModal === 'transfer' && 'اختر الطاولة المتاحة لنقل جميع الأصناف إليها.'}
+                        {posTableActionModal === 'merge' && 'اختر الطاولة المشغولة لدمج الطلبين معاً في شيك واحد.'}
+                        {posTableActionModal === 'select' && 'اختر طاولة متاحة لبدء طلب جديد أو طاولة مشغولة لاستكمال شيكها.'}
+                    </DialogDescription>
+                </DialogHeader>
+
+                <div className="py-2">
+                    {posTableCandidates.length > 0 ? (
+                        <div className="grid grid-cols-3 gap-2 max-h-64 overflow-y-auto p-1">
+                            {posTableCandidates.map((t: any) => {
+                                const tInv = (heldInvoices || []).find((inv: HeldInvoice) => inv.tableId === t.id);
+                                const isSelected = selectedTargetTableId === t.id;
+                                return (
+                                    <button
+                                        key={t.id}
+                                        type="button"
+                                        onClick={() => setSelectedTargetTableId(t.id)}
+                                        className={`p-3 rounded-xl border text-center transition-all flex flex-col items-center justify-center gap-1 ${
+                                            isSelected
+                                                ? 'border-primary bg-primary/10 text-primary font-bold ring-2 ring-primary/30'
+                                                : tInv
+                                                ? 'border-amber-500/40 bg-amber-500/5 hover:bg-amber-500/10'
+                                                : 'border-border hover:bg-muted/60'
+                                        }`}
+                                    >
+                                        <span className="text-sm font-bold">طاولة {t.number}</span>
+                                        {t.groupName && <span className="text-[10px] text-muted-foreground">{t.groupName}</span>}
+                                        {tInv ? (
+                                            <span className="text-[10px] font-mono font-bold text-amber-600 dark:text-amber-400">
+                                                مشغولة ({Number(tInv.total || 0).toLocaleString()})
+                                            </span>
+                                        ) : (
+                                            <span className="text-[10px] text-emerald-600 dark:text-emerald-400">
+                                                متاحة
+                                            </span>
+                                        )}
+                                    </button>
+                                );
+                            })}
+                        </div>
+                    ) : (
+                        <div className="p-6 text-center text-sm text-muted-foreground border rounded-xl bg-muted/20">
+                            {posTableActionModal === 'transfer' && 'لا توجد طاولات متاحة حالياً للنقل إليها.'}
+                            {posTableActionModal === 'merge' && 'لا توجد طاولات أخرى مشغولة حالياً للدمج معها.'}
+                            {posTableActionModal === 'select' && 'لا توجد طاولات مسجلة.'}
+                        </div>
+                    )}
+                </div>
+
+                <DialogFooter className="gap-2 sm:gap-0">
+                    <Button variant="outline" onClick={() => { setPosTableActionModal(null); setSelectedTargetTableId(''); }}>
+                        إلغاء
+                    </Button>
+                    <Button
+                        disabled={!selectedTargetTableId || isProcessingTableAction}
+                        onClick={handleExecutePosTableAction}
+                    >
+                        {isProcessingTableAction && <Loader2 className="ml-2 h-4 w-4 animate-spin" />}
+                        {posTableActionModal === 'transfer' && 'تأكيد النقل'}
+                        {posTableActionModal === 'merge' && 'تأكيد الدمج في شيك واحد'}
+                        {posTableActionModal === 'select' && 'فتح الطاولة'}
+                    </Button>
+                </DialogFooter>
+            </DialogContent>
+        </Dialog>
         </>
     );
 }

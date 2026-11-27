@@ -4,7 +4,7 @@
 import React, { useState, useMemo, useRef, useEffect } from "react";
 import PageHeader from "@/components/page-header";
 import { Button } from "@/components/ui/button";
-import { MoreVertical, Users, Eye, Printer, XCircle, Loader2, DollarSign, Clock, FileText, LayoutDashboard } from "lucide-react";
+import { MoreVertical, Users, Eye, Printer, XCircle, Loader2, DollarSign, Clock, FileText, LayoutDashboard, ArrowRightLeft, GitMerge } from "lucide-react";
 import {
   Card,
   CardContent,
@@ -25,7 +25,8 @@ import { useData } from "@/contexts/data-provider";
 import { useToast } from "@/hooks/use-toast";
 import { Badge } from "@/components/ui/badge";
 import { useRouter } from 'next/navigation';
-import { Dialog, DialogContent as UIDialogContent, DialogHeader as UIDialogHeader, DialogTitle as UIDialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { Dialog, DialogContent as UIDialogContent, DialogHeader as UIDialogHeader, DialogTitle as UIDialogTitle, DialogDescription as UIDialogDescription, DialogFooter as UIDialogFooter, DialogTrigger } from "@/components/ui/dialog";
+import { transferTableOrder, mergeTableOrders } from "@/lib/table-actions";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { PosReceipt } from "@/components/pos-receipt";
 import { renderToString } from "react-dom/server";
@@ -105,6 +106,9 @@ export default function TablesPage() {
   
   const [selectedWarehouseId, setSelectedWarehouseId] = useState('all');
   const [selectedTableForDetails, setSelectedTableForDetails] = useState<{table: RestaurantTable, heldInvoice: HeldInvoice | null} | null>(null);
+  const [tableActionModal, setTableActionModal] = useState<{ mode: 'transfer' | 'merge'; sourceTable: RestaurantTable; sourceInvoice: HeldInvoice } | null>(null);
+  const [selectedTargetTableId, setSelectedTargetTableId] = useState<string>('');
+  const [isProcessingTableAction, setIsProcessingTableAction] = useState(false);
 
 
   useEffect(() => {
@@ -234,6 +238,69 @@ export default function TablesPage() {
     ...warehouses.map((w: any) => ({value: w.id, label: w.name}))
   ]), [warehouses]);
 
+  const targetTableCandidates = useMemo(() => {
+    if (!tableActionModal || !restaurantTables) return [];
+    const heldTableIds = new Set((heldInvoices || []).map((inv: HeldInvoice) => inv.tableId));
+
+    return restaurantTables
+      .filter((t: RestaurantTable) => {
+        if (t.id === tableActionModal.sourceTable.id) return false;
+        if (tableActionModal.sourceTable.warehouseId && t.warehouseId !== tableActionModal.sourceTable.warehouseId) {
+          return false;
+        }
+        const isOccupied = heldTableIds.has(t.id);
+        return tableActionModal.mode === 'transfer' ? !isOccupied : isOccupied;
+      })
+      .sort((a: RestaurantTable, b: RestaurantTable) => a.number - b.number);
+  }, [tableActionModal, restaurantTables, heldInvoices]);
+
+  const handleExecuteTableAction = async () => {
+    if (!tableActionModal || !selectedTargetTableId) return;
+    const targetTable = restaurantTables.find((t: RestaurantTable) => t.id === selectedTargetTableId);
+    if (!targetTable) return;
+
+    setIsProcessingTableAction(true);
+    try {
+      if (tableActionModal.mode === 'transfer') {
+        await transferTableOrder({
+          sourceTable: tableActionModal.sourceTable,
+          targetTable,
+          heldInvoice: tableActionModal.sourceInvoice,
+          dbAction,
+          user,
+        });
+        toast({
+          title: 'تم نقل الطاولة بنجاح ✅',
+          description: `تم نقل الطلب من طاولة ${tableActionModal.sourceTable.number} إلى طاولة ${targetTable.number}.`,
+        });
+      } else {
+        const targetInvoice = (heldInvoices || []).find((inv: HeldInvoice) => inv.tableId === targetTable.id);
+        await mergeTableOrders({
+          sourceTable: tableActionModal.sourceTable,
+          targetTable,
+          sourceInvoice: tableActionModal.sourceInvoice,
+          targetInvoice,
+          dbAction,
+          user,
+        });
+        toast({
+          title: 'تم دمج الطاولتين في شيك واحد ✅',
+          description: `تم دمج طلب طاولة ${tableActionModal.sourceTable.number} داخل شيك طاولة ${targetTable.number}.`,
+        });
+      }
+      setTableActionModal(null);
+      setSelectedTargetTableId('');
+    } catch (err: any) {
+      toast({
+        variant: 'destructive',
+        title: 'تعذر إتمام العملية',
+        description: err?.message || 'حدث خطأ أثناء تنفيذ العملية.',
+      });
+    } finally {
+      setIsProcessingTableAction(false);
+    }
+  };
+
 
   return (
     <>
@@ -301,16 +368,16 @@ export default function TablesPage() {
                                                 </CardFooter>
                                             </Card>
                                              {isOccupied && (
-                                                <div className="absolute top-2 left-2 rtl:left-auto rtl:right-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                                                <div className="absolute top-2 left-2 rtl:left-auto rtl:right-2 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity">
                                                      <AlertDialog>
                                                         <DropdownMenu>
                                                             <DropdownMenuTrigger asChild>
-                                                            <Button aria-haspopup="true" size="icon" variant="secondary" className="h-8 w-8 rounded-full">
+                                                            <Button aria-haspopup="true" size="icon" variant="secondary" className="h-8 w-8 rounded-full shadow-sm">
                                                                 <MoreVertical className="h-4 w-4" />
                                                             </Button>
                                                             </DropdownMenuTrigger>
                                                             <DropdownMenuContent align="end">
-                                                                <DropdownMenuLabel>إجراءات الطاولة</DropdownMenuLabel>
+                                                                <DropdownMenuLabel>إجراءات طاولة {table.number}</DropdownMenuLabel>
                                                                  <DialogTrigger asChild>
                                                                     <DropdownMenuItem onSelect={(e) => { e.preventDefault(); setSelectedTableForDetails({table, heldInvoice}); }}>
                                                                         <Eye className="ml-2 h-4 w-4" /> عرض الطلب
@@ -318,6 +385,25 @@ export default function TablesPage() {
                                                                 </DialogTrigger>
                                                                 <DropdownMenuItem onClick={() => handlePrintCheck(heldInvoice)}>
                                                                     <Printer className="ml-2 h-4 w-4" /> طباعة الشيك
+                                                                </DropdownMenuItem>
+                                                                <DropdownMenuSeparator/>
+                                                                <DropdownMenuItem onSelect={(e) => {
+                                                                    e.preventDefault();
+                                                                    if (heldInvoice) {
+                                                                        setSelectedTargetTableId('');
+                                                                        setTableActionModal({ mode: 'transfer', sourceTable: table, sourceInvoice: heldInvoice });
+                                                                    }
+                                                                }}>
+                                                                    <ArrowRightLeft className="ml-2 h-4 w-4 text-blue-500" /> نقل إلى طاولة أخرى
+                                                                </DropdownMenuItem>
+                                                                <DropdownMenuItem onSelect={(e) => {
+                                                                    e.preventDefault();
+                                                                    if (heldInvoice) {
+                                                                        setSelectedTargetTableId('');
+                                                                        setTableActionModal({ mode: 'merge', sourceTable: table, sourceInvoice: heldInvoice });
+                                                                    }
+                                                                }}>
+                                                                    <GitMerge className="ml-2 h-4 w-4 text-amber-500" /> دمج في شيك طاولة أخرى
                                                                 </DropdownMenuItem>
                                                                 <DropdownMenuSeparator/>
                                                                 <AlertDialogTrigger asChild>
@@ -362,6 +448,89 @@ export default function TablesPage() {
                 />
             </Dialog>
         )}
+
+        {/* حوار نقل أو دمج طلبات الطاولات */}
+        <Dialog open={!!tableActionModal} onOpenChange={(open) => { if (!open) { setTableActionModal(null); setSelectedTargetTableId(''); } }}>
+          <UIDialogContent className="sm:max-w-md" dir="rtl">
+            <UIDialogHeader>
+              <UIDialogTitle className="flex items-center gap-2">
+                {tableActionModal?.mode === 'transfer' ? (
+                  <>
+                    <ArrowRightLeft className="h-5 w-5 text-blue-500" />
+                    نقل طلب طاولة {tableActionModal?.sourceTable.number}
+                  </>
+                ) : (
+                  <>
+                    <GitMerge className="h-5 w-5 text-amber-500" />
+                    دمج طاولة {tableActionModal?.sourceTable.number} في شيك طاولة أخرى
+                  </>
+                )}
+              </UIDialogTitle>
+              <UIDialogDescription className="text-xs pt-1">
+                {tableActionModal?.mode === 'transfer'
+                  ? `اختر الطاولة المتاحة لنقل جميع الأصناف إليها (إجمالي الطلب: ${tableActionModal?.sourceInvoice.total.toLocaleString()}). ستصبح طاولة ${tableActionModal?.sourceTable.number} متاحة فوراً.`
+                  : `اختر الطاولة المشغولة التي تريد دمج طلب طاولة ${tableActionModal?.sourceTable.number} معها في شيك واحد.`}
+              </UIDialogDescription>
+            </UIDialogHeader>
+
+            <div className="py-2">
+              {targetTableCandidates.length > 0 ? (
+                <div className="grid grid-cols-3 gap-2 max-h-64 overflow-y-auto p-1">
+                  {targetTableCandidates.map((t: RestaurantTable) => {
+                    const tInv = tableActionModal?.mode === 'merge'
+                      ? (heldInvoices || []).find((inv: HeldInvoice) => inv.tableId === t.id)
+                      : null;
+                    const isSelected = selectedTargetTableId === t.id;
+                    return (
+                      <button
+                        key={t.id}
+                        type="button"
+                        onClick={() => setSelectedTargetTableId(t.id)}
+                        className={cn(
+                          "p-3 rounded-xl border text-center transition-all flex flex-col items-center justify-center gap-1",
+                          isSelected
+                            ? "border-primary bg-primary/10 text-primary font-bold ring-2 ring-primary/30"
+                            : "border-border hover:bg-muted/60"
+                        )}
+                      >
+                        <span className="text-sm font-bold">طاولة {t.number}</span>
+                        {t.groupName && <span className="text-[10px] text-muted-foreground">{t.groupName}</span>}
+                        {tInv ? (
+                          <span className="text-[10px] font-mono text-amber-600 dark:text-amber-400">
+                            {Number(tInv.total || 0).toLocaleString()}
+                          </span>
+                        ) : (
+                          <span className="text-[10px] text-emerald-600 dark:text-emerald-400">
+                            متاحة ({t.seats} مقاعد)
+                          </span>
+                        )}
+                      </button>
+                    );
+                  })}
+                </div>
+              ) : (
+                <div className="p-6 text-center text-sm text-muted-foreground border rounded-xl bg-muted/20">
+                  {tableActionModal?.mode === 'transfer'
+                    ? 'لا توجد طاولات متاحة حالياً في هذا الفرع للنقل إليها.'
+                    : 'لا توجد طاولات أخرى مشغولة حالياً في هذا الفرع للدمج معها.'}
+                </div>
+              )}
+            </div>
+
+            <UIDialogFooter className="gap-2 sm:gap-0">
+              <Button variant="outline" onClick={() => { setTableActionModal(null); setSelectedTargetTableId(''); }}>
+                إلغاء
+              </Button>
+              <Button
+                disabled={!selectedTargetTableId || isProcessingTableAction}
+                onClick={handleExecuteTableAction}
+              >
+                {isProcessingTableAction && <Loader2 className="ml-2 h-4 w-4 animate-spin" />}
+                {tableActionModal?.mode === 'transfer' ? 'تأكيد النقل' : 'تأكيد الدمج في شيك واحد'}
+              </Button>
+            </UIDialogFooter>
+          </UIDialogContent>
+        </Dialog>
       </main>
     </>
   );
