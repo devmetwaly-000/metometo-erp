@@ -2534,7 +2534,8 @@ function PosPageContent() {
                 tips: Number(tips || 0), // Added tips
                 total,
                 payments,
-                paidAmount: isDelivery ? 0 : paidAmount,
+                paidAmount: isDelivery ? 0 : Math.max(0, Number(paidAmount) - Number(change || 0)),
+                tenderedAmount: isDelivery ? 0 : Number(paidAmount),
                 change,
                 cashierId: user?.id,
                 cashierName: user?.name,

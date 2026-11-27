@@ -102,7 +102,6 @@ export default function PosReconciliationAuditReportPage() {
 
       // الإكرامية والباقي للعميل
       const tipsAmount = Number(sale.tips || 0) || tipsMap.get(String(sale.invoiceNumber || '')) || tipsMap.get(String(sale.id || '')) || 0;
-      const changeAmount = Math.max(0, Number(sale.change || 0));
 
       // 2. إجمالي الفاتورة المسجل رسمياً (مع احتساب الإكرامية إن لم تكن مضافة في Total)
       const rawInvoiceTotal = Number(sale.total || 0);
@@ -111,13 +110,18 @@ export default function PosReconciliationAuditReportPage() {
         ? itemsPlusTips
         : rawInvoiceTotal;
 
-      // 3. إجمالي حركات السداد الموزعة (كاش + شبكة + آجل) بعد خصم الباقي المرتجع للعميل (Change)
+      // 3. إجمالي حركات السداد الموزعة (كاش + شبكة + آجل)
       let rawPaidFromPayments = payments.reduce((sum, p) => sum + Number(p.amount || 0), 0);
       
       // إذا لم يكن هناك مصفوفة payments صريحة، نعتمد paidAmount المسجل
       if (payments.length === 0 && (sale.paidAmount !== undefined || invoiceTotal > 0)) {
         rawPaidFromPayments = Number(sale.paidAmount ?? invoiceTotal);
       }
+
+      // الباقي المرتجع للعميل (Change): إن وُجد صراحةً أو كفرق تسليم نقدية أكبر من قيمة الفاتورة
+      const changeAmount = sale.change !== undefined
+        ? Math.max(0, Number(sale.change || 0))
+        : (payments.length === 0 && rawPaidFromPayments > invoiceTotal ? Number((rawPaidFromPayments - invoiceTotal).toFixed(2)) : 0);
 
       const totalPaidFromPayments = Math.max(0, Number((rawPaidFromPayments - changeAmount).toFixed(2)));
 
