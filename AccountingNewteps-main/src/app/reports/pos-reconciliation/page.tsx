@@ -58,7 +58,7 @@ interface PaymentRow {
 }
 
 export default function PosReconciliationAuditReportPage() {
-  const { posSales, posReturns, posSessions, users, warehouses, loading } = useData();
+  const { posSales, posReturns, posSessions, gratuityLogs, users, warehouses, loading } = useData();
   const printRef = useRef<HTMLDivElement>(null);
 
   const [filters, setFilters] = useState({
@@ -80,6 +80,16 @@ export default function PosReconciliationAuditReportPage() {
   const auditedSales = useMemo(() => {
     if (loading) return [];
 
+    // تجميع الإكراميات المسجلة حسب رقم الفاتورة أو معرفها
+    const tipsMap = new Map<string, number>();
+    for (const gl of (gratuityLogs || [])) {
+      const amt = Number(gl?.amount || 0);
+      if (amt > 0) {
+        if (gl.invoiceNumber) tipsMap.set(String(gl.invoiceNumber), (tipsMap.get(String(gl.invoiceNumber)) || 0) + amt);
+        if (gl.invoiceId) tipsMap.set(String(gl.invoiceId), (tipsMap.get(String(gl.invoiceId)) || 0) + amt);
+      }
+    }
+
     return (posSales || []).map((sale: any) => {
       const items: ItemRow[] = sale.items || [];
       const payments: PaymentRow[] = sale.payments || [];
@@ -90,21 +100,32 @@ export default function PosReconciliationAuditReportPage() {
       const taxAmount = Number(sale.taxAmount || 0);
       const calculatedItemsNet = Math.max(0, calculatedItemsGross - discount + taxAmount);
 
-      // 2. إجمالي الفاتورة المسجل رسمياً
-      const invoiceTotal = Number(sale.total || 0);
+      // الإكرامية والباقي للعميل
+      const tipsAmount = Number(sale.tips || 0) || tipsMap.get(String(sale.invoiceNumber || '')) || tipsMap.get(String(sale.id || '')) || 0;
+      const changeAmount = Math.max(0, Number(sale.change || 0));
 
-      // 3. إجمالي حركات السداد الموزعة (كاش + شبكة + آجل)
-      let totalPaidFromPayments = payments.reduce((sum, p) => sum + Number(p.amount || 0), 0);
+      // 2. إجمالي الفاتورة المسجل رسمياً (مع احتساب الإكرامية إن لم تكن مضافة في Total)
+      const rawInvoiceTotal = Number(sale.total || 0);
+      const itemsPlusTips = Number((calculatedItemsNet + tipsAmount).toFixed(2));
+      const invoiceTotal = (tipsAmount > 0 && Math.abs(rawInvoiceTotal - calculatedItemsNet) <= 0.05)
+        ? itemsPlusTips
+        : rawInvoiceTotal;
+
+      // 3. إجمالي حركات السداد الموزعة (كاش + شبكة + آجل) بعد خصم الباقي المرتجع للعميل (Change)
+      let rawPaidFromPayments = payments.reduce((sum, p) => sum + Number(p.amount || 0), 0);
       
       // إذا لم يكن هناك مصفوفة payments صريحة، نعتمد paidAmount المسجل
       if (payments.length === 0 && (sale.paidAmount !== undefined || invoiceTotal > 0)) {
-        totalPaidFromPayments = Number(sale.paidAmount ?? invoiceTotal);
+        rawPaidFromPayments = Number(sale.paidAmount ?? invoiceTotal);
       }
 
-      // تفصيل وسائل الدفع
-      const cashAmount = payments
+      const totalPaidFromPayments = Math.max(0, Number((rawPaidFromPayments - changeAmount).toFixed(2)));
+
+      // تفصيل وسائل الدفع (خصم الباقي من الكاش)
+      const rawCashAmount = payments
         .filter(p => !p.method || p.method.toLowerCase().includes('cash') || p.method.includes('نقد'))
         .reduce((sum, p) => sum + Number(p.amount || 0), 0) || (payments.length === 0 ? Number(sale.paidAmount ?? invoiceTotal) : 0);
+      const cashAmount = Math.max(0, Number((rawCashAmount - changeAmount).toFixed(2)));
 
       const cardAmount = payments
         .filter(p => p.method && (p.method.toLowerCase().includes('card') || p.method.toLowerCase().includes('visa') || p.method.includes('شبكة') || p.method.includes('فيزا') || p.method.includes('مدى') || p.method.includes('ماستر')))
@@ -112,7 +133,7 @@ export default function PosReconciliationAuditReportPage() {
 
       const otherAmount = Math.max(0, totalPaidFromPayments - cashAmount - cardAmount);
 
-      // الفارق الرقابي: إجمالي الأصناف الصافي - إجمالي المدفوعات المسددة
+      // الفارق الرقابي: المطلوب (الأصناف + الإكرامية) - صافي المحصل الفعلي (بعد استبعاد الباقي المرتجع)
       const discrepancy = Number((invoiceTotal - totalPaidFromPayments).toFixed(2));
       const hasDiscrepancy = Math.abs(discrepancy) > 0.05;
 
@@ -122,6 +143,8 @@ export default function PosReconciliationAuditReportPage() {
         itemsTotalQuantity: items.reduce((sum, it) => sum + Number(it.qty || 0), 0),
         calculatedItemsGross,
         calculatedItemsNet,
+        tipsAmount,
+        changeAmount,
         invoiceTotal,
         totalPaidFromPayments,
         cashAmount,
@@ -156,7 +179,7 @@ export default function PosReconciliationAuditReportPage() {
 
       return true;
     }).sort((a: any, b: any) => new Date(b.date).getTime() - new Date(a.date).getTime());
-  }, [posSales, filters, loading]);
+  }, [posSales, gratuityLogs, filters, loading]);
 
   // إحصائيات المطابقة الشاملة
   const stats = useMemo(() => {
