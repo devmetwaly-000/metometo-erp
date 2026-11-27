@@ -1137,7 +1137,22 @@ export async function POST(req: Request) {
                 return NextResponse.json({ success: true, id });
             }
 
-            // POS Operations: Held Invoices & Audit Logs
+            // POS Operations: Restaurant Tables, Held Invoices & Audit Logs
+            if (path === 'restaurantTables') {
+                await pool.request()
+                    .input('Id', sql.NVarChar(64), id)
+                    .input('TableNumber', sql.NVarChar(50), String(payload.number ?? payload.tableNumber ?? ''))
+                    .input('Capacity', sql.Int, Number(payload.seats ?? payload.capacity ?? 4))
+                    .input('Status', sql.NVarChar(50), payload.status || 'available')
+                    .input('Zone', sql.NVarChar(100), payload.groupName || payload.zone || null)
+                    .input('WarehouseId', sql.NVarChar(64), payload.warehouseId || null)
+                    .query(`
+                        INSERT INTO dbo.RestaurantTables (Id, TableNumber, Capacity, Status, Zone, WarehouseId)
+                        VALUES (@Id, @TableNumber, @Capacity, @Status, @Zone, @WarehouseId);
+                    `);
+                return NextResponse.json({ success: true, id });
+            }
+
             if (path === 'heldInvoices') {
                 await pool.request()
                     .input('Id', sql.NVarChar(64), id)
@@ -2428,6 +2443,60 @@ export async function POST(req: Request) {
                     fields.push('AssignedTo = @AssignedTo');
                 }
                 await req.query(`UPDATE dbo.Licenses SET ${fields.join(', ')} WHERE Id = @Id OR [Key] = @Id;`);
+                return NextResponse.json({ success: true, id: updateId });
+            }
+
+            if (path === 'restaurantTables' && updateId) {
+                const fields: string[] = ['UpdatedAt = sysutcdatetime()'];
+                const req = pool.request().input('Id', sql.NVarChar(64), String(updateId));
+                if (data.number !== undefined || data.tableNumber !== undefined) {
+                    req.input('TableNumber', sql.NVarChar(50), String(data.number ?? data.tableNumber));
+                    fields.push('TableNumber = @TableNumber');
+                }
+                if (data.seats !== undefined || data.capacity !== undefined) {
+                    req.input('Capacity', sql.Int, Number(data.seats ?? data.capacity ?? 4));
+                    fields.push('Capacity = @Capacity');
+                }
+                if (data.status !== undefined) {
+                    req.input('Status', sql.NVarChar(50), String(data.status));
+                    fields.push('Status = @Status');
+                }
+                if (data.groupName !== undefined || data.zone !== undefined) {
+                    req.input('Zone', sql.NVarChar(100), (data.groupName ?? data.zone) || null);
+                    fields.push('Zone = @Zone');
+                }
+                if (data.warehouseId !== undefined) {
+                    req.input('WarehouseId', sql.NVarChar(64), data.warehouseId || null);
+                    fields.push('WarehouseId = @WarehouseId');
+                }
+                await req.query(`UPDATE dbo.RestaurantTables SET ${fields.join(', ')} WHERE Id = @Id;`);
+                return NextResponse.json({ success: true, id: updateId });
+            }
+
+            if (path === 'heldInvoices' && updateId) {
+                const fields: string[] = ['UpdatedAt = sysutcdatetime()'];
+                const req = pool.request().input('Id', sql.NVarChar(64), String(updateId));
+                if (data.heldAt !== undefined) {
+                    req.input('HeldAt', sql.DateTime2, parseDate(data.heldAt));
+                    fields.push('HeldAt = @HeldAt');
+                }
+                if (data.tableId !== undefined) {
+                    req.input('TableId', sql.NVarChar(64), data.tableId || null);
+                    fields.push('TableId = @TableId');
+                }
+                if (data.customerName !== undefined) {
+                    req.input('CustomerName', sql.NVarChar(255), data.customerName || null);
+                    fields.push('CustomerName = @CustomerName');
+                }
+                if (data.total !== undefined) {
+                    req.input('Total', sql.Decimal(18, 4), Number(data.total) || 0);
+                    fields.push('Total = @Total');
+                }
+                if (data.cart !== undefined || data.items !== undefined) {
+                    req.input('CartData', sql.NVarChar(sql.MAX), jsonString(data.cart || data.items));
+                    fields.push('CartData = @CartData');
+                }
+                await req.query(`UPDATE dbo.HeldInvoices SET ${fields.join(', ')} WHERE Id = @Id;`);
                 return NextResponse.json({ success: true, id: updateId });
             }
         }

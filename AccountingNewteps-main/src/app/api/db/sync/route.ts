@@ -519,15 +519,21 @@ export async function GET() {
                     id: s.Id || s.id,
                     name: s.Name || s.name
                 })),
-                restaurantTables: restaurantTablesRes.recordset.map(t => ({
-                    ...t,
-                    id: t.Id || t.id,
-                    name: t.Name || t.name || '',
-                    number: t.Number || t.number || '',
-                    capacity: Number(t.Capacity ?? t.capacity ?? 4),
-                    warehouseId: t.WarehouseId || t.warehouseId || '',
-                    status: t.Status || t.status || 'available'
-                })),
+                restaurantTables: restaurantTablesRes.recordset.map(t => {
+                    const rawNum = t.TableNumber ?? t.Number ?? t.number ?? '';
+                    const parsedNum = Number(rawNum);
+                    return {
+                        ...t,
+                        id: t.Id || t.id,
+                        name: t.Name || t.name || '',
+                        number: !isNaN(parsedNum) && rawNum !== '' ? parsedNum : rawNum,
+                        seats: Number(t.Capacity ?? t.Seats ?? t.seats ?? 4),
+                        capacity: Number(t.Capacity ?? t.Seats ?? t.seats ?? 4),
+                        groupName: t.Zone || t.GroupName || t.groupName || '',
+                        warehouseId: t.WarehouseId || t.warehouseId || '',
+                        status: t.Status || t.status || 'available'
+                    };
+                }),
                 promotions: promotionsRes.recordset.map(p => ({
                     ...p,
                     id: p.Id || p.id,
