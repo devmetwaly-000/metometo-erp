@@ -144,6 +144,13 @@ export default function NewStockAdjustmentPage() {
 
   // 1. نوع التسوية (جرد دوري / جرد افتتاحي)
   const [adjustmentType, setAdjustmentType] = useState<"periodic_count" | "opening_balance">("periodic_count");
+  const [adjustmentDate, setAdjustmentDate] = useState<string>(() => {
+    const d = new Date();
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, "0");
+    const day = String(d.getDate()).padStart(2, "0");
+    return `${y}-${m}-${day}`;
+  });
 
   // 2. نطاق المكان المخزني (مخزن فرعي / مخزن رئيسي لوجيستي / حاوية داخل مخزن رئيسي)
   const [locationType, setLocationType] = useState<"all_warehouses" | "branch_warehouse" | "main_warehouse">("all_warehouses");
@@ -961,6 +968,11 @@ export default function NewStockAdjustmentPage() {
     try {
       const nextId = await getNextId("stockAdjustment");
       const now = new Date();
+      const todayYMD = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
+      const recordDate =
+        adjustmentDate && adjustmentDate !== todayYMD
+          ? new Date(`${adjustmentDate}T12:00:00`)
+          : now;
       const receiptNumber = `ت-م-${nextId}`;
 
       const finalNotes = `[نطاق الجرد: ${scopeSummaryLabel}]${notes ? ` - ${notes}` : ""}`;
@@ -969,7 +981,7 @@ export default function NewStockAdjustmentPage() {
         warehouseId: selectedWarehouse,
         warehouseSectionId: selectedWarehouseSection !== "all" ? selectedWarehouseSection : undefined,
         catalogScope,
-        date: now.toISOString(),
+        date: recordDate.toISOString(),
         items: itemsToSave.map((item) => ({
           itemId: item.itemId,
           name: item.itemName,
@@ -1285,7 +1297,17 @@ export default function NewStockAdjustmentPage() {
                     <span>1. تحديد المكان المخزني (المخزن الفرعي أو المخزن الرئيسي)</span>
                   </div>
 
-                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 items-end">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3 items-end">
+                    <div className="space-y-1.5">
+                      <Label className="text-xs">تاريخ / يوم الجرد</Label>
+                      <Input
+                        type="date"
+                        value={adjustmentDate}
+                        onChange={(e) => setAdjustmentDate(e.target.value)}
+                        className="h-9 text-xs"
+                      />
+                    </div>
+
                     <div className="space-y-1.5">
                       <Label className="text-xs">نوع التسوية</Label>
                       <Select
