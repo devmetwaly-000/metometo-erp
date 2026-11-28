@@ -411,12 +411,12 @@ export default function InventoryCountCycleDashboard() {
                     <span className="text-xs font-bold text-muted-foreground">الخطوة 4: الترحيل</span>
                     <CheckCircle2 className="h-4 w-4 text-emerald-500" />
                   </div>
-                  <CardTitle className="text-sm">الترحيل والقيود المحاسبية</CardTitle>
+                  <CardTitle className="text-sm">الترحيل وفصل أذون الفائض والعجز</CardTitle>
                 </CardHeader>
                 <CardContent className="p-4 pt-0 text-xs text-muted-foreground space-y-2">
-                  <p>اعتماد التجميع، تصفير غير المجرود، إصدار أذون الفائض والعجز، وترحيل قيود اليومية آلياً.</p>
+                  <p>اعتماد التجميع، تصفير غير المجرود، إصدار إذن فائض جرد منفصل وإذن عجز جرد منفصل، وترحيل قيود اليومية آلياً.</p>
                   <Button size="sm" variant="outline" className="w-full h-8 text-xs font-bold" onClick={() => router.push("/inventory/adjustment")}>
-                    سجل التسويات والقيود
+                    سجل أذون التسوية والقيود
                   </Button>
                 </CardContent>
               </Card>

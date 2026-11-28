@@ -689,7 +689,7 @@ export function generateAllJournalEntries(allData: any): JournalEntryLike[] {
                 number,
                 description: isOpening
                     ? `رصيد افتتاحي مخزون في ${warehouse?.name || 'المخزن'}`
-                    : `تسوية جرد (فائض / زيادة) في ${warehouse?.name || 'المخزن'}`,
+                    : `إذن تسوية فائض جرد في ${warehouse?.name || 'المخزن'} (${number})`,
                 debit: totalSurplus,
                 credit: 0,
                 account: `مخزون - ${warehouse?.name || 'غير محدد'}`
@@ -723,7 +723,7 @@ export function generateAllJournalEntries(allData: any): JournalEntryLike[] {
                 date: adj.date,
                 warehouseId: adj.warehouseId,
                 number,
-                description: `تسوية جرد (عجز) في ${warehouse?.name || 'المخزن'}`,
+                description: `إذن تسوية عجز جرد في ${warehouse?.name || 'المخزن'} (${number})`,
                 debit: 0,
                 credit: totalDeficit,
                 account: `مخزون - ${warehouse?.name || 'غير محدد'}`

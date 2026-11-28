@@ -33,7 +33,7 @@ interface StockAdjustmentRecord {
   warehouseId: string;
   notes?: string;
   createdByName?: string;
-  reason?: 'periodic_count' | 'opening_balance';
+  reason?: 'periodic_count' | 'opening_balance' | 'surplus' | 'deficit' | string;
   items: { 
     itemId: string; 
     name: string; 
@@ -60,11 +60,19 @@ export default function StockAdjustmentListPage() {
     return found?.name || 'غير معروف';
   };
   
-  const getReasonLabel = (reason?: string) => {
-      if (reason === 'opening_balance') return <Badge variant="secondary">جرد افتتاحي</Badge>;
-      if (reason === 'periodic_count') return <Badge>جرد دوري</Badge>;
-      return <Badge variant="outline">غير محدد</Badge>;
-  }
+  const getReasonLabel = (reason?: string, receiptNumber?: string) => {
+    const r = String(reason || "").toLowerCase();
+    const num = String(receiptNumber || "").toLowerCase();
+    if (r === "opening_balance") return <Badge variant="secondary">جرد افتتاحي</Badge>;
+    if (r === "surplus" || num.startsWith("ف-ج") || num.includes("فائض")) {
+      return <Badge className="bg-emerald-600 text-white hover:bg-emerald-700">إذن تسوية فائض جرد</Badge>;
+    }
+    if (r === "deficit" || num.startsWith("ع-ج") || num.includes("عجز")) {
+      return <Badge variant="destructive">إذن تسوية عجز جرد</Badge>;
+    }
+    if (r === "periodic_count") return <Badge>جرد دوري</Badge>;
+    return <Badge variant="outline">غير محدد</Badge>;
+  };
 
   return (
     <>
@@ -105,7 +113,7 @@ export default function StockAdjustmentListPage() {
                                 <p className="font-mono text-sm font-bold text-primary">{record.receiptNumber}</p>
                                 <p className="text-[10px] text-muted-foreground">{new Date(record.date).toLocaleString('ar-EG')}</p>
                               </div>
-                              {getReasonLabel(record.reason)}
+                              {getReasonLabel(record.reason, record.receiptNumber)}
                             </div>
                             <div className="grid grid-cols-2 gap-4 text-xs border-t pt-3">
                               <div className="space-y-1">
@@ -151,7 +159,7 @@ export default function StockAdjustmentListPage() {
                               <TableCell className="font-mono">{record.receiptNumber}</TableCell>
                               <TableCell>{new Date(record.date).toLocaleDateString('ar-EG')}</TableCell>
                               <TableCell>{getWarehouseName(record.warehouseId)}</TableCell>
-                              <TableCell>{getReasonLabel(record.reason)}</TableCell>
+                              <TableCell>{getReasonLabel(record.reason, record.receiptNumber)}</TableCell>
                               <TableCell>{record.createdByName || 'غير معروف'}</TableCell>
                                <TableCell className="text-center">
                                  <Button aria-haspopup="true" size="icon" variant="ghost" onClick={() => router.push(`/inventory/adjustment/${record.id}`)}>

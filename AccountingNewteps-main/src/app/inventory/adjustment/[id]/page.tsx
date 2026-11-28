@@ -17,7 +17,7 @@ interface StockAdjustmentRecord {
   warehouseId: string;
   notes?: string;
   createdByName?: string;
-  reason?: 'periodic_count' | 'opening_balance';
+  reason?: 'periodic_count' | 'opening_balance' | 'surplus' | 'deficit' | string;
   items: { 
     itemId: string; 
     name: string; 
@@ -68,6 +68,25 @@ export default function StockAdjustmentDetailsPage() {
   }
 
   const isOpeningBalance = record.reason === 'opening_balance';
+  const isSurplusDoc =
+    record.reason === 'surplus' ||
+    record.reason === 'periodic_count_surplus' ||
+    String(record.receiptNumber).startsWith('ف-ج') ||
+    String(record.receiptNumber).includes('فائض');
+  const isDeficitDoc =
+    record.reason === 'deficit' ||
+    record.reason === 'periodic_count_deficit' ||
+    String(record.receiptNumber).startsWith('ع-ج') ||
+    String(record.receiptNumber).includes('عجز');
+
+  const voucherTypeLabel = isOpeningBalance
+    ? 'إذن جرد افتتاحي (رصيد أول مدة)'
+    : isSurplusDoc
+      ? 'إذن تسوية فائض جرد (زيادة مخزنية)'
+      : isDeficitDoc
+        ? 'إذن تسوية عجز جرد (نقص مخزني)'
+        : 'إيصال تسوية مخزنية';
+
   const warehouseName = getWarehouseName(record.warehouseId);
 
   let totalSurplusValue = 0;
@@ -115,7 +134,7 @@ export default function StockAdjustmentDetailsPage() {
 
   return (
     <>
-      <PageHeader title={`إيصال تسوية: ${record.receiptNumber}`}>
+      <PageHeader title={`${voucherTypeLabel}: ${record.receiptNumber}`}>
         <div className="flex gap-2 no-print">
             <Button onClick={handlePrint} variant="outline">
                 <Printer className="ml-2 h-4 w-4" />
@@ -132,7 +151,7 @@ export default function StockAdjustmentDetailsPage() {
                 <div><span className="font-bold text-foreground">رقم الإيصال:</span> {record.receiptNumber}</div>
                 <div><span className="font-bold text-foreground">تاريخ التسوية:</span> {new Date(record.date).toLocaleDateString('ar-EG')}</div>
                 <div><span className="font-bold text-foreground">في مخزن:</span> {getWarehouseName(record.warehouseId)}</div>
-                <div><span className="font-bold text-foreground">نوع التسوية:</span> {isOpeningBalance ? 'جرد افتتاحي' : 'جرد دوري'}</div>
+                <div><span className="font-bold text-foreground">نوع المستند:</span> {voucherTypeLabel}</div>
                 <div className="md:col-span-2"><span className="font-bold text-foreground">بواسطة:</span> {record.createdByName || 'غير معروف'}</div>
             </div>
           </CardHeader>

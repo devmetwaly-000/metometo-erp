@@ -1133,7 +1133,6 @@ export default function NewStockAdjustmentPage() {
     setIsSaving(true);
 
     try {
-      const nextId = await getNextId("stockAdjustment");
       const now = new Date();
       const todayYMD = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
       const effectiveDateStr = activeSession?.snapshotDateStr || adjustmentDate;
@@ -1141,43 +1140,108 @@ export default function NewStockAdjustmentPage() {
         effectiveDateStr && (effectiveDateStr !== todayYMD || activeSession)
           ? new Date(`${effectiveDateStr}T12:00:00`)
           : now;
-      const receiptNumber = `ت-م-${nextId}`;
 
       const sessionTag = activeSession
         ? ` [جلسة: ${activeSession.sessionCode} | تجميع ${activeSession.sheets.length} كشف جهاز | تاريخ التجنيب: ${activeSession.snapshotDateStr}]`
         : "";
-      const finalNotes = `[نطاق الجرد: ${scopeSummaryLabel}]${sessionTag}${notes ? ` - ${notes}` : ""}`;
+      const baseNotes = `[نطاق الجرد: ${scopeSummaryLabel}]${sessionTag}${notes ? ` - ${notes}` : ""}`;
 
-      const record = {
-        warehouseId: selectedWarehouse,
-        warehouseSectionId: selectedWarehouseSection !== "all" ? selectedWarehouseSection : undefined,
-        catalogScope,
-        date: recordDate.toISOString(),
-        items: itemsToSave.map((item) => ({
-          itemId: item.itemId,
-          name: item.itemName,
-          difference: item.difference,
-          actualQty: item.actualQty,
-          systemQty: item.systemQty,
-          cost: (allItems || []).find((i: any) => i.id === item.itemId)?.cost || 0
-        })),
-        notes: finalNotes,
-        reason: adjustmentType,
-        receiptNumber,
-        createdById: user?.id,
-        createdByName: user?.name
-      };
+      const savedVouchers: { receiptNumber: string; id: string; type: string; count: number }[] = [];
 
-      const savedRecordId = await dbAction("stockAdjustmentRecords", "add", record);
+      // 1. إذا كان نوع التسوية جرد افتتاحي (Opening Balance)
+      if (adjustmentType === "opening_balance") {
+        const nextId = await getNextId("stockAdjustment");
+        const receiptNumber = `إذن-افتتاحي-${nextId}`;
+        const record = {
+          warehouseId: selectedWarehouse,
+          warehouseSectionId: selectedWarehouseSection !== "all" ? selectedWarehouseSection : undefined,
+          catalogScope,
+          date: recordDate.toISOString(),
+          items: itemsToSave.map((item) => ({
+            itemId: item.itemId,
+            name: item.itemName,
+            difference: item.difference,
+            actualQty: item.actualQty,
+            systemQty: item.systemQty,
+            cost: (allItems || []).find((i: any) => i.id === item.itemId)?.cost || 0
+          })),
+          notes: `[إذن جرد افتتاحي - رصيد أول مدة] ${baseNotes}`,
+          reason: "opening_balance",
+          receiptNumber,
+          createdById: user?.id,
+          createdByName: user?.name
+        };
+        const savedId = await dbAction("stockAdjustmentRecords", "add", record);
+        savedVouchers.push({ receiptNumber, id: String(savedId || receiptNumber), type: "opening", count: itemsToSave.length });
+      } else {
+        // 2. فصل إذن الفائض عن إذن العجز في مستندين منفصلين لضمان سلامة الرقابة والأثر المحاسبي
+        const surplusItems = itemsToSave.filter((item) => item.difference > 0);
+        const deficitItems = itemsToSave.filter((item) => item.difference < 0);
+
+        // أ) إصدار إذن تسوية فائض جرد (Surplus Voucher)
+        if (surplusItems.length > 0) {
+          const surplusNextId = await getNextId("stockAdjustment");
+          const surplusReceiptNumber = `ف-ج-${surplusNextId}`;
+          const surplusRecord = {
+            warehouseId: selectedWarehouse,
+            warehouseSectionId: selectedWarehouseSection !== "all" ? selectedWarehouseSection : undefined,
+            catalogScope,
+            date: recordDate.toISOString(),
+            items: surplusItems.map((item) => ({
+              itemId: item.itemId,
+              name: item.itemName,
+              difference: item.difference,
+              actualQty: item.actualQty,
+              systemQty: item.systemQty,
+              cost: (allItems || []).find((i: any) => i.id === item.itemId)?.cost || 0
+            })),
+            notes: `[إذن تسوية فائض جرد - زيادة مخزنية] ${baseNotes}`,
+            reason: "surplus",
+            receiptNumber: surplusReceiptNumber,
+            createdById: user?.id,
+            createdByName: user?.name
+          };
+          const savedSurplusId = await dbAction("stockAdjustmentRecords", "add", surplusRecord);
+          savedVouchers.push({ receiptNumber: surplusReceiptNumber, id: String(savedSurplusId || surplusReceiptNumber), type: "surplus", count: surplusItems.length });
+        }
+
+        // ب) إصدار إذن تسوية عجز جرد (Deficit Voucher)
+        if (deficitItems.length > 0) {
+          const deficitNextId = await getNextId("stockAdjustment");
+          const deficitReceiptNumber = `ع-ج-${deficitNextId}`;
+          const deficitRecord = {
+            warehouseId: selectedWarehouse,
+            warehouseSectionId: selectedWarehouseSection !== "all" ? selectedWarehouseSection : undefined,
+            catalogScope,
+            date: recordDate.toISOString(),
+            items: deficitItems.map((item) => ({
+              itemId: item.itemId,
+              name: item.itemName,
+              difference: item.difference,
+              actualQty: item.actualQty,
+              systemQty: item.systemQty,
+              cost: (allItems || []).find((i: any) => i.id === item.itemId)?.cost || 0
+            })),
+            notes: `[إذن تسوية عجز جرد - نقص مخزني] ${baseNotes}`,
+            reason: "deficit",
+            receiptNumber: deficitReceiptNumber,
+            createdById: user?.id,
+            createdByName: user?.name
+          };
+          const savedDeficitId = await dbAction("stockAdjustmentRecords", "add", deficitRecord);
+          savedVouchers.push({ receiptNumber: deficitReceiptNumber, id: String(savedDeficitId || deficitReceiptNumber), type: "deficit", count: deficitItems.length });
+        }
+      }
 
       if (activeSession) {
+        const combinedIds = savedVouchers.map((v) => v.receiptNumber).join(" | ");
         if (isIndexedDbMode) {
           try {
             const raw = localStorage.getItem(LOCAL_SESSIONS_KEY);
             const allSess: InventoryCountSession[] = raw ? JSON.parse(raw) : [];
             const updated = allSess.map((s) =>
               s.id === activeSession.id
-                ? { ...s, status: "consolidated" as const }
+                ? { ...s, status: "consolidated" as const, consolidatedRecordId: combinedIds }
                 : s
             );
             localStorage.setItem(LOCAL_SESSIONS_KEY, JSON.stringify(updated));
@@ -1189,15 +1253,16 @@ export default function NewStockAdjustmentPage() {
             body: JSON.stringify({
               action: "consolidate_session",
               sessionId: activeSession.id,
-              recordId: savedRecordId || receiptNumber
+              recordId: combinedIds
             })
           });
         }
       }
 
+      const receiptSummary = savedVouchers.map((v) => `${v.receiptNumber} (${v.count} صنف)`).join(" و ");
       toast({
-        title: activeSession ? "تم تجميع كشوف الجرد وإضافة الأرصدة بنجاح" : "اكتملت عملية الجرد والتسوية",
-        description: `تم حفظ إذن التسوية رقم: ${receiptNumber} (${itemsToSave.length} صنف) بتاريخ ${effectiveDateStr}`
+        title: "تم اعتماد تسوية الجرد وفصل الأذون بنجاح",
+        description: `تم إصدار: ${receiptSummary} بتاريخ ${effectiveDateStr}`
       });
       router.push("/inventory/adjustment");
     } catch {
