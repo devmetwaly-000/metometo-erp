@@ -31,7 +31,11 @@ import {
   CheckCircle2,
   ImagePlus,
   Sparkles,
-  RotateCcw
+  RotateCcw,
+  RefreshCw,
+  Users,
+  Lock,
+  FileCheck2
 } from "lucide-react";
 import React, { useState, useMemo, useCallback, useRef, useEffect } from "react";
 import * as XLSX from "xlsx";
@@ -75,6 +79,36 @@ interface AdjustmentItem {
   actualQty: number;
   difference: number;
   uniqueId: string;
+}
+
+interface InventoryCountSheet {
+  id: string;
+  sessionId: string;
+  deviceName: string;
+  submittedById?: string;
+  submittedByName?: string;
+  items: { itemId: string; itemName: string; itemCode?: string; actualQty: number }[];
+  notes?: string;
+  createdAt?: string;
+}
+
+interface InventoryCountSession {
+  id: string;
+  sessionCode: string;
+  warehouseId: string;
+  warehouseSectionId?: string;
+  adjustmentType: "periodic_count" | "opening_balance";
+  snapshotDate: string;
+  snapshotDateStr: string;
+  catalogScope?: string;
+  scopeLabel?: string;
+  frozenBalances: Record<string, number>;
+  status: "open" | "consolidated" | "cancelled";
+  createdById?: string;
+  createdByName?: string;
+  createdAt?: string;
+  notes?: string;
+  sheets: InventoryCountSheet[];
 }
 
 interface SecondaryUnit {
@@ -172,6 +206,73 @@ export default function NewStockAdjustmentPage() {
 
   const [isSaving, setIsSaving] = useState(false);
   const [duplicateItemInfo, setDuplicateItemInfo] = useState<{ item: AdjustmentItem; newQty: number } | null>(null);
+
+  // جلسات الجرد المتعدد وتجنيب الأرصدة الدفترية
+  const [countSessions, setCountSessions] = useState<InventoryCountSession[]>([]);
+  const [isIndexedDbMode, setIsIndexedDbMode] = useState(false);
+  const [activeSessionId, setActiveSessionId] = useState<string>("direct");
+  const [deviceName, setDeviceName] = useState<string>("");
+  const [isSessionsLoading, setIsSessionsLoading] = useState(false);
+  const [isSessionActionLoading, setIsSessionActionLoading] = useState(false);
+  const [isConsolidatedPreview, setIsConsolidatedPreview] = useState(false);
+
+  const LOCAL_SESSIONS_KEY = "inventory_count_sessions_v1";
+
+  const activeSession = useMemo(
+    () => countSessions.find((s) => s.id === activeSessionId) || null,
+    [countSessions, activeSessionId]
+  );
+
+  useEffect(() => {
+    if (!deviceName && user?.name) {
+      setDeviceName(`${user.name} (${isMobile ? "موبايل" : "جهاز كمبيوتر"})`);
+    }
+  }, [user, isMobile, deviceName]);
+
+  const loadCountSessions = useCallback(async () => {
+    setIsSessionsLoading(true);
+    try {
+      const res = await fetch("/api/inventory/count-sessions?status=open", { cache: "no-store" });
+      const json = await res.json();
+      if (json.isIndexedDb) {
+        setIsIndexedDbMode(true);
+        try {
+          const raw = localStorage.getItem(LOCAL_SESSIONS_KEY);
+          const parsed: InventoryCountSession[] = raw ? JSON.parse(raw) : [];
+          setCountSessions(parsed.filter((s) => s.status === "open"));
+        } catch {
+          setCountSessions([]);
+        }
+      } else if (json.success) {
+        setIsIndexedDbMode(false);
+        setCountSessions(json.sessions || []);
+      }
+    } catch {
+      // ignore silent network error
+    } finally {
+      setIsSessionsLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    loadCountSessions();
+  }, [loadCountSessions]);
+
+  // إعادة حساب الأرصدة الدفترية تلقائياً عند تغيير تاريخ الجرد في الوضع المباشر
+  useEffect(() => {
+    if (activeSession || isConsolidatedPreview || !selectedWarehouse || items.length === 0) return;
+    setItems((prev) =>
+      prev.map((row) => {
+        const nextSys = calculateSystemStock(row.itemId, selectedWarehouse, adjustmentDate);
+        return {
+          ...row,
+          systemQty: nextSys,
+          difference: Number((row.actualQty - nextSys).toFixed(3))
+        };
+      })
+    );
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [adjustmentDate]);
 
   // 5. إعدادات الكاميرا وماسح الباركود الذكي
   const [isScannerOpen, setIsScannerOpen] = useState(false);
@@ -359,36 +460,60 @@ export default function NewStockAdjustmentPage() {
     });
   }, [allItems, catalogScope, selectedSectionId, selectedCategoryId, selectedSubGroupId]);
 
-  // حساب الرصيد الدفتري للصنف (يدعم المخزن الفرعي، والمخزن الرئيسي بالكامل، أو حاوية محددة داخل المخزن الرئيسي)
+  // حساب الرصيد الدفتري للصنف (يدعم المخزن الفرعي، والمخزن الرئيسي بالكامل، أو حاوية محددة، مع احترام تاريخ التجنيب/الجرد)
   const calculateSystemStock = useCallback(
-    (itemId: string, warehouseId: string): number => {
+    (itemId: string, warehouseId: string, dateOverride?: string): number => {
       if (!itemId || !warehouseId || adjustmentType === "opening_balance") return 0;
+
+      // إذا كانت هناك جلسة جرد مجنّبة نشطة، نعتمد الرصيد الدفتري المجنّب في تاريخ الجرد وليس الرصيد الحالي
+      if (
+        activeSession &&
+        activeSession.warehouseId === warehouseId &&
+        activeSession.frozenBalances &&
+        Object.prototype.hasOwnProperty.call(activeSession.frozenBalances, itemId)
+      ) {
+        return Number(activeSession.frozenBalances[itemId]) || 0;
+      }
+
+      const effectiveDateStr = dateOverride || adjustmentDate;
+      const asOfDateObj = effectiveDateStr ? new Date(`${effectiveDateStr}T23:59:59.999`) : null;
+      const maxTime = asOfDateObj ? asOfDateObj.getTime() : Infinity;
 
       // إذا تم اختيار حاوية/قسم داخلي محدد داخل المخزن الرئيسي
       if (isSelectedMainWarehouse && selectedWarehouseSection !== "all") {
+        // عند تحديد تاريخ سابق أو استخدام التخصيصات، نحسب حتى التاريخ المحدد
+        let allocatedQty = 0;
+        let hasAllocations = false;
+        (allDataContext.stockInRecords || [])
+          .filter((si: any) => {
+            const wMatch = si.warehouseId === warehouseId || si.WarehouseId === warehouseId;
+            if (!wMatch) return false;
+            const txDate = si?.date || si?.Date;
+            if (txDate && new Date(txDate).getTime() > maxTime) return false;
+            return true;
+          })
+          .forEach((si: any) => {
+            (si.allocations || []).forEach((alloc: any) => {
+              if (alloc.sectionId === selectedWarehouseSection && alloc.itemId === itemId) {
+                hasAllocations = true;
+                allocatedQty += Number(alloc.quantity) || 0;
+              }
+            });
+          });
+        if (hasAllocations) return allocatedQty;
+
         const sectionInv = (inventory || []).find(
           (inv: any) => inv.id === `${warehouseId}-${selectedWarehouseSection}`
         );
         if (sectionInv && sectionInv.items && sectionInv.items[itemId]) {
           return Number(sectionInv.items[itemId].balance) || 0;
         }
-        // أو من تخصيصات أذونات الاستلام (allocations)
-        let allocatedQty = 0;
-        (allDataContext.stockInRecords || [])
-          .filter((si: any) => (si.warehouseId === warehouseId || si.WarehouseId === warehouseId))
-          .forEach((si: any) => {
-            (si.allocations || []).forEach((alloc: any) => {
-              if (alloc.sectionId === selectedWarehouseSection && alloc.itemId === itemId) {
-                allocatedQty += Number(alloc.quantity) || 0;
-              }
-            });
-          });
-        return allocatedQty;
+        return 0;
       }
 
-      return calculateStockForItemInWarehouse(itemId, warehouseId, allDataContext);
+      return calculateStockForItemInWarehouse(itemId, warehouseId, allDataContext, asOfDateObj);
     },
-    [allDataContext, adjustmentType, isSelectedMainWarehouse, selectedWarehouseSection, inventory]
+    [allDataContext, adjustmentType, adjustmentDate, activeSession, isSelectedMainWarehouse, selectedWarehouseSection, inventory]
   );
 
   // تحميل كافة أصناف النطاق المحدد دفعة واحدة في جدول الجرد
@@ -969,13 +1094,17 @@ export default function NewStockAdjustmentPage() {
       const nextId = await getNextId("stockAdjustment");
       const now = new Date();
       const todayYMD = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
+      const effectiveDateStr = activeSession?.snapshotDateStr || adjustmentDate;
       const recordDate =
-        adjustmentDate && adjustmentDate !== todayYMD
-          ? new Date(`${adjustmentDate}T12:00:00`)
+        effectiveDateStr && (effectiveDateStr !== todayYMD || activeSession)
+          ? new Date(`${effectiveDateStr}T12:00:00`)
           : now;
       const receiptNumber = `ت-م-${nextId}`;
 
-      const finalNotes = `[نطاق الجرد: ${scopeSummaryLabel}]${notes ? ` - ${notes}` : ""}`;
+      const sessionTag = activeSession
+        ? ` [جلسة: ${activeSession.sessionCode} | تجميع ${activeSession.sheets.length} كشف جهاز | تاريخ التجنيب: ${activeSession.snapshotDateStr}]`
+        : "";
+      const finalNotes = `[نطاق الجرد: ${scopeSummaryLabel}]${sessionTag}${notes ? ` - ${notes}` : ""}`;
 
       const record = {
         warehouseId: selectedWarehouse,
@@ -997,10 +1126,36 @@ export default function NewStockAdjustmentPage() {
         createdByName: user?.name
       };
 
-      await dbAction("stockAdjustmentRecords", "add", record);
+      const savedRecordId = await dbAction("stockAdjustmentRecords", "add", record);
+
+      if (activeSession) {
+        if (isIndexedDbMode) {
+          try {
+            const raw = localStorage.getItem(LOCAL_SESSIONS_KEY);
+            const allSess: InventoryCountSession[] = raw ? JSON.parse(raw) : [];
+            const updated = allSess.map((s) =>
+              s.id === activeSession.id
+                ? { ...s, status: "consolidated" as const }
+                : s
+            );
+            localStorage.setItem(LOCAL_SESSIONS_KEY, JSON.stringify(updated));
+          } catch {}
+        } else {
+          await fetch("/api/inventory/count-sessions", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              action: "consolidate_session",
+              sessionId: activeSession.id,
+              recordId: savedRecordId || receiptNumber
+            })
+          });
+        }
+      }
+
       toast({
-        title: "اكتملت عملية الجرد والتسوية",
-        description: `تم حفظ إذن التسوية رقم: ${receiptNumber} (${itemsToSave.length} صنف)`
+        title: activeSession ? "تم تجميع كشوف الجرد وإضافة الأرصدة بنجاح" : "اكتملت عملية الجرد والتسوية",
+        description: `تم حفظ إذن التسوية رقم: ${receiptNumber} (${itemsToSave.length} صنف) بتاريخ ${effectiveDateStr}`
       });
       router.push("/inventory/adjustment");
     } catch {
@@ -1011,6 +1166,319 @@ export default function NewStockAdjustmentPage() {
       });
     } finally {
       setIsSaving(false);
+    }
+  };
+
+  // --- دوال جلسات الجرد المتعدد وتجنيب الأرصدة الدفترية ---
+  const handleSelectSession = (sessionId: string) => {
+    setActiveSessionId(sessionId);
+    setIsConsolidatedPreview(false);
+    setItems([]);
+    if (sessionId === "direct") return;
+
+    const sess = countSessions.find((s) => s.id === sessionId);
+    if (!sess) return;
+    setAdjustmentType(sess.adjustmentType || "periodic_count");
+    setAdjustmentDate(sess.snapshotDateStr);
+    setLocationType("all_warehouses");
+    setBranchFilter("all");
+    setSelectedWarehouse(sess.warehouseId);
+    setSelectedWarehouseSection(sess.warehouseSectionId || "all");
+  };
+
+  const handleCreateFrozenSession = async () => {
+    if (!selectedWarehouse) {
+      toast({
+        variant: "destructive",
+        title: "اختر المخزن أولاً",
+        description: "يرجى اختيار المخزن المراد تجنيب أرصدته الدفترية."
+      });
+      return;
+    }
+    if (!adjustmentDate) {
+      toast({
+        variant: "destructive",
+        title: "حدد تاريخ التجنيب",
+        description: "يرجى تحديد التاريخ الذي سيتم تجنيب الأرصدة الدفترية عليه."
+      });
+      return;
+    }
+
+    setIsSessionActionLoading(true);
+    try {
+      const asOfDateObj = new Date(`${adjustmentDate}T23:59:59.999`);
+      const frozenBalances: Record<string, number> = {};
+
+      // حساب وتجنيب الأرصدة الدفترية لجميع الأصناف في هذا التاريخ المحدد
+      (allItems || [])
+        .filter((item: Item) => item.itemType !== "manufactured")
+        .forEach((item: Item) => {
+          if (adjustmentType === "opening_balance") {
+            frozenBalances[item.id] = 0;
+          } else {
+            frozenBalances[item.id] = calculateStockForItemInWarehouse(
+              item.id,
+              selectedWarehouse,
+              allDataContext,
+              asOfDateObj
+            );
+          }
+        });
+
+      const sessionCode = `جرد-${adjustmentDate}-${Math.floor(100 + Math.random() * 900)}`;
+      const newId = `ics_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
+
+      if (isIndexedDbMode) {
+        const newSession: InventoryCountSession = {
+          id: newId,
+          sessionCode,
+          warehouseId: selectedWarehouse,
+          warehouseSectionId: selectedWarehouseSection !== "all" ? selectedWarehouseSection : undefined,
+          adjustmentType,
+          snapshotDate: asOfDateObj.toISOString(),
+          snapshotDateStr: adjustmentDate,
+          catalogScope,
+          scopeLabel: scopeSummaryLabel,
+          frozenBalances,
+          status: "open",
+          createdById: user?.id,
+          createdByName: user?.name,
+          createdAt: new Date().toISOString(),
+          sheets: []
+        };
+        const raw = localStorage.getItem(LOCAL_SESSIONS_KEY);
+        const existing: InventoryCountSession[] = raw ? JSON.parse(raw) : [];
+        localStorage.setItem(LOCAL_SESSIONS_KEY, JSON.stringify([newSession, ...existing]));
+        await loadCountSessions();
+        setActiveSessionId(newId);
+      } else {
+        const res = await fetch("/api/inventory/count-sessions", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            action: "create_session",
+            id: newId,
+            sessionCode,
+            warehouseId: selectedWarehouse,
+            warehouseSectionId: selectedWarehouseSection,
+            adjustmentType,
+            snapshotDate: asOfDateObj.toISOString(),
+            snapshotDateStr: adjustmentDate,
+            catalogScope,
+            scopeLabel: scopeSummaryLabel,
+            frozenBalances,
+            createdById: user?.id,
+            createdByName: user?.name
+          })
+        });
+        const json = await res.json();
+        if (!json.success) throw new Error(json.error || "فشل إنشاء جلسة التجنيب");
+        await loadCountSessions();
+        setActiveSessionId(json.id || newId);
+      }
+
+      setIsConsolidatedPreview(false);
+      setItems([]);
+      toast({
+        title: "تم تجنيب الأرصدة الدفترية بنجاح",
+        description: `تم تجميد الأرصدة الدفترية بتاريخ ${adjustmentDate} وفتح جلسة الجرد (${sessionCode}) لاستقبال كشوف الأجهزة.`
+      });
+    } catch (err: any) {
+      toast({
+        variant: "destructive",
+        title: "خطأ في تجنيب الأرصدة",
+        description: err?.message || "تعذر إنشاء جلسة تجنيب الأرصدة الدفترية."
+      });
+    } finally {
+      setIsSessionActionLoading(false);
+    }
+  };
+
+  const handleSubmitDeviceSheet = async () => {
+    if (!activeSession) return;
+    if (items.length === 0) {
+      toast({
+        variant: "destructive",
+        title: "الكشف فارغ",
+        description: "يرجى إضافة أصناف وكميات الجرد الفعلي لهذا الجهاز قبل الإرسال."
+      });
+      return;
+    }
+
+    setIsSessionActionLoading(true);
+    try {
+      const sheetPayload = {
+        id: `icsh_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
+        sessionId: activeSession.id,
+        deviceName: deviceName.trim() || `${user?.name || "جهاز جرد"}`,
+        submittedById: user?.id,
+        submittedByName: user?.name,
+        items: items.map((i) => ({
+          itemId: i.itemId,
+          itemName: i.itemName,
+          itemCode: i.itemCode,
+          actualQty: i.actualQty
+        })),
+        notes,
+        createdAt: new Date().toISOString()
+      };
+
+      if (isIndexedDbMode) {
+        const raw = localStorage.getItem(LOCAL_SESSIONS_KEY);
+        const existing: InventoryCountSession[] = raw ? JSON.parse(raw) : [];
+        const updated = existing.map((s) =>
+          s.id === activeSession.id ? { ...s, sheets: [...(s.sheets || []), sheetPayload] } : s
+        );
+        localStorage.setItem(LOCAL_SESSIONS_KEY, JSON.stringify(updated));
+      } else {
+        const res = await fetch("/api/inventory/count-sessions", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            action: "submit_sheet",
+            ...sheetPayload
+          })
+        });
+        const json = await res.json();
+        if (!json.success) throw new Error(json.error || "فشل إرسال كشف الجرد");
+      }
+
+      await loadCountSessions();
+      setItems([]);
+      setNotes("");
+      setIsConsolidatedPreview(false);
+      toast({
+        title: "تم حفظ كشف الجرد للجهاز",
+        description: `تم إرسال كشف "${sheetPayload.deviceName}" (${sheetPayload.items.length} صنف) إلى الجلسة دون تعديل الأرصدة بعد.`
+      });
+    } catch (err: any) {
+      toast({
+        variant: "destructive",
+        title: "خطأ في إرسال الكشف",
+        description: err?.message || "تعذر حفظ كشف الجرد."
+      });
+    } finally {
+      setIsSessionActionLoading(false);
+    }
+  };
+
+  const handleRemoveDeviceSheet = async (sheetId: string) => {
+    if (!activeSession) return;
+    setIsSessionActionLoading(true);
+    try {
+      if (isIndexedDbMode) {
+        const raw = localStorage.getItem(LOCAL_SESSIONS_KEY);
+        const existing: InventoryCountSession[] = raw ? JSON.parse(raw) : [];
+        const updated = existing.map((s) =>
+          s.id === activeSession.id
+            ? { ...s, sheets: (s.sheets || []).filter((sh) => sh.id !== sheetId) }
+            : s
+        );
+        localStorage.setItem(LOCAL_SESSIONS_KEY, JSON.stringify(updated));
+      } else {
+        await fetch("/api/inventory/count-sessions", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            action: "remove_sheet",
+            sessionId: activeSession.id,
+            sheetId
+          })
+        });
+      }
+      await loadCountSessions();
+      setIsConsolidatedPreview(false);
+      toast({ title: "تم حذف الكشف", description: "تمت إزالة كشف الجرد من الجلسة." });
+    } catch {
+      toast({ variant: "destructive", title: "خطأ", description: "تعذر حذف الكشف." });
+    } finally {
+      setIsSessionActionLoading(false);
+    }
+  };
+
+  const handleConsolidatePreview = (includeUncountedWithFrozenBalance = false) => {
+    if (!activeSession || activeSession.sheets.length === 0) {
+      toast({
+        variant: "destructive",
+        title: "لا توجد كشوف جرد",
+        description: "يجب إدخال كشف جرد واحد على الأقل من الأجهزة قبل التجميع."
+      });
+      return;
+    }
+
+    const aggregatedMap = new Map<string, number>();
+    activeSession.sheets.forEach((sheet) => {
+      (sheet.items || []).forEach((it) => {
+        const prev = aggregatedMap.get(it.itemId) || 0;
+        aggregatedMap.set(it.itemId, Number((prev + (Number(it.actualQty) || 0)).toFixed(3)));
+      });
+    });
+
+    if (includeUncountedWithFrozenBalance) {
+      Object.entries(activeSession.frozenBalances || {}).forEach(([itemId, qty]) => {
+        if (!aggregatedMap.has(itemId) && Number(qty) !== 0) {
+          aggregatedMap.set(itemId, 0);
+        }
+      });
+    }
+
+    const consolidatedItems: AdjustmentItem[] = [];
+    aggregatedMap.forEach((totalActual, itemId) => {
+      const itemData = (allItems || []).find((i: Item) => i.id === itemId);
+      if (!itemData) return;
+      const frozenSysQty =
+        activeSession.adjustmentType === "opening_balance"
+          ? 0
+          : Number(activeSession.frozenBalances?.[itemId] ?? 0);
+      const diff = Number((totalActual - frozenSysQty).toFixed(3));
+      consolidatedItems.push({
+        itemId,
+        itemName: itemData.name,
+        itemCode: itemData.code || "",
+        sectionName: getSectionName(itemData.sectionId),
+        subGroupName: getSubGroupName(itemData),
+        systemQty: frozenSysQty,
+        actualQty: totalActual,
+        difference: diff,
+        uniqueId: `${itemId}-cons-${Date.now()}-${Math.random().toString(36).slice(2, 5)}`
+      });
+    });
+
+    setItems(consolidatedItems);
+    setIsConsolidatedPreview(true);
+    toast({
+      title: "تم تجميع كشوف الأجهزة بنجاح",
+      description: `تم تجميع ${activeSession.sheets.length} كشف جرد ومقارنتها بالأرصدة الدفترية المجنّبة بتاريخ ${activeSession.snapshotDateStr}. راجع الفروقات ثم اضغط اعتماد التجميع.`
+    });
+  };
+
+  const handleCancelSession = async () => {
+    if (!activeSession) return;
+    setIsSessionActionLoading(true);
+    try {
+      if (isIndexedDbMode) {
+        const raw = localStorage.getItem(LOCAL_SESSIONS_KEY);
+        const existing: InventoryCountSession[] = raw ? JSON.parse(raw) : [];
+        const updated = existing.map((s) =>
+          s.id === activeSession.id ? { ...s, status: "cancelled" as const } : s
+        );
+        localStorage.setItem(LOCAL_SESSIONS_KEY, JSON.stringify(updated));
+      } else {
+        await fetch("/api/inventory/count-sessions", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ action: "cancel_session", sessionId: activeSession.id })
+        });
+      }
+      await loadCountSessions();
+      setActiveSessionId("direct");
+      setIsConsolidatedPreview(false);
+      setItems([]);
+      toast({ title: "تم إلغاء الجلسة", description: "تم إغلاق جلسة الجرد دون تعديل الأرصدة." });
+    } catch {
+      toast({ variant: "destructive", title: "خطأ", description: "تعذر إلغاء الجلسة." });
+    } finally {
+      setIsSessionActionLoading(false);
     }
   };
 
@@ -1290,11 +1758,172 @@ export default function NewStockAdjustmentPage() {
               </div>
             ) : (
               <>
+                {/* القسم التمهيدي: جلسات الجرد متعدد الأجهزة وتجنيب الأرصدة الدفترية */}
+                <div className="p-3.5 rounded-xl border bg-amber-500/5 border-amber-500/30 space-y-3">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                    <div className="flex items-center gap-2 text-sm font-bold text-foreground">
+                      <Users className="h-4 w-4 text-amber-600" />
+                      <span>الجرد متعدد الأجهزة وتجنيب الأرصدة الدفترية ({countSessions.length} جلسة مفتوحة)</span>
+                    </div>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className="h-8 text-xs gap-1.5"
+                      onClick={loadCountSessions}
+                      disabled={isSessionsLoading}
+                    >
+                      <RefreshCw className={cn("h-3.5 w-3.5", isSessionsLoading && "animate-spin")} />
+                      تحديث الجلسات
+                    </Button>
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-3 items-end">
+                    <div className="space-y-1.5 md:col-span-2">
+                      <Label className="text-xs font-bold">اختر جلسة جرد مفتوحة (أو ابقِ على الجرد المباشر من جهاز واحد)</Label>
+                      <Select value={activeSessionId} onValueChange={handleSelectSession}>
+                        <SelectTrigger className="h-9 text-xs">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="direct">وضع الجرد المباشر (جهاز واحد — حفظ فوري)</SelectItem>
+                          {countSessions.map((sess) => {
+                            const whName =
+                              (warehouses || []).find((w: any) => w.id === sess.warehouseId)?.name ||
+                              (inventoryZones || []).find((z: any) => z.id === sess.warehouseId)?.name ||
+                              sess.warehouseId;
+                            return (
+                              <SelectItem key={sess.id} value={sess.id}>
+                                {sess.sessionCode} — {whName} | تاريخ التجنيب: {sess.snapshotDateStr} | ({sess.sheets?.length || 0} كشف جهاز)
+                              </SelectItem>
+                            );
+                          })}
+                        </SelectContent>
+                      </Select>
+                    </div>
+
+                    {activeSession && (
+                      <div className="space-y-1.5">
+                        <Label className="text-xs font-bold">اسم هذا الجهاز / القائم بالجرد</Label>
+                        <Input
+                          value={deviceName}
+                          onChange={(e) => setDeviceName(e.target.value)}
+                          placeholder="مثال: موبايل 1 - ممر A"
+                          className="h-9 text-xs"
+                        />
+                      </div>
+                    )}
+                  </div>
+
+                  {activeSession && (
+                    <div className="p-3 rounded-lg border bg-background/80 space-y-3">
+                      <div className="flex flex-col md:flex-row md:items-center justify-between gap-2">
+                        <div className="flex items-center gap-2 text-xs font-bold text-emerald-700 dark:text-emerald-400">
+                          <Lock className="h-4 w-4 shrink-0" />
+                          <span>
+                            الأرصدة الدفترية مجنّبة بتاريخ ({activeSession.snapshotDateStr}) — لن تتأثر بحركات المخزن الحالية.
+                          </span>
+                        </div>
+                        <div className="flex flex-wrap items-center gap-1.5">
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="default"
+                            className="h-8 text-xs gap-1.5 font-bold"
+                            disabled={isSessionActionLoading || activeSession.sheets.length === 0}
+                            onClick={() => handleConsolidatePreview(false)}
+                          >
+                            <FileCheck2 className="h-3.5 w-3.5" />
+                            تجميع كشوف الأجهزة ({activeSession.sheets.length})
+                          </Button>
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="outline"
+                            className="h-8 text-xs gap-1"
+                            disabled={isSessionActionLoading || activeSession.sheets.length === 0}
+                            onClick={() => handleConsolidatePreview(true)}
+                          >
+                            تجميع شامل (مع غير المجرود بصفر)
+                          </Button>
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="ghost"
+                            className="h-8 text-xs text-destructive hover:text-destructive"
+                            disabled={isSessionActionLoading}
+                            onClick={handleCancelSession}
+                          >
+                            إلغاء الجلسة
+                          </Button>
+                        </div>
+                      </div>
+
+                      {activeSession.sheets.length > 0 ? (
+                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
+                          {activeSession.sheets.map((sheet) => {
+                            const totalQty = (sheet.items || []).reduce(
+                              (sum, it) => sum + (Number(it.actualQty) || 0),
+                              0
+                            );
+                            return (
+                              <div
+                                key={sheet.id}
+                                className="flex items-center justify-between gap-2 p-2.5 rounded-lg border bg-muted/30 text-xs"
+                              >
+                                <div className="min-w-0">
+                                  <p className="font-bold truncate">{sheet.deviceName}</p>
+                                  <p className="text-[11px] text-muted-foreground">
+                                    {sheet.items.length} صنف | إجمالي: {totalQty} | {sheet.submittedByName || "-"}
+                                  </p>
+                                </div>
+                                <Button
+                                  type="button"
+                                  variant="ghost"
+                                  size="icon"
+                                  className="h-7 w-7 shrink-0"
+                                  disabled={isSessionActionLoading}
+                                  onClick={() => handleRemoveDeviceSheet(sheet.id)}
+                                >
+                                  <Trash2 className="h-3.5 w-3.5 text-destructive" />
+                                </Button>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      ) : (
+                        <p className="text-xs text-muted-foreground">
+                          لم يتم إرسال أي كشف جرد بعد في هذه الجلسة. قم بمسح الأصناف وإدخال الكميات أدناه ثم اضغط &quot;حفظ وإرسال كشف الجرد لهذا الجهاز&quot;.
+                        </p>
+                      )}
+                    </div>
+                  )}
+                </div>
+
                 {/* القسم الأول: تحديد المخزن (مخزن فرعي / مخزن رئيسي / حاوية) */}
                 <div className="p-3.5 rounded-xl border bg-muted/20 space-y-3">
-                  <div className="flex items-center gap-2 text-sm font-bold text-primary">
-                    <WarehouseIcon className="h-4 w-4" />
-                    <span>1. تحديد المكان المخزني (المخزن الفرعي أو المخزن الرئيسي)</span>
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                    <div className="flex items-center gap-2 text-sm font-bold text-primary">
+                      <WarehouseIcon className="h-4 w-4" />
+                      <span>1. تحديد المكان المخزني وتاريخ تجنيب الأرصدة</span>
+                    </div>
+                    {!activeSession && (
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="secondary"
+                        className="h-8 text-xs gap-1.5 font-bold border border-amber-500/40"
+                        disabled={!selectedWarehouse || !adjustmentDate || isSessionActionLoading}
+                        onClick={handleCreateFrozenSession}
+                      >
+                        {isSessionActionLoading ? (
+                          <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                        ) : (
+                          <Lock className="h-3.5 w-3.5 text-amber-600" />
+                        )}
+                        تجنيب الأرصدة الدفترية لهذا التاريخ وفتح جلسة جرد
+                      </Button>
+                    )}
                   </div>
 
                   <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3 items-end">
@@ -1884,22 +2513,46 @@ export default function NewStockAdjustmentPage() {
             <div className="flex items-center gap-2 text-foreground text-xs md:text-sm">
               <AlertCircle className="h-4 w-4 shrink-0" />
               <span>
-                سيتم اعتماد فروقات الجرد للنطاق المحدد ({scopeSummaryLabel}) وتحديث أرصدة المخزن فور الحفظ.
+                {activeSession && !isConsolidatedPreview
+                  ? `سيتم إرسال كشف الجرد الخاص بجهاز (${deviceName || "هذا الجهاز"}) إلى الجلسة (${activeSession.sessionCode}) دون تعديل أرصدة المخزن حتى يتم التجميع النهائي.`
+                  : activeSession && isConsolidatedPreview
+                    ? `معاينة التجميع النهائي لـ (${activeSession.sheets.length}) كشف جرد — سيتم اعتماد التسوية بتاريخ التجنيب (${activeSession.snapshotDateStr}).`
+                    : `سيتم اعتماد فروقات الجرد للنطاق المحدد (${scopeSummaryLabel}) بتاريخ (${adjustmentDate}) وتحديث أرصدة المخزن فور الحفظ.`}
               </span>
             </div>
-            <Button
-              size="lg"
-              className="w-full md:w-auto px-8 font-bold"
-              disabled={loading || isSaving || items.length === 0}
-              onClick={handleConfirm}
-            >
-              {isSaving ? (
-                <Loader2 className="ml-2 h-4 w-4 animate-spin" />
+            <div className="flex flex-col sm:flex-row gap-2 w-full md:w-auto">
+              {activeSession && !isConsolidatedPreview ? (
+                <Button
+                  size="lg"
+                  className="w-full md:w-auto px-8 font-bold"
+                  disabled={loading || isSessionActionLoading || items.length === 0}
+                  onClick={handleSubmitDeviceSheet}
+                >
+                  {isSessionActionLoading ? (
+                    <Loader2 className="ml-2 h-4 w-4 animate-spin" />
+                  ) : (
+                    <Save className="ml-2 h-4 w-4" />
+                  )}
+                  حفظ وإرسال كشف الجرد لهذا الجهاز
+                </Button>
               ) : (
-                <Save className="ml-2 h-4 w-4" />
+                <Button
+                  size="lg"
+                  className="w-full md:w-auto px-8 font-bold"
+                  disabled={loading || isSaving || items.length === 0}
+                  onClick={handleConfirm}
+                >
+                  {isSaving ? (
+                    <Loader2 className="ml-2 h-4 w-4 animate-spin" />
+                  ) : (
+                    <Save className="ml-2 h-4 w-4" />
+                  )}
+                  {activeSession && isConsolidatedPreview
+                    ? "اعتماد التجميع وإضافة الأرصدة"
+                    : "تأكيد وحفظ محضر الجرد والتسوية"}
+                </Button>
               )}
-              تأكيد وحفظ محضر الجرد والتسوية
-            </Button>
+            </div>
           </CardFooterUI>
         </Card>
       </main>
