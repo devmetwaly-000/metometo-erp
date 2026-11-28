@@ -154,6 +154,7 @@ export default function NewStockOutPage() {
         }
     }, [reason]);
     
+     const allData = useData();
      const calculateStock = useCallback((itemId: string, warehouseId: string): number => {
         if (!itemId || !warehouseId) return 0;
         return calculateStockForItemInWarehouse(itemId, warehouseId, allData);

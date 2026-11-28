@@ -95,6 +95,7 @@ export default function NewRequisitionPage() {
       return options.filter((w: any) => user?.warehouseIds?.includes(w.value));
   }, [allWarehouses, user]);
 
+  const allData = useData();
   const calculateStock = useCallback((itemId: string, warehouseId: string): number => {
     if (!itemId || !warehouseId) return 0;
     return calculateStockForItemInWarehouse(itemId, warehouseId, allData);

@@ -9,7 +9,7 @@ import {
     TrendingDown, LayoutGrid, FileClock, Percent, FileUp, FileDown, 
     History, AlertTriangle, FileText, Component as FileCog, ShoppingCart, ArrowRightLeft, 
     Scale, Flame, DollarSign, Receipt, CreditCard, Users2, Boxes, Layers, ShieldCheck,
-    Search, CheckCircle2, ChevronLeft, Sparkles, Filter
+    Search, CheckCircle2, ChevronLeft, Sparkles, Filter, Wallet
 } from "lucide-react";
 import Link from 'next/link';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -163,9 +163,9 @@ const reportCategories: ReportCategory[] = [
 ];
 
 function ReportCard({ title, description, href, icon, module, badge, isNew }: ReportItem) {
-    const { hasPermission } = usePermissions();
+    const { can } = usePermissions();
 
-    if (!hasPermission(module, 'view')) {
+    if (can && !can('view', module)) {
         return null;
     }
 

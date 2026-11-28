@@ -233,11 +233,38 @@ function BalanceSheet() {
         posSales, posReturns, payrollRecords, fixedAssets, depreciationRecords,
         loading 
     } = useData();
-    const { netIncome } = useIncomeStatementData();
-    const [expandedSections, setExpandedSections] = useState<Record<string, boolean>>({});
+    const incomeData = useIncomeStatementData();
+    const { netIncome } = incomeData;
+    const [expandedSections, setExpandedSections] = useState<Record<string, boolean>>({
+        cash: true,
+        ar: true,
+        inv: true,
+        repinv: true,
+        intransit: true,
+        vatinput: true,
+        assets: true,
+        ap: true,
+        dist: true
+    });
 
     const toggleSection = (section: string) => {
         setExpandedSections(prev => ({ ...prev, [section]: !prev[section] }));
+    };
+
+    const toggleAllSections = () => {
+        const hasCollapsed = Object.values(expandedSections).some(v => !v);
+        const newState = {
+            cash: hasCollapsed,
+            ar: hasCollapsed,
+            inv: hasCollapsed,
+            repinv: hasCollapsed,
+            intransit: hasCollapsed,
+            vatinput: hasCollapsed,
+            assets: hasCollapsed,
+            ap: hasCollapsed,
+            dist: hasCollapsed
+        };
+        setExpandedSections(newState);
     };
 
     const allData = useMemo(() => ({
@@ -487,23 +514,35 @@ function BalanceSheet() {
     const [warehouseViewMode, setWarehouseViewMode] = useState<'movements' | 'items'>('movements');
 
     const openDrillDown = (item: any, sectionId?: string) => {
-        let category = 'بند مالي';
-        let type = item.type;
+        let type = item?.type;
+        const targetId = item?.id || sectionId || '';
 
         if (!type && sectionId) {
-            if (sectionId === 'cash') type = 'cashAccount';
-            else if (sectionId === 'ar') type = 'customer';
-            else if (sectionId === 'ap') type = 'supplier';
-            else if (sectionId === 'inv') type = 'warehouse';
-            else if (sectionId === 'assets') type = 'asset';
-            else if (sectionId === 'dist') type = 'distribution';
-            else type = sectionId;
+            type = sectionId;
         }
 
-        if (type === 'customer') category = 'حسابات العملاء (الذمم المدينة)';
-        else if (type === 'supplier') category = 'حسابات الموردين (الذمم الدائنة)';
-        else if (type === 'cashAccount') category = 'النقدية وما في حكمها (خزائن وبنوك)';
-        else if (type === 'warehouse') category = 'المخزون السلعي بالمستودع';
+        // If it's a section header or general section
+        if (targetId === 'cash' || type === 'cash') type = 'cash';
+        else if (targetId === 'ar' || type === 'ar') type = 'ar';
+        else if (targetId === 'ap' || type === 'ap') type = 'ap';
+        else if (targetId === 'inv' || type === 'inv') type = 'inv';
+        else if (targetId === 'assets' || type === 'assets') type = 'assets';
+        else if (targetId === 'dist' || type === 'dist') type = 'dist';
+        else if (targetId === 'advances' || type === 'advances') type = 'advances';
+        else if (targetId === 'accruedExpenses' || type === 'accruedExpenses') type = 'accruedExpenses';
+        else if (targetId === 'vatinput' || type === 'vatinput') type = 'vatinput';
+        else if (targetId === 'vatoutput' || type === 'vatoutput') type = 'vatoutput';
+        else if (targetId === 'capital' || type === 'capital') type = 'capital';
+        else if (targetId === 'netIncome' || type === 'netIncome') type = 'netIncome';
+        else if (targetId === 'repinv' || type === 'repinv') type = 'repinv';
+        else if (targetId === 'intransit' || type === 'intransit') type = 'intransit';
+        else if (targetId === 'valuationReserve' || type === 'valuationReserve') type = 'valuationReserve';
+
+        let category = 'بند مالي';
+        if (type === 'customer' || type === 'ar') category = 'حسابات العملاء (الذمم المدينة)';
+        else if (type === 'supplier' || type === 'ap') category = 'حسابات الموردين (الذمم الدائنة)';
+        else if (type === 'cashAccount' || type === 'cash') category = 'النقدية وما في حكمها (خزائن وبنوك)';
+        else if (type === 'warehouse' || type === 'inv') category = 'المخزون السلعي بالمستودع';
         else if (type === 'repinv') category = 'مخزون عهدة المناديب';
         else if (type === 'intransit') category = 'بضاعة بالطريق (In Transit)';
         else if (type === 'vatinput') category = 'ضريبة القيمة المضافة المدخلات (مشتريات)';
@@ -513,20 +552,20 @@ function BalanceSheet() {
         else if (type === 'accruedExpenses') category = 'المصروفات المستحقة';
         else if (type === 'capital') category = 'رأس المال والاستثمارات';
         else if (type === 'netIncome') category = 'الأرباح المحتجزة وقائمة الدخل';
-        else if (type === 'distribution') category = 'توزيعات الأرباح';
+        else if (type === 'distribution' || type === 'dist') category = 'توزيعات الأرباح';
         else if (type === 'valuationReserve') category = 'تسوية المركز المالي والمخزون';
-        else if (type === 'sectionSummary') category = 'كشف إجمالي للبند';
+        else category = 'كشف تفصيلي للبند';
 
         setModalSearch('');
         setWarehouseViewMode('movements');
         setDrillDownModal({
             isOpen: true,
-            id: item.id || sectionId || '',
-            name: item.name || item.title || 'تفاصيل البند',
+            id: targetId,
+            name: item?.name || item?.title || category,
             category,
             type: type || 'sectionSummary',
-            balance: item.balance ?? item.total ?? 0,
-            raw: item.raw || item
+            balance: item?.balance ?? item?.total ?? 0,
+            raw: item?.raw || item
         });
     };
 
@@ -550,178 +589,358 @@ function BalanceSheet() {
         let opening = 0;
         let warehouseItems: Array<{ id: string; name: string; barcode?: string; qty: number; cost: number; total: number }> = [];
 
-        if (type === 'customer') {
-            const cust = customers.find((c: any) => c.id === id) || raw;
-            opening = Number(cust?.openingBalance || 0);
-            if (opening !== 0) {
-                rows.push({
-                    id: 'op_' + id,
-                    date: cust?.createdAt ? cust.createdAt.split('T')[0] : 'أول الفترة',
-                    type: 'رصيد افتتاحي',
-                    refNo: 'افتتاحي',
-                    description: 'الرصيد الافتتاحي المستحق على العميل',
-                    debit: opening > 0 ? opening : 0,
-                    credit: opening < 0 ? Math.abs(opening) : 0
-                });
-            }
+        // Safe Date Sorter - Opening balance always first, safe NaN handling
+        const safeDateSort = (a: any, b: any) => {
+            if (a.date === 'أول الفترة' || a.id?.startsWith('op_')) return -1;
+            if (b.date === 'أول الفترة' || b.id?.startsWith('op_')) return 1;
+            const tA = new Date(a.date).getTime();
+            const tB = new Date(b.date).getTime();
+            if (isNaN(tA) && isNaN(tB)) return 0;
+            if (isNaN(tA)) return 1;
+            if (isNaN(tB)) return -1;
+            return tA - tB;
+        };
 
-            salesInvoices
-                .filter((s: any) => s.customerId === id && (s.status === 'approved' || s.status === 'completed' || !s.status))
+        if (type === 'customer' || type === 'ar') {
+            const isAll = (type === 'ar' || id === 'ar' || id === 'all');
+            const targetCustomers = isAll 
+                ? (customers || []) 
+                : (customers || []).filter((c: any) => c.id === id);
+            const targetIds = new Set(targetCustomers.map((c: any) => c.id));
+            const matchCust = (cId: string | undefined) => isAll ? true : (cId ? targetIds.has(cId) : false);
+
+            opening = targetCustomers.reduce((s: number, c: any) => s + (Number(c.openingBalance) || 0), 0);
+            targetCustomers.forEach((c: any) => {
+                const op = Number(c.openingBalance || 0);
+                if (op !== 0) {
+                    rows.push({
+                        id: 'op_' + c.id,
+                        date: c.createdAt ? c.createdAt.split('T')[0] : 'أول الفترة',
+                        type: 'رصيد افتتاحي',
+                        refNo: 'افتتاحي',
+                        description: `الرصيد الافتتاحي المستحق على العميل (${c.name})`,
+                        debit: op > 0 ? op : 0,
+                        credit: op < 0 ? Math.abs(op) : 0
+                    });
+                }
+            });
+
+            // فواتير المبيعات
+            (salesInvoices || [])
+                .filter((s: any) => matchCust(s.customerId) && (s.status === 'approved' || s.status === 'completed' || !s.status))
                 .forEach((inv: any) => {
+                    const cust = (customers || []).find((c: any) => c.id === inv.customerId);
+                    const custName = cust ? ` [العميل: ${cust.name}]` : '';
                     rows.push({
                         id: 'inv_' + inv.id,
                         date: inv.date ? inv.date.split('T')[0] : '-',
                         type: 'فاتورة مبيعات',
                         refNo: inv.invoiceNumber || inv.id,
-                        description: 'فاتورة مبيعات بضاعة' + (inv.notes ? ` (${inv.notes})` : ''),
+                        description: 'فاتورة مبيعات بضاعة' + custName + (inv.notes ? ` (${inv.notes})` : ''),
                         debit: Number(inv.total || 0),
                         credit: 0
                     });
-                    if (Number(inv.paidAmount || 0) > 0) {
+
+                    // السداد الفوري مع الفاتورة فقط إذا لم يكن مسجلاً في سندات التحصيل لتفادي التكرار
+                    const linkedPayments = (customerPayments || [])
+                        .filter((p: any) => p.invoiceId === inv.id)
+                        .reduce((sum: number, p: any) => sum + (Number(p.amount) || 0), 0);
+                    const initialPaid = inv.initialPaidAmount != null
+                        ? Number(inv.initialPaidAmount)
+                        : Math.max(0, (Number(inv.paidAmount) || 0) - linkedPayments);
+
+                    if (initialPaid > 0) {
                         rows.push({
                             id: 'inv_paid_' + inv.id,
                             date: inv.date ? inv.date.split('T')[0] : '-',
                             type: 'سداد فوري مع الفاتورة',
                             refNo: inv.invoiceNumber || inv.id,
-                            description: 'سداد دفعة فورية مع الفاتورة',
+                            description: 'سداد دفعة فورية مع الفاتورة' + custName,
                             debit: 0,
-                            credit: Number(inv.paidAmount || 0)
+                            credit: initialPaid
                         });
                     }
                 });
 
-            customerPayments
-                .filter((p: any) => p.customerId === id)
+            // سندات التحصيل والقبض
+            (customerPayments || [])
+                .filter((p: any) => matchCust(p.customerId))
                 .forEach((p: any) => {
+                    const cust = (customers || []).find((c: any) => c.id === p.customerId);
+                    const custName = cust ? ` [العميل: ${cust.name}]` : '';
                     rows.push({
                         id: 'pay_' + p.id,
                         date: p.date ? p.date.split('T')[0] : '-',
-                        type: 'سند قبض / تحصيل',
+                        type: p.invoiceId ? 'سند تحصيل (مرتبط بفاتورة)' : 'سند تحصيل (دفعة على الحساب)',
                         refNo: p.receiptNumber || p.id,
-                        description: p.notes || (p.invoiceId ? 'سداد مرتبط بفاتورة' : 'سداد دفعة على الحساب'),
+                        description: (p.notes || (p.invoiceId ? 'سداد مرتبط بفاتورة مبيعات' : 'سداد دفعة نقدية على الحساب')) + custName,
                         debit: 0,
                         credit: Number(p.amount || 0)
                     });
                 });
 
-            salesReturns
-                .filter((r: any) => r.customerId === id)
+            // مرتجعات المبيعات
+            (salesReturns || [])
+                .filter((r: any) => matchCust(r.customerId))
                 .forEach((r: any) => {
+                    const cust = (customers || []).find((c: any) => c.id === r.customerId);
+                    const custName = cust ? ` [العميل: ${cust.name}]` : '';
                     rows.push({
                         id: 'ret_' + r.id,
                         date: r.date ? r.date.split('T')[0] : '-',
                         type: 'مرتجع مبيعات',
                         refNo: r.returnNumber || r.id,
-                        description: r.notes || 'مرتجع بضاعة من العميل',
+                        description: (r.notes || 'مرتجع بضاعة من العميل') + custName,
                         debit: 0,
                         credit: Number(r.total || 0)
                     });
                 });
 
-            rows.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+            rows.sort(safeDateSort);
             let cur = 0;
             rows.forEach(r => {
-                cur += r.debit - r.credit;
+                cur += (r.debit || 0) - (r.credit || 0);
                 r.balance = cur;
             });
-        } else if (type === 'supplier') {
-            const sup = suppliers.find((s: any) => s.id === id) || raw;
-            opening = Number(sup?.openingBalance || 0);
-            if (opening !== 0) {
-                rows.push({
-                    id: 'op_' + id,
-                    date: sup?.createdAt ? sup.createdAt.split('T')[0] : 'أول الفترة',
-                    type: 'رصيد افتتاحي',
-                    refNo: 'افتتاحي',
-                    description: 'الرصيد الافتتاحي المستحق للمورد',
-                    debit: opening < 0 ? Math.abs(opening) : 0,
-                    credit: opening > 0 ? opening : 0
-                });
-            }
+        } else if (type === 'supplier' || type === 'ap') {
+            const isAll = (type === 'ap' || id === 'ap' || id === 'all');
+            const targetSuppliers = isAll 
+                ? (suppliers || []) 
+                : (suppliers || []).filter((s: any) => s.id === id);
+            const targetIds = new Set(targetSuppliers.map((s: any) => s.id));
+            const matchSupp = (sId: string | undefined) => isAll ? true : (sId ? targetIds.has(sId) : false);
 
-            purchaseInvoices
-                .filter((p: any) => p.supplierId === id)
+            opening = targetSuppliers.reduce((s: number, sup: any) => s + (Number(sup.openingBalance) || 0), 0);
+            targetSuppliers.forEach((sup: any) => {
+                const op = Number(sup.openingBalance || 0);
+                if (op !== 0) {
+                    rows.push({
+                        id: 'op_' + sup.id,
+                        date: sup.createdAt ? sup.createdAt.split('T')[0] : 'أول الفترة',
+                        type: 'رصيد افتتاحي',
+                        refNo: 'افتتاحي',
+                        description: `الرصيد الافتتاحي المستحق للمورد (${sup.name})`,
+                        debit: op < 0 ? Math.abs(op) : 0,
+                        credit: op > 0 ? op : 0
+                    });
+                }
+            });
+
+            // فواتير المشتريات
+            (purchaseInvoices || [])
+                .filter((p: any) => matchSupp(p.supplierId))
                 .forEach((inv: any) => {
+                    const sup = (suppliers || []).find((s: any) => s.id === inv.supplierId);
+                    const supName = sup ? ` [المورد: ${sup.name}]` : '';
                     const total = getPurchaseInvoiceTotal(inv);
                     rows.push({
                         id: 'pinv_' + inv.id,
                         date: inv.date ? inv.date.split('T')[0] : '-',
                         type: 'فاتورة مشتريات',
                         refNo: inv.invoiceNumber || inv.id,
-                        description: 'فاتورة توريد بضاعة ومخزون',
+                        description: 'فاتورة توريد بضاعة ومخزون' + supName,
                         debit: 0,
                         credit: total
                     });
-                    if (Number(inv.paidAmount || 0) > 0) {
+
+                    const linkedPayments = (supplierPayments || [])
+                        .filter((sp: any) => sp.invoiceId === inv.id)
+                        .reduce((sum: number, sp: any) => sum + (Number(sp.amount) || 0), 0);
+                    const initialPaid = inv.initialPaidAmount != null
+                        ? Number(inv.initialPaidAmount)
+                        : Math.max(0, (Number(inv.paidAmount) || 0) - linkedPayments);
+
+                    if (initialPaid > 0) {
                         rows.push({
                             id: 'pinv_paid_' + inv.id,
                             date: inv.date ? inv.date.split('T')[0] : '-',
                             type: 'سداد فوري مع الفاتورة',
                             refNo: inv.invoiceNumber || inv.id,
-                            description: 'سداد دفعة فورية للمورد',
-                            debit: Number(inv.paidAmount || 0),
+                            description: 'سداد دفعة فورية للمورد' + supName,
+                            debit: initialPaid,
                             credit: 0
                         });
                     }
                 });
 
-            supplierPayments
-                .filter((p: any) => p.supplierId === id)
+            // سندات الصرف للموردين
+            (supplierPayments || [])
+                .filter((p: any) => matchSupp(p.supplierId))
                 .forEach((p: any) => {
+                    const sup = (suppliers || []).find((s: any) => s.id === p.supplierId);
+                    const supName = sup ? ` [المورد: ${sup.name}]` : '';
                     rows.push({
                         id: 'spay_' + p.id,
                         date: p.date ? p.date.split('T')[0] : '-',
-                        type: 'سند صرف / سداد مورد',
+                        type: p.invoiceId ? 'سند صرف (مرتبط بفاتورة شراء)' : 'سند صرف لمورد',
                         refNo: p.receiptNumber || p.id,
-                        description: p.notes || 'سداد مستحقات للمورد',
+                        description: (p.notes || 'سداد مستحقات للمورد') + supName,
                         debit: Number(p.amount || 0),
                         credit: 0
                     });
                 });
 
-            purchaseReturns
-                .filter((r: any) => r.supplierId === id)
+            // مرتجعات المشتريات
+            (purchaseReturns || [])
+                .filter((r: any) => matchSupp(r.supplierId))
                 .forEach((r: any) => {
+                    const sup = (suppliers || []).find((s: any) => s.id === r.supplierId);
+                    const supName = sup ? ` [المورد: ${sup.name}]` : '';
                     rows.push({
                         id: 'pret_' + r.id,
                         date: r.date ? r.date.split('T')[0] : '-',
                         type: 'مرتجع مشتريات',
                         refNo: r.returnNumber || r.id,
-                        description: r.notes || 'مرتجع بضاعة إلى المورد',
+                        description: (r.notes || 'مرتجع بضاعة إلى المورد') + supName,
                         debit: Number(r.total || 0),
                         credit: 0
                     });
                 });
 
-            rows.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+            rows.sort(safeDateSort);
             let cur = 0;
             rows.forEach(r => {
-                cur += r.credit - r.debit;
+                cur += (r.credit || 0) - (r.debit || 0);
                 r.balance = cur;
             });
-        } else if (type === 'cashAccount') {
-            const acc = cashAccounts.find((a: any) => a.id === id) || raw;
-            opening = Number(acc?.openingBalance || 0);
-            if (opening !== 0) {
-                rows.push({
-                    id: 'op_' + id,
-                    date: 'أول الفترة',
-                    type: 'رصيد افتتاحي',
-                    refNo: 'افتتاحي',
-                    description: 'الرصيد الافتتاحي للخزينة / الحساب',
-                    debit: opening > 0 ? opening : 0,
-                    credit: opening < 0 ? Math.abs(opening) : 0
-                });
-            }
+        } else if (type === 'cashAccount' || type === 'cash') {
+            const isAll = (type === 'cash' || id === 'cash' || id === 'all');
+            const targetAccounts = isAll 
+                ? (cashAccounts || []) 
+                : (cashAccounts || []).filter((a: any) => a.id === id);
+            const targetIds = new Set(targetAccounts.map((a: any) => a.id));
+            const hasDefault = targetAccounts.some((a: any) => a.isDefault);
+            const matchAcc = (accId: string | undefined, checkDefault?: boolean) => {
+                if (isAll) return true;
+                if (!accId) return checkDefault && hasDefault;
+                return targetIds.has(accId);
+            };
 
-            treasuryTransactions
-                .filter((t: any) => t.accountId === id || t.cashAccountId === id)
+            opening = targetAccounts.reduce((s: number, a: any) => s + (Number(a.openingBalance) || 0), 0);
+            targetAccounts.forEach((acc: any) => {
+                const op = Number(acc.openingBalance || 0);
+                if (op !== 0) {
+                    rows.push({
+                        id: 'op_' + acc.id,
+                        date: 'أول الفترة',
+                        type: 'رصيد افتتاحي',
+                        refNo: 'افتتاحي',
+                        description: `الرصيد الافتتاحي للخزينة / الحساب (${acc.name})`,
+                        debit: op > 0 ? op : 0,
+                        credit: op < 0 ? Math.abs(op) : 0
+                    });
+                }
+            });
+
+            // 1. سندات تحصيل العملاء
+            (customerPayments || [])
+                .filter((p: any) => matchAcc(p.paidToAccountId || p.accountId || p.cashAccountId, true))
+                .forEach((p: any) => {
+                    const accName = isAll ? ` [${(cashAccounts || []).find((a: any) => a.id === (p.paidToAccountId || p.accountId))?.name || 'خزينة'}]` : '';
+                    rows.push({
+                        id: 'cpay_' + p.id,
+                        date: p.date ? p.date.split('T')[0] : '-',
+                        type: 'تحصيل من عميل',
+                        refNo: p.receiptNumber || p.id,
+                        description: (p.notes || 'سند قبض نقدية') + accName,
+                        debit: Number(p.amount || 0),
+                        credit: 0
+                    });
+                });
+
+            // 2. مبيعات نقدية فورية من الفواتير
+            (salesInvoices || [])
+                .filter((s: any) => matchAcc(s.paidToAccountId, true) && (s.status === 'approved' || s.status === 'completed' || !s.status))
+                .forEach((s: any) => {
+                    const linkedPaid = (customerPayments || []).filter((p: any) => p.invoiceId === s.id).reduce((sum: number, p: any) => sum + (Number(p.amount) || 0), 0);
+                    const initialCash = s.initialPaidAmount != null ? Number(s.initialPaidAmount) : Math.max(0, (Number(s.paidAmount) || 0) - linkedPaid);
+                    if (initialCash > 0) {
+                        const accName = isAll ? ` [${(cashAccounts || []).find((a: any) => a.id === s.paidToAccountId)?.name || 'خزينة'}]` : '';
+                        rows.push({
+                            id: 'csale_' + s.id,
+                            date: s.date ? s.date.split('T')[0] : '-',
+                            type: 'مبيعات نقدية فورية',
+                            refNo: s.invoiceNumber || s.id,
+                            description: 'تحصيل نقدي فوري مع فاتورة البيع' + accName,
+                            debit: initialCash,
+                            credit: 0
+                        });
+                    }
+                });
+
+            // 3. مبيعات الكاشير POS
+            (posSales || []).forEach((s: any) => {
+                const targetId = s.paidToAccountId || (s.warehouseId ? (cashAccounts || []).find((a: any) => a.warehouseId === s.warehouseId)?.id : null);
+                if (matchAcc(targetId, true)) {
+                    const amount = Number(s.paidAmount || s.total || 0);
+                    if (amount > 0) {
+                        rows.push({
+                            id: 'pos_' + s.id,
+                            date: s.date ? s.date.split('T')[0] : '-',
+                            type: 'مبيعات نقطة بيع POS',
+                            refNo: s.receiptNumber || s.id,
+                            description: 'مبيعات كاشير نقدية',
+                            debit: amount,
+                            credit: 0
+                        });
+                    }
+                }
+            });
+
+            // 4. إيرادات استثنائية ومتنوعة
+            (exceptionalIncomes || [])
+                .filter((e: any) => matchAcc(e.paidToAccountId || e.accountId, true))
+                .forEach((e: any) => {
+                    rows.push({
+                        id: 'einc_' + e.id,
+                        date: e.date ? e.date.split('T')[0] : '-',
+                        type: 'إيراد استثنائي / متنوع',
+                        refNo: e.id,
+                        description: e.description || 'إيراد متنوع إلى الخزينة',
+                        debit: Number(e.amount || 0),
+                        credit: 0
+                    });
+                });
+
+            // 5. توريدات المناديب
+            (repRemittances || [])
+                .filter((rem: any) => matchAcc(rem.toAccountId, true))
+                .forEach((rem: any) => {
+                    rows.push({
+                        id: 'rem_' + rem.id,
+                        date: rem.date ? rem.date.split('T')[0] : '-',
+                        type: 'توريد نقدية من مندوب',
+                        refNo: rem.id,
+                        description: `توريد نقدية من المندوب (${rem.repName || 'مندوب'})`,
+                        debit: Number(rem.amount || 0),
+                        credit: 0
+                    });
+                });
+
+            // 6. مستردات مرتجع الشراء
+            (purchaseReturns || [])
+                .filter((r: any) => matchAcc(r.paidToAccountId, true) && Number(r.paidAmount || 0) > 0)
+                .forEach((r: any) => {
+                    rows.push({
+                        id: 'pret_cash_' + r.id,
+                        date: r.date ? r.date.split('T')[0] : '-',
+                        type: 'استرداد نقدي لمرتجع شراء',
+                        refNo: r.returnNumber || r.id,
+                        description: 'استرداد نقدي لمرتجع بضاعة إلى المورد',
+                        debit: Number(r.paidAmount || 0),
+                        credit: 0
+                    });
+                });
+
+            // 7. تحويلات وإيداعات الخزينة
+            (treasuryTransactions || [])
+                .filter((t: any) => matchAcc(t.accountId || t.cashAccountId))
                 .forEach((t: any) => {
                     const isDep = t.type === 'deposit';
                     rows.push({
                         id: 'tx_' + t.id,
                         date: t.date ? t.date.split('T')[0] : '-',
-                        type: isDep ? 'إيداع خزينة' : 'سحب / تحويل من الخزينة',
+                        type: isDep ? (t.linkedTransaction ? 'تحويل نقدية وارد' : 'إيداع خزينة') : (t.linkedTransaction ? 'تحويل نقدية صادر' : 'مسحوبات خزينة'),
                         refNo: t.referenceNumber || t.id,
                         description: t.description || t.notes || (isDep ? 'إيداع نقدي' : 'سحب نقدي'),
                         debit: isDep ? Number(t.amount || 0) : 0,
@@ -729,50 +948,9 @@ function BalanceSheet() {
                     });
                 });
 
-            customerPayments
-                .filter((p: any) => p.accountId === id || p.cashAccountId === id)
-                .forEach((p: any) => {
-                    rows.push({
-                        id: 'cpay_' + p.id,
-                        date: p.date ? p.date.split('T')[0] : '-',
-                        type: 'تحصيل من عميل',
-                        refNo: p.receiptNumber || p.id,
-                        description: p.notes || 'سند قبض نقدية',
-                        debit: Number(p.amount || 0),
-                        credit: 0
-                    });
-                });
-
-            supplierPayments
-                .filter((p: any) => p.accountId === id || p.cashAccountId === id)
-                .forEach((p: any) => {
-                    rows.push({
-                        id: 'spay_' + p.id,
-                        date: p.date ? p.date.split('T')[0] : '-',
-                        type: 'سداد لمورد',
-                        refNo: p.receiptNumber || p.id,
-                        description: p.notes || 'سند صرف نقدية',
-                        debit: 0,
-                        credit: Number(p.amount || 0)
-                    });
-                });
-
-            salesInvoices
-                .filter((s: any) => (s.paidToAccountId === id || (acc?.isDefault && !s.paidToAccountId)) && Number(s.paidAmount || 0) > 0)
-                .forEach((s: any) => {
-                    rows.push({
-                        id: 'csale_' + s.id,
-                        date: s.date ? s.date.split('T')[0] : '-',
-                        type: 'مبيعات نقدية',
-                        refNo: s.invoiceNumber || s.id,
-                        description: 'تحصيل نقدي فوري مع فاتورة البيع',
-                        debit: Number(s.paidAmount || 0),
-                        credit: 0
-                    });
-                });
-
-            expenses
-                .filter((e: any) => (e.accountId === id || (acc?.isDefault && !e.accountId)) && e.status !== 'pending')
+            // 8. المصروفات التشغيلية
+            (expenses || [])
+                .filter((e: any) => matchAcc(e.paidFromAccountId || e.accountId, true) && e.status !== 'pending')
                 .forEach((e: any) => {
                     rows.push({
                         id: 'exp_' + e.id,
@@ -785,106 +963,115 @@ function BalanceSheet() {
                     });
                 });
 
-            exceptionalIncomes
-                .filter((e: any) => e.accountId === id || (acc?.isDefault && !e.accountId))
-                .forEach((e: any) => {
+            // 9. سداد دفعات للموردين
+            (supplierPayments || [])
+                .filter((p: any) => matchAcc(p.paidFromAccountId || p.accountId || p.cashAccountId, true))
+                .forEach((p: any) => {
                     rows.push({
-                        id: 'einc_' + e.id,
-                        date: e.date ? e.date.split('T')[0] : '-',
-                        type: 'إيراد استثنائي',
-                        refNo: e.id,
-                        description: e.description || 'إيراد متنوع',
-                        debit: Number(e.amount || 0),
-                        credit: 0
+                        id: 'spay_' + p.id,
+                        date: p.date ? p.date.split('T')[0] : '-',
+                        type: 'سداد لمورد',
+                        refNo: p.receiptNumber || p.id,
+                        description: p.notes || 'سند صرف نقدية لمورد',
+                        debit: 0,
+                        credit: Number(p.amount || 0)
                     });
                 });
 
-            employeeAdvances
-                .filter((a: any) => a.accountId === id)
+            // 10. مشتريات نقدية فورية مع الفاتورة
+            (purchaseInvoices || [])
+                .filter((p: any) => matchAcc(p.paidFromAccountId, true))
+                .forEach((p: any) => {
+                    const linkedPaid = (supplierPayments || []).filter((sp: any) => sp.invoiceId === p.id).reduce((sum: number, sp: any) => sum + (Number(sp.amount) || 0), 0);
+                    const initialPaid = p.initialPaidAmount != null ? Number(p.initialPaidAmount) : Math.max(0, (Number(p.paidAmount) || 0) - linkedPaid);
+                    if (initialPaid > 0) {
+                        rows.push({
+                            id: 'pinv_cash_' + p.id,
+                            date: p.date ? p.date.split('T')[0] : '-',
+                            type: 'مشتريات نقدية فورية',
+                            refNo: p.invoiceNumber || p.id,
+                            description: 'سداد نقدي فوري مع فاتورة الشراء',
+                            debit: 0,
+                            credit: initialPaid
+                        });
+                    }
+                });
+
+            // 11. سلف الموظفين
+            (employeeAdvances || [])
+                .filter((a: any) => matchAcc(a.paidFromAccountId || a.accountId, true))
                 .forEach((a: any) => {
                     rows.push({
                         id: 'eadv_' + a.id,
                         date: a.date ? a.date.split('T')[0] : '-',
                         type: 'صرف سلفة موظف',
                         refNo: a.id,
-                        description: 'صرف سلفة مستردة للموظف',
+                        description: `صرف سلفة مستردة للموظف (${a.employeeName || 'موظف'})`,
                         debit: 0,
                         credit: Number(a.amount || 0)
                     });
                 });
 
-            rows.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+            // 12. توزيعات الأرباح
+            (profitDistributions || [])
+                .filter((pd: any) => matchAcc(pd.paidFromAccountId, true))
+                .forEach((pd: any) => {
+                    rows.push({
+                        id: 'pdist_' + pd.id,
+                        date: pd.date ? pd.date.split('T')[0] : '-',
+                        type: 'صرف توزيعات أرباح',
+                        refNo: pd.id,
+                        description: 'سداد توزيعات أرباح نقداً للشريك',
+                        debit: 0,
+                        credit: Number(pd.amount || 0)
+                    });
+                });
+
+            // 13. الرواتب والأجور
+            (payrollRecords || [])
+                .filter((pr: any) => matchAcc(pr.paidFromAccountId, true))
+                .forEach((pr: any) => {
+                    const totalNet = (pr.payrollData || []).reduce((sum: number, p: any) => sum + (Number(p.netSalary) || 0), 0);
+                    if (totalNet > 0) {
+                        rows.push({
+                            id: 'payr_' + pr.id,
+                            date: pr.date ? pr.date.split('T')[0] : '-',
+                            type: 'مسيرات رواتب',
+                            refNo: pr.id,
+                            description: `صرف رواتب شهر ${pr.month || ''} (${(pr.payrollData || []).length} موظف)`,
+                            debit: 0,
+                            credit: totalNet
+                        });
+                    }
+                });
+
+            rows.sort(safeDateSort);
             let cur = 0;
             rows.forEach(r => {
-                cur += r.debit - r.credit;
+                cur += (r.debit || 0) - (r.credit || 0);
                 r.balance = cur;
             });
-        } else if (type === 'warehouse') {
-            stockInRecords
-                .filter((si: any) => si.warehouseId === id)
-                .forEach((si: any) => {
-                    const totalVal = (si.items || []).reduce((sum: number, it: any) => sum + (Number(it.qty || it.quantity || 0) * Number(it.cost || it.price || 0)), 0);
-                    rows.push({
-                        id: 'si_' + si.id,
-                        date: si.date ? si.date.split('T')[0] : '-',
-                        type: 'إذن استلام (وارد)',
-                        refNo: si.recordNumber || si.id,
-                        description: `استلام بضاعة بالمخزن (${(si.items || []).length} صنف)`,
-                        debit: totalVal,
-                        credit: 0
-                    });
-                });
+        } else if (type === 'warehouse' || type === 'inv') {
+            const isAll = (type === 'inv' || id === 'inv' || id === 'all');
+            const targetWh = isAll 
+                ? [...warehouses, ...inventoryZones] 
+                : [...warehouses, ...inventoryZones].filter((w: any) => w.id === id);
+            const targetWhIds = new Set(targetWh.map((w: any) => w.id));
+            const matchWh = (wId: string | undefined) => isAll ? true : (wId ? targetWhIds.has(wId) : false);
 
-            stockOutRecords
-                .filter((so: any) => so.warehouseId === id)
-                .forEach((so: any) => {
-                    const totalVal = (so.items || []).reduce((sum: number, it: any) => sum + (Number(it.qty || it.quantity || 0) * Number(it.cost || it.price || 0)), 0);
-                    rows.push({
-                        id: 'so_' + so.id,
-                        date: so.date ? so.date.split('T')[0] : '-',
-                        type: 'إذن صرف (صادر)',
-                        refNo: so.recordNumber || so.id,
-                        description: `صرف بضاعة من المخزن (${(so.items || []).length} صنف)`,
-                        debit: 0,
-                        credit: totalVal
+            // حساب أرصدة الأصناف بالمخزن
+            (allItems || []).forEach((it: any) => {
+                let stock = 0;
+                if (isAll) {
+                    targetWh.forEach((w: any) => {
+                        stock += calculateStockForItemInWarehouse(it.id, w.id, allData);
                     });
-                });
+                } else {
+                    stock = calculateStockForItemInWarehouse(it.id, id, allData);
+                }
 
-            stockTransferRecords
-                .filter((st: any) => st.fromWarehouseId === id || st.toWarehouseId === id)
-                .forEach((st: any) => {
-                    const isIncoming = st.toWarehouseId === id;
-                    const totalVal = (st.items || []).reduce((sum: number, it: any) => sum + (Number(it.qty || it.quantity || 0) * Number(it.cost || it.price || 0)), 0);
-                    rows.push({
-                        id: 'st_' + st.id,
-                        date: st.date ? st.date.split('T')[0] : '-',
-                        type: isIncoming ? 'تحويل وارد' : 'تحويل صادر',
-                        refNo: st.transferNumber || st.id,
-                        description: isIncoming ? 'تحويل بضاعة واردة من مخزن آخر' : 'تحويل بضاعة صادرة إلى مخزن آخر',
-                        debit: isIncoming ? totalVal : 0,
-                        credit: !isIncoming ? totalVal : 0
-                    });
-                });
-
-            stockAdjustmentRecords
-                .filter((sa: any) => sa.warehouseId === id)
-                .forEach((sa: any) => {
-                    const totalVal = (sa.items || []).reduce((sum: number, it: any) => sum + (Number(it.difference || 0) * Number(it.cost || 0)), 0);
-                    rows.push({
-                        id: 'sa_' + sa.id,
-                        date: sa.date ? sa.date.split('T')[0] : '-',
-                        type: 'تسوية جردية',
-                        refNo: sa.adjustmentNumber || sa.id,
-                        description: `تسوية جرد مخزني (${sa.reason || 'فروق جرد'})`,
-                        debit: totalVal > 0 ? totalVal : 0,
-                        credit: totalVal < 0 ? Math.abs(totalVal) : 0
-                    });
-                });
-
-            allItems.forEach((it: any) => {
-                const stock = calculateStockForItemInWarehouse(it.id, id, allData);
-                if (stock > 0.001) {
-                    const cost = Number(it.cost || 0);
+                if (Math.abs(stock) > 0.001) {
+                    const cost = details.getItemCost ? details.getItemCost(it.id, Number(it.cost || 0)) : Number(it.cost || 0);
                     warehouseItems.push({
                         id: it.id,
                         name: it.name,
@@ -897,119 +1084,320 @@ function BalanceSheet() {
             });
             warehouseItems.sort((a, b) => b.total - a.total);
 
-            rows.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+            // حركات الوارد والصادر بالمخزن
+            (stockInRecords || [])
+                .filter((si: any) => matchWh(si.warehouseId))
+                .forEach((si: any) => {
+                    const totalVal = (si.items || []).reduce((sum: number, it: any) => sum + (Number(it.qty || it.quantity || 0) * (Number(it.cost || it.unitCost || it.price || 0) || (details.getItemCost ? details.getItemCost(it.id || it.itemId, 0) : 0))), 0);
+                    rows.push({
+                        id: 'si_' + si.id,
+                        date: si.date ? si.date.split('T')[0] : '-',
+                        type: 'إذن استلام مخزني (وارد)',
+                        refNo: si.recordNumber || si.id,
+                        description: `استلام بضاعة بالمستودع (${(si.items || []).length} صنف)`,
+                        debit: totalVal,
+                        credit: 0
+                    });
+                });
+
+            (stockOutRecords || [])
+                .filter((so: any) => matchWh(so.warehouseId))
+                .forEach((so: any) => {
+                    const totalVal = (so.items || []).reduce((sum: number, it: any) => sum + (Number(it.qty || it.quantity || 0) * (Number(it.cost || it.unitCost || it.price || 0) || (details.getItemCost ? details.getItemCost(it.id || it.itemId, 0) : 0))), 0);
+                    rows.push({
+                        id: 'so_' + so.id,
+                        date: so.date ? so.date.split('T')[0] : '-',
+                        type: 'إذن صرف مخزني (صادر)',
+                        refNo: so.recordNumber || so.id,
+                        description: `صرف بضاعة من المستودع (${(so.items || []).length} صنف)`,
+                        debit: 0,
+                        credit: totalVal
+                    });
+                });
+
+            (stockTransferRecords || [])
+                .filter((st: any) => matchWh(st.fromWarehouseId) || matchWh(st.toWarehouseId))
+                .forEach((st: any) => {
+                    const isIncoming = matchWh(st.toWarehouseId);
+                    const totalVal = (st.items || []).reduce((sum: number, it: any) => sum + (Number(it.qty || it.quantity || 0) * (Number(it.cost || it.unitCost || 0) || (details.getItemCost ? details.getItemCost(it.id || it.itemId, 0) : 0))), 0);
+                    rows.push({
+                        id: 'st_' + st.id,
+                        date: st.date ? st.date.split('T')[0] : '-',
+                        type: isIncoming ? 'تحويل بضاعة وارد' : 'تحويل بضاعة صادر',
+                        refNo: st.transferNumber || st.id,
+                        description: isIncoming ? 'تحويل بضاعة واردة من مخزن آخر' : 'تحويل بضاعة صادرة إلى مخزن آخر',
+                        debit: isIncoming ? totalVal : 0,
+                        credit: !isIncoming ? totalVal : 0
+                    });
+                });
+
+            (stockAdjustmentRecords || [])
+                .filter((sa: any) => matchWh(sa.warehouseId))
+                .forEach((sa: any) => {
+                    const totalVal = (sa.items || []).reduce((sum: number, it: any) => sum + (Number(it.difference || 0) * (Number(it.cost || it.price || 0) || (details.getItemCost ? details.getItemCost(it.id || it.itemId, 0) : 0))), 0);
+                    rows.push({
+                        id: 'sa_' + sa.id,
+                        date: sa.date ? sa.date.split('T')[0] : '-',
+                        type: totalVal >= 0 ? 'تسوية جردية (فائض)' : 'تسوية جردية (عجز)',
+                        refNo: sa.adjustmentNumber || sa.id,
+                        description: `تسوية جرد مخزني (${sa.reason || 'فروق جرد'})`,
+                        debit: totalVal > 0 ? totalVal : 0,
+                        credit: totalVal < 0 ? Math.abs(totalVal) : 0
+                    });
+                });
+
+            // مبيعات المخزن (صرف تكلفة البضاعة المباعة)
+            (salesInvoices || [])
+                .filter((s: any) => matchWh(s.warehouseId) && (s.status === 'approved' || s.status === 'completed' || !s.status))
+                .forEach((s: any) => {
+                    const costVal = (s.items || []).reduce((sum: number, it: any) => {
+                        const itemCost = details.getItemCost ? details.getItemCost(it.id || it.itemId, Number(it.cost || 0)) : Number(it.cost || 0);
+                        return sum + (Number(it.qty || it.quantity || 0) * itemCost);
+                    }, 0);
+                    if (costVal > 0) {
+                        rows.push({
+                            id: 'sale_wh_' + s.id,
+                            date: s.date ? s.date.split('T')[0] : '-',
+                            type: 'صرف بضاعة مباعة',
+                            refNo: s.invoiceNumber || s.id,
+                            description: `صرف مبيعات بضاعة بتكلفة الشراء (${(s.items || []).length} صنف)`,
+                            debit: 0,
+                            credit: costVal
+                        });
+                    }
+                });
+
+            // مرتجعات مبيعات واردة للمخزن
+            (salesReturns || [])
+                .filter((r: any) => matchWh(r.warehouseId))
+                .forEach((r: any) => {
+                    const returnCost = (r.items || []).reduce((sum: number, it: any) => {
+                        const itemCost = details.getItemCost ? details.getItemCost(it.id || it.itemId, Number(it.cost || 0)) : Number(it.cost || 0);
+                        return sum + (Number(it.qty || it.quantity || 0) * itemCost);
+                    }, 0);
+                    if (returnCost > 0) {
+                        rows.push({
+                            id: 'ret_wh_' + r.id,
+                            date: r.date ? r.date.split('T')[0] : '-',
+                            type: 'مرتجع مبيعات وارد للمخزن',
+                            refNo: r.returnNumber || r.id,
+                            description: 'إعادة إدخال بضاعة مرتجعة من عميل إلى المستودع',
+                            debit: returnCost,
+                            credit: 0
+                        });
+                    }
+                });
+
+            rows.sort(safeDateSort);
             let cur = 0;
             rows.forEach(r => {
-                cur += r.debit - r.credit;
+                cur += (r.debit || 0) - (r.credit || 0);
                 r.balance = cur;
             });
-        } else if (type === 'advances') {
-            (employeeAdvances || []).forEach((adv: any) => {
-                rows.push({
-                    id: adv.id,
-                    date: adv.date ? adv.date.split('T')[0] : '-',
-                    type: 'سلفة موظف',
-                    refNo: adv.id,
-                    description: `سلفة للموظف (${adv.employeeName || 'موظف'}) - حالة: ${adv.status === 'approved' ? 'معتمدة' : adv.status}`,
-                    debit: Number(adv.amount || 0),
-                    credit: adv.repaid ? Number(adv.amount || 0) : 0,
-                    balance: adv.repaid ? 0 : Number(adv.amount || 0)
-                });
-            });
-        } else if (type === 'vatinput') {
-            (purchaseInvoices || []).filter((inv: any) => Number(inv.tax || inv.Tax || 0) > 0).forEach((inv: any) => {
-                rows.push({
-                    id: inv.id,
-                    date: inv.date ? inv.date.split('T')[0] : '-',
-                    type: 'ضريبة مشتريات (مدخلات)',
-                    refNo: inv.invoiceNumber || inv.id,
-                    description: `ضريبة مدخلات فاتورة شراء من مورد - إجمالي الفاتورة: ${inv.total} ج.م`,
-                    debit: Number(inv.tax || inv.Tax || 0),
-                    credit: 0,
-                    balance: Number(inv.tax || inv.Tax || 0)
-                });
-            });
-        } else if (type === 'vatoutput') {
-            (salesInvoices || []).filter((inv: any) => Number(inv.tax || inv.Tax || 0) > 0).forEach((inv: any) => {
-                rows.push({
-                    id: inv.id,
-                    date: inv.date ? inv.date.split('T')[0] : '-',
-                    type: 'ضريبة مخرجات (مبيعات)',
-                    refNo: inv.invoiceNumber || inv.id,
-                    description: `ضريبة مخرجات فاتورة بيع لعميل - إجمالي الفاتورة: ${inv.total} ج.م`,
-                    debit: 0,
-                    credit: Number(inv.tax || inv.Tax || 0),
-                    balance: Number(inv.tax || inv.Tax || 0)
-                });
-            });
         } else if (type === 'asset' || type === 'assets') {
-            fixedAssets.forEach((as: any) => {
-                const dep = depreciationRecords.filter(d => d.assetId === as.id).reduce((sum, d) => sum + d.amount, 0);
+            const isAll = (type === 'assets' || id === 'assets' || id === 'all');
+            const targetAssets = isAll 
+                ? (fixedAssets || []) 
+                : (fixedAssets || []).filter((a: any) => a.id === id);
+
+            targetAssets.forEach((as: any) => {
+                const depList = (depreciationRecords || []).filter((d: any) => d.assetId === as.id);
+
                 rows.push({
-                    id: as.id,
-                    date: as.purchaseDate ? as.purchaseDate.split('T')[0] : '-',
-                    type: 'أصل ثابت',
+                    id: 'as_' + as.id,
+                    date: as.purchaseDate ? as.purchaseDate.split('T')[0] : 'أول الفترة',
+                    type: 'شراء أصل ثابت',
                     refNo: as.id,
-                    description: `${as.name} (تكلفة الشراء: ${as.cost.toLocaleString()} ج.م - مجمع الإهلاك: ${dep.toLocaleString()} ج.م)`,
-                    debit: as.cost,
-                    credit: dep,
-                    balance: as.cost - dep
+                    description: `شراء ${as.name} (تكلفة اقتناء الأصل)`,
+                    debit: Number(as.cost || 0),
+                    credit: 0,
+                    balance: Number(as.cost || 0)
+                });
+
+                depList.forEach((d: any) => {
+                    rows.push({
+                        id: 'dep_' + d.id,
+                        date: d.date ? d.date.split('T')[0] : '-',
+                        type: 'قسط إهلاك دوري',
+                        refNo: d.id,
+                        description: `مجمع إهلاك ${as.name} للفترة`,
+                        debit: 0,
+                        credit: Number(d.amount || 0)
+                    });
                 });
             });
-        } else if (type === 'accruedExpenses') {
-            (expenses || []).filter((e: any) => e.status === 'pending').forEach((e: any) => {
-                rows.push({
-                    id: e.id,
-                    date: e.date ? e.date.split('T')[0] : '-',
-                    type: 'مصروف مستحق معلق',
-                    refNo: e.expenseNumber || e.id,
-                    description: `${e.category} - ${e.description || 'مصروف مستحق لم يُسدد'}`,
-                    debit: 0,
-                    credit: Number(e.amount || 0),
-                    balance: Number(e.amount || 0)
-                });
+
+            rows.sort(safeDateSort);
+            let cur = 0;
+            rows.forEach(r => {
+                cur += (r.debit || 0) - (r.credit || 0);
+                r.balance = cur;
             });
         } else if (type === 'capital') {
-            partners.forEach((p: any) => {
+            // رصيد حقوق الملكية الافتتاحي الناتج عن فارق الأصول والخصوم الافتتاحية
+            const openingAssetsVal = (cashAccounts || []).reduce((s: number, c: any) => s + (Number(c.openingBalance) || 0), 0) +
+                                     (customers || []).reduce((s: number, c: any) => s + (Number(c.openingBalance) || 0), 0);
+            const openingLiabVal = (suppliers || []).reduce((s: number, sup: any) => s + (Number(sup.openingBalance) || 0), 0);
+            const openingBalanceEquity = Math.max(openingAssetsVal - openingLiabVal, 0);
+
+            if (openingBalanceEquity > 0) {
                 rows.push({
-                    id: 'p_' + p.id,
+                    id: 'cap_op',
                     date: 'أول الفترة',
-                    type: 'حصة رأس مال شريك',
-                    refNo: p.id,
-                    description: `حصة الشريك (${p.name}) بنسبة ${p.sharePercentage || 0}%`,
+                    type: 'رأس المال الافتتاحي',
+                    refNo: 'CAP_OPENING',
+                    description: 'رأس المال التأسيسي الافتتاحي (صافي الأصول الافتتاحية للخزائن والعملاء minus الموردين)',
                     debit: 0,
-                    credit: Number(p.capital || 0),
-                    balance: Number(p.capital || 0)
+                    credit: openingBalanceEquity
                 });
+            }
+
+            // حصص الشركاء المدفوعة
+            (partners || []).forEach((p: any) => {
+                if (Number(p.capital || 0) > 0) {
+                    rows.push({
+                        id: 'p_' + p.id,
+                        date: 'أول الفترة',
+                        type: 'حصة رأس مال شريك',
+                        refNo: p.id,
+                        description: `حصة الشريك (${p.name}) بنسبة ${p.sharePercentage || 0}%`,
+                        debit: 0,
+                        credit: Number(p.capital || 0)
+                    });
+                }
             });
-            treasuryTransactions.filter((tx: any) => !tx.linkedTransaction).forEach((tx: any) => {
+
+            // إيداعات زيادة رأس المال ومسحوبات الشركاء من الخزينة
+            (treasuryTransactions || []).filter((tx: any) => !tx.linkedTransaction).forEach((tx: any) => {
                 if (tx.type === 'deposit') {
                     rows.push({
                         id: 'cap_in_' + tx.id,
                         date: tx.date ? tx.date.split('T')[0] : '-',
                         type: 'إيداع زيادة رأس مال',
                         refNo: tx.referenceNumber || tx.id,
-                        description: tx.description || 'زيادة رأس مال بالخزينة',
+                        description: tx.description || 'زيادة رأس مال نقداً بالخزينة',
                         debit: 0,
-                        credit: Number(tx.amount || 0),
-                        balance: Number(tx.amount || 0)
+                        credit: Number(tx.amount || 0)
                     });
                 } else if (tx.type === 'withdrawal') {
                     rows.push({
                         id: 'cap_out_' + tx.id,
                         date: tx.date ? tx.date.split('T')[0] : '-',
-                        type: 'سحب رأس مال',
+                        type: 'مسحوبات من رأس المال',
                         refNo: tx.referenceNumber || tx.id,
                         description: tx.description || 'سحب من رأس المال',
                         debit: Number(tx.amount || 0),
-                        credit: 0,
-                        balance: -Number(tx.amount || 0)
+                        credit: 0
                     });
                 }
             });
-        } else if (type === 'distribution') {
-            profitDistributions.forEach((d: any) => {
-                const p = partners.find((part: any) => part.id === d.partnerId);
+
+            rows.sort(safeDateSort);
+            let cur = 0;
+            rows.forEach(r => {
+                cur += (r.credit || 0) - (r.debit || 0);
+                r.balance = cur;
+            });
+        } else if (type === 'netIncome') {
+            const inc = incomeData || {};
+            rows.push({
+                id: 'rev_gross',
+                date: 'الفترة الحالية',
+                type: 'إجمالي المبيعات الإيرادية',
+                refNo: 'REV_GROSS',
+                description: 'إجمالي مبيعات البضاعة والنشاط التجاري',
+                debit: 0,
+                credit: Number(inc.grossRevenue || 0)
+            });
+
+            if (Number(inc.totalSalesReturns || 0) > 0) {
+                rows.push({
+                    id: 'rev_ret',
+                    date: 'الفترة الحالية',
+                    type: 'مرتجعات ومسموحات المبيعات',
+                    refNo: 'SALES_RET',
+                    description: 'مرتجعات البضاعة المخصومة من الإيرادات',
+                    debit: Number(inc.totalSalesReturns || 0),
+                    credit: 0
+                });
+            }
+
+            if (Number(inc.totalSalesDiscount || 0) > 0) {
+                rows.push({
+                    id: 'rev_disc',
+                    date: 'الفترة الحالية',
+                    type: 'خصم مسموح به',
+                    refNo: 'SALES_DISC',
+                    description: 'خصومات المبيعات الممنوحة للعملاء',
+                    debit: Number(inc.totalSalesDiscount || 0),
+                    credit: 0
+                });
+            }
+
+            if (Number(inc.costOfGoodsSold || 0) > 0) {
+                rows.push({
+                    id: 'cogs',
+                    date: 'الفترة الحالية',
+                    type: 'تكلفة البضاعة المباعة (COGS)',
+                    refNo: 'COGS',
+                    description: 'تكلفة شراء البضاعة التي تم بيعها خلال الفترة',
+                    debit: Number(inc.costOfGoodsSold || 0),
+                    credit: 0
+                });
+            }
+
+            // المصروفات التشغيلية مفصلة حسب النوع
+            Object.entries(inc.expensesByType || {}).forEach(([expType, expAmount]: any) => {
+                if (Number(expAmount || 0) > 0) {
+                    rows.push({
+                        id: 'exp_' + expType,
+                        date: 'الفترة الحالية',
+                        type: 'مصروف تشغيلي: ' + expType,
+                        refNo: 'OP_EXP',
+                        description: `مصروفات نشاط تشغيلية معتمدة (${expType})`,
+                        debit: Number(expAmount || 0),
+                        credit: 0
+                    });
+                }
+            });
+
+            if (Number(inc.totalEarnedDiscount || 0) > 0) {
+                rows.push({
+                    id: 'disc_earned',
+                    date: 'الفترة الحالية',
+                    type: 'خصم مكتسب على المشتريات',
+                    refNo: 'EARNED_DISC',
+                    description: 'خصومات الشراء المكتسبة من الموردين',
+                    debit: 0,
+                    credit: Number(inc.totalEarnedDiscount || 0)
+                });
+            }
+
+            if (Number(inc.totalExceptionalIncome || 0) > 0) {
+                rows.push({
+                    id: 'inc_extra',
+                    date: 'الفترة الحالية',
+                    type: 'إيرادات استثنائية ومتنوعة',
+                    refNo: 'EXTRA_INC',
+                    description: 'أرباح متنوعة واستثنائية خارج النشاط الرئيسي',
+                    debit: 0,
+                    credit: Number(inc.totalExceptionalIncome || 0)
+                });
+            }
+
+            let cur = 0;
+            rows.forEach(r => {
+                cur += (r.credit || 0) - (r.debit || 0);
+                r.balance = cur;
+            });
+        } else if (type === 'distribution' || type === 'dist') {
+            const isAll = (type === 'dist' || id === 'dist' || id === 'all');
+            const targetDists = isAll 
+                ? (profitDistributions || []) 
+                : (profitDistributions || []).filter((d: any) => d.partnerId === id);
+
+            targetDists.forEach((d: any) => {
+                const p = (partners || []).find((part: any) => part.id === d.partnerId);
                 rows.push({
                     id: d.id,
                     date: d.date ? d.date.split('T')[0] : '-',
@@ -1021,17 +1409,69 @@ function BalanceSheet() {
                     balance: Number(d.amount || 0)
                 });
             });
-        } else if (type === 'netIncome') {
-            rows.push({
-                id: 'rev',
-                date: 'الفترة الحالية',
-                type: 'صافي أرباح الفترة',
-                refNo: 'P&L',
-                description: 'صافي أرباح النشاط التشغيلي المحتجزة وفق قائمة الدخل',
-                debit: netIncome < 0 ? Math.abs(netIncome) : 0,
-                credit: netIncome >= 0 ? netIncome : 0,
-                balance: netIncome
+            rows.sort(safeDateSort);
+        } else if (type === 'advances') {
+            (employeeAdvances || []).forEach((adv: any) => {
+                const amt = Number(adv.amount || 0);
+                rows.push({
+                    id: adv.id,
+                    date: adv.date ? adv.date.split('T')[0] : '-',
+                    type: 'سلفة موظف',
+                    refNo: adv.id,
+                    description: `سلفة للموظف (${adv.employeeName || 'موظف'}) - حالة: ${adv.status === 'approved' ? 'معتمدة' : adv.status}`,
+                    debit: amt,
+                    credit: adv.repaid ? amt : 0,
+                    balance: adv.repaid ? 0 : amt
+                });
             });
+            rows.sort(safeDateSort);
+        } else if (type === 'vatinput') {
+            (purchaseInvoices || []).filter((inv: any) => Number(inv.tax || inv.Tax || 0) > 0).forEach((inv: any) => {
+                const tax = Number(inv.tax || inv.Tax || 0);
+                const sup = (suppliers || []).find((s: any) => s.id === inv.supplierId);
+                rows.push({
+                    id: inv.id,
+                    date: inv.date ? inv.date.split('T')[0] : '-',
+                    type: 'ضريبة مشتريات (مدخلات)',
+                    refNo: inv.invoiceNumber || inv.id,
+                    description: `ضريبة مدخلات فاتورة شراء من مورد (${sup?.name || 'مورد'}) - إجمالي الفاتورة: ${inv.total} ج.م`,
+                    debit: tax,
+                    credit: 0,
+                    balance: tax
+                });
+            });
+            rows.sort(safeDateSort);
+        } else if (type === 'vatoutput') {
+            (salesInvoices || []).filter((inv: any) => Number(inv.tax || inv.Tax || 0) > 0).forEach((inv: any) => {
+                const tax = Number(inv.tax || inv.Tax || 0);
+                const cust = (customers || []).find((c: any) => c.id === inv.customerId);
+                rows.push({
+                    id: inv.id,
+                    date: inv.date ? inv.date.split('T')[0] : '-',
+                    type: 'ضريبة مخرجات (مبيعات)',
+                    refNo: inv.invoiceNumber || inv.id,
+                    description: `ضريبة مخرجات فاتورة بيع لعميل (${cust?.name || 'عميل'}) - إجمالي الفاتورة: ${inv.total} ج.م`,
+                    debit: 0,
+                    credit: tax,
+                    balance: tax
+                });
+            });
+            rows.sort(safeDateSort);
+        } else if (type === 'accruedExpenses') {
+            (expenses || []).filter((e: any) => e.status === 'pending').forEach((e: any) => {
+                const amt = Number(e.amount || 0);
+                rows.push({
+                    id: e.id,
+                    date: e.date ? e.date.split('T')[0] : '-',
+                    type: 'مصروف مستحق معلق',
+                    refNo: e.expenseNumber || e.id,
+                    description: `${e.category} - ${e.description || 'مصروف مستحق لم يُسدد بعد'}`,
+                    debit: 0,
+                    credit: amt,
+                    balance: amt
+                });
+            });
+            rows.sort(safeDateSort);
         } else if (type === 'intransit') {
             (stockInRecords || []).filter((si: any) => (si.status || '').toLowerCase() === 'in_transit').forEach((si: any) => {
                 const totalVal = (si.items || []).reduce((sum: number, it: any) => sum + (Number(it.qty || 0) * Number(it.cost || 0)), 0);
@@ -1046,11 +1486,12 @@ function BalanceSheet() {
                     balance: totalVal
                 });
             });
+            rows.sort(safeDateSort);
         } else if (type === 'repinv') {
             Object.entries(details.repInventoryByItem || {}).forEach(([itemId, qty]: any) => {
                 if (qty > 0.001) {
-                    const it = allItems.find((x: any) => x.id === itemId);
-                    const cost = Number(it?.cost || 0);
+                    const it = (allItems || []).find((x: any) => x.id === itemId);
+                    const cost = details.getItemCost ? details.getItemCost(itemId, Number(it?.cost || 0)) : Number(it?.cost || 0);
                     rows.push({
                         id: itemId,
                         date: 'الرصيد الفعلي',
@@ -1063,6 +1504,7 @@ function BalanceSheet() {
                     });
                 }
             });
+            rows.sort(safeDateSort);
         } else if (type === 'valuationReserve') {
             rows.push({
                 id: 'val_res',
@@ -1081,7 +1523,7 @@ function BalanceSheet() {
         const finalBalance = drillDownModal.balance;
 
         return { rows, warehouseItems, opening, totalDebit, totalCredit, finalBalance };
-    }, [drillDownModal, allData, netIncome, customers, suppliers, salesInvoices, customerPayments, salesReturns, purchaseInvoices, supplierPayments, purchaseReturns, cashAccounts, treasuryTransactions, expenses, exceptionalIncomes, employeeAdvances, stockInRecords, stockOutRecords, stockTransferRecords, stockAdjustmentRecords, fixedAssets, depreciationRecords, partners, profitDistributions, allItems, details, totals]);
+    }, [drillDownModal, allData, netIncome, incomeData, customers, suppliers, salesInvoices, customerPayments, salesReturns, purchaseInvoices, supplierPayments, purchaseReturns, cashAccounts, treasuryTransactions, expenses, exceptionalIncomes, employeeAdvances, stockInRecords, stockOutRecords, stockTransferRecords, stockAdjustmentRecords, fixedAssets, depreciationRecords, partners, profitDistributions, allItems, details, totals, posSales, posReturns, repRemittances, payrollRecords]);
 
     const filteredModalRows = useMemo(() => {
         if (!modalSearch.trim()) return modalData.rows;
@@ -1106,18 +1548,45 @@ function BalanceSheet() {
 
     const formatN = (n: number) => n.toLocaleString(undefined, { minimumFractionDigits: 2 });
 
-    const SectionHeader = ({ id, title, total }: { id: string, title: string, total: number }) => (
-        <TableRow className="cursor-pointer bg-muted/20 hover:bg-muted/40 font-bold group" onClick={() => toggleSection(id)}>
-            <TableCell className="flex items-center justify-between">
+    const SectionHeader = ({ id, title, total, count }: { id: string, title: string, total: number, count?: number }) => (
+        <TableRow 
+            className="cursor-pointer bg-muted/20 hover:bg-muted/40 font-bold group select-none transition-colors border-b"
+            onClick={() => openDrillDown({ id, name: title, balance: total, type: id })}
+            title="انقر لعرض كشف الحساب والعمليات التفصيلية للبند"
+        >
+            <TableCell className="flex items-center justify-between py-2.5">
                 <span className="flex items-center gap-2">
-                    {expandedSections[id] ? <ChevronUp className="h-4 w-4 text-primary" /> : <ChevronDown className="h-4 w-4" />}
-                    {title}
+                    <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        className="h-6 w-6 p-0 hover:bg-muted rounded-full shrink-0"
+                        onClick={(e) => {
+                            e.stopPropagation();
+                            toggleSection(id);
+                        }}
+                        title={expandedSections[id] ? "طي البنود الفرعية" : "توسيع البنود الفرعية"}
+                    >
+                        {expandedSections[id] ? <ChevronUp className="h-4 w-4 text-primary" /> : <ChevronDown className="h-4 w-4 text-muted-foreground" />}
+                    </Button>
+                    <span className="group-hover:text-primary transition-colors flex items-center gap-1.5">
+                        {title}
+                        {count !== undefined && count > 0 && (
+                            <Badge variant="secondary" className="text-[10px] px-1.5 py-0 h-4 font-normal">
+                                {count}
+                            </Badge>
+                        )}
+                    </span>
                 </span>
-                <span className="text-[11px] text-muted-foreground/70 group-hover:text-primary font-normal flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                    انقر لتوسيع البنود
-                </span>
+                <div className="flex items-center gap-2">
+                    <span className="text-[11px] text-muted-foreground group-hover:text-primary font-normal flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity bg-primary/10 text-primary px-2 py-0.5 rounded">
+                        <Search className="h-3 w-3" /> كشف تفصيلي
+                    </span>
+                </div>
             </TableCell>
-            <TableCell className="text-left font-mono font-bold">ج.م {total.toLocaleString(undefined, { minimumFractionDigits: 2 })}</TableCell>
+            <TableCell className="text-left font-mono font-bold py-2.5 text-base">
+                ج.م {total.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+            </TableCell>
         </TableRow>
     );
 
@@ -1132,7 +1601,7 @@ function BalanceSheet() {
                         className="bg-background/50 hover:bg-primary/10 cursor-pointer text-muted-foreground hover:text-foreground transition-all animate-in fade-in slide-in-from-top-1 group"
                         title="انقر لعرض كشف الحركات والعمليات التفصيلية"
                     >
-                        <TableCell className="pr-10 flex items-center justify-between">
+                        <TableCell className="pr-10 flex items-center justify-between py-2">
                             <span className="font-medium group-hover:text-primary transition-colors flex items-center gap-2">
                                 <FileText className="h-3.5 w-3.5 text-primary/60 group-hover:text-primary shrink-0" />
                                 {item.name}
@@ -1141,12 +1610,12 @@ function BalanceSheet() {
                                 <Search className="h-3 w-3" /> كشف الحركات
                             </span>
                         </TableCell>
-                        <TableCell className="text-left font-mono font-semibold">ج.م {item.balance.toLocaleString(undefined, { minimumFractionDigits: 2 })}</TableCell>
+                        <TableCell className="text-left font-mono font-semibold py-2">ج.م {item.balance.toLocaleString(undefined, { minimumFractionDigits: 2 })}</TableCell>
                     </TableRow>
                 ))}
                 {data.length === 0 && (
                     <TableRow className="bg-background/50 italic text-muted-foreground">
-                        <TableCell colSpan={2} className="text-center py-2">لا توجد بنود حالياً</TableCell>
+                        <TableCell colSpan={2} className="text-center py-2 text-xs">لا توجد بنود فرعية مسجلة حالياً</TableCell>
                     </TableRow>
                 )}
             </>
@@ -1155,19 +1624,48 @@ function BalanceSheet() {
 
     return (
         <>
+        {/* شريط الإجراءات السريعة للميزانية */}
+        <div className="flex flex-wrap items-center justify-between gap-3 mb-6 p-3 bg-muted/20 border rounded-xl">
+            <div className="flex items-center gap-2">
+                <div className="p-1.5 rounded-lg bg-primary/10 text-primary">
+                    <Layers className="h-4 w-4" />
+                </div>
+                <div>
+                    <span className="text-xs font-bold block text-foreground">
+                        استعراض تفاصيل وبنود المركز المالي
+                    </span>
+                    <span className="text-[11px] text-muted-foreground block">
+                        انقر على أي بند رئيسي أو فرعي لفتح كشف العمليات والحركات التفصيلية مباشرة
+                    </span>
+                </div>
+            </div>
+            <div className="flex items-center gap-2">
+                <Button 
+                    type="button"
+                    variant="outline" 
+                    size="sm" 
+                    onClick={toggleAllSections}
+                    className="h-8 text-xs gap-1.5"
+                >
+                    <ArrowRightLeft className="h-3.5 w-3.5 rotate-90" />
+                    <span>{Object.values(expandedSections).some(v => !v) ? 'توسيع كافة البنود' : 'طي كافة البنود'}</span>
+                </Button>
+            </div>
+        </div>
+
         <div className="grid md:grid-cols-2 gap-8">
             {/* ASSETS SIDE */}
             <div>
                 <h3 className="text-lg font-bold mb-4 border-b pb-2 flex items-center gap-2 text-primary"><Plus className="h-5 w-5"/> الأصول (Assets)</h3>
                 <Table>
                     <TableBody>
-                        <SectionHeader id="cash" title="النقدية وما في حكمها" total={totals.cash} />
+                        <SectionHeader id="cash" title="النقدية وما في حكمها" total={totals.cash} count={details.cashDetails.length} />
                         <DetailRows id="cash" data={details.cashDetails} />
 
-                        <SectionHeader id="ar" title="حسابات العملاء (الذمم المدينة)" total={totals.ar} />
+                        <SectionHeader id="ar" title="حسابات العملاء (الذمم المدينة)" total={totals.ar} count={details.arDetails.length} />
                         <DetailRows id="ar" data={details.arDetails} />
 
-                        <SectionHeader id="inv" title="قيمة المخزون (بالتكلفة)" total={totals.inv} />
+                        <SectionHeader id="inv" title="قيمة المخزون (بالتكلفة)" total={totals.inv} count={details.inventoryDetails.length} />
                         <DetailRows id="inv" data={details.inventoryDetails} />
 
                         {totals.repInv > 0.01 && (
@@ -1261,7 +1759,7 @@ function BalanceSheet() {
                             </TableRow>
                         )}
 
-                        <SectionHeader id="assets" title="الأصول الثابتة (الصافي)" total={totals.assets} />
+                        <SectionHeader id="assets" title="الأصول الثابتة (الصافي)" total={totals.assets} count={details.assetDetails.length} />
                         <DetailRows id="assets" data={details.assetDetails} />
                     </TableBody>
                     <TableFooter>
@@ -1279,7 +1777,7 @@ function BalanceSheet() {
                     <h3 className="text-lg font-bold mb-4 border-b pb-2 flex items-center gap-2 text-destructive"><Minus className="h-5 w-5"/> الخصوم (Liabilities)</h3>
                     <Table>
                         <TableBody>
-                            <SectionHeader id="ap" title="حسابات الموردين (الذمم الدائنة)" total={totals.ap} />
+                            <SectionHeader id="ap" title="حسابات الموردين (الذمم الدائنة)" total={totals.ap} count={details.apDetails.length} />
                             <DetailRows id="ap" data={details.apDetails} />
                             {totals.accruedExpenses > 0.01 && (
                                 <TableRow 
@@ -1365,7 +1863,7 @@ function BalanceSheet() {
                                 <TableCell className={cn("text-left font-mono font-bold", netIncome > 0 ? "text-emerald-500" : netIncome < 0 ? "text-[#CD5C5C]" : "text-foreground")}>ج.م {netIncome.toLocaleString(undefined, { minimumFractionDigits: 2 })}</TableCell>
                             </TableRow>
                             
-                            <SectionHeader id="dist" title="(-) توزيعات الأرباح" total={totals.dist} />
+                            <SectionHeader id="dist" title="(-) توزيعات الأرباح" total={totals.dist} count={details.distributionsDetails.length} />
                             <DetailRows id="dist" data={details.distributionsDetails} />
 
                             {Math.abs(totals.valuationReserve) > 0.001 && (
@@ -1441,12 +1939,21 @@ function BalanceSheet() {
                                         كشف تفصيلي: {drillDownModal.name}
                                     </DialogTitle>
                                     <Badge variant="outline" className="text-xs">
-                                        {drillDownModal.type === 'customer' ? 'عميل'
-                                            : drillDownModal.type === 'supplier' ? 'مورد'
-                                            : drillDownModal.type === 'cashAccount' ? 'خزينة / بنك'
-                                            : drillDownModal.type === 'warehouse' ? 'مستودع'
-                                            : drillDownModal.type === 'asset' ? 'أصل ثابت'
-                                            : drillDownModal.type === 'partner' ? 'شريك'
+                                        {drillDownModal.type === 'customer' || drillDownModal.type === 'ar' ? (drillDownModal.id === 'ar' ? 'إجمالي العملاء' : 'عميل')
+                                            : drillDownModal.type === 'supplier' || drillDownModal.type === 'ap' ? (drillDownModal.id === 'ap' ? 'إجمالي الموردين' : 'مورد')
+                                            : drillDownModal.type === 'cashAccount' || drillDownModal.type === 'cash' ? (drillDownModal.id === 'cash' ? 'إجمالي النقدية والبنوك' : 'خزينة / بنك')
+                                            : drillDownModal.type === 'warehouse' || drillDownModal.type === 'inv' ? (drillDownModal.id === 'inv' ? 'إجمالي المخزون' : 'مستودع')
+                                            : drillDownModal.type === 'asset' || drillDownModal.type === 'assets' ? 'أصول ثابتة'
+                                            : drillDownModal.type === 'partner' || drillDownModal.type === 'distribution' || drillDownModal.type === 'dist' ? 'توزيعات أرباح'
+                                            : drillDownModal.type === 'capital' ? 'رأس المال'
+                                            : drillDownModal.type === 'netIncome' ? 'قائمة الدخل والأرباح'
+                                            : drillDownModal.type === 'advances' ? 'سلف الموظفين'
+                                            : drillDownModal.type === 'vatinput' ? 'ضريبة مدخلات'
+                                            : drillDownModal.type === 'vatoutput' ? 'ضريبة مخرجات'
+                                            : drillDownModal.type === 'accruedExpenses' ? 'مصروفات مستحقة'
+                                            : drillDownModal.type === 'repinv' ? 'عهدة مناديب'
+                                            : drillDownModal.type === 'intransit' ? 'بضاعة بالطريق'
+                                            : drillDownModal.type === 'valuationReserve' ? 'تسوية توازن المركز المالي'
                                             : 'بند ميزانية'}
                                     </Badge>
                                 </div>
@@ -1514,7 +2021,7 @@ function BalanceSheet() {
                         />
                     </div>
 
-                    {drillDownModal.type === 'warehouse' && (
+                    {(drillDownModal.type === 'warehouse' || drillDownModal.type === 'inv') && (
                         <div className="flex items-center gap-1 bg-muted p-1 rounded-md">
                             <Button
                                 size="sm"
@@ -1538,7 +2045,7 @@ function BalanceSheet() {
                     )}
 
                     <div className="text-xs text-muted-foreground">
-                        {drillDownModal.type === 'warehouse' && warehouseViewMode === 'items'
+                        {(drillDownModal.type === 'warehouse' || drillDownModal.type === 'inv') && warehouseViewMode === 'items'
                             ? `عرض ${filteredWarehouseItems.length} صنف`
                             : `عرض ${filteredModalRows.length} حركة مسجلة`
                         }
@@ -1547,7 +2054,7 @@ function BalanceSheet() {
 
                 {/* منطقة الجدول مع شريط التمرير */}
                 <div className="flex-1 overflow-auto p-3">
-                    {drillDownModal.type === 'warehouse' && warehouseViewMode === 'items' ? (
+                    {(drillDownModal.type === 'warehouse' || drillDownModal.type === 'inv') && warehouseViewMode === 'items' ? (
                         <Table>
                             <TableHeader className="bg-muted/40 sticky top-0 z-10">
                                 <TableRow>

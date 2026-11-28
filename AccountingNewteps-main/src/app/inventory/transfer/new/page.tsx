@@ -227,6 +227,7 @@ export default function NewStockTransferPage() {
         return reps.find((r: User) => r.id === selectedRepId)?.warehouse;
     }, [selectedRepId, reps]);
 
+    const allData = useData();
     const calculateStock = useCallback((itemId: string, warehouseId: string): number => {
         if (!itemId || !warehouseId) return 0;
         return calculateStockForItemInWarehouse(itemId, warehouseId, allData);
