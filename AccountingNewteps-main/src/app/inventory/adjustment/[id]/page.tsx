@@ -39,7 +39,7 @@ export default function StockAdjustmentDetailsPage() {
 
   const [record, setRecord] = useState<StockAdjustmentRecord | null>(null);
   
-  const { stockAdjustmentRecords, warehouses, inventoryZones, loading } = useData();
+  const { stockAdjustmentRecords, warehouses, inventoryZones, items: allItems, loading } = useData();
   
   useEffect(() => {
     if (stockAdjustmentRecords.length > 0 && id) {
@@ -68,6 +68,50 @@ export default function StockAdjustmentDetailsPage() {
   }
 
   const isOpeningBalance = record.reason === 'opening_balance';
+  const warehouseName = getWarehouseName(record.warehouseId);
+
+  let totalSurplusValue = 0;
+  let totalDeficitValue = 0;
+  record.items.forEach((item: any) => {
+    const cost = Number(item.cost) || Number((allItems || []).find((i: any) => i.id === item.itemId)?.cost) || 0;
+    const val = (Number(item.difference) || 0) * cost;
+    if (val > 0) totalSurplusValue += val;
+    else if (val < 0) totalDeficitValue += Math.abs(val);
+  });
+
+  const journalRows: { account: string; description: string; debit: number; credit: number }[] = [];
+  if (totalSurplusValue > 0) {
+    journalRows.push({
+      account: `مخزون - ${warehouseName}`,
+      description: isOpeningBalance
+        ? `رصيد افتتاحي مخزون في ${warehouseName}`
+        : `تسوية جرد (فائض / زيادة) في ${warehouseName}`,
+      debit: totalSurplusValue,
+      credit: 0
+    });
+    journalRows.push({
+      account: isOpeningBalance ? 'رأس المال / أرصدة افتتاحية' : 'أرباح تسوية المخزون (فائض جرد)',
+      description: isOpeningBalance
+        ? `مقابل رصيد افتتاحي مخزون ${record.receiptNumber}`
+        : `أرباح تسوية المخزون (فائض جرد) ${record.receiptNumber}`,
+      debit: 0,
+      credit: totalSurplusValue
+    });
+  }
+  if (totalDeficitValue > 0) {
+    journalRows.push({
+      account: 'خسائر تسوية المخزون (عجز جرد)',
+      description: `خسائر تسوية المخزون (عجز جرد) ${record.receiptNumber}`,
+      debit: totalDeficitValue,
+      credit: 0
+    });
+    journalRows.push({
+      account: `مخزون - ${warehouseName}`,
+      description: `تسوية جرد (عجز) في ${warehouseName}`,
+      debit: 0,
+      credit: totalDeficitValue
+    });
+  }
 
   return (
     <>
@@ -128,6 +172,57 @@ export default function StockAdjustmentDetailsPage() {
             )}
           </CardContent>
         </Card>
+
+        {journalRows.length > 0 && (
+          <Card>
+            <CardHeader className="p-4 md:p-6 pb-2">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                <div>
+                  <CardTitle className="text-base md:text-lg">القيد المحاسبي لتسوية الجرد (فائض وعجز)</CardTitle>
+                  <CardDescription>
+                    القيد اليومي التلقائي المُرحّل إلى دفتر اليومية وميزان المراجعة بتكلفة الأصناف.
+                  </CardDescription>
+                </div>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="no-print w-fit"
+                  onClick={() => router.push('/accounting/journal')}
+                >
+                  عرض في دفتر اليومية
+                </Button>
+              </div>
+            </CardHeader>
+            <CardContent className="p-2 md:p-6">
+              <div className="w-full overflow-x-auto border rounded-lg">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>الحساب</TableHead>
+                      <TableHead>البيان</TableHead>
+                      <TableHead className="text-center">مدين</TableHead>
+                      <TableHead className="text-center">دائن</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {journalRows.map((row, idx) => (
+                      <TableRow key={idx}>
+                        <TableCell className="font-semibold">{row.account}</TableCell>
+                        <TableCell className="text-muted-foreground text-xs md:text-sm">{row.description}</TableCell>
+                        <TableCell className="text-center font-mono font-bold text-emerald-600">
+                          {row.debit > 0 ? row.debit.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '-'}
+                        </TableCell>
+                        <TableCell className="text-center font-mono font-bold text-destructive">
+                          {row.credit > 0 ? row.credit.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '-'}
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
+            </CardContent>
+          </Card>
+        )}
       </main>
     </>
   );

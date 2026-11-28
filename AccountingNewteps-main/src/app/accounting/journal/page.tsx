@@ -80,7 +80,7 @@ export default function JournalPage() {
     }, []);
 
     const {
-        salesInvoices, purchaseInvoices, expenses, exceptionalIncomes, warehouses,
+        salesInvoices, purchaseInvoices, expenses, exceptionalIncomes, warehouses, inventoryZones,
         stockTransferRecords, items: itemsData, cashAccounts,
         treasuryTransactions, employeeAdvances, employees,
         employeeAdjustments, salesReturns, purchaseReturns, customers,
@@ -99,7 +99,8 @@ export default function JournalPage() {
 
     const journalEntries = useMemo(() => {
         const entries: JournalEntry[] = [];
-        const getWarehouse = (id?: string) => warehouses.find((w: any) => w.id === id);
+        const getWarehouse = (id?: string) =>
+            warehouses.find((w: any) => w.id === id) || (inventoryZones || []).find((z: any) => z.id === id);
         const getCashAccount = (id?: string) => cashAccounts.find((c: any) => c.id === id);
         const getCashAccountName = (id?: string) => getCashAccount(id)?.name || 'النقدية/البنك';
         const getEmployeeName = (id?: string) => employees.find((e: any) => e.id === id)?.name || 'موظف غير معروف';
@@ -336,20 +337,61 @@ export default function JournalPage() {
         stockAdjustmentRecords?.forEach((adj: any) => {
              const number = adj.receiptNumber || `ت-ج-${adj.id.slice(-4)}`;
              const warehouse = getWarehouse(adj.warehouseId);
+             const isOpening = adj.reason === 'opening_balance';
              let totalSurplus = 0;
              let totalDeficit = 0;
              adj.items.forEach((item: any) => {
-                 const cost = item.cost || itemsMap.get(item.itemId)?.cost || 0;
-                 const val = item.difference * cost;
+                 const cost = Number(item.cost) || Number(itemsMap.get(item.itemId)?.cost) || 0;
+                 const val = Number(item.difference || 0) * cost;
                  if (val > 0) totalSurplus += val; else totalDeficit += Math.abs(val);
              });
              if (totalSurplus > 0) {
-                 entries.push({ id: `adj-sur-${adj.id}`, date: adj.date, warehouseId: adj.warehouseId, number, description: `تسوية جرد (زيادة) في ${warehouse?.name}`, debit: totalSurplus, credit: 0, account: `مخزون - ${warehouse?.name || 'غير محدد'}` });
-                 entries.push({ id: `adj-sur-cr-${adj.id}`, date: adj.date, warehouseId: adj.warehouseId, number, description: `أرباح تسوية مخزون ${number}`, debit: 0, credit: totalSurplus, account: 'أرباح تسوية المخزون' });
+                 entries.push({
+                     id: `adj-sur-${adj.id}`,
+                     date: adj.date,
+                     warehouseId: adj.warehouseId,
+                     number,
+                     description: isOpening
+                         ? `رصيد افتتاحي مخزون في ${warehouse?.name || 'المخزن'}`
+                         : `تسوية جرد (فائض / زيادة) في ${warehouse?.name || 'المخزن'}`,
+                     debit: totalSurplus,
+                     credit: 0,
+                     account: `مخزون - ${warehouse?.name || 'غير محدد'}`
+                 });
+                 entries.push({
+                     id: `adj-sur-cr-${adj.id}`,
+                     date: adj.date,
+                     warehouseId: adj.warehouseId,
+                     number,
+                     description: isOpening
+                         ? `مقابل رصيد افتتاحي مخزون ${number}`
+                         : `أرباح تسوية المخزون (فائض جرد) ${number}`,
+                     debit: 0,
+                     credit: totalSurplus,
+                     account: isOpening ? 'رأس المال / أرصدة افتتاحية' : 'أرباح تسوية المخزون (فائض جرد)'
+                 });
              }
              if (totalDeficit > 0) {
-                 entries.push({ id: `adj-def-${adj.id}`, date: adj.date, warehouseId: adj.warehouseId, number, description: `خسائر تسوية مخزون ${number}`, debit: totalDeficit, credit: 0, account: 'خسائر تسوية المخزون' });
-                 entries.push({ id: `adj-def-cr-${adj.id}`, date: adj.date, warehouseId: adj.warehouseId, number, description: `تسوية جرد (عجز) في ${warehouse?.name}`, debit: 0, credit: totalDeficit, account: `مخزون - ${warehouse?.name || 'غير محدد'}` });
+                 entries.push({
+                     id: `adj-def-${adj.id}`,
+                     date: adj.date,
+                     warehouseId: adj.warehouseId,
+                     number,
+                     description: `خسائر تسوية المخزون (عجز جرد) ${number}`,
+                     debit: totalDeficit,
+                     credit: 0,
+                     account: 'خسائر تسوية المخزون (عجز جرد)'
+                 });
+                 entries.push({
+                     id: `adj-def-cr-${adj.id}`,
+                     date: adj.date,
+                     warehouseId: adj.warehouseId,
+                     number,
+                     description: `تسوية جرد (عجز) في ${warehouse?.name || 'المخزن'}`,
+                     debit: 0,
+                     credit: totalDeficit,
+                     account: `مخزون - ${warehouse?.name || 'غير محدد'}`
+                 });
              }
         });
 

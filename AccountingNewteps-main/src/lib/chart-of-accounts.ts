@@ -111,7 +111,14 @@ export const getCOAAccountForLabel = (label: string): AccountNode => {
     if (l.includes('إنتاج تحت التشغيل') || l.includes('انتاج تحت التشغيل') || l.includes('work in process') || l.includes('wip')) {
         return CHART_OF_ACCOUNTS.find(a => a.code === '1107')!;
     }
-    // 3. Inventory
+    // 3. Inventory Adjustment Surplus & Deficit (MUST come before generic 'مخزون' check!)
+    if (l.includes('أرباح تسوية') || l.includes('أرباح تسويات') || l.includes('فائض جرد')) {
+        return CHART_OF_ACCOUNTS.find(a => a.code === '4203')!;
+    }
+    if (l.includes('خسائر تسوية') || l.includes('خسائر عجز') || l.includes('عجز') || l.includes('تالف') || l.includes('هوالك')) {
+        return CHART_OF_ACCOUNTS.find(a => a.code === '5207')!;
+    }
+    // Inventory
     if (l.includes('مخزون') || l.includes('بضاعة') || l.includes('inventory') || l.includes('مخزن')) {
         return CHART_OF_ACCOUNTS.find(a => a.code === '1103')!;
     }
@@ -374,6 +381,7 @@ export function generateAllJournalEntries(allData: any): JournalEntryLike[] {
         stockAdjustmentRecords = [],
         depreciationRecords = [],
         warehouses = [],
+        inventoryZones = [],
         cashAccounts = [],
         employees = [],
         customers = [],
@@ -388,7 +396,8 @@ export function generateAllJournalEntries(allData: any): JournalEntryLike[] {
     items.forEach((item: any) => itemsMap.set(item.id, item));
 
     const entries: JournalEntryLike[] = [];
-    const getWarehouse = (id?: string) => warehouses.find((w: any) => w.id === id);
+    const getWarehouse = (id?: string) =>
+        warehouses.find((w: any) => w.id === id) || inventoryZones.find((z: any) => z.id === id);
     const getCashAccount = (id?: string) => cashAccounts.find((c: any) => c.id === id);
     const getCashAccountName = (id?: string) => getCashAccount(id)?.name || 'النقدية/البنك';
     const getCustomerName = (id?: string) => customers.find((c: any) => c.id === id)?.name || 'عميل غير معروف';
@@ -664,6 +673,7 @@ export function generateAllJournalEntries(allData: any): JournalEntryLike[] {
     stockAdjustmentRecords?.forEach((adj: any) => {
         const number = adj.receiptNumber || `ت-ج-${String(adj.id).slice(-4)}`;
         const warehouse = getWarehouse(adj.warehouseId);
+        const isOpening = adj.reason === 'opening_balance';
         let totalSurplus = 0;
         let totalDeficit = 0;
         (adj.items || []).forEach((item: any) => {
@@ -672,12 +682,52 @@ export function generateAllJournalEntries(allData: any): JournalEntryLike[] {
             if (val > 0) totalSurplus += val; else totalDeficit += Math.abs(val);
         });
         if (totalSurplus > 0) {
-            entries.push({ id: `adj-sur-${adj.id}`, date: adj.date, warehouseId: adj.warehouseId, number, description: `تسوية جرد (زيادة) في ${warehouse?.name || ''}`, debit: totalSurplus, credit: 0, account: `مخزون - ${warehouse?.name || 'غير محدد'}` });
-            entries.push({ id: `adj-sur-cr-${adj.id}`, date: adj.date, warehouseId: adj.warehouseId, number, description: `أرباح تسوية مخزون ${number}`, debit: 0, credit: totalSurplus, account: 'أرباح تسوية المخزون' });
+            entries.push({
+                id: `adj-sur-${adj.id}`,
+                date: adj.date,
+                warehouseId: adj.warehouseId,
+                number,
+                description: isOpening
+                    ? `رصيد افتتاحي مخزون في ${warehouse?.name || 'المخزن'}`
+                    : `تسوية جرد (فائض / زيادة) في ${warehouse?.name || 'المخزن'}`,
+                debit: totalSurplus,
+                credit: 0,
+                account: `مخزون - ${warehouse?.name || 'غير محدد'}`
+            });
+            entries.push({
+                id: `adj-sur-cr-${adj.id}`,
+                date: adj.date,
+                warehouseId: adj.warehouseId,
+                number,
+                description: isOpening
+                    ? `مقابل رصيد افتتاحي مخزون ${number}`
+                    : `أرباح تسوية المخزون (فائض جرد) ${number}`,
+                debit: 0,
+                credit: totalSurplus,
+                account: isOpening ? 'رأس المال / أرصدة افتتاحية' : 'أرباح تسوية المخزون (فائض جرد)'
+            });
         }
         if (totalDeficit > 0) {
-            entries.push({ id: `adj-def-${adj.id}`, date: adj.date, warehouseId: adj.warehouseId, number, description: `خسائر تسوية مخزون ${number}`, debit: totalDeficit, credit: 0, account: 'خسائر تسوية المخزون' });
-            entries.push({ id: `adj-def-cr-${adj.id}`, date: adj.date, warehouseId: adj.warehouseId, number, description: `تسوية جرد (عجز) في ${warehouse?.name || ''}`, debit: 0, credit: totalDeficit, account: `مخزون - ${warehouse?.name || 'غير محدد'}` });
+            entries.push({
+                id: `adj-def-${adj.id}`,
+                date: adj.date,
+                warehouseId: adj.warehouseId,
+                number,
+                description: `خسائر تسوية المخزون (عجز جرد) ${number}`,
+                debit: totalDeficit,
+                credit: 0,
+                account: 'خسائر تسوية المخزون (عجز جرد)'
+            });
+            entries.push({
+                id: `adj-def-cr-${adj.id}`,
+                date: adj.date,
+                warehouseId: adj.warehouseId,
+                number,
+                description: `تسوية جرد (عجز) في ${warehouse?.name || 'المخزن'}`,
+                debit: 0,
+                credit: totalDeficit,
+                account: `مخزون - ${warehouse?.name || 'غير محدد'}`
+            });
         }
     });
 
