@@ -125,7 +125,7 @@ const Logo = () => {
         <div className="flex items-center gap-2" >
             <Scale className="h-7 w-7 text-primary"/>
             <Laptop className="h-7 w-7 text-primary"/>
-            <h1 className="text-lg font-bold text-primary">{companyName}</h1>
+            <h1 className="text-lg font-bold text-yellow-500 dark:text-yellow-400">{companyName}</h1>
         </div>
     );
 };

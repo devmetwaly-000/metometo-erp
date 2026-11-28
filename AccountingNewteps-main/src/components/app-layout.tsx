@@ -149,7 +149,7 @@ const Logo = () => {
     <div className="flex items-center gap-2 min-w-0 max-w-full">
         <img src="/logo.svg" alt="Logo" className="h-7 w-7 sm:h-8 sm:w-8 rounded-lg shrink-0 object-contain" />
         <div className="flex flex-col min-w-0">
-            <h1 className="text-sm sm:text-base font-bold text-primary leading-none truncate">{companyName}</h1>
+            <h1 className="text-sm sm:text-base font-bold text-yellow-500 dark:text-yellow-400 leading-none truncate">{companyName}</h1>
             {!isOnline ? (
               <button
                 type="button"
