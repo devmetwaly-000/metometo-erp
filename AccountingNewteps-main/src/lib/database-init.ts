@@ -503,6 +503,53 @@ export async function createAndInitializeDatabase(options: DbInitOptions): Promi
                 CONSTRAINT [PK_InventoryClosings] PRIMARY KEY CLUSTERED ([Id])
             );`,
 
+            `IF NOT EXISTS (SELECT * FROM sys.tables WHERE name = 'InventoryCountSessions')
+            CREATE TABLE dbo.[InventoryCountSessions] (
+                [Id] NVARCHAR(64) NOT NULL,
+                [SessionCode] NVARCHAR(100) NOT NULL,
+                [WarehouseId] NVARCHAR(64) NOT NULL,
+                [WarehouseSectionId] NVARCHAR(64) NULL,
+                [AdjustmentType] NVARCHAR(50) NOT NULL DEFAULT ('periodic_count'),
+                [SnapshotDate] DATETIME2 NOT NULL,
+                [SnapshotDateStr] NVARCHAR(20) NOT NULL,
+                [CatalogScope] NVARCHAR(50) NULL,
+                [ScopeLabel] NVARCHAR(500) NULL,
+                [FrozenBalancesJson] NVARCHAR(MAX) NOT NULL,
+                [Status] NVARCHAR(30) NOT NULL DEFAULT ('open'),
+                [CreatedById] NVARCHAR(64) NULL,
+                [CreatedByName] NVARCHAR(255) NULL,
+                [CreatedAt] DATETIME2 NOT NULL DEFAULT (sysutcdatetime()),
+                [ConsolidatedAt] DATETIME2 NULL,
+                [ConsolidatedRecordId] NVARCHAR(64) NULL,
+                [Notes] NVARCHAR(MAX) NULL,
+                [BranchCode] NVARCHAR(50) NULL,
+                [BranchName] NVARCHAR(255) NULL,
+                [SyncStatus] NVARCHAR(20) NULL DEFAULT ('synced'),
+                [LastSyncedAt] DATETIME2 NULL,
+                [UpdatedAt] DATETIME2 NOT NULL DEFAULT (sysutcdatetime()),
+                [RowVersion] ROWVERSION,
+                CONSTRAINT [PK_InventoryCountSessions] PRIMARY KEY CLUSTERED ([Id])
+            );`,
+
+            `IF NOT EXISTS (SELECT * FROM sys.tables WHERE name = 'InventoryCountSheets')
+            CREATE TABLE dbo.[InventoryCountSheets] (
+                [Id] NVARCHAR(64) NOT NULL,
+                [SessionId] NVARCHAR(64) NOT NULL,
+                [DeviceName] NVARCHAR(255) NOT NULL,
+                [SubmittedById] NVARCHAR(64) NULL,
+                [SubmittedByName] NVARCHAR(255) NULL,
+                [ItemsJson] NVARCHAR(MAX) NOT NULL,
+                [Notes] NVARCHAR(MAX) NULL,
+                [CreatedAt] DATETIME2 NOT NULL DEFAULT (sysutcdatetime()),
+                [BranchCode] NVARCHAR(50) NULL,
+                [BranchName] NVARCHAR(255) NULL,
+                [SyncStatus] NVARCHAR(20) NULL DEFAULT ('synced'),
+                [LastSyncedAt] DATETIME2 NULL,
+                [UpdatedAt] DATETIME2 NOT NULL DEFAULT (sysutcdatetime()),
+                [RowVersion] ROWVERSION,
+                CONSTRAINT [PK_InventoryCountSheets] PRIMARY KEY CLUSTERED ([Id])
+            );`,
+
             `IF NOT EXISTS (SELECT * FROM sys.tables WHERE name = 'InventorySections')
             CREATE TABLE dbo.[InventorySections] (
                 [Id] NVARCHAR(64) NOT NULL,
