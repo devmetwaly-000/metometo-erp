@@ -17,6 +17,12 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
     const { settings, loading: dataLoading } = useData();
     const pathname = usePathname();
 
+    useEffect(() => {
+        if (pathname && pathname !== '/pos' && pathname !== '/tables') {
+            try { sessionStorage.removeItem('pos_active_table'); } catch {}
+        }
+    }, [pathname]);
+
      // Effect to apply the zoom level from settings on initial load and when it changes
     useEffect(() => {
         if (user?.themeSettings?.zoomLevel) {

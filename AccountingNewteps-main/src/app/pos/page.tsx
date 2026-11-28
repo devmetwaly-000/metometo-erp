@@ -1247,28 +1247,48 @@ function PosPageContent() {
     const longPressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
 
+    const sessionActiveTable = useMemo(() => {
+        if (typeof window === 'undefined') return null;
+        try {
+            const raw = sessionStorage.getItem('pos_active_table');
+            if (!raw) return null;
+            const parsed = JSON.parse(raw);
+            if (parsed && parsed.id && (!parsed.ts || Date.now() - parsed.ts < 1000 * 60 * 60 * 12)) {
+                return parsed as { id: string; number: number | string; groupName?: string; warehouseId?: string };
+            }
+        } catch {}
+        return null;
+    }, []);
+
     const tableId = useMemo(() => {
         const fromParam = searchParams.get('tableId');
         if (fromParam) return fromParam;
         if (typeof window !== 'undefined') {
-            return new URLSearchParams(window.location.search).get('tableId');
+            const fromWin = new URLSearchParams(window.location.search).get('tableId');
+            if (fromWin) return fromWin;
         }
-        return null;
-    }, [searchParams]);
+        return sessionActiveTable?.id || null;
+    }, [searchParams, sessionActiveTable]);
 
     const tableNumberFromUrl = useMemo(() => {
         const fromParam = searchParams.get('tableNumber');
         if (fromParam) return fromParam;
         if (typeof window !== 'undefined') {
-            return new URLSearchParams(window.location.search).get('tableNumber');
+            const fromWin = new URLSearchParams(window.location.search).get('tableNumber');
+            if (fromWin) return fromWin;
         }
-        return null;
-    }, [searchParams]);
+        return sessionActiveTable?.number ?? null;
+    }, [searchParams, sessionActiveTable]);
 
     const tableData = useMemo(() => {
         if (!tableId) return undefined;
-        return (restaurantTables || []).find((t: any) => String(t.id) === String(tableId));
-    }, [tableId, restaurantTables]);
+        const found = (restaurantTables || []).find((t: any) => String(t.id) === String(tableId));
+        if (found) return found;
+        if (sessionActiveTable && String(sessionActiveTable.id) === String(tableId)) {
+            return sessionActiveTable;
+        }
+        return undefined;
+    }, [tableId, restaurantTables, sessionActiveTable]);
 
     const effectiveTableNumber = tableData?.number ?? tableNumberFromUrl;
     const [showBackButton, setShowBackButton] = useState(false);
@@ -2692,6 +2712,8 @@ function PosPageContent() {
                     await dbAction('heldInvoices', 'remove', { id: currentHeldInvoiceId });
                 }
                 await dbAction('restaurantTables', 'update', { id: tableId, data: { status: 'available' } });
+                try { sessionStorage.removeItem('pos_active_table'); } catch {}
+                allowExitRef.current = true;
                 router.push('/tables');
             } else {
                 resetSale();
@@ -2727,6 +2749,7 @@ function PosPageContent() {
                  if (currentHeldInvoiceId) {
                     await dbAction('heldInvoices', 'remove', {id: currentHeldInvoiceId});
                  }
+                 try { sessionStorage.removeItem('pos_active_table'); } catch {}
                  allowExitRef.current = true;
                  router.push('/tables');
             }
@@ -2760,6 +2783,7 @@ function PosPageContent() {
             }
             if(tableId) {
                  await dbAction('restaurantTables', 'update', {id: tableId, data: {status: 'occupied'}});
+                 try { sessionStorage.removeItem('pos_active_table'); } catch {}
                  allowExitRef.current = true;
                  router.push('/tables');
             } else {
@@ -2796,7 +2820,17 @@ function PosPageContent() {
         if (posTableActionModal === 'select') {
             setPosTableActionModal(null);
             setSelectedTargetTableId('');
-            router.push(`/pos?tableId=${targetTable.id}`);
+            try {
+                sessionStorage.setItem('pos_active_table', JSON.stringify({
+                    id: String(targetTable.id),
+                    number: targetTable.number,
+                    groupName: targetTable.groupName || '',
+                    warehouseId: targetTable.warehouseId || '',
+                    ts: Date.now()
+                }));
+            } catch {}
+            allowExitRef.current = true;
+            router.push(`/pos?tableId=${encodeURIComponent(targetTable.id)}&tableNumber=${encodeURIComponent(targetTable.number)}`);
             return;
         }
 
@@ -2856,7 +2890,17 @@ function PosPageContent() {
 
             setPosTableActionModal(null);
             setSelectedTargetTableId('');
-            router.push(`/pos?tableId=${targetTable.id}`);
+            try {
+                sessionStorage.setItem('pos_active_table', JSON.stringify({
+                    id: String(targetTable.id),
+                    number: targetTable.number,
+                    groupName: targetTable.groupName || '',
+                    warehouseId: targetTable.warehouseId || '',
+                    ts: Date.now()
+                }));
+            } catch {}
+            allowExitRef.current = true;
+            router.push(`/pos?tableId=${encodeURIComponent(targetTable.id)}&tableNumber=${encodeURIComponent(targetTable.number)}`);
         } catch (err: any) {
             toast({
                 variant: 'destructive',
@@ -3203,9 +3247,51 @@ function PosPageContent() {
             )}
         </Dialog>
          <div 
-            className="h-screen bg-background flex flex-col p-2 sm:p-4 gap-4 overflow-y-auto overscroll-y-contain"
+            className="h-screen bg-background flex flex-col p-2 sm:p-4 gap-3 overflow-y-auto overscroll-y-contain"
             onClick={handleScreenClick}
         >
+            {(tableData || tableId) && (
+                <div className="shrink-0 rounded-xl bg-amber-500/15 border border-amber-500/40 px-3 py-2 flex items-center justify-between gap-2 text-amber-800 dark:text-amber-200 shadow-sm" dir="rtl">
+                    <div className="flex items-center gap-2 font-extrabold text-xs sm:text-sm">
+                        <UtensilsCrossed className="h-4 w-4 text-amber-600 dark:text-amber-400 shrink-0" />
+                        <span>فاتورة طاولة رقم {effectiveTableNumber || '---'}{tableData?.groupName ? ` (${tableData.groupName})` : ''}</span>
+                    </div>
+                    <div className="flex items-center gap-1.5">
+                        <Button
+                            type="button"
+                            size="sm"
+                            variant="outline"
+                            className="h-7 px-2 text-xs font-bold border-blue-500/40 text-blue-600 dark:text-blue-400 bg-background/80"
+                            disabled={cart.length === 0 && !currentHeldInvoiceId}
+                            onClick={() => { setSelectedTargetTableId(''); setPosTableActionModal('transfer'); }}
+                        >
+                            <ArrowRightLeft className="h-3.5 w-3.5 ml-1" />
+                            نقل
+                        </Button>
+                        <Button
+                            type="button"
+                            size="sm"
+                            variant="outline"
+                            className="h-7 px-2 text-xs font-bold border-amber-500/40 text-amber-700 dark:text-amber-300 bg-background/80"
+                            disabled={cart.length === 0 && !currentHeldInvoiceId}
+                            onClick={() => { setSelectedTargetTableId(''); setPosTableActionModal('merge'); }}
+                        >
+                            <GitMerge className="h-3.5 w-3.5 ml-1" />
+                            دمج
+                        </Button>
+                        <Button
+                            type="button"
+                            size="sm"
+                            variant="default"
+                            className="h-7 px-2.5 text-xs font-bold bg-amber-600 hover:bg-amber-700 text-white"
+                            onClick={handleHoldInvoice}
+                        >
+                            <ArrowLeft className="h-3.5 w-3.5 ml-1" />
+                            حفظ والعودة للطاولات
+                        </Button>
+                    </div>
+                </div>
+            )}
             <div className={cn("flex flex-1 flex-col gap-3 overflow-y-auto md:overflow-hidden",
                 isCartOnLeft ? 'md:flex-row-reverse' : 'md:flex-row'
             )}>

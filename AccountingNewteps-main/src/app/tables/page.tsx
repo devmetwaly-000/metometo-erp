@@ -113,6 +113,7 @@ export default function TablesPage() {
 
 
   useEffect(() => {
+    try { sessionStorage.removeItem('pos_active_table'); } catch {}
     if (user?.warehouseIds && user.warehouseIds.length === 1 && user.warehouseIds[0] !== 'all') {
       setSelectedWarehouseId(user.warehouseIds[0]);
     }
@@ -131,6 +132,15 @@ export default function TablesPage() {
       toast({ variant: 'destructive', title: 'عملية محظورة', description: 'لا يمكن فتح شاشة الكاشير أو تحصيل الطاولات في الإدارة المركزية. متاح لفروع البيع فقط.' });
       return;
     }
+    try {
+      sessionStorage.setItem('pos_active_table', JSON.stringify({
+        id: String(table.id),
+        number: table.number,
+        groupName: table.groupName || '',
+        warehouseId: table.warehouseId || '',
+        ts: Date.now()
+      }));
+    } catch {}
     router.push(`/pos?tableId=${encodeURIComponent(table.id)}&tableNumber=${encodeURIComponent(table.number)}`);
   };
 
