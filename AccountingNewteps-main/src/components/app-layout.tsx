@@ -499,6 +499,7 @@ export const navStructure = [
             { type: 'link', href: '/reports/inventory-movements-cost', module: 'inventory_adjustment', title: "تقرير تكاليف الصرف والتحويلات والهوالك" },
             { type: 'link', href: '/reports/stock-transfers-report', module: 'inventory_transfer', title: "تقرير تحويلات المخازن بين الفروع" },
             { type: 'link', href: '/reports/inventory-adjustments-report', module: 'inventory_adjustment', title: "تسويات الجرد والعجز والإعدامات" },
+            { type: 'link', href: '/reports/frozen-balances', module: 'inventory_adjustment', title: "تقرير الأرصدة الدفترية المجنّبة" },
             { type: 'link', href: '/reports/stock-in-report', module: 'inventory_stockIn', title: dictionary.nav.stockInReport },
             { type: 'link', href: '/reports/stock-out-report', module: 'reports_stockOutReport', title: dictionary.nav.stockOutReport },
             { type: 'link', href: '/reports/discrepancies', module: 'reports_discrepancies', title: dictionary.nav.stockDiscrepancyReport },

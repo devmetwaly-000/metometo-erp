@@ -101,8 +101,11 @@ interface InventoryCountSession {
   snapshotDate: string;
   snapshotDateStr: string;
   catalogScope?: string;
+  scopeTargetId?: string;
+  cutoffMode?: "end_of_day" | "exact_now";
   scopeLabel?: string;
   frozenBalances: Record<string, number>;
+  frozenCosts?: Record<string, number>;
   status: "open" | "consolidated" | "cancelled";
   createdById?: string;
   createdByName?: string;
@@ -192,11 +195,15 @@ export default function NewStockAdjustmentPage() {
   const [selectedWarehouse, setSelectedWarehouse] = useState<string>("");
   const [selectedWarehouseSection, setSelectedWarehouseSection] = useState<string>("all"); // حاوية داخل المخزن الرئيسي
 
-  // 3. نطاق الجرد التصنيفي (كل الأصناف / على مستوى القسم / الفئة / المجموعة الفرعية)
-  const [catalogScope, setCatalogScope] = useState<"all" | "section" | "category" | "sub_group">("all");
+  // 3. نطاق الجرد التصنيفي (كل الأصناف / على مستوى القسم / الفئة / المجموعة الفرعية / صنف محدد)
+  const [catalogScope, setCatalogScope] = useState<"all" | "section" | "category" | "sub_group" | "item">("all");
   const [selectedSectionId, setSelectedSectionId] = useState<string>("all");
   const [selectedCategoryId, setSelectedCategoryId] = useState<string>("all");
   const [selectedSubGroupId, setSelectedSubGroupId] = useState<string>("all");
+  const [selectedSingleItemId, setSelectedSingleItemId] = useState<string>("");
+  const [cutoffMode, setCutoffMode] = useState<"end_of_day" | "exact_now">("end_of_day");
+  const [snapshotPromptOpen, setSnapshotPromptOpen] = useState(false);
+  const [pendingActionAfterSnapshot, setPendingActionAfterSnapshot] = useState<"load_true" | "load_false" | null>(null);
 
   // 4. قائمة الأصناف المجرودة والبحث داخلها
   const [items, setItems] = useState<AdjustmentItem[]>([]);
@@ -456,9 +463,13 @@ export default function NewStockAdjustmentPage() {
         if (prefix === "sub2" && item.subCategoryId2 !== targetId) return false;
       }
 
+      if (catalogScope === "item" && selectedSingleItemId) {
+        if (item.id !== selectedSingleItemId) return false;
+      }
+
       return true;
     });
-  }, [allItems, catalogScope, selectedSectionId, selectedCategoryId, selectedSubGroupId]);
+  }, [allItems, catalogScope, selectedSectionId, selectedCategoryId, selectedSubGroupId, selectedSingleItemId]);
 
   // حساب الرصيد الدفتري للصنف (يدعم المخزن الفرعي، والمخزن الرئيسي بالكامل، أو حاوية محددة، مع احترام تاريخ التجنيب/الجرد)
   const calculateSystemStock = useCallback(
@@ -516,14 +527,30 @@ export default function NewStockAdjustmentPage() {
     [allDataContext, adjustmentType, adjustmentDate, activeSession, isSelectedMainWarehouse, selectedWarehouseSection, inventory]
   );
 
+  // تحديد معرف النطاق المستهدف للتجنيب الجزئي
+  const currentScopeTargetId = useMemo(() => {
+    if (catalogScope === "section") return selectedSectionId !== "all" ? selectedSectionId : undefined;
+    if (catalogScope === "category") return selectedCategoryId !== "all" ? selectedCategoryId : undefined;
+    if (catalogScope === "sub_group") return selectedSubGroupId !== "all" ? selectedSubGroupId : undefined;
+    if (catalogScope === "item") return selectedSingleItemId || undefined;
+    return undefined;
+  }, [catalogScope, selectedSectionId, selectedCategoryId, selectedSubGroupId, selectedSingleItemId]);
+
   // تحميل كافة أصناف النطاق المحدد دفعة واحدة في جدول الجرد
-  const handleLoadScopeItems = (fillWithSystemQty: boolean) => {
+  const handleLoadScopeItems = (fillWithSystemQty: boolean, bypassSessionCheck = false, frozenOverride?: Record<string, number>) => {
     if (!selectedWarehouse) {
       toast({
         variant: "destructive",
         title: "اختر المخزن أولاً",
         description: "يرجى اختيار المخزن أو المخزن الرئيسي قبل تحميل أصناف النطاق."
       });
+      return;
+    }
+
+    // منع عمل جرد على مستوى أكبر من مستوى الصنف بدون تجنيب في هذا اليوم
+    if (!bypassSessionCheck && adjustmentType === "periodic_count" && catalogScope !== "item" && !activeSession) {
+      setPendingActionAfterSnapshot(fillWithSystemQty ? "load_true" : "load_false");
+      setSnapshotPromptOpen(true);
       return;
     }
 
@@ -537,7 +564,10 @@ export default function NewStockAdjustmentPage() {
     }
 
     const loaded: AdjustmentItem[] = availableItems.map((item: Item) => {
-      const sysQty = calculateSystemStock(item.id, selectedWarehouse);
+      const sysQty =
+        frozenOverride && Object.prototype.hasOwnProperty.call(frozenOverride, item.id)
+          ? Number(frozenOverride[item.id]) || 0
+          : calculateSystemStock(item.id, selectedWarehouse);
       const actQty = fillWithSystemQty ? sysQty : 0;
       return {
         itemId: item.id,
@@ -1076,6 +1106,18 @@ export default function NewStockAdjustmentPage() {
       return;
     }
 
+    // منع اعتماد جرد دوري على مستوى أكبر من صنف واحد بدون تجنيب أرصدة في هذا اليوم
+    if (adjustmentType === "periodic_count" && !activeSession && (catalogScope !== "item" || items.length > 1)) {
+      setPendingActionAfterSnapshot(null);
+      setSnapshotPromptOpen(true);
+      toast({
+        variant: "destructive",
+        title: "مطلوب تجنيب الأرصدة أولاً",
+        description: "لا يمكن إجراء جرد دوري على مستوى المخزن أو القسم أو المجموعة (أو عدة أصناف) بدون تجنيب الأرصدة الدفترية لهذا اليوم أولاً."
+      });
+      return;
+    }
+
     const itemsToSave = items.filter(
       (item) => item.difference !== 0 || adjustmentType === "opening_balance"
     );
@@ -1180,13 +1222,30 @@ export default function NewStockAdjustmentPage() {
     if (!sess) return;
     setAdjustmentType(sess.adjustmentType || "periodic_count");
     setAdjustmentDate(sess.snapshotDateStr);
+    if (sess.cutoffMode) setCutoffMode(sess.cutoffMode);
+    if (sess.catalogScope) {
+      setCatalogScope(sess.catalogScope as any);
+      if (sess.catalogScope === "section") setSelectedSectionId(sess.scopeTargetId || "all");
+      if (sess.catalogScope === "category") setSelectedCategoryId(sess.scopeTargetId || "all");
+      if (sess.catalogScope === "sub_group") setSelectedSubGroupId(sess.scopeTargetId || "all");
+      if (sess.catalogScope === "item") setSelectedSingleItemId(sess.scopeTargetId || "");
+    }
     setLocationType("all_warehouses");
     setBranchFilter("all");
     setSelectedWarehouse(sess.warehouseId);
     setSelectedWarehouseSection(sess.warehouseSectionId || "all");
   };
 
-  const handleCreateFrozenSession = async () => {
+  const getEffectiveSnapshotDateObj = useCallback((dateStr: string, mode: "end_of_day" | "exact_now") => {
+    const now = new Date();
+    const todayYMD = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
+    if (mode === "exact_now" && dateStr === todayYMD) {
+      return now;
+    }
+    return new Date(`${dateStr}T23:59:59.999`);
+  }, []);
+
+  const handleCreateFrozenSession = async (autoLoadMode?: "load_true" | "load_false" | null) => {
     if (!selectedWarehouse) {
       toast({
         variant: "destructive",
@@ -1206,24 +1265,29 @@ export default function NewStockAdjustmentPage() {
 
     setIsSessionActionLoading(true);
     try {
-      const asOfDateObj = new Date(`${adjustmentDate}T23:59:59.999`);
+      const asOfDateObj = getEffectiveSnapshotDateObj(adjustmentDate, cutoffMode);
       const frozenBalances: Record<string, number> = {};
+      const frozenCosts: Record<string, number> = {};
 
-      // حساب وتجنيب الأرصدة الدفترية لجميع الأصناف في هذا التاريخ المحدد
-      (allItems || [])
-        .filter((item: Item) => item.itemType !== "manufactured")
-        .forEach((item: Item) => {
-          if (adjustmentType === "opening_balance") {
-            frozenBalances[item.id] = 0;
-          } else {
-            frozenBalances[item.id] = calculateStockForItemInWarehouse(
-              item.id,
-              selectedWarehouse,
-              allDataContext,
-              asOfDateObj
-            );
-          }
-        });
+      // تجنيب الأرصدة الدفترية والتكلفة لأصناف النطاق المحدد (مخزن / قسم / فئة / مجموعة / صنف)
+      const itemsToFreeze =
+        catalogScope === "all"
+          ? (allItems || []).filter((item: Item) => item.itemType !== "manufactured")
+          : availableItems;
+
+      itemsToFreeze.forEach((item: Item) => {
+        frozenCosts[item.id] = Number(item.cost || 0);
+        if (adjustmentType === "opening_balance") {
+          frozenBalances[item.id] = 0;
+        } else {
+          frozenBalances[item.id] = calculateStockForItemInWarehouse(
+            item.id,
+            selectedWarehouse,
+            allDataContext,
+            asOfDateObj
+          );
+        }
+      });
 
       const sessionCode = `جرد-${adjustmentDate}-${Math.floor(100 + Math.random() * 900)}`;
       const newId = `ics_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
@@ -1238,8 +1302,11 @@ export default function NewStockAdjustmentPage() {
           snapshotDate: asOfDateObj.toISOString(),
           snapshotDateStr: adjustmentDate,
           catalogScope,
+          scopeTargetId: currentScopeTargetId,
+          cutoffMode,
           scopeLabel: scopeSummaryLabel,
           frozenBalances,
+          frozenCosts,
           status: "open",
           createdById: user?.id,
           createdByName: user?.name,
@@ -1265,8 +1332,11 @@ export default function NewStockAdjustmentPage() {
             snapshotDate: asOfDateObj.toISOString(),
             snapshotDateStr: adjustmentDate,
             catalogScope,
+            scopeTargetId: currentScopeTargetId,
+            cutoffMode,
             scopeLabel: scopeSummaryLabel,
             frozenBalances,
+            frozenCosts,
             createdById: user?.id,
             createdByName: user?.name
           })
@@ -1278,10 +1348,20 @@ export default function NewStockAdjustmentPage() {
       }
 
       setIsConsolidatedPreview(false);
-      setItems([]);
+      setSnapshotPromptOpen(false);
+      setPendingActionAfterSnapshot(null);
+
+      if (autoLoadMode === "load_true") {
+        handleLoadScopeItems(true, true, frozenBalances);
+      } else if (autoLoadMode === "load_false") {
+        handleLoadScopeItems(false, true, frozenBalances);
+      } else {
+        setItems([]);
+      }
+
       toast({
         title: "تم تجنيب الأرصدة الدفترية بنجاح",
-        description: `تم تجميد الأرصدة الدفترية بتاريخ ${adjustmentDate} وفتح جلسة الجرد (${sessionCode}) لاستقبال كشوف الأجهزة.`
+        description: `تم تجميد ${itemsToFreeze.length} صنف بتاريخ ${adjustmentDate} (${cutoffMode === "exact_now" ? "حتى اللحظة الحالية" : "نهاية اليوم"}) في الجلسة ${sessionCode}.`
       });
     } catch (err: any) {
       toast({
@@ -1289,6 +1369,61 @@ export default function NewStockAdjustmentPage() {
         title: "خطأ في تجنيب الأرصدة",
         description: err?.message || "تعذر إنشاء جلسة تجنيب الأرصدة الدفترية."
       });
+    } finally {
+      setIsSessionActionLoading(false);
+    }
+  };
+
+  const handleRefreshFrozenBalances = async () => {
+    if (!activeSession) return;
+    setIsSessionActionLoading(true);
+    try {
+      const asOfDateObj = new Date(activeSession.snapshotDate || `${activeSession.snapshotDateStr}T23:59:59.999`);
+      const nextFrozenBalances: Record<string, number> = {};
+      const nextFrozenCosts: Record<string, number> = {};
+
+      Object.keys(activeSession.frozenBalances || {}).forEach((itemId) => {
+        const itemObj = (allItems || []).find((i: Item) => i.id === itemId);
+        nextFrozenCosts[itemId] = Number(itemObj?.cost || 0);
+        nextFrozenBalances[itemId] =
+          activeSession.adjustmentType === "opening_balance"
+            ? 0
+            : calculateStockForItemInWarehouse(
+                itemId,
+                activeSession.warehouseId,
+                allDataContext,
+                asOfDateObj
+              );
+      });
+
+      if (isIndexedDbMode) {
+        const raw = localStorage.getItem(LOCAL_SESSIONS_KEY);
+        const existing: InventoryCountSession[] = raw ? JSON.parse(raw) : [];
+        const updated = existing.map((s) =>
+          s.id === activeSession.id
+            ? { ...s, frozenBalances: nextFrozenBalances, frozenCosts: nextFrozenCosts }
+            : s
+        );
+        localStorage.setItem(LOCAL_SESSIONS_KEY, JSON.stringify(updated));
+      } else {
+        await fetch("/api/inventory/count-sessions", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            action: "refresh_frozen",
+            sessionId: activeSession.id,
+            frozenBalances: nextFrozenBalances,
+            frozenCosts: nextFrozenCosts
+          })
+        });
+      }
+      await loadCountSessions();
+      toast({
+        title: "تم تحديث الأرصدة المجنّبة",
+        description: `تمت إعادة احتساب الأرصدة الدفترية المجنّبة بتاريخ ${activeSession.snapshotDateStr}.`
+      });
+    } catch {
+      toast({ variant: "destructive", title: "خطأ", description: "تعذر إعادة احتساب الأرصدة المجنّبة." });
     } finally {
       setIsSessionActionLoading(false);
     }
@@ -1719,6 +1854,27 @@ export default function NewStockAdjustmentPage() {
         </DialogContent>
       </Dialog>
 
+      <AlertDialog open={snapshotPromptOpen} onOpenChange={setSnapshotPromptOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>مطلوب تجنيب الأرصدة الدفترية لهذا اليوم أولاً</AlertDialogTitle>
+            <AlertDialogDescription>
+              لا يمكن إجراء جرد دوري على مستوى أكبر من مستوى الصنف (مخزن / قسم / فئة / مجموعة) بتاريخ ({adjustmentDate}) بدون تجنيب الأرصدة الدفترية أولاً.
+              هل تريد تجنيب الأرصدة الدفترية للنطاق الحالي ({scopeSummaryLabel}) بتاريخ ({adjustmentDate}) الآن ومتابعة الجرد؟
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter className="gap-2">
+            <AlertDialogCancel onClick={() => setPendingActionAfterSnapshot(null)}>إلغاء</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => handleCreateFrozenSession(pendingActionAfterSnapshot)}
+              disabled={isSessionActionLoading}
+            >
+              {isSessionActionLoading ? "جارٍ التجنيب..." : "نعم، تجنيب الأرصدة الآن والبدء"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
       <PageHeader title="تسوية وجرد المخزون الذكي">
         <div className="flex items-center gap-2">
           <Button
@@ -1849,6 +2005,17 @@ export default function NewStockAdjustmentPage() {
                           <Button
                             type="button"
                             size="sm"
+                            variant="outline"
+                            className="h-8 text-xs gap-1"
+                            disabled={isSessionActionLoading}
+                            onClick={handleRefreshFrozenBalances}
+                          >
+                            <RefreshCw className="h-3.5 w-3.5" />
+                            إعادة احتساب المجنّب
+                          </Button>
+                          <Button
+                            type="button"
+                            size="sm"
                             variant="ghost"
                             className="h-8 text-xs text-destructive hover:text-destructive"
                             disabled={isSessionActionLoading}
@@ -1908,31 +2075,46 @@ export default function NewStockAdjustmentPage() {
                       <span>1. تحديد المكان المخزني وتاريخ تجنيب الأرصدة</span>
                     </div>
                     {!activeSession && (
-                      <Button
-                        type="button"
-                        size="sm"
-                        variant="secondary"
-                        className="h-8 text-xs gap-1.5 font-bold border border-amber-500/40"
-                        disabled={!selectedWarehouse || !adjustmentDate || isSessionActionLoading}
-                        onClick={handleCreateFrozenSession}
-                      >
-                        {isSessionActionLoading ? (
-                          <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                        ) : (
-                          <Lock className="h-3.5 w-3.5 text-amber-600" />
-                        )}
-                        تجنيب الأرصدة الدفترية لهذا التاريخ وفتح جلسة جرد
-                      </Button>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <Select value={cutoffMode} onValueChange={(v: any) => setCutoffMode(v)}>
+                          <SelectTrigger className="h-8 text-xs w-44">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="end_of_day">نهاية اليوم (23:59)</SelectItem>
+                            <SelectItem value="exact_now">حتى اللحظة الحالية</SelectItem>
+                          </SelectContent>
+                        </Select>
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="secondary"
+                          className="h-8 text-xs gap-1.5 font-bold border border-amber-500/40"
+                          disabled={!selectedWarehouse || !adjustmentDate || isSessionActionLoading}
+                          onClick={() => handleCreateFrozenSession(null)}
+                        >
+                          {isSessionActionLoading ? (
+                            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                          ) : (
+                            <Lock className="h-3.5 w-3.5 text-amber-600" />
+                          )}
+                          تجنيب الأرصدة الدفترية للنطاق وفتح جلسة
+                        </Button>
+                      </div>
                     )}
                   </div>
 
                   <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3 items-end">
                     <div className="space-y-1.5">
-                      <Label className="text-xs">تاريخ / يوم الجرد</Label>
+                      <Label className="text-xs flex items-center gap-1">
+                        <span>تاريخ / يوم الجرد</span>
+                        {activeSession && <span className="text-[10px] text-emerald-600 font-bold">(مرتبط بالتجنيب)</span>}
+                      </Label>
                       <Input
                         type="date"
                         value={adjustmentDate}
                         onChange={(e) => setAdjustmentDate(e.target.value)}
+                        disabled={!!activeSession}
                         className="h-9 text-xs"
                       />
                     </div>
@@ -2085,6 +2267,7 @@ export default function NewStockAdjustmentPage() {
                           setSelectedSectionId("all");
                           setSelectedCategoryId("all");
                           setSelectedSubGroupId("all");
+                          setSelectedSingleItemId("");
                         }}
                       >
                         <SelectTrigger className="h-9 text-xs">
@@ -2095,9 +2278,24 @@ export default function NewStockAdjustmentPage() {
                           <SelectItem value="section">جرد على مستوى القسم (Section)</SelectItem>
                           <SelectItem value="category">جرد على مستوى الفئة الرئيسية</SelectItem>
                           <SelectItem value="sub_group">جرد على مستوى المجموعة الفرعية</SelectItem>
+                          <SelectItem value="item">جرد على مستوى صنف محدد (لا يشترط تجنيب)</SelectItem>
                         </SelectContent>
                       </Select>
                     </div>
+
+                    {catalogScope === "item" && (
+                      <div className="space-y-1.5 sm:col-span-2">
+                        <Label className="text-xs font-bold">اختر الصنف المحدد</Label>
+                        <Combobox
+                          options={(allItems || [])
+                            .filter((i: Item) => i.itemType !== "manufactured")
+                            .map((i: Item) => ({ value: i.id, label: `${i.name} (${i.code || "بدون كود"})` }))}
+                          value={selectedSingleItemId}
+                          onValueChange={setSelectedSingleItemId}
+                          placeholder="ابحث عن الصنف..."
+                        />
+                      </div>
+                    )}
 
                     {catalogScope === "section" && (
                       <div className="space-y-1.5 sm:col-span-2">

@@ -69,10 +69,15 @@ export default function StockAdjustmentListPage() {
   return (
     <>
       <PageHeader title="سجل تسويات المخزون">
-        <Button size="sm" className="gap-1" onClick={() => router.push('/inventory/adjustment/new')}>
-          <PlusCircle className="h-4 w-4" />
-          إضافة تسوية جديدة
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button size="sm" variant="outline" onClick={() => router.push('/reports/frozen-balances')}>
+            تقرير الأرصدة المجنّبة
+          </Button>
+          <Button size="sm" className="gap-1" onClick={() => router.push('/inventory/adjustment/new')}>
+            <PlusCircle className="h-4 w-4" />
+            إضافة تسوية جديدة
+          </Button>
+        </div>
       </PageHeader>
       <main className="flex flex-1 flex-col gap-4 p-2 md:p-6">
         <Card>

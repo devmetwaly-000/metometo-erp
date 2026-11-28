@@ -23,8 +23,11 @@ async function ensureTables(pool: sql.ConnectionPool) {
                 SnapshotDate DATETIME2 NOT NULL,
                 SnapshotDateStr NVARCHAR(20) NOT NULL,
                 CatalogScope NVARCHAR(50) NULL,
+                ScopeTargetId NVARCHAR(100) NULL,
+                CutoffMode NVARCHAR(20) NULL DEFAULT 'end_of_day',
                 ScopeLabel NVARCHAR(500) NULL,
                 FrozenBalancesJson NVARCHAR(MAX) NOT NULL,
+                FrozenCostsJson NVARCHAR(MAX) NULL,
                 Status NVARCHAR(30) NOT NULL DEFAULT 'open',
                 CreatedById NVARCHAR(64) NULL,
                 CreatedByName NVARCHAR(255) NULL,
@@ -33,6 +36,15 @@ async function ensureTables(pool: sql.ConnectionPool) {
                 ConsolidatedRecordId NVARCHAR(64) NULL,
                 Notes NVARCHAR(MAX) NULL
             );
+        END
+        ELSE
+        BEGIN
+            IF COL_LENGTH('dbo.InventoryCountSessions', 'ScopeTargetId') IS NULL
+                ALTER TABLE dbo.InventoryCountSessions ADD ScopeTargetId NVARCHAR(100) NULL;
+            IF COL_LENGTH('dbo.InventoryCountSessions', 'CutoffMode') IS NULL
+                ALTER TABLE dbo.InventoryCountSessions ADD CutoffMode NVARCHAR(20) NULL DEFAULT 'end_of_day';
+            IF COL_LENGTH('dbo.InventoryCountSessions', 'FrozenCostsJson') IS NULL
+                ALTER TABLE dbo.InventoryCountSessions ADD FrozenCostsJson NVARCHAR(MAX) NULL;
         END
 
         IF OBJECT_ID('dbo.InventoryCountSheets', 'U') IS NULL
@@ -70,7 +82,7 @@ export async function GET(req: NextRequest) {
         await ensureTables(pool);
 
         const statusFilter = req.nextUrl.searchParams.get('status');
-        const sessionsQuery = statusFilter
+        const sessionsQuery = statusFilter && statusFilter !== 'all'
             ? pool.request().input('Status', sql.NVarChar(30), statusFilter).query(`
                 SELECT * FROM dbo.InventoryCountSessions
                 WHERE Status = @Status
@@ -114,8 +126,11 @@ export async function GET(req: NextRequest) {
                 snapshotDate: row.SnapshotDate || row.snapshotDate,
                 snapshotDateStr: row.SnapshotDateStr || row.snapshotDateStr,
                 catalogScope: row.CatalogScope || row.catalogScope || 'all',
+                scopeTargetId: row.ScopeTargetId || row.scopeTargetId || undefined,
+                cutoffMode: row.CutoffMode || row.cutoffMode || 'end_of_day',
                 scopeLabel: row.ScopeLabel || row.scopeLabel || '',
                 frozenBalances: parseJsonSafe<Record<string, number>>(row.FrozenBalancesJson || row.frozenBalancesJson, {}),
+                frozenCosts: parseJsonSafe<Record<string, number>>(row.FrozenCostsJson || row.frozenCostsJson, {}),
                 status: row.Status || row.status || 'open',
                 createdById: row.CreatedById || row.createdById || '',
                 createdByName: row.CreatedByName || row.createdByName || '',
@@ -146,38 +161,89 @@ export async function POST(req: NextRequest) {
         await ensureTables(pool);
 
         if (action === 'create_session') {
-            const id = body.id || `ics_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
+            const warehouseId = String(body.warehouseId);
             const snapshotDateStr = String(body.snapshotDateStr || '').slice(0, 10);
+            const catalogScope = String(body.catalogScope || 'all');
+            const scopeTargetId = body.scopeTargetId ? String(body.scopeTargetId) : null;
+
+            // منع فتح جلستين مفتوحتين متعارضتين لنفس المخزن ونفس التاريخ ونفس النطاق
+            const overlapCheck = await pool.request()
+                .input('WarehouseId', sql.NVarChar(64), warehouseId)
+                .input('SnapshotDateStr', sql.NVarChar(20), snapshotDateStr)
+                .input('CatalogScope', sql.NVarChar(50), catalogScope)
+                .input('ScopeTargetId', sql.NVarChar(100), scopeTargetId)
+                .query(`
+                    SELECT TOP 1 Id, SessionCode, CatalogScope, ScopeTargetId
+                    FROM dbo.InventoryCountSessions
+                    WHERE WarehouseId = @WarehouseId
+                      AND SnapshotDateStr = @SnapshotDateStr
+                      AND Status = 'open'
+                      AND (
+                          CatalogScope = 'all'
+                          OR @CatalogScope = 'all'
+                          OR (CatalogScope = @CatalogScope AND ISNULL(ScopeTargetId, '') = ISNULL(@ScopeTargetId, ''))
+                      )
+                `);
+
+            if (overlapCheck.recordset.length > 0) {
+                const existing = overlapCheck.recordset[0];
+                return NextResponse.json({
+                    success: false,
+                    error: `توجد بالفعل جلسة تجنيب مفتوحة متداخلة (${existing.SessionCode}) لهذا المخزن في تاريخ ${snapshotDateStr}. يمكنك استخدامها مباشرة أو إلغاؤها أولاً.`
+                }, { status: 409 });
+            }
+
+            const id = body.id || `ics_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
             const snapshotDate = body.snapshotDate ? new Date(body.snapshotDate) : new Date(`${snapshotDateStr}T23:59:59.999`);
             const sessionCode = body.sessionCode || `جرد-${snapshotDateStr}-${Math.floor(100 + Math.random() * 900)}`;
 
             await pool.request()
                 .input('Id', sql.NVarChar(64), id)
                 .input('SessionCode', sql.NVarChar(100), sessionCode)
-                .input('WarehouseId', sql.NVarChar(64), String(body.warehouseId))
+                .input('WarehouseId', sql.NVarChar(64), warehouseId)
                 .input('WarehouseSectionId', sql.NVarChar(64), body.warehouseSectionId && body.warehouseSectionId !== 'all' ? String(body.warehouseSectionId) : null)
                 .input('AdjustmentType', sql.NVarChar(50), String(body.adjustmentType || 'periodic_count'))
                 .input('SnapshotDate', sql.DateTime2, snapshotDate)
                 .input('SnapshotDateStr', sql.NVarChar(20), snapshotDateStr)
-                .input('CatalogScope', sql.NVarChar(50), String(body.catalogScope || 'all'))
+                .input('CatalogScope', sql.NVarChar(50), catalogScope)
+                .input('ScopeTargetId', sql.NVarChar(100), scopeTargetId)
+                .input('CutoffMode', sql.NVarChar(20), String(body.cutoffMode || 'end_of_day'))
                 .input('ScopeLabel', sql.NVarChar(500), body.scopeLabel ? String(body.scopeLabel) : null)
                 .input('FrozenBalancesJson', sql.NVarChar(sql.MAX), JSON.stringify(body.frozenBalances || {}))
+                .input('FrozenCostsJson', sql.NVarChar(sql.MAX), JSON.stringify(body.frozenCosts || {}))
                 .input('CreatedById', sql.NVarChar(64), body.createdById ? String(body.createdById) : null)
                 .input('CreatedByName', sql.NVarChar(255), body.createdByName ? String(body.createdByName) : null)
                 .input('Notes', sql.NVarChar(sql.MAX), body.notes ? String(body.notes) : null)
                 .query(`
                     INSERT INTO dbo.InventoryCountSessions (
                         Id, SessionCode, WarehouseId, WarehouseSectionId, AdjustmentType,
-                        SnapshotDate, SnapshotDateStr, CatalogScope, ScopeLabel, FrozenBalancesJson,
+                        SnapshotDate, SnapshotDateStr, CatalogScope, ScopeTargetId, CutoffMode,
+                        ScopeLabel, FrozenBalancesJson, FrozenCostsJson,
                         Status, CreatedById, CreatedByName, Notes
                     ) VALUES (
                         @Id, @SessionCode, @WarehouseId, @WarehouseSectionId, @AdjustmentType,
-                        @SnapshotDate, @SnapshotDateStr, @CatalogScope, @ScopeLabel, @FrozenBalancesJson,
+                        @SnapshotDate, @SnapshotDateStr, @CatalogScope, @ScopeTargetId, @CutoffMode,
+                        @ScopeLabel, @FrozenBalancesJson, @FrozenCostsJson,
                         'open', @CreatedById, @CreatedByName, @Notes
                     );
                 `);
 
             return NextResponse.json({ success: true, id, sessionCode });
+        }
+
+        if (action === 'refresh_frozen') {
+            const sessionId = String(body.sessionId || '');
+            await pool.request()
+                .input('Id', sql.NVarChar(64), sessionId)
+                .input('FrozenBalancesJson', sql.NVarChar(sql.MAX), JSON.stringify(body.frozenBalances || {}))
+                .input('FrozenCostsJson', sql.NVarChar(sql.MAX), JSON.stringify(body.frozenCosts || {}))
+                .query(`
+                    UPDATE dbo.InventoryCountSessions
+                    SET FrozenBalancesJson = @FrozenBalancesJson,
+                        FrozenCostsJson = @FrozenCostsJson
+                    WHERE Id = @Id AND Status = 'open';
+                `);
+            return NextResponse.json({ success: true });
         }
 
         if (action === 'submit_sheet') {
