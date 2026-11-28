@@ -553,6 +553,30 @@ export async function createAndInitializeDatabase(options: DbInitOptions): Promi
                 CONSTRAINT [PK_InventoryCountSheets] PRIMARY KEY CLUSTERED ([Id])
             );`,
 
+            `IF NOT EXISTS (SELECT * FROM sys.tables WHERE name = 'InventoryCountPreparedSheets')
+            CREATE TABLE dbo.[InventoryCountPreparedSheets] (
+                [Id] NVARCHAR(64) NOT NULL,
+                [SheetCode] NVARCHAR(100) NOT NULL,
+                [Title] NVARCHAR(255) NOT NULL,
+                [WarehouseId] NVARCHAR(64) NOT NULL,
+                [CatalogScope] NVARCHAR(50) NOT NULL DEFAULT ('all'),
+                [ScopeTargetId] NVARCHAR(100) NULL,
+                [ScopeLabel] NVARCHAR(500) NULL,
+                [AssignedTeam] NVARCHAR(255) NULL,
+                [PreparedDate] DATETIME2 NOT NULL DEFAULT (sysutcdatetime()),
+                [Status] NVARCHAR(30) NOT NULL DEFAULT ('prepared'),
+                [ItemsJson] NVARCHAR(MAX) NOT NULL,
+                [Notes] NVARCHAR(MAX) NULL,
+                [CreatedAt] DATETIME2 NOT NULL DEFAULT (sysutcdatetime()),
+                [BranchCode] NVARCHAR(50) NULL,
+                [BranchName] NVARCHAR(255) NULL,
+                [SyncStatus] NVARCHAR(20) NULL DEFAULT ('synced'),
+                [LastSyncedAt] DATETIME2 NULL,
+                [UpdatedAt] DATETIME2 NOT NULL DEFAULT (sysutcdatetime()),
+                [RowVersion] ROWVERSION,
+                CONSTRAINT [PK_InventoryCountPreparedSheets] PRIMARY KEY CLUSTERED ([Id])
+            );`,
+
             `IF NOT EXISTS (SELECT * FROM sys.tables WHERE name = 'InventorySections')
             CREATE TABLE dbo.[InventorySections] (
                 [Id] NVARCHAR(64) NOT NULL,

@@ -145,6 +145,7 @@ export const TABLE_METADATA_MAP: Record<string, TableSyncMeta> = {
     InventoryClosings: { name: 'تقفيلات الجرد الدوري', category: 'مخازن وأصناف', direction: 'push', idColumn: 'Id', description: 'محاضر إغلاق وتقفيل الجرد السنوي والدوري للمخازن', dataScope: 'إغلاق جرد' },
     InventoryCountSessions: { name: 'جلسات تجنيب الأرصدة والجرد', category: 'مخازن وأصناف', direction: 'push', idColumn: 'Id', childTable: 'InventoryCountSheets', foreignKey: 'SessionId', description: 'جلسات تجنيب الأرصدة الدفترية في تاريخ محدد لإجراء الجرد متعدد الأجهزة قبل التجميع والاعتماد', dataScope: 'تجنيب وجرد' },
     InventoryCountSheets: { name: 'كشوف الجرد من الأجهزة', category: 'مخازن وأصناف', direction: 'push', idColumn: 'Id', description: 'كشوف الجرد الفعلي المدخلة من الأجهزة المتعددة ضمن جلسة الجرد المجنّبة قبل التجميع النهائي', dataScope: 'كشوف جرد' },
+    InventoryCountPreparedSheets: { name: 'الكشوف المُعدّة للجرد الميداني', category: 'مخازن وأصناف', direction: 'push', idColumn: 'Id', description: 'الكشوف والنماذج المُعدّة للجرد والمطبوعة لتوزيعها على لجان الجرد الميداني', dataScope: 'نماذج جرد' },
 
     // 7. توزيع ومندوبين
     StockIssuesToReps: { name: 'صرف بضاعة لعهدة المندوبين', category: 'توزيع ومندوبين', direction: 'push', idColumn: 'Id', description: 'إذن تسليم بضاعة لسيارات وعهدة مناديب البيع والتوزيع', dataScope: 'عهدة مناديب' },

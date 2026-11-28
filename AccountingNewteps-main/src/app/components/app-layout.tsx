@@ -289,6 +289,13 @@ export const navStructure = [
         { type: 'link', href: '/inventory/adjustment', module: 'inventory_adjustment', title: 'تسوية المخزون (الجرد)' },
         { type: 'link', href: '/inventory/movements', module: 'inventory_movements', title: 'حركة المخزون' },
     ]},
+    { type: 'collapsible', title: 'دورة الجرد المخزني', icon: <Boxes />, modules: ['inventory_adjustment', 'inventory_stockStatus', 'reports_discrepancies'], children: [
+        { type: 'link', href: '/inventory/count-cycle', module: 'inventory_adjustment', title: 'لوحة تحكم دورة الجرد الشاملة' },
+        { type: 'link', href: '/inventory/adjustment/new', module: 'inventory_adjustment', title: 'تجنيب الأرصدة وبدء الجرد' },
+        { type: 'link', href: '/reports/frozen-balances', module: 'inventory_adjustment', title: 'تقرير الأرصدة الدفترية المجنّبة' },
+        { type: 'link', href: '/inventory/adjustment', module: 'inventory_adjustment', title: 'سجل تسويات الجرد (فائض وعجز)' },
+        { type: 'link', href: '/reports/inventory-adjustments-report', module: 'inventory_adjustment', title: 'تقرير فروق وتسويات الجرد الشامل' },
+    ]},
     { type: 'collapsible', title: 'اللوجيستيك (للمخازن الرئيسية)', icon: <LayoutGrid />, modules: ['inventory_zones', 'inventory_requisitions', 'inventory_stockIn', 'reports_stockOutReport', 'inventory_stockStatus', 'inventory_movements'], children: [
         { type: 'link', href: '/inventory/zones', module: 'inventory_zones', title: 'المخازن الرئيسية والأقسام' },
         { type: 'link', href: '/inventory/stock-in', module: 'inventory_stockIn', title: 'تسكين البضاعة' },

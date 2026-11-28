@@ -43,6 +43,7 @@ const TRANSACTION_TABLES = [
     'StockIssuesToReps',
     'StockReturnsFromReps',
     'InventoryClosings',
+    'InventoryCountPreparedSheets',
     'InventoryCountSheets',
     'InventoryCountSessions',
     'HeldInvoices',
