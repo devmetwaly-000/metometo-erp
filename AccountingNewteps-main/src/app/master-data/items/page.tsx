@@ -39,9 +39,10 @@ import { usePermissions } from "@/contexts/permissions-context";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog';
 import { BarcodePrintDialog } from "@/components/barcode-print-dialog";
 import RecipeHistoryDialog from "@/components/recipe-history-dialog";
+import CameraBarcodeScanner from "@/components/camera-barcode-scanner";
 import { Badge } from "@/components/ui/badge";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { PlusCircle, Trash2, Loader2, QrCode, TrendingUp, Search, Component, Save, History, Edit, MoreHorizontal, X, Clock, Calculator, Layers, CheckCheck, FolderTree, Check, AlertTriangle, Scale } from "lucide-react";
+import { PlusCircle, Trash2, Loader2, QrCode, TrendingUp, Search, Component, Save, History, Edit, MoreHorizontal, X, Clock, Calculator, Layers, CheckCheck, FolderTree, Check, AlertTriangle, Scale, Camera } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Combobox } from "@/components/ui/combobox";
@@ -1415,6 +1416,8 @@ function ItemForm({ item, onSave, onClose, itemSections, itemCategories, itemGro
       setFormData(prev => ({...prev, secondaryUnits: (prev.secondaryUnits || []).filter(u => u.name !== unitName) }));
   }
 
+  const [isBarcodeScannerOpen, setIsBarcodeScannerOpen] = useState(false);
+
   const handleSubmit = () => {
     if (!formData.name) return toast({ variant: "destructive", title: "خطأ", description: "اسم الصنف مطلوب." });
     onSave(formData);
@@ -1578,7 +1581,36 @@ function ItemForm({ item, onSave, onClose, itemSections, itemCategories, itemGro
           </div>
           <div className="space-y-1.5">
             <Label htmlFor="item-code" className="text-xs font-medium">الباركود</Label>
-            <Input id="item-code" value={formData.code || ''} onChange={e => setFormData({ ...formData, code: e.target.value })} placeholder="تلقائي إذا ترك فارغاً" className="h-9 text-xs font-mono" />
+            <div className="flex items-center gap-1.5">
+              <Input
+                id="item-code"
+                value={formData.code || ''}
+                onChange={e => setFormData({ ...formData, code: e.target.value })}
+                placeholder="تلقائي أو امسح بالكاميرا"
+                className="h-9 text-xs font-mono flex-1"
+              />
+              <Button
+                type="button"
+                variant="outline"
+                size="icon"
+                className="h-9 w-9 shrink-0 border-primary/40 text-primary hover:bg-primary/10"
+                onClick={() => setIsBarcodeScannerOpen(true)}
+                title="مسح الباركود بالكاميرا"
+              >
+                <Camera className="h-4 w-4" />
+              </Button>
+            </div>
+            <CameraBarcodeScanner
+              isOpen={isBarcodeScannerOpen}
+              onOpenChange={setIsBarcodeScannerOpen}
+              onScan={(barcode) => {
+                setFormData(prev => ({ ...prev, code: barcode }));
+                setIsBarcodeScannerOpen(false);
+                toast({ title: "تم مسح الباركود", description: barcode });
+              }}
+              title="مسح باركود الصنف بالكاميرا"
+              defaultContinuous={false}
+            />
           </div>
           <div className="space-y-1.5">
             <Label htmlFor="item-unit" className="text-xs font-medium">الوحدة الأساسية</Label>
